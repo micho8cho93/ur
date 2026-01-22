@@ -1,8 +1,10 @@
 import { isRosette, isWarZone } from '@/logic/constants';
 import { PlayerColor } from '@/logic/types';
 import React from 'react';
-import { TouchableOpacity, View } from 'react-native';
+import { TouchableOpacity, View, ViewStyle } from 'react-native';
 import { Piece } from './Piece';
+import { RosetteSVG } from './RosetteSVG';
+import { EyePatternSVG } from './EyePatternSVG';
 
 interface TileProps {
     row: number;
@@ -18,63 +20,97 @@ export const Tile: React.FC<TileProps> = ({ row, col, piece, isValidTarget, onPr
     const rosette = isRosette(row, col);
     const war = isWarZone(row, col);
 
-    // Styling
-    // Normal: Stone Light
-    // Rosette: Special pattern (border or icon)
-    // War: Maybe slight red tint or just stone
-    // Valid Target: Green glow or border
+    // Materials based on Design System:
+    // Ivory (cream) for player rows (row 0 and 2)
+    // Lapis Lazuli (deep blue) for middle war zone (row 1)
+    const isIvory = row !== 1; // Top and bottom rows
+    const isLapis = row === 1; // Middle war zone row
 
-    let bgClass = "bg-stone-200";
-    if (rosette) bgClass = "bg-stone-300 border-2 border-royal-gold";
-    if (war && !rosette) bgClass = "bg-stone-200"; // War zone same color usually or checkered
+    // Base tile styling with 3D inset effect
+    let tileStyle: ViewStyle = {
+        width: '100%',
+        height: '100%',
+        aspectRatio: 1,
+        borderRadius: 4,
+        alignItems: 'center',
+        justifyContent: 'center',
+        margin: 4,
+        // 3D inset effect - darker bottom and right borders
+        borderBottomWidth: 3,
+        borderRightWidth: 3,
+        borderTopWidth: 1,
+        borderLeftWidth: 1,
+    };
 
-    if (isValidTarget) bgClass += " bg-green-100 border-2 border-green-500";
-    if (lastMoveDest) bgClass += " bg-yellow-100";
+    // Apply material colors
+    if (isIvory) {
+        tileStyle = {
+            ...tileStyle,
+            backgroundColor: '#f3e5ab', // Ivory cream
+            borderBottomColor: '#d4c594',
+            borderRightColor: '#d4c594',
+            borderTopColor: '#fef5d4',
+            borderLeftColor: '#fef5d4',
+        };
+    } else if (isLapis) {
+        tileStyle = {
+            ...tileStyle,
+            backgroundColor: '#1e3a8a', // Lapis deep blue
+            borderBottomColor: '#172554',
+            borderRightColor: '#172554',
+            borderTopColor: '#3b82f6',
+            borderLeftColor: '#3b82f6',
+        };
+    }
+
+    // Valid target glow overlay
+    if (isValidTarget) {
+        tileStyle = {
+            ...tileStyle,
+            backgroundColor: isIvory ? '#dcfce7' : '#065f46', // Green tint
+            borderBottomColor: '#22c55e',
+            borderRightColor: '#22c55e',
+            borderBottomWidth: 4,
+            borderRightWidth: 4,
+        };
+    }
+
+    // Last move highlight
+    if (lastMoveDest) {
+        tileStyle = {
+            ...tileStyle,
+            backgroundColor: isIvory ? '#fef3c7' : '#854d0e', // Yellow tint
+        };
+    }
 
     return (
         <TouchableOpacity
             onPress={onPress}
             disabled={!isValidTarget}
-            style={{
-                width: '100%',
-                height: '100%',
-                aspectRatio: 1,
-                backgroundColor: rosette ? '#d6d3d1' : '#e7e5e4', // stone-300 : stone-200
-                borderWidth: rosette ? 2 : 0,
-                borderColor: rosette ? '#f59e0b' : 'transparent', // royal-gold
-                borderRadius: 6,
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: 4,
-                ...(isValidTarget && {
-                    backgroundColor: '#dcfce7', // green-100
-                    borderWidth: 2,
-                    borderColor: '#22c55e', // green-500
-                }),
-                ...(lastMoveDest && {
-                    backgroundColor: '#fef3c7', // yellow-100
-                }),
-            }}
+            style={tileStyle}
         >
-            {/* Rosette Marker */}
+            {/* Rosette Pattern - 8-pointed star */}
             {rosette && !piece && (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', opacity: 0.2 }}>
-                    <View style={{ width: 32, height: 32, transform: [{ rotate: '45deg' }], borderWidth: 4, borderColor: '#f59e0b' }} />
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+                    <RosetteSVG size={48} color={isIvory ? '#7f1d1d' : '#fbbf24'} />
                 </View>
             )}
 
-            {/* Coordinates (Debug) */}
-            {/* <Text style={{ fontSize: 8, position: 'absolute', top: 4, left: 4, color: '#9ca3af' }}>{row},{col}</Text> */}
+            {/* Eye Pattern for war zone non-rosette tiles */}
+            {war && !rosette && !piece && (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+                    <EyePatternSVG size={32} color="#fbbf24" />
+                </View>
+            )}
 
             {/* Valid Move Indicator (Dot) */}
             {isValidTarget && !piece && (
-                <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#4ade80', opacity: 0.5 }} />
+                <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#4ade80', opacity: 0.7 }} />
             )}
 
             {/* Piece */}
             {piece && (
-                <View style={{ opacity: isValidTarget ? 0.5 : 1 }}>
-                    {/* If valid target has piece (capture), maybe show transparent red? */}
+                <View style={{ opacity: isValidTarget ? 0.7 : 1 }}>
                     <Piece color={piece.color} />
                 </View>
             )}

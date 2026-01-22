@@ -113,8 +113,22 @@ export const Board: React.FC = () => {
             minHeight: 200,
             justifyContent: 'center',
             gap: 4,
-            padding: 8,
-            alignSelf: 'center'
+            padding: 16,
+            alignSelf: 'center',
+            // Dark Lacquered Wood aesthetic
+            backgroundColor: '#1a120b', // Deep brown/black wood
+            borderRadius: 8,
+            // Layered borders for 3D depth (The Case)
+            borderWidth: 8,
+            borderColor: '#78350f', // amber-900 wood frame
+            borderBottomWidth: 12,
+            borderRightWidth: 10,
+            // Outer shadow to lift the board
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.5,
+            shadowRadius: 16,
+            elevation: 12,
         }}>
             {renderGrid()}
         </View>

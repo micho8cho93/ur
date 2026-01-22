@@ -41,25 +41,62 @@ export default function GameRoom() {
     };
 
     return (
-        <View className="flex-1 bg-stone-light">
+        <View style={{ flex: 1, backgroundColor: '#2d1810' }}>
             <Stack.Screen options={{ title: `Game #${id}` }} />
 
             <ScrollView contentContainerStyle={{ padding: 16, alignItems: 'center' }}>
-                {/* Status Bar */}
-                <View className="flex-row justify-between w-full mb-8">
-                    <View className="items-center">
-                        <Text className="font-bold text-royal-blue text-lg">YOU (Light)</Text>
-                        <Text>Finished: {gameState.light.finishedCount}/7</Text>
+                {/* Status Bar - Museum Plaque Style */}
+                <View style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    marginBottom: 32,
+                    backgroundColor: '#f3e5ab',
+                    padding: 16,
+                    borderRadius: 8,
+                    borderWidth: 3,
+                    borderColor: '#78350f',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 8,
+                    elevation: 6,
+                }}>
+                    <View style={{ alignItems: 'center' }}>
+                        <Text style={{ fontFamily: 'serif', fontWeight: 'bold', color: '#78350f', fontSize: 18 }}>YOU (Light)</Text>
+                        <Text style={{ fontFamily: 'serif', color: '#78350f' }}>Finished: {gameState.light.finishedCount}/7</Text>
                     </View>
-                    <View className="items-center">
-                        <Text className="font-bold text-slate-700 text-lg">BOT (Dark)</Text>
-                        <Text>Finished: {gameState.dark.finishedCount}/7</Text>
+                    <View style={{ alignItems: 'center' }}>
+                        <Text style={{ fontFamily: 'serif', fontWeight: 'bold', color: '#78350f', fontSize: 18 }}>BOT (Dark)</Text>
+                        <Text style={{ fontFamily: 'serif', color: '#78350f' }}>Finished: {gameState.dark.finishedCount}/7</Text>
                     </View>
                 </View>
 
-                {/* Turn Indicator */}
-                <View className={`mb-4 px-4 py-2 rounded-full ${isMyTurn ? 'bg-royal-blue' : 'bg-slate-700'}`}>
-                    <Text className="text-white font-bold uppercase">
+                {/* Turn Indicator - Engraved Style */}
+                <View style={{
+                    marginBottom: 16,
+                    paddingHorizontal: 24,
+                    paddingVertical: 12,
+                    borderRadius: 20,
+                    backgroundColor: isMyTurn ? '#1e3a8a' : '#1e293b',
+                    borderWidth: 2,
+                    borderBottomWidth: 4,
+                    borderRightWidth: 3,
+                    borderColor: '#f59e0b',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 4,
+                    elevation: 4,
+                }}>
+                    <Text style={{
+                        color: '#fbbf24',
+                        fontFamily: 'serif',
+                        fontWeight: 'bold',
+                        textTransform: 'uppercase',
+                        fontSize: 14,
+                        letterSpacing: 2,
+                    }}>
                         {isMyTurn ? "Your Turn" : "Opponent Turn"}
                     </Text>
                 </View>
@@ -68,22 +105,44 @@ export default function GameRoom() {
                 <Board />
 
                 {/* Controls */}
-                <View className="mt-8 w-full max-w-xs">
+                <View style={{ marginTop: 32, width: '100%', maxWidth: 320 }}>
                     <Dice
                         value={gameState.rollValue}
-                        rolling={false} // Animation logic handled in Dice component via effect? 
-                        // Actually we pass 'rolling' prop if we want to show rolling state.
-                        // For now simple.
+                        rolling={false}
                         onRoll={handleRoll}
                         canRoll={canRoll}
                     />
                 </View>
 
-                {/* History Log */}
-                <View className="mt-8 w-full bg-white p-4 rounded-lg bg-opacity-50">
-                    <Text className="font-bold mb-2">Game Log:</Text>
+                {/* History Log - Parchment Style */}
+                <View style={{
+                    marginTop: 32,
+                    width: '100%',
+                    backgroundColor: '#f3e5ab',
+                    padding: 16,
+                    borderRadius: 8,
+                    borderWidth: 3,
+                    borderColor: '#78350f',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.2,
+                    shadowRadius: 6,
+                    elevation: 4,
+                }}>
+                    <Text style={{
+                        fontFamily: 'serif',
+                        fontWeight: 'bold',
+                        marginBottom: 8,
+                        color: '#78350f',
+                        fontSize: 16,
+                    }}>Game History:</Text>
                     {gameState.history.slice(-3).map((log, i) => (
-                        <Text key={i} className="text-xs text-gray-500">{log}</Text>
+                        <Text key={i} style={{
+                            fontFamily: 'serif',
+                            fontSize: 12,
+                            color: '#78350f',
+                            opacity: 0.8,
+                        }}>{log}</Text>
                     ))}
                 </View>
 
