@@ -1,0 +1,26 @@
+name: "ur-nakama"
+logger:
+  level: "INFO"
+
+# Connection info supplied via env in docker-compose:
+# NAKAMA_DATABASE_ADDRESS
+# NAKAMA_SOCKET_SERVER_KEY
+
+socket:
+  server_key: ${NAKAMA_SOCKET_SERVER_KEY}
+  port: 7350
+  max_message_size_bytes: 4096
+
+session:
+  token_expiry_sec: 7200
+
+runtime:
+  path: "/nakama/data/modules"
+  js_entrypoint: "index.js"
+  http_key: ${NAKAMA_HTTP_KEY}
+
+metrics:
+  reporting_freq_sec: 60
+
+console:
+  port: 7351
