@@ -113,9 +113,69 @@ export const Board: React.FC = () => {
             minHeight: 200,
             justifyContent: 'center',
             gap: 4,
-            padding: 8,
-            alignSelf: 'center'
+            padding: 12,
+            alignSelf: 'center',
+            borderRadius: 20,
+            borderWidth: 2,
+            borderColor: '#8b6a45',
+            backgroundColor: '#5b3c24',
+            shadowColor: '#1f1309',
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.35,
+            shadowRadius: 12,
+            elevation: 12,
+            overflow: 'hidden',
         }}>
+            <View style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: '#6c4427',
+            }} />
+            <View style={{
+                position: 'absolute',
+                top: 12,
+                left: 12,
+                right: 12,
+                bottom: 12,
+                borderRadius: 14,
+                backgroundColor: 'rgba(39, 24, 14, 0.25)',
+            }} />
+            <View style={{
+                position: 'absolute',
+                top: 6,
+                left: 6,
+                right: 6,
+                bottom: 6,
+                borderRadius: 16,
+                borderWidth: 2,
+                borderColor: 'rgba(242, 206, 138, 0.5)',
+                backgroundColor: 'rgba(76, 50, 30, 0.35)',
+            }} />
+            <View style={{
+                position: 'absolute',
+                top: 2,
+                left: 2,
+                right: 2,
+                bottom: 2,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: 'rgba(20, 12, 6, 0.4)',
+            }} />
+            <View style={{
+                position: 'absolute',
+                top: 10,
+                left: 10,
+                right: 10,
+                bottom: 10,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: 'rgba(232, 183, 104, 0.35)',
+                borderStyle: 'dashed',
+                opacity: 0.8,
+            }} />
             {renderGrid()}
         </View>
     );

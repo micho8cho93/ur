@@ -39,27 +39,52 @@ export const Tile: React.FC<TileProps> = ({ row, col, piece, isValidTarget, onPr
                 width: '100%',
                 height: '100%',
                 aspectRatio: 1,
-                backgroundColor: rosette ? '#d6d3d1' : '#e7e5e4', // stone-300 : stone-200
-                borderWidth: rosette ? 2 : 0,
-                borderColor: rosette ? '#f59e0b' : 'transparent', // royal-gold
-                borderRadius: 6,
+                backgroundColor: rosette ? '#cdbb9a' : '#d8c7a4',
+                borderWidth: rosette ? 2 : 1,
+                borderColor: rosette ? '#caa349' : 'rgba(96, 67, 42, 0.5)',
+                borderRadius: 8,
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: 4,
+                overflow: 'hidden',
+                shadowColor: '#3f2b17',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.25,
+                shadowRadius: 3,
+                elevation: 3,
                 ...(isValidTarget && {
-                    backgroundColor: '#dcfce7', // green-100
                     borderWidth: 2,
-                    borderColor: '#22c55e', // green-500
+                    borderColor: '#d6b45a',
+                    backgroundColor: '#e2d4b3',
                 }),
                 ...(lastMoveDest && {
-                    backgroundColor: '#fef3c7', // yellow-100
+                    backgroundColor: '#eadcba',
                 }),
             }}
         >
+            <View style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: rosette ? 'rgba(114, 75, 39, 0.08)' : 'rgba(45, 28, 16, 0.06)',
+            }} />
+            <View style={{
+                position: 'absolute',
+                top: 2,
+                left: 2,
+                right: 2,
+                bottom: 2,
+                borderRadius: 6,
+                borderWidth: 1,
+                borderColor: 'rgba(255, 233, 190, 0.35)',
+            }} />
             {/* Rosette Marker */}
             {rosette && !piece && (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', opacity: 0.2 }}>
-                    <View style={{ width: 32, height: 32, transform: [{ rotate: '45deg' }], borderWidth: 4, borderColor: '#f59e0b' }} />
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', opacity: 0.35 }}>
+                    <View style={{ width: 30, height: 30, transform: [{ rotate: '45deg' }], borderWidth: 3, borderColor: '#a97b2f' }} />
+                    <View style={{ position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: '#a97b2f', opacity: 0.4 }} />
                 </View>
             )}
 
@@ -68,13 +93,12 @@ export const Tile: React.FC<TileProps> = ({ row, col, piece, isValidTarget, onPr
 
             {/* Valid Move Indicator (Dot) */}
             {isValidTarget && !piece && (
-                <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#4ade80', opacity: 0.5 }} />
+                <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#caa349', opacity: 0.6 }} />
             )}
 
             {/* Piece */}
             {piece && (
-                <View style={{ opacity: isValidTarget ? 0.5 : 1 }}>
-                    {/* If valid target has piece (capture), maybe show transparent red? */}
+                <View style={{ opacity: isValidTarget ? 0.6 : 1 }}>
                     <Piece color={piece.color} />
                 </View>
             )}
