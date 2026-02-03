@@ -1,23 +1,27 @@
 import { create } from 'zustand';
 import { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { createInitialState, getValidMoves, applyMove, rollDice } from '@/logic/engine';
-import { MatchPresenceEvent } from '@heroiclabs/nakama-js';
+import { MatchPresenceEvent, Session } from '@heroiclabs/nakama-js';
 
 interface GameStore {
     gameState: GameState;
     playerId: string; // 'light'
+    nakamaSession: Session | null;
+    userId: string | null;
     matchId: string | null;
     validMoves: MoveAction[];
     matchPresences: string[];
-    connectionStatus: 'connected' | 'disconnected';
+    socketState: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
     matchMoveSender: ((move: MoveAction) => void) | null;
 
     // Actions
     initGame: (matchId: string) => void;
     setMatchId: (matchId: string) => void;
+    setNakamaSession: (session: Session | null) => void;
+    setUserId: (userId: string | null) => void;
     setGameStateFromServer: (state: GameState) => void;
     updateMatchPresences: (event: MatchPresenceEvent) => void;
-    setConnectionStatus: (status: 'connected' | 'disconnected') => void;
+    setSocketState: (status: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error') => void;
     setMatchMoveSender: (sender: ((move: MoveAction) => void) | null) => void;
     roll: () => void;
     makeMove: (move: MoveAction) => void;
@@ -27,10 +31,12 @@ interface GameStore {
 export const useGameStore = create<GameStore>((set, get) => ({
     gameState: createInitialState(),
     playerId: 'light',
+    nakamaSession: null,
+    userId: null,
     matchId: null,
     validMoves: [],
     matchPresences: [],
-    connectionStatus: 'disconnected',
+    socketState: 'idle',
     matchMoveSender: null,
 
     initGame: (matchId) => {
@@ -39,12 +45,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
             gameState: createInitialState(),
             validMoves: [],
             matchPresences: [],
-            connectionStatus: 'disconnected'
+            socketState: 'idle'
         });
     },
 
     setMatchId: (matchId) => {
         set({ matchId });
+    },
+
+    setNakamaSession: (session) => {
+        set({ nakamaSession: session });
+    },
+
+    setUserId: (userId) => {
+        set({ userId });
     },
 
     setGameStateFromServer: (state) => {
@@ -63,8 +77,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         });
     },
 
-    setConnectionStatus: (status) => {
-        set({ connectionStatus: status });
+    setSocketState: (status) => {
+        set({ socketState: status });
     },
 
     setMatchMoveSender: (sender) => {
@@ -77,7 +91,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             gameState: createInitialState(),
             validMoves: [],
             matchPresences: [],
-            connectionStatus: 'disconnected',
+            socketState: 'idle',
             matchMoveSender: null
         });
     },
