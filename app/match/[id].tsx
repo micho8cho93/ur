@@ -23,7 +23,7 @@ export default function GameRoom() {
     const setMatchId = useGameStore(state => state.setMatchId);
     const setGameStateFromServer = useGameStore(state => state.setGameStateFromServer);
     const updateMatchPresences = useGameStore(state => state.updateMatchPresences);
-    const setConnectionStatus = useGameStore(state => state.setConnectionStatus);
+    const setSocketState = useGameStore(state => state.setSocketState);
     const setMatchMoveSender = useGameStore(state => state.setMatchMoveSender);
 
     // Local Player is Light
@@ -55,6 +55,20 @@ export default function GameRoom() {
         if (!matchId) return;
 
         let isMounted = true;
+
+        const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
+            let timeoutId: ReturnType<typeof setTimeout> | null = null;
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+            });
+            try {
+                return await Promise.race([promise, timeoutPromise]);
+            } finally {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+            }
+        };
 
         const handleMatchData = (matchData: MatchData) => {
             if (matchData.match_id !== matchId) return;
@@ -89,7 +103,7 @@ export default function GameRoom() {
             socket.onmatchdata = handleMatchData;
             socket.onmatchpresence = handleMatchPresence;
             socket.ondisconnect = () => {
-                setConnectionStatus('disconnected');
+                setSocketState('disconnected');
                 if (reconnectTimerRef.current) {
                     return;
                 }
@@ -102,12 +116,21 @@ export default function GameRoom() {
 
         const connectAndJoin = async (isReconnect = false) => {
             try {
-                const socket = nakamaService.getSocket() ?? await nakamaService.connectSocket();
+                setSocketState('connecting');
+                const socket = nakamaService.getSocket() ?? await withTimeout(
+                    nakamaService.connectSocket(),
+                    10_000,
+                    'Connecting to the match server timed out.'
+                );
                 attachSocketHandlers(socket);
-                const match = await socket.joinMatch(matchId);
+                const match = await withTimeout(
+                    socket.joinMatch(matchId),
+                    10_000,
+                    'Joining the match timed out.'
+                );
                 if (!isMounted) return;
                 setMatchId(match.match_id);
-                setConnectionStatus('connected');
+                setSocketState('connected');
                 if (isReconnect && match.metadata) {
                     try {
                         const metadata = JSON.parse(match.metadata);
@@ -119,8 +142,9 @@ export default function GameRoom() {
                         // ignore metadata parse errors
                     }
                 }
-            } catch {
-                setConnectionStatus('disconnected');
+            } catch (error) {
+                console.error(error);
+                setSocketState('error');
             }
         };
 
@@ -137,7 +161,7 @@ export default function GameRoom() {
                 socketRef.current.onmatchpresence = () => {};
             }
         };
-    }, [matchId, setConnectionStatus, setGameStateFromServer, setMatchId, updateMatchPresences]);
+    }, [matchId, setGameStateFromServer, setMatchId, setSocketState, updateMatchPresences]);
 
     useEffect(() => {
         if (!matchId) return;

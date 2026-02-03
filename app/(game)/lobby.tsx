@@ -1,12 +1,10 @@
 import { Button } from '@/components/ui/Button';
 import { useMatchmaking } from '@/hooks/useMatchmaking';
-import { useRouter } from 'expo-router';
 import React from 'react';
 import { Text, View } from 'react-native';
 
 export default function Lobby() {
-    const { startMatch, isSearching } = useMatchmaking();
-    const router = useRouter();
+    const { startMatch, status, errorMessage } = useMatchmaking();
 
     const handleStart = async () => {
         // useMatchmaking hook has startMatch which calls initGame and pushes route
@@ -24,6 +22,28 @@ export default function Lobby() {
         // I'll trust the hook or fix it now.
     };
 
+    const isBusy = status === 'connecting' || status === 'searching';
+    const buttonTitle = status === 'error'
+        ? 'Retry Matchmaking'
+        : isBusy
+            ? 'Searching...'
+            : 'Start Game';
+
+    const statusLabel = (() => {
+        switch (status) {
+            case 'connecting':
+                return 'Connecting to Nakama...';
+            case 'searching':
+                return 'Searching for an opponent...';
+            case 'matched':
+                return 'Match found! Joining...';
+            case 'error':
+                return 'Matchmaking failed. Retry?';
+            default:
+                return 'Ready to play.';
+        }
+    })();
+
     return (
         <View className="flex-1 items-center justify-center bg-stone-100 p-4">
             <View className="w-full max-w-md bg-white p-6 rounded-2xl shadow-lg items-center">
@@ -31,10 +51,13 @@ export default function Lobby() {
                 <Text className="text-gray-500 text-center mb-8">
                     Play against the ancient Sumerian Bot logic.
                 </Text>
+                <Text className={`text-sm mb-6 ${status === 'error' ? 'text-red-500' : 'text-gray-500'}`}>
+                    {errorMessage ?? statusLabel}
+                </Text>
 
                 <Button
-                    title={isSearching ? "Searching..." : "Start Game"}
-                    loading={isSearching}
+                    title={buttonTitle}
+                    loading={isBusy}
                     onPress={handleStart}
                     className="w-full"
                 />
