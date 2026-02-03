@@ -16,6 +16,18 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
+## Configuration
+
+The Expo client reads Nakama connection settings from environment variables (or Expo `extra` config). Provide the following values before starting the app:
+
+- `EXPO_PUBLIC_NAKAMA_HOST`: Nakama host (ex: `localhost`)
+- `EXPO_PUBLIC_NAKAMA_PORT`: Nakama port (ex: `7350`)
+- `EXPO_PUBLIC_NAKAMA_USE_SSL`: `true`/`false` to enable TLS
+- `EXPO_PUBLIC_NAKAMA_SERVER_KEY`: Public server key used by the client for socket auth
+- `EXPO_PUBLIC_NAKAMA_TIMEOUT_MS`: Optional timeout override in milliseconds (default `7000`)
+
+The local backend stack (Nakama + Postgres) is configured in `backend/README.md`, including the `.env` secrets and the Docker Compose workflow. Use those instructions to run the backend before starting the Expo app.
+
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)
