@@ -1,126 +1,227 @@
+import { urTheme, urTextures } from '@/constants/urTheme';
 import React, { useEffect } from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Animated, {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 
 interface DiceProps {
-    value: number | null; // 0-4
-    rolling: boolean;
-    onRoll: () => void;
-    canRoll: boolean;
+  value: number | null;
+  rolling: boolean;
+  onRoll: () => void;
+  canRoll: boolean;
 }
 
-// Visual representation of 4 tetrahedral dice
-// If value is null, show ? or 0
 export const Dice: React.FC<DiceProps> = ({ value, rolling, onRoll, canRoll }) => {
-    // Use simple rotation or bounce
-    const offset = useSharedValue(0);
-    const spin = useSharedValue(0);
+  const lift = useSharedValue(0);
+  const wobble = useSharedValue(0);
+  const readiness = useSharedValue(canRoll ? 0.4 : 0);
 
-    useEffect(() => {
-        if (rolling) {
-            offset.value = withSequence(
-                withTiming(-10, { duration: 100 }),
-                withTiming(10, { duration: 100 }),
-                withTiming(-10, { duration: 100 }),
-                withTiming(10, { duration: 100 }),
-                withSpring(0)
+  useEffect(() => {
+    if (rolling) {
+      lift.value = withSequence(
+        withTiming(-9, { duration: 100 }),
+        withTiming(4, { duration: 90 }),
+        withTiming(-6, { duration: 90 }),
+        withSpring(0, { damping: 8, stiffness: 190 }),
+      );
+      wobble.value = withSequence(
+        withTiming(1, { duration: 320, easing: Easing.linear }),
+        withTiming(0, { duration: 0 }),
+      );
+    }
+  }, [lift, rolling, wobble]);
+
+  useEffect(() => {
+    if (canRoll && !rolling) {
+      readiness.value = withRepeat(
+        withSequence(
+          withTiming(0.75, { duration: 900, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0.25, { duration: 900, easing: Easing.inOut(Easing.quad) }),
+        ),
+        -1,
+        true,
+      );
+      return;
+    }
+
+    cancelAnimation(readiness);
+    readiness.value = withTiming(0, { duration: 180 });
+  }, [canRoll, readiness, rolling]);
+
+  const diceRowStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: lift.value },
+      { rotate: `${wobble.value * 16}deg` },
+      { scale: 1 + wobble.value * 0.08 },
+    ],
+  }));
+
+  const readinessStyle = useAnimatedStyle(() => ({
+    opacity: readiness.value,
+    transform: [{ scale: 0.98 + readiness.value * 0.06 }],
+  }));
+
+  const title = rolling ? 'Casting...' : value !== null ? `Result: ${value}` : 'Cast The Dice';
+  const subtitle = rolling
+    ? 'The astragali are in motion'
+    : canRoll
+      ? 'Tap to roll'
+      : 'Wait for your turn';
+
+  return (
+    <TouchableOpacity onPress={onRoll} disabled={!canRoll || rolling} activeOpacity={0.9} style={styles.touchable}>
+      <View style={[styles.card, canRoll ? styles.cardActive : styles.cardLocked]}>
+        <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+        <View style={styles.cardTopGlow} />
+        <View style={styles.cardBorder} />
+        <Animated.View style={[styles.readyHalo, readinessStyle]} />
+
+        <Animated.View style={[styles.diceRow, diceRowStyle]}>
+          {[0, 1, 2, 3].map((index) => {
+            const isOn = value !== null && index < value;
+            return (
+              <View key={index} style={[styles.die, isOn ? styles.dieOn : styles.dieOff]}>
+                <View style={[styles.dieFacet, isOn ? styles.dieFacetOn : styles.dieFacetOff]} />
+                {isOn && <View style={styles.diePip} />}
+              </View>
             );
-            spin.value = withRepeat(withTiming(1, { duration: 350 }), 2, true);
-        }
-    }, [rolling]);
+          })}
+        </Animated.View>
 
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [
-            { translateY: offset.value },
-            { rotate: `${spin.value * 18}deg` },
-        ],
-    }));
-
-    return (
-        <TouchableOpacity
-            onPress={onRoll}
-            disabled={!canRoll || rolling}
-            style={{
-                padding: 16,
-                borderRadius: 16,
-                alignItems: 'center',
-                justifyContent: 'center',
-                minHeight: 120,
-                backgroundColor: canRoll ? '#b8742e' : '#a49a8b',
-                opacity: canRoll ? 1 : 0.5,
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: canRoll ? 0.3 : 0,
-                shadowRadius: 5,
-                elevation: canRoll ? 8 : 0,
-                overflow: 'hidden',
-            }}
-        >
-            <View style={{
-                position: 'absolute',
-                top: 6,
-                left: 6,
-                right: 6,
-                bottom: 6,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: 'rgba(255, 215, 150, 0.4)',
-            }} />
-            <Animated.View style={[animatedStyle, { flexDirection: 'row', gap: 8 }]}>
-                {/* Render 4 dice visuals */}
-                {/* Simply show value for now, or 4 pips */}
-                {[0, 1, 2, 3].map(i => {
-                    // Visualize probability? 
-                    // In Ur, 4 dice, each has 50% chance of 1.
-                    // If we have total `value` (e.g. 3), we need to visually show 3 success, 1 fail.
-                    // If rolling, show random?
-                    // Since `value` is the result, we only know it after roll.
-                    // While rolling (value is usually null or old), show '...'.
-
-                    // Deterministic visualization:
-                    // if value=2, Dice 0,1=ON, 2,3=OFF.
-                    const isOn = value !== null && i < value;
-
-                    return (
-                        <View key={i} style={{
-                            width: 32,
-                            height: 32,
-                            transform: [{ rotate: '45deg' }],
-                            borderWidth: 1.5,
-                            borderColor: '#7a5a2e',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: isOn ? '#234862' : '#e6d6b8',
-                            shadowColor: '#2b1a0d',
-                            shadowOffset: { width: 0, height: 2 },
-                            shadowOpacity: 0.25,
-                            shadowRadius: 3,
-                            elevation: 3,
-                        }}>
-                            <View style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                backgroundColor: isOn ? 'rgba(16, 28, 40, 0.15)' : 'rgba(255, 244, 220, 0.2)',
-                            }} />
-                            {/* Pyramid tip */}
-                            {isOn && <View style={{ width: 8, height: 8, backgroundColor: '#f5e9d0', borderRadius: 4 }} />}
-                        </View>
-                    );
-                })}
-            </Animated.View>
-            <Text style={{
-                marginTop: 8,
-                fontWeight: 'bold',
-                color: '#f8efe2',
-                textAlign: 'center',
-                textTransform: 'uppercase',
-                fontSize: 12,
-            }}>
-                {rolling ? 'Rolling...' : value !== null ? `Rolled: ${value}` : 'Tap to Roll'}
-            </Text>
-        </TouchableOpacity>
-    );
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
+      </View>
+    </TouchableOpacity>
+  );
 };
+
+const styles = StyleSheet.create({
+  touchable: {
+    width: '100%',
+  },
+  card: {
+    borderRadius: urTheme.radii.md,
+    minHeight: 144,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1.3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  cardActive: {
+    backgroundColor: '#5C3622',
+    borderColor: 'rgba(230, 193, 121, 0.65)',
+  },
+  cardLocked: {
+    backgroundColor: '#4C4843',
+    borderColor: 'rgba(201, 190, 173, 0.35)',
+    opacity: 0.75,
+  },
+  cardTexture: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.2,
+  },
+  cardTopGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '44%',
+    backgroundColor: 'rgba(255, 224, 168, 0.13)',
+  },
+  cardBorder: {
+    ...StyleSheet.absoluteFillObject,
+    margin: 6,
+    borderRadius: urTheme.radii.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(246, 219, 163, 0.36)',
+  },
+  readyHalo: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
+    bottom: 10,
+    borderRadius: urTheme.radii.sm,
+    borderWidth: 1.5,
+    borderColor: 'rgba(111, 184, 255, 0.8)',
+  },
+  diceRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: urTheme.spacing.sm,
+  },
+  die: {
+    width: 32,
+    height: 32,
+    transform: [{ rotate: '45deg' }],
+    borderRadius: urTheme.radii.xs,
+    borderWidth: 1.2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  dieOn: {
+    backgroundColor: '#1D518D',
+    borderColor: 'rgba(218, 182, 105, 0.9)',
+    shadowColor: '#1D518D',
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  dieOff: {
+    backgroundColor: '#DBC6A6',
+    borderColor: 'rgba(87, 59, 36, 0.55)',
+  },
+  dieFacet: {
+    position: 'absolute',
+    width: 21,
+    height: 21,
+    borderRadius: urTheme.radii.xs - 2,
+    transform: [{ rotate: '-45deg' }],
+    top: 2,
+    left: 2,
+  },
+  dieFacetOn: {
+    backgroundColor: 'rgba(129, 182, 252, 0.34)',
+  },
+  dieFacetOff: {
+    backgroundColor: 'rgba(255, 240, 204, 0.3)',
+  },
+  diePip: {
+    width: 9,
+    height: 9,
+    borderRadius: urTheme.radii.pill,
+    backgroundColor: urTheme.colors.ivory,
+    borderWidth: 0.7,
+    borderColor: 'rgba(29, 20, 12, 0.5)',
+    transform: [{ rotate: '-45deg' }],
+  },
+  title: {
+    color: '#F6E6CC',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 1.05,
+    textTransform: 'uppercase',
+  },
+  subtitle: {
+    marginTop: 3,
+    color: 'rgba(244, 223, 191, 0.9)',
+    fontSize: 11,
+    letterSpacing: 0.35,
+  },
+});

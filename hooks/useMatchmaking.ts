@@ -1,3 +1,4 @@
+import { hasNakamaConfig } from '@/config/nakama';
 import { findMatch } from '@/services/matchmaking';
 import { useGameStore } from '@/store/useGameStore';
 import { useRouter } from 'expo-router';
@@ -18,6 +19,16 @@ export const useMatchmaking = () => {
         setStatus('connecting');
         setSocketState('connecting');
         try {
+            if (!hasNakamaConfig()) {
+                const localMatchId = `local-${Date.now()}`;
+                setMatchId(localMatchId);
+                initGame(localMatchId);
+                setSocketState('connected');
+                setStatus('matched');
+                router.push(`/match/${localMatchId}?offline=1`);
+                return;
+            }
+
             const result = await findMatch({
                 onSearching: () => setStatus('searching')
             });

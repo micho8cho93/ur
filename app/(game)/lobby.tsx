@@ -1,67 +1,133 @@
 import { Button } from '@/components/ui/Button';
+import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { useMatchmaking } from '@/hooks/useMatchmaking';
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 
 export default function Lobby() {
-    const { startMatch, status, errorMessage } = useMatchmaking();
+  const { startMatch, status, errorMessage } = useMatchmaking();
 
-    const handleStart = async () => {
-        // useMatchmaking hook has startMatch which calls initGame and pushes route
-        // But wait, the hook pushes to `/match/${id}`? 
-        // We need to ensure it matches our route structure: `/(game)/${id}`
-        // I need to fix useMatchmaking hook if it's wrong, or override here.
-        // Let's rely on the hook if possible, but I recall writing `/match/` in hook.
-        // I will reimplement simple logic here to correct it.
+  const handleStart = async () => {
+    await startMatch();
+  };
 
-        await startMatch();
-        // The hook does router.push... if the hook is wrong, it will fail 404.
-        // I'll fix the hook in a subsequent step if needed. 
-        // ACTUALLY, I can manually push here for redundancy if I exported `initGame` from hook?
-        // No, `startMatch` is void.
-        // I'll trust the hook or fix it now.
-    };
+  const isBusy = status === 'connecting' || status === 'searching';
+  const buttonTitle =
+    status === 'error' ? 'Retry Matchmaking' : isBusy ? 'Searching...' : 'Start Game';
 
-    const isBusy = status === 'connecting' || status === 'searching';
-    const buttonTitle = status === 'error'
-        ? 'Retry Matchmaking'
-        : isBusy
-            ? 'Searching...'
-            : 'Start Game';
+  const statusLabel = (() => {
+    switch (status) {
+      case 'connecting':
+        return 'Connecting to Nakama...';
+      case 'searching':
+        return 'Finding an opponent...';
+      case 'matched':
+        return 'Match found. Entering chamber...';
+      case 'error':
+        return 'Matchmaking failed. Retry?';
+      default:
+        return 'Ready to begin.';
+    }
+  })();
 
-    const statusLabel = (() => {
-        switch (status) {
-            case 'connecting':
-                return 'Connecting to Nakama...';
-            case 'searching':
-                return 'Searching for an opponent...';
-            case 'matched':
-                return 'Match found! Joining...';
-            case 'error':
-                return 'Matchmaking failed. Retry?';
-            default:
-                return 'Ready to play.';
-        }
-    })();
+  return (
+    <View style={styles.screen}>
+      <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.pageTexture} />
+      <View style={styles.pageGlow} />
+      <View style={styles.pageShade} />
 
-    return (
-        <View className="flex-1 items-center justify-center bg-stone-100 p-4">
-            <View className="w-full max-w-md bg-white p-6 rounded-2xl shadow-lg items-center">
-                <Text className="text-2xl font-bold text-royal-blue mb-4">Find a Match</Text>
-                <Text className="text-gray-500 text-center mb-8">
-                    Play against the ancient Sumerian Bot logic.
-                </Text>
-                <Text className={`text-sm mb-6 ${status === 'error' ? 'text-red-500' : 'text-gray-500'}`}>
-                    {errorMessage ?? statusLabel}
-                </Text>
+      <View style={styles.card}>
+        <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+        <View style={styles.cardBorder} />
 
-                <Button
-                    title={buttonTitle}
-                    loading={isBusy}
-                    onPress={handleStart}
-                    className="w-full"
-                />
-            </View>
-        </View>
-    );
+        <Text style={styles.title}>Summon Match</Text>
+        <Text style={styles.subtitle}>Challenge the ancient strategy engine in a crafted arena.</Text>
+        <Text style={[styles.statusText, status === 'error' && styles.statusError]}>
+          {errorMessage ?? statusLabel}
+        </Text>
+
+        <Button title={buttonTitle} loading={isBusy} onPress={handleStart} />
+      </View>
+    </View>
+  );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: urTheme.spacing.md,
+    backgroundColor: urTheme.colors.night,
+  },
+  pageTexture: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.28,
+  },
+  pageGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '42%',
+    backgroundColor: 'rgba(90, 132, 177, 0.18)',
+  },
+  pageShade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '45%',
+    backgroundColor: 'rgba(7, 11, 16, 0.24)',
+  },
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: urTheme.radii.lg,
+    borderWidth: 1.4,
+    borderColor: 'rgba(217, 164, 65, 0.74)',
+    padding: urTheme.spacing.lg,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(13, 15, 18, 0.64)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    elevation: 9,
+  },
+  cardTexture: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.16,
+  },
+  cardBorder: {
+    ...StyleSheet.absoluteFillObject,
+    margin: urTheme.spacing.xs,
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 231, 192, 0.25)',
+  },
+  title: {
+    ...urTypography.title,
+    color: urTheme.colors.parchment,
+    fontSize: 32,
+    lineHeight: 38,
+    marginBottom: urTheme.spacing.sm,
+    textAlign: 'center',
+  },
+  subtitle: {
+    color: 'rgba(238, 223, 197, 0.85)',
+    textAlign: 'center',
+    lineHeight: 21,
+    marginBottom: urTheme.spacing.md,
+  },
+  statusText: {
+    ...urTypography.label,
+    color: 'rgba(216, 232, 251, 0.9)',
+    fontSize: 11,
+    marginBottom: urTheme.spacing.md,
+    textAlign: 'center',
+  },
+  statusError: {
+    color: '#F6AAA2',
+  },
+});

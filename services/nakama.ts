@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Client, Session, Socket } from "@heroiclabs/nakama-js";
 
-import { nakamaConfig } from "../config/nakama";
+import { getNakamaConfig } from "../config/nakama";
 
 const SESSION_STORAGE_KEY = "nakama.session";
 
@@ -10,27 +10,34 @@ export type StoredSession = {
   refreshToken: string;
 };
 
-export const client = new Client(
-  nakamaConfig.serverKey,
-  nakamaConfig.host,
-  nakamaConfig.port,
-  nakamaConfig.useSSL,
-  nakamaConfig.timeoutMs
-);
-
 export class NakamaService {
+  private client: Client | null = null;
   private session: Session | null = null;
   private socket: Socket | null = null;
 
+  private getClient(): Client {
+    if (!this.client) {
+      const config = getNakamaConfig();
+      this.client = new Client(
+        config.serverKey,
+        config.host,
+        config.port,
+        config.useSSL,
+        config.timeoutMs
+      );
+    }
+    return this.client;
+  }
+
   async authenticateEmail(email: string, password: string, create = false, username?: string): Promise<Session> {
-    const session = await client.authenticateEmail(email, password, create, username);
+    const session = await this.getClient().authenticateEmail(email, password, create, username);
     this.session = session;
     await this.persistSession(session);
     return session;
   }
 
   async authenticateDevice(deviceId: string, create = true, username?: string): Promise<Session> {
-    const session = await client.authenticateDevice(deviceId, create, username);
+    const session = await this.getClient().authenticateDevice(deviceId, create, username);
     this.session = session;
     await this.persistSession(session);
     return session;
@@ -54,7 +61,7 @@ export class NakamaService {
 
       const restored = Session.restore(stored.token, stored.refreshToken);
       if (restored.isexpired(Date.now() / 1000) && restored.refresh_token) {
-        const refreshed = await client.sessionRefresh(restored, restored.refresh_token);
+        const refreshed = await this.getClient().sessionRefresh(restored, restored.refresh_token);
         this.session = refreshed;
         await this.persistSession(refreshed);
         return refreshed;
@@ -74,7 +81,8 @@ export class NakamaService {
       throw new Error("No Nakama session available. Authenticate first.");
     }
 
-    const socket = client.createSocket(nakamaConfig.useSSL);
+    const config = getNakamaConfig();
+    const socket = this.getClient().createSocket(config.useSSL);
     await socket.connect(session, createStatus);
     this.socket = socket;
     return socket;
@@ -92,6 +100,7 @@ export class NakamaService {
     this.socket?.disconnect(true);
     this.socket = null;
     this.session = null;
+    this.client = null;
     await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
   }
 

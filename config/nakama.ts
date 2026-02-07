@@ -47,10 +47,32 @@ const parseNumber = (value: string | number | boolean | undefined, fallback: num
   return fallback;
 };
 
-export const nakamaConfig: NakamaConfig = {
-  host: requireEnv("EXPO_PUBLIC_NAKAMA_HOST"),
-  port: requireEnv("EXPO_PUBLIC_NAKAMA_PORT"),
-  useSSL: parseBoolean(getEnvValue("EXPO_PUBLIC_NAKAMA_USE_SSL")),
-  serverKey: requireEnv("EXPO_PUBLIC_NAKAMA_SERVER_KEY"),
-  timeoutMs: parseNumber(getEnvValue("EXPO_PUBLIC_NAKAMA_TIMEOUT_MS"), 7000),
+const requiredKeys = [
+  "EXPO_PUBLIC_NAKAMA_HOST",
+  "EXPO_PUBLIC_NAKAMA_PORT",
+  "EXPO_PUBLIC_NAKAMA_SERVER_KEY",
+] as const;
+
+export const hasNakamaConfig = (): boolean =>
+  requiredKeys.every((key) => {
+    const value = getEnvValue(key);
+    return value !== undefined && value !== null && value !== "";
+  });
+
+export const getNakamaConfig = (): NakamaConfig => {
+  if (!hasNakamaConfig()) {
+    const missing = requiredKeys.filter((key) => {
+      const value = getEnvValue(key);
+      return value === undefined || value === null || value === "";
+    });
+    throw new Error(`Missing required Nakama config value(s): ${missing.join(", ")}`);
+  }
+
+  return {
+    host: requireEnv("EXPO_PUBLIC_NAKAMA_HOST"),
+    port: requireEnv("EXPO_PUBLIC_NAKAMA_PORT"),
+    useSSL: parseBoolean(getEnvValue("EXPO_PUBLIC_NAKAMA_USE_SSL")),
+    serverKey: requireEnv("EXPO_PUBLIC_NAKAMA_SERVER_KEY"),
+    timeoutMs: parseNumber(getEnvValue("EXPO_PUBLIC_NAKAMA_TIMEOUT_MS"), 7000),
+  };
 };
