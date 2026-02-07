@@ -7,6 +7,7 @@ import {
   LayoutAnimation,
   Platform,
   StyleSheet,
+  Text,
   UIManager,
   useWindowDimensions,
   View,
@@ -17,14 +18,27 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-export const Board: React.FC = () => {
+interface BoardProps {
+  showRailHints?: boolean;
+  highlightMode?: 'subtle' | 'theatrical';
+  boardScale?: number;
+}
+
+export const Board: React.FC<BoardProps> = ({
+  showRailHints = false,
+  highlightMode = 'theatrical',
+  boardScale = 1,
+}) => {
   const gameState = useGameStore((state) => state.gameState);
   const validMoves = useGameStore((state) => state.validMoves);
   const makeMove = useGameStore((state) => state.makeMove);
   const playerId = 'light';
   const { width } = useWindowDimensions();
 
-  const boardWidth = useMemo(() => Math.min(width - urTheme.spacing.lg, 760), [width]);
+  const boardWidth = useMemo(
+    () => Math.min(width - urTheme.spacing.lg, urTheme.layout.boardMax) * boardScale,
+    [boardScale, width],
+  );
 
   useEffect(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -88,25 +102,26 @@ export const Board: React.FC = () => {
         }
 
         const piece = getPieceAt(r, c);
-        let isValidTarget = false;
+        const isScoreOrigin =
+          gameState.currentTurn === playerId &&
+          validMoves.some((move) => move.toIndex === 14 && mapIndexToCoord(playerId, move.fromIndex, r, c));
 
-        if (gameState.currentTurn === playerId) {
-          const canScore = validMoves.some((move) => {
-            if (move.toIndex !== 14) return false;
-            return mapIndexToCoord(playerId, move.fromIndex, r, c);
-          });
+        const isDestination =
+          gameState.currentTurn === playerId &&
+          validMoves.some((move) => move.toIndex !== 14 && mapIndexToCoord(playerId, move.toIndex, r, c));
 
-          const isDestination = validMoves.some((move) => {
-            if (move.toIndex === 14) return false;
-            return mapIndexToCoord(playerId, move.toIndex, r, c);
-          });
-
-          isValidTarget = canScore || isDestination;
-        }
+        const isValidTarget = isScoreOrigin || isDestination;
 
         rowCells.push(
           <View key={`${r}-${c}`} style={styles.cellShell}>
-            <Tile row={r} col={c} piece={piece} isValidTarget={isValidTarget} onPress={() => handleTilePress(r, c)} />
+            <Tile
+              row={r}
+              col={c}
+              piece={piece}
+              isValidTarget={isValidTarget}
+              highlightMode={highlightMode}
+              onPress={() => handleTilePress(r, c)}
+            />
           </View>,
         );
       }
@@ -122,7 +137,7 @@ export const Board: React.FC = () => {
   };
 
   return (
-    <View style={[styles.frame, urShadows.deep, { width: boardWidth }]}>
+    <View style={[styles.frame, urShadows.deep, { width: boardWidth }]}> 
       <Image source={urTextures.border} resizeMode="repeat" style={styles.frameBorderTexture} />
 
       <View style={styles.innerFrame}>
@@ -132,6 +147,13 @@ export const Board: React.FC = () => {
         <View style={styles.innerStroke} />
         <View style={styles.gridWrap}>{renderGrid()}</View>
       </View>
+
+      {showRailHints && (
+        <View pointerEvents="none" style={styles.hintRow}>
+          <Text style={styles.hintText}>START</Text>
+          <Text style={styles.hintText}>FINISH</Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -199,5 +221,19 @@ const styles = StyleSheet.create({
     width: `${100 / BOARD_COLS}%`,
     aspectRatio: 1,
     padding: 3,
+  },
+  hintRow: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  hintText: {
+    color: 'rgba(248, 229, 198, 0.85)',
+    fontSize: 10,
+    letterSpacing: 1,
+    fontWeight: '700',
   },
 });

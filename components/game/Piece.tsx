@@ -1,10 +1,12 @@
 import { urTheme } from '@/constants/urTheme';
 import { PlayerColor } from '@/logic/types';
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
+  Extrapolation,
   Easing,
   cancelAnimation,
+  interpolate,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -16,26 +18,34 @@ import Animated, {
 interface PieceProps {
   color: PlayerColor;
   highlight?: boolean;
+  size?: 'sm' | 'md' | 'lg';
+  variant?: 'light' | 'dark' | 'reserve';
+  state?: 'idle' | 'active' | 'captured';
 }
 
-export const Piece: React.FC<PieceProps> = ({ color, highlight = false }) => {
+export const Piece: React.FC<PieceProps> = ({
+  color,
+  highlight = false,
+  size = 'md',
+  variant,
+  state = 'idle',
+}) => {
   const intro = useSharedValue(0.9);
   const glowPulse = useSharedValue(0);
+  const motion = useSharedValue(0);
+
+  const resolvedVariant = variant ?? color;
 
   useEffect(() => {
-    intro.value = withSpring(1, {
-      mass: 0.4,
-      damping: 9,
-      stiffness: 180,
-    });
+    intro.value = withSpring(1, urTheme.motion.spring.game);
   }, [intro]);
 
   useEffect(() => {
     if (highlight) {
       glowPulse.value = withRepeat(
         withSequence(
-          withTiming(1, { duration: 520, easing: Easing.inOut(Easing.quad) }),
-          withTiming(0.2, { duration: 520, easing: Easing.inOut(Easing.quad) }),
+          withTiming(1, { duration: urTheme.motion.duration.base, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0.2, { duration: urTheme.motion.duration.base, easing: Easing.inOut(Easing.quad) }),
         ),
         -1,
         true,
@@ -44,11 +54,46 @@ export const Piece: React.FC<PieceProps> = ({ color, highlight = false }) => {
     }
 
     cancelAnimation(glowPulse);
-    glowPulse.value = withTiming(0, { duration: 180 });
+    glowPulse.value = withTiming(0, { duration: urTheme.motion.duration.fast });
   }, [glowPulse, highlight]);
 
+  useEffect(() => {
+    if (state === 'captured') {
+      motion.value = withSequence(
+        withTiming(1, { duration: 120, easing: Easing.out(Easing.cubic) }),
+        withTiming(0, { duration: 260, easing: Easing.in(Easing.cubic) }),
+      );
+      return;
+    }
+
+    if (state === 'active') {
+      motion.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 420, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0, { duration: 420, easing: Easing.inOut(Easing.quad) }),
+        ),
+        -1,
+        true,
+      );
+      return;
+    }
+
+    cancelAnimation(motion);
+    motion.value = withTiming(0, { duration: urTheme.motion.duration.fast });
+  }, [motion, state]);
+
+  const sizePx = useMemo(() => {
+    if (size === 'sm') return 32;
+    if (size === 'lg') return 44;
+    return 36;
+  }, [size]);
+
   const pieceStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: intro.value }],
+    transform: [
+      { scale: intro.value * interpolate(motion.value, [0, 1], [1, 1.08], Extrapolation.CLAMP) },
+      { translateY: interpolate(motion.value, [0, 1], [0, -2], Extrapolation.CLAMP) },
+    ],
+    opacity: state === 'captured' ? interpolate(motion.value, [0, 1], [1, 0.35], Extrapolation.CLAMP) : 1,
   }));
 
   const glowStyle = useAnimatedStyle(() => ({
@@ -57,7 +102,7 @@ export const Piece: React.FC<PieceProps> = ({ color, highlight = false }) => {
   }));
 
   const palette =
-    color === 'light'
+    resolvedVariant === 'light'
       ? {
           shell: '#1F5CAD',
           rim: '#E3BF6E',
@@ -66,25 +111,57 @@ export const Piece: React.FC<PieceProps> = ({ color, highlight = false }) => {
           specular: 'rgba(228, 243, 255, 0.7)',
           shadow: '#0A1A2E',
         }
-      : {
-          shell: '#141820',
-          rim: '#CA9A42',
-          core: '#765528',
-          center: '#E6D7BF',
-          specular: 'rgba(255, 229, 189, 0.36)',
-          shadow: '#06070A',
-        };
+      : resolvedVariant === 'dark'
+        ? {
+            shell: '#141820',
+            rim: '#CA9A42',
+            core: '#765528',
+            center: '#E6D7BF',
+            specular: 'rgba(255, 229, 189, 0.36)',
+            shadow: '#06070A',
+          }
+        : {
+            shell: '#B27830',
+            rim: '#F1C270',
+            core: '#D39440',
+            center: '#F7E1B8',
+            specular: 'rgba(255, 244, 219, 0.6)',
+            shadow: '#06070A',
+          };
 
   return (
-    <Animated.View style={[styles.wrap, pieceStyle]}>
-      {highlight && <Animated.View style={[styles.targetGlow, glowStyle]} />}
+    <Animated.View style={[styles.wrap, { width: sizePx, height: sizePx }, pieceStyle]}>
+      {highlight && (
+        <Animated.View style={[styles.targetGlow, glowStyle, { width: sizePx + 8, height: sizePx + 8 }]} />
+      )}
 
-      <View style={[styles.base, { backgroundColor: palette.shell, borderColor: palette.rim, shadowColor: palette.shadow }]}>
+      <View
+        style={[
+          styles.base,
+          {
+            width: sizePx - 2,
+            height: sizePx - 2,
+            backgroundColor: palette.shell,
+            borderColor: palette.rim,
+            shadowColor: palette.shadow,
+          },
+        ]}
+      >
         <View style={[styles.innerRim, { borderColor: 'rgba(241, 230, 208, 0.45)' }]} />
-        <View style={[styles.core, { backgroundColor: palette.core, borderColor: palette.rim }]}>
-          <View style={[styles.coreCenter, { backgroundColor: palette.center }]} />
+        <View
+          style={[
+            styles.core,
+            {
+              width: sizePx * 0.5,
+              height: sizePx * 0.5,
+              backgroundColor: palette.core,
+              borderColor: palette.rim,
+            },
+          ]}
+        >
+          <View style={[styles.coreCenter, { width: sizePx * 0.22, height: sizePx * 0.22, backgroundColor: palette.center }]} />
         </View>
-        <View style={[styles.specular, { backgroundColor: palette.specular }]} />
+        <View style={[styles.specular, { width: sizePx * 0.3, height: sizePx * 0.18, backgroundColor: palette.specular }]} />
       </View>
     </Animated.View>
   );
@@ -92,21 +169,15 @@ export const Piece: React.FC<PieceProps> = ({ color, highlight = false }) => {
 
 const styles = StyleSheet.create({
   wrap: {
-    width: 36,
-    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
   targetGlow: {
     position: 'absolute',
-    width: 44,
-    height: 44,
     borderRadius: urTheme.radii.pill,
     backgroundColor: 'rgba(111, 184, 255, 0.24)',
   },
   base: {
-    width: 34,
-    height: 34,
     borderRadius: urTheme.radii.pill,
     borderWidth: 1.8,
     alignItems: 'center',
@@ -123,16 +194,12 @@ const styles = StyleSheet.create({
     borderWidth: 0.8,
   },
   core: {
-    width: 18,
-    height: 18,
     borderRadius: urTheme.radii.pill,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   coreCenter: {
-    width: 8,
-    height: 8,
     borderRadius: urTheme.radii.pill,
     opacity: 0.9,
   },
@@ -140,8 +207,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 4,
     left: 6,
-    width: 10,
-    height: 6,
     borderRadius: urTheme.radii.pill,
     transform: [{ rotate: '-24deg' }],
   },

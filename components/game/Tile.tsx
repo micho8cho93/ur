@@ -1,7 +1,7 @@
 import { urTheme, urTextures } from '@/constants/urTheme';
 import { isRosette, isWarZone } from '@/logic/constants';
 import { PlayerColor } from '@/logic/types';
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Animated, {
   Easing,
@@ -20,20 +20,39 @@ interface TileProps {
   piece?: { id: string; color: PlayerColor };
   isValidTarget?: boolean;
   onPress?: () => void;
+  highlightMode?: 'subtle' | 'theatrical';
 }
 
-export const Tile: React.FC<TileProps> = ({ row, col, piece, isValidTarget = false, onPress }) => {
+export const Tile: React.FC<TileProps> = ({
+  row,
+  col,
+  piece,
+  isValidTarget = false,
+  onPress,
+  highlightMode = 'theatrical',
+}) => {
   const rosette = isRosette(row, col);
   const war = isWarZone(row, col);
   const pulse = useSharedValue(isValidTarget ? 1 : 0);
   const rosetteGlow = useSharedValue(rosette ? 0.2 : 0);
+  const rosetteBurst = useSharedValue(0);
+  const prevPieceId = useRef<string | null>(piece?.id ?? null);
+
+  const tileSeed = useMemo(() => (row * 13 + col * 7) % 5, [col, row]);
+  const toneOffset = tileSeed * 4;
 
   useEffect(() => {
     if (isValidTarget) {
       pulse.value = withRepeat(
         withSequence(
-          withTiming(1, { duration: 700, easing: Easing.inOut(Easing.quad) }),
-          withTiming(0.45, { duration: 700, easing: Easing.inOut(Easing.quad) }),
+          withTiming(1, {
+            duration: highlightMode === 'theatrical' ? 520 : 900,
+            easing: Easing.inOut(Easing.quad),
+          }),
+          withTiming(0.45, {
+            duration: highlightMode === 'theatrical' ? 520 : 900,
+            easing: Easing.inOut(Easing.quad),
+          }),
         ),
         -1,
         true,
@@ -43,14 +62,14 @@ export const Tile: React.FC<TileProps> = ({ row, col, piece, isValidTarget = fal
 
     cancelAnimation(pulse);
     pulse.value = withTiming(0, { duration: 180 });
-  }, [isValidTarget, pulse]);
+  }, [highlightMode, isValidTarget, pulse]);
 
   useEffect(() => {
     if (rosette) {
       rosetteGlow.value = withRepeat(
         withSequence(
-          withTiming(0.52, { duration: 1400, easing: Easing.inOut(Easing.quad) }),
-          withTiming(0.18, { duration: 1300, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0.52, { duration: 1200, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0.18, { duration: 1200, easing: Easing.inOut(Easing.quad) }),
         ),
         -1,
         true,
@@ -61,16 +80,37 @@ export const Tile: React.FC<TileProps> = ({ row, col, piece, isValidTarget = fal
     rosetteGlow.value = 0;
   }, [rosette, rosetteGlow]);
 
+  useEffect(() => {
+    const prev = prevPieceId.current;
+    const next = piece?.id ?? null;
+    if (rosette && next && prev !== next) {
+      rosetteBurst.value = withSequence(
+        withTiming(1, { duration: 160, easing: Easing.out(Easing.cubic) }),
+        withTiming(0, { duration: 360, easing: Easing.inOut(Easing.quad) }),
+      );
+    }
+    prevPieceId.current = next;
+  }, [piece?.id, rosette, rosetteBurst]);
+
   const pulseStyle = useAnimatedStyle(() => ({
-    opacity: pulse.value,
-    transform: [{ scale: 0.9 + pulse.value * 0.22 }],
+    opacity: highlightMode === 'theatrical' ? pulse.value : pulse.value * 0.6,
+    transform: [{ scale: 0.9 + pulse.value * (highlightMode === 'theatrical' ? 0.26 : 0.14) }],
   }));
 
   const rosetteGlowStyle = useAnimatedStyle(() => ({
     opacity: rosetteGlow.value,
   }));
 
-  const baseBackground = rosette ? '#AB7A3B' : war ? '#D0B089' : '#DCC5A2';
+  const rosetteBurstStyle = useAnimatedStyle(() => ({
+    opacity: rosetteBurst.value * 0.8,
+    transform: [{ scale: 0.82 + rosetteBurst.value * 0.7 }],
+  }));
+
+  const baseBackground = rosette
+    ? `rgb(${168 + toneOffset}, ${116 + Math.floor(toneOffset / 2)}, ${58 + Math.floor(toneOffset / 3)})`
+    : war
+      ? `rgb(${198 + toneOffset}, ${162 + Math.floor(toneOffset / 2)}, ${120 + Math.floor(toneOffset / 3)})`
+      : `rgb(${206 + toneOffset}, ${178 + Math.floor(toneOffset / 2)}, ${145 + Math.floor(toneOffset / 3)})`;
   const borderColor = rosette ? 'rgba(255, 219, 144, 0.65)' : 'rgba(98, 62, 36, 0.46)';
 
   return (
@@ -83,7 +123,7 @@ export const Tile: React.FC<TileProps> = ({ row, col, piece, isValidTarget = fal
         {
           backgroundColor: baseBackground,
           borderColor,
-          borderWidth: rosette ? 1.6 : 1.1,
+          borderWidth: rosette ? 1.8 : 1.1,
         },
         isValidTarget && styles.validTile,
       ]}
@@ -93,9 +133,11 @@ export const Tile: React.FC<TileProps> = ({ row, col, piece, isValidTarget = fal
 
       <View style={[styles.innerInset, rosette && styles.rosetteInset]} />
       <View style={styles.edgeHighlight} />
+      <View style={styles.lowerShade} />
 
       {isValidTarget && <Animated.View style={[styles.validRing, pulseStyle]} />}
       {rosette && <Animated.View style={[styles.rosetteGlow, rosetteGlowStyle]} />}
+      {rosette && <Animated.View style={[styles.rosetteBurst, rosetteBurstStyle]} />}
 
       {rosette && !piece && (
         <View style={styles.rosetteGlyphWrap}>
@@ -109,7 +151,7 @@ export const Tile: React.FC<TileProps> = ({ row, col, piece, isValidTarget = fal
 
       {piece && (
         <View style={styles.pieceWrap}>
-          <Piece color={piece.color} highlight={isValidTarget} />
+          <Piece color={piece.color} highlight={isValidTarget} state={isValidTarget ? 'active' : 'idle'} />
         </View>
       )}
     </TouchableOpacity>
@@ -159,8 +201,16 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: '36%',
+    height: '34%',
     backgroundColor: 'rgba(255, 226, 176, 0.16)',
+  },
+  lowerShade: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '28%',
+    backgroundColor: 'rgba(34, 17, 9, 0.14)',
   },
   validRing: {
     position: 'absolute',
@@ -176,6 +226,14 @@ const styles = StyleSheet.create({
     height: '82%',
     borderRadius: urTheme.radii.pill,
     backgroundColor: 'rgba(255, 210, 120, 0.2)',
+  },
+  rosetteBurst: {
+    position: 'absolute',
+    width: '72%',
+    height: '72%',
+    borderRadius: urTheme.radii.pill,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 239, 196, 0.92)',
   },
   rosetteGlyphWrap: {
     width: 24,

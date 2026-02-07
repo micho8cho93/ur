@@ -17,23 +17,33 @@ interface DiceProps {
   rolling: boolean;
   onRoll: () => void;
   canRoll: boolean;
+  mode?: 'panel' | 'stage';
+  showNumericResult?: boolean;
 }
 
-export const Dice: React.FC<DiceProps> = ({ value, rolling, onRoll, canRoll }) => {
+export const Dice: React.FC<DiceProps> = ({
+  value,
+  rolling,
+  onRoll,
+  canRoll,
+  mode = 'panel',
+  showNumericResult = true,
+}) => {
   const lift = useSharedValue(0);
   const wobble = useSharedValue(0);
   const readiness = useSharedValue(canRoll ? 0.4 : 0);
+  const resultPulse = useSharedValue(0);
 
   useEffect(() => {
     if (rolling) {
       lift.value = withSequence(
-        withTiming(-9, { duration: 100 }),
-        withTiming(4, { duration: 90 }),
-        withTiming(-6, { duration: 90 }),
-        withSpring(0, { damping: 8, stiffness: 190 }),
+        withTiming(-14, { duration: 90 }),
+        withTiming(10, { duration: 110 }),
+        withTiming(-8, { duration: 110 }),
+        withSpring(0, urTheme.motion.spring.settle),
       );
       wobble.value = withSequence(
-        withTiming(1, { duration: 320, easing: Easing.linear }),
+        withTiming(1, { duration: 380, easing: Easing.linear }),
         withTiming(0, { duration: 0 }),
       );
     }
@@ -43,8 +53,8 @@ export const Dice: React.FC<DiceProps> = ({ value, rolling, onRoll, canRoll }) =
     if (canRoll && !rolling) {
       readiness.value = withRepeat(
         withSequence(
-          withTiming(0.75, { duration: 900, easing: Easing.inOut(Easing.quad) }),
-          withTiming(0.25, { duration: 900, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0.8, { duration: 850, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0.2, { duration: 850, easing: Easing.inOut(Easing.quad) }),
         ),
         -1,
         true,
@@ -56,11 +66,20 @@ export const Dice: React.FC<DiceProps> = ({ value, rolling, onRoll, canRoll }) =
     readiness.value = withTiming(0, { duration: 180 });
   }, [canRoll, readiness, rolling]);
 
+  useEffect(() => {
+    if (value === null || rolling) return;
+
+    resultPulse.value = withSequence(
+      withTiming(1, { duration: 160, easing: Easing.out(Easing.cubic) }),
+      withTiming(0, { duration: 300, easing: Easing.inOut(Easing.quad) }),
+    );
+  }, [resultPulse, rolling, value]);
+
   const diceRowStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: lift.value },
-      { rotate: `${wobble.value * 16}deg` },
-      { scale: 1 + wobble.value * 0.08 },
+      { rotate: `${wobble.value * 22}deg` },
+      { scale: 1 + wobble.value * 0.11 + resultPulse.value * 0.07 },
     ],
   }));
 
@@ -76,9 +95,17 @@ export const Dice: React.FC<DiceProps> = ({ value, rolling, onRoll, canRoll }) =
       ? 'Tap to roll'
       : 'Wait for your turn';
 
+  const isStage = mode === 'stage';
+
   return (
     <TouchableOpacity onPress={onRoll} disabled={!canRoll || rolling} activeOpacity={0.9} style={styles.touchable}>
-      <View style={[styles.card, canRoll ? styles.cardActive : styles.cardLocked]}>
+      <View
+        style={[
+          styles.card,
+          isStage ? styles.stageCard : styles.panelCard,
+          canRoll ? styles.cardActive : styles.cardLocked,
+        ]}
+      >
         <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
         <View style={styles.cardTopGlow} />
         <View style={styles.cardBorder} />
@@ -96,8 +123,8 @@ export const Dice: React.FC<DiceProps> = ({ value, rolling, onRoll, canRoll }) =
           })}
         </Animated.View>
 
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.subtitle}>{subtitle}</Text>
+        {showNumericResult && <Text style={styles.title}>{title}</Text>}
+        <Text style={[styles.subtitle, isStage && styles.stageSubtitle]}>{subtitle}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -109,7 +136,6 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: urTheme.radii.md,
-    minHeight: 144,
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.md,
     alignItems: 'center',
@@ -121,6 +147,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.28,
     shadowRadius: 8,
     elevation: 8,
+  },
+  panelCard: {
+    minHeight: 144,
+  },
+  stageCard: {
+    minHeight: 120,
+    borderRadius: urTheme.radii.pill,
   },
   cardActive: {
     backgroundColor: '#5C3622',
@@ -223,5 +256,10 @@ const styles = StyleSheet.create({
     color: 'rgba(244, 223, 191, 0.9)',
     fontSize: 11,
     letterSpacing: 0.35,
+  },
+  stageSubtitle: {
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    fontWeight: '600',
   },
 });

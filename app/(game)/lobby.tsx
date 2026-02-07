@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 440,
     borderRadius: urTheme.radii.lg,
     borderWidth: 1.4,
     borderColor: 'rgba(217, 164, 65, 0.74)',
@@ -109,8 +109,8 @@ const styles = StyleSheet.create({
   title: {
     ...urTypography.title,
     color: urTheme.colors.parchment,
-    fontSize: 32,
-    lineHeight: 38,
+    fontSize: 34,
+    lineHeight: 40,
     marginBottom: urTheme.spacing.sm,
     textAlign: 'center',
   },

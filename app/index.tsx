@@ -11,6 +11,7 @@ export default function Home() {
     <View style={styles.screen}>
       <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
       <View style={styles.topGlow} />
+      <View style={styles.midGlow} />
       <View style={styles.bottomShade} />
 
       <View style={styles.hero}>
@@ -18,7 +19,7 @@ export default function Home() {
           <Text style={styles.badgeText}>Royal Archive</Text>
         </View>
         <Text style={styles.title}>Royal Game of Ur</Text>
-        <Text style={styles.subtitle}>A race of fortune through carved lanes and sacred rosettes.</Text>
+        <Text style={styles.subtitle}>An ancient race across carved lanes, sacred rosettes, and dramatic turns.</Text>
       </View>
 
       <View style={styles.panel}>
@@ -51,8 +52,16 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: '40%',
+    height: '28%',
     backgroundColor: 'rgba(97, 144, 194, 0.18)',
+  },
+  midGlow: {
+    position: 'absolute',
+    top: '34%',
+    left: 0,
+    right: 0,
+    height: '22%',
+    backgroundColor: 'rgba(51, 83, 124, 0.16)',
   },
   bottomShade: {
     position: 'absolute',
@@ -65,7 +74,7 @@ const styles = StyleSheet.create({
   hero: {
     alignItems: 'center',
     marginBottom: urTheme.spacing.xl + 10,
-    maxWidth: 420,
+    maxWidth: 560,
   },
   badge: {
     paddingHorizontal: urTheme.spacing.sm + 2,
@@ -83,8 +92,8 @@ const styles = StyleSheet.create({
   },
   title: {
     ...urTypography.title,
-    fontSize: 44,
-    lineHeight: 52,
+    fontSize: 46,
+    lineHeight: 56,
     color: '#F7E9D2',
     textAlign: 'center',
   },
@@ -92,12 +101,12 @@ const styles = StyleSheet.create({
     marginTop: urTheme.spacing.sm,
     textAlign: 'center',
     color: 'rgba(239, 224, 198, 0.82)',
-    fontSize: 16,
-    lineHeight: 23,
+    fontSize: 17,
+    lineHeight: 24,
   },
   panel: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 460,
     borderRadius: urTheme.radii.lg,
     borderWidth: 1.5,
     borderColor: 'rgba(217, 164, 65, 0.74)',

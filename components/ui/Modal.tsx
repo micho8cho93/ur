@@ -17,6 +17,7 @@ export const Modal: React.FC<ModalProps> = ({ visible, title, message, actionLab
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
           <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
+          <Image source={urTextures.border} resizeMode="repeat" style={styles.borderTexture} />
           <View style={styles.sheetGlow} />
           <View style={styles.border} />
 
@@ -35,14 +36,14 @@ export const Modal: React.FC<ModalProps> = ({ visible, title, message, actionLab
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(4, 7, 12, 0.64)',
+    backgroundColor: 'rgba(4, 7, 12, 0.72)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: urTheme.spacing.md,
   },
   sheet: {
     width: '100%',
-    maxWidth: 360,
+    maxWidth: 380,
     borderRadius: urTheme.radii.lg,
     overflow: 'hidden',
     backgroundColor: '#3B2416',
@@ -59,6 +60,10 @@ const styles = StyleSheet.create({
   texture: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.22,
+  },
+  borderTexture: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.18,
   },
   sheetGlow: {
     position: 'absolute',
@@ -78,7 +83,7 @@ const styles = StyleSheet.create({
   title: {
     ...urTypography.title,
     color: urTheme.colors.parchment,
-    fontSize: 28,
+    fontSize: 30,
     textAlign: 'center',
     marginBottom: urTheme.spacing.sm,
   },

@@ -1,5 +1,8 @@
 import { Board } from '@/components/game/Board';
 import { Dice } from '@/components/game/Dice';
+import { EdgeScore } from '@/components/game/EdgeScore';
+import { GameStageHUD } from '@/components/game/GameStageHUD';
+import { PieceRail } from '@/components/game/PieceRail';
 import { Modal } from '@/components/ui/Modal';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { hasNakamaConfig } from '@/config/nakama';
@@ -9,22 +12,14 @@ import { useGameStore } from '@/store/useGameStore';
 import { MatchData, MatchPresenceEvent, Socket } from '@heroiclabs/nakama-js';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  Easing,
-  cancelAnimation,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import { Image, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 const OP_MOVE = 1;
 
 export default function GameRoom() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const { width } = useWindowDimensions();
 
   const matchId = useMemo(() => (Array.isArray(id) ? id[0] : id), [id]);
   const isOffline = useMemo(
@@ -49,10 +44,6 @@ export default function GameRoom() {
   const [rollingVisual, setRollingVisual] = React.useState(false);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const turnGlow = useSharedValue(isMyTurn ? 0.75 : 0.25);
-  const turnSweep = useSharedValue(0);
-  const lastTurnRef = useRef(gameState.currentTurn);
-
   useGameLoop(isOffline);
 
   useEffect(() => {
@@ -60,31 +51,6 @@ export default function GameRoom() {
       setShowWinModal(true);
     }
   }, [gameState.winner]);
-
-  useEffect(() => {
-    if (isMyTurn) {
-      turnGlow.value = withRepeat(
-        withSequence(
-          withTiming(0.95, { duration: 720, easing: Easing.inOut(Easing.quad) }),
-          withTiming(0.35, { duration: 720, easing: Easing.inOut(Easing.quad) }),
-        ),
-        -1,
-        true,
-      );
-      return;
-    }
-
-    cancelAnimation(turnGlow);
-    turnGlow.value = withTiming(0.2, { duration: 220 });
-  }, [isMyTurn, turnGlow]);
-
-  useEffect(() => {
-    if (lastTurnRef.current !== gameState.currentTurn) {
-      turnSweep.value = 1;
-      turnSweep.value = withTiming(0, { duration: 560, easing: Easing.out(Easing.cubic) });
-      lastTurnRef.current = gameState.currentTurn;
-    }
-  }, [gameState.currentTurn, turnSweep]);
 
   useEffect(() => {
     if (!matchId) return;
@@ -259,80 +225,115 @@ export default function GameRoom() {
     router.replace('/');
   };
 
-  const turnGlowStyle = useAnimatedStyle(() => ({
-    opacity: turnGlow.value,
-    transform: [{ scale: 0.95 + turnGlow.value * 0.1 }],
-  }));
+  const recentHistory = gameState.history.slice(-4).reverse();
+  const lightReserve = gameState.light.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
+  const darkReserve = gameState.dark.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
 
-  const turnSweepStyle = useAnimatedStyle(() => ({
-    opacity: turnSweep.value * 0.7,
-    transform: [{ translateX: (1 - turnSweep.value) * 220 - 110 }],
-  }));
-
-  const recentHistory = gameState.history.slice(-5).reverse();
+  const isWide = width >= 980;
+  const isNarrow = width < 720;
 
   return (
     <View style={styles.screen}>
       <Stack.Screen options={{ title: `Game #${id}` }} />
       <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.pageTexture} />
       <View style={styles.pageGlowTop} />
+      <View style={styles.pageGlowMiddle} />
       <View style={styles.pageShadeBottom} />
+      <View style={styles.vignetteTop} />
+      <View style={styles.vignetteBottom} />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.scoreRow}>
-          <View style={[styles.scoreCard, isMyTurn && styles.scoreCardActive]}>
-            <Image source={urTextures.lapisMosaic} resizeMode="cover" style={styles.scoreTexture} />
-            <Text style={styles.scoreLabel}>You</Text>
-            <Text style={styles.scoreValue}>{gameState.light.finishedCount}/7</Text>
-            <Text style={styles.scoreHint}>finished</Text>
+        <View style={[styles.stageWrap, isWide && styles.stageWrapWide]}>
+          {!isWide && (
+            <View style={styles.mobileTopRail}>
+              <PieceRail
+                label="Dark Pieces"
+                color="dark"
+                tokenVariant="light"
+                reserveCount={darkReserve}
+                active={!isMyTurn}
+              />
+            </View>
+          )}
+
+          <View style={[styles.stageColumns, isWide && styles.stageColumnsWide]}>
+            {isWide && (
+              <View style={styles.sideRailCol}>
+                <PieceRail
+                  label="Dark Pieces"
+                  color="dark"
+                  tokenVariant="light"
+                  reserveCount={darkReserve}
+                  active={!isMyTurn}
+                />
+                <EdgeScore label="Dark Score" value={`${gameState.dark.finishedCount}/7`} active={!isMyTurn} />
+              </View>
+            )}
+
+            <View style={styles.boardCol}>
+              {!isWide && (
+                <View style={styles.mobileScoreRow}>
+                  <EdgeScore label="Dark" value={`${gameState.dark.finishedCount}/7`} active={!isMyTurn} />
+                  <EdgeScore label="Light" value={`${gameState.light.finishedCount}/7`} active={isMyTurn} align="right" />
+                </View>
+              )}
+
+              <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} />
+
+              <View style={styles.boardCard}>
+                <Board showRailHints={isWide} highlightMode="theatrical" boardScale={isNarrow ? 0.96 : 1} />
+              </View>
+
+              {recentHistory.length > 0 && (
+                <View style={styles.historyStrip}>
+                  <Text style={styles.historyTitle}>Recent</Text>
+                  {recentHistory.map((entry, index) => (
+                    <Text key={`${entry}-${index}`} style={styles.historyEntry}>
+                      {entry}
+                    </Text>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {isWide && (
+              <View style={styles.sideRailCol}>
+                <PieceRail
+                  label="Easy Bot Pieces"
+                  color="light"
+                  tokenVariant="reserve"
+                  reserveCount={lightReserve}
+                  active={isMyTurn}
+                />
+                <Dice
+                  value={gameState.rollValue}
+                  rolling={rollingVisual}
+                  onRoll={handleRoll}
+                  canRoll={canRoll}
+                  mode="stage"
+                />
+                <EdgeScore label="Light Score" value={`${gameState.light.finishedCount}/7`} active={isMyTurn} align="right" />
+              </View>
+            )}
           </View>
 
-          <View style={[styles.scoreCard, !isMyTurn && styles.scoreCardActive]}>
-            <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.scoreTexture} />
-            <Text style={styles.scoreLabel}>Opponent</Text>
-            <Text style={styles.scoreValue}>{gameState.dark.finishedCount}/7</Text>
-            <Text style={styles.scoreHint}>finished</Text>
-          </View>
-        </View>
-
-        <View style={styles.turnWrap}>
-          <Animated.View style={[styles.turnSweep, turnSweepStyle]} />
-          <Animated.View style={[styles.turnOrb, turnGlowStyle]} />
-          <View style={styles.turnTextWrap}>
-            <Text style={styles.turnTitle}>{isMyTurn ? 'Your Turn' : 'Opponent Turn'}</Text>
-            <Text style={styles.turnHint}>
-              {canRoll
-                ? 'Cast the dice to advance'
-                : gameState.phase === 'moving'
-                  ? 'Select a glowing destination'
-                  : 'Awaiting move'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.boardCard}>
-          <Board />
-        </View>
-
-        <View style={styles.controlsWrap}>
-          <Dice value={gameState.rollValue} rolling={rollingVisual} onRoll={handleRoll} canRoll={canRoll} />
-        </View>
-
-        <View style={styles.logCard}>
-          <Image source={urTextures.wood} resizeMode="repeat" style={styles.logTexture} />
-          <View style={styles.logHeaderRow}>
-            <Text style={styles.logTitle}>Game Log</Text>
-            <Text style={styles.logMeta}>{gameState.history.length} events</Text>
-          </View>
-
-          {recentHistory.length === 0 ? (
-            <Text style={styles.logEntryMuted}>Moves will appear here as the match unfolds.</Text>
-          ) : (
-            recentHistory.map((entry, index) => (
-              <Text key={`${entry}-${index}`} style={styles.logEntry}>
-                {entry}
-              </Text>
-            ))
+          {!isWide && (
+            <View style={styles.mobileBottomRail}>
+              <PieceRail
+                label="Easy Bot Pieces"
+                color="light"
+                tokenVariant="reserve"
+                reserveCount={lightReserve}
+                active={isMyTurn}
+              />
+              <Dice
+                value={gameState.rollValue}
+                rolling={rollingVisual}
+                onRoll={handleRoll}
+                canRoll={canRoll}
+                mode="stage"
+              />
+            </View>
           )}
         </View>
       </ScrollView>
@@ -355,167 +356,120 @@ const styles = StyleSheet.create({
   },
   pageTexture: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.26,
+    opacity: 0.28,
   },
   pageGlowTop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: '36%',
-    backgroundColor: 'rgba(83, 122, 162, 0.2)',
+    height: '32%',
+    backgroundColor: 'rgba(84, 130, 182, 0.18)',
+  },
+  pageGlowMiddle: {
+    position: 'absolute',
+    top: '34%',
+    left: 0,
+    right: 0,
+    height: '32%',
+    backgroundColor: 'rgba(33, 58, 93, 0.14)',
   },
   pageShadeBottom: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: '46%',
-    backgroundColor: 'rgba(6, 12, 22, 0.3)',
+    height: '45%',
+    backgroundColor: 'rgba(6, 12, 22, 0.34)',
+  },
+  vignetteTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 100,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+  },
+  vignetteBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 140,
+    backgroundColor: 'rgba(0, 0, 0, 0.24)',
   },
   scrollContent: {
     paddingHorizontal: urTheme.spacing.md,
     paddingTop: urTheme.spacing.md,
     paddingBottom: urTheme.spacing.xl,
     alignItems: 'center',
+  },
+  stageWrap: {
+    width: '100%',
+    maxWidth: urTheme.layout.stage.maxWidth,
     gap: urTheme.spacing.md,
   },
-  scoreRow: {
-    width: '100%',
-    flexDirection: 'row',
-    gap: urTheme.spacing.sm,
+  stageWrapWide: {
+    paddingHorizontal: urTheme.spacing.sm,
   },
-  scoreCard: {
+  stageColumns: {
+    width: '100%',
+    gap: urTheme.spacing.md,
+  },
+  stageColumnsWide: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: urTheme.layout.stage.gutter,
+  },
+  sideRailCol: {
+    width: '22%',
+    minWidth: urTheme.layout.stage.sideRailMin,
+    maxWidth: urTheme.layout.stage.sideRailMax,
+    gap: urTheme.spacing.md,
+  },
+  boardCol: {
     flex: 1,
-    borderRadius: urTheme.radii.md,
-    paddingVertical: urTheme.spacing.sm,
-    paddingHorizontal: urTheme.spacing.md,
-    borderWidth: 1,
-    borderColor: 'rgba(241, 230, 208, 0.2)',
-    overflow: 'hidden',
-    backgroundColor: 'rgba(13, 15, 18, 0.45)',
-  },
-  scoreCardActive: {
-    borderColor: 'rgba(111, 184, 255, 0.78)',
-    shadowColor: urTheme.colors.glow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.24,
-    shadowRadius: 7,
-    elevation: 6,
-  },
-  scoreTexture: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.2,
-  },
-  scoreLabel: {
-    ...urTypography.label,
-    color: urTheme.colors.ivory,
-    fontSize: 11,
-    opacity: 0.85,
-  },
-  scoreValue: {
-    marginTop: 6,
-    color: '#F8E9CD',
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-  },
-  scoreHint: {
-    marginTop: 1,
-    color: 'rgba(247, 227, 194, 0.84)',
-    fontSize: 11,
-    letterSpacing: 0.4,
-  },
-  turnWrap: {
-    width: '100%',
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(13, 15, 18, 0.72)',
-    borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.56)',
-    paddingVertical: urTheme.spacing.sm,
-    paddingHorizontal: urTheme.spacing.md,
-    flexDirection: 'row',
+    maxWidth: urTheme.layout.boardMax + 70,
+    gap: urTheme.spacing.md,
     alignItems: 'center',
-    overflow: 'hidden',
-  },
-  turnSweep: {
-    position: 'absolute',
-    left: -100,
-    top: 0,
-    bottom: 0,
-    width: 100,
-    backgroundColor: 'rgba(111, 184, 255, 0.22)',
-  },
-  turnOrb: {
-    width: 14,
-    height: 14,
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: '#F6C26A',
-    shadowColor: '#F6C26A',
-    shadowOpacity: 0.75,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  turnTextWrap: {
-    marginLeft: urTheme.spacing.sm,
-  },
-  turnTitle: {
-    ...urTypography.label,
-    color: urTheme.colors.ivory,
-    fontSize: 12,
-    letterSpacing: 1.15,
-  },
-  turnHint: {
-    color: 'rgba(235, 220, 193, 0.84)',
-    fontSize: 11,
-    marginTop: 1,
   },
   boardCard: {
     width: '100%',
+    alignItems: 'center',
   },
-  controlsWrap: {
+  mobileTopRail: {
     width: '100%',
-    maxWidth: 420,
   },
-  logCard: {
+  mobileBottomRail: {
+    width: '100%',
+    gap: urTheme.spacing.md,
+  },
+  mobileScoreRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  historyStrip: {
     width: '100%',
     borderRadius: urTheme.radii.md,
     borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.5)',
-    padding: urTheme.spacing.md,
+    borderColor: 'rgba(217, 164, 65, 0.44)',
+    backgroundColor: 'rgba(9, 14, 20, 0.64)',
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.sm,
     overflow: 'hidden',
-    backgroundColor: 'rgba(10, 13, 18, 0.66)',
   },
-  logTexture: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.16,
-  },
-  logHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    marginBottom: urTheme.spacing.sm,
-  },
-  logTitle: {
-    ...urTypography.subtitle,
-    color: urTheme.colors.parchment,
-    fontSize: 18,
-  },
-  logMeta: {
-    color: 'rgba(231, 211, 175, 0.74)',
-    fontSize: 11,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  logEntry: {
-    color: 'rgba(244, 230, 206, 0.9)',
-    fontSize: 12,
-    lineHeight: 18,
+  historyTitle: {
+    ...urTypography.label,
+    fontSize: 10,
+    color: 'rgba(241, 230, 208, 0.72)',
     marginBottom: 6,
   },
-  logEntryMuted: {
-    color: 'rgba(217, 193, 158, 0.78)',
+  historyEntry: {
+    color: 'rgba(244, 230, 206, 0.86)',
     fontSize: 12,
     lineHeight: 18,
+    marginBottom: 4,
   },
 });
