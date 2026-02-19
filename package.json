@@ -9,7 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "build:backend": "rm -rf backend/modules/build && npx --yes esbuild backend/modules/index.ts --bundle --platform=neutral --format=iife --target=es2017 --outfile=backend/modules/build/backend/modules/index.js",
+    "build:backend": "rm -rf backend/modules/build && npx --yes esbuild backend/modules/index.ts --bundle --platform=neutral --format=esm --target=es2017 --outfile=backend/modules/build/backend/modules/index.js",
     "backend:up": "npm run build:backend && docker compose -f backend/docker-compose.yml up -d",
     "backend:dev": "npm run build:backend && docker compose -f backend/docker-compose.yml up",
     "backend:prod:up": "docker compose --env-file backend/deploy/env.production -f backend/deploy/docker-compose.prod.yml up -d",

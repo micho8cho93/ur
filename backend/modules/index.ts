@@ -48,18 +48,18 @@ function InitModule(
   _nk: nkruntime.Nakama,
   initializer: nkruntime.Initializer
 ) {
-  initializer.registerRpc(RPC_AUTH_LINK_CUSTOM, runtimeGlobals.rpcAuthLinkCustom);
-  initializer.registerRpc(RPC_MATCHMAKER_ADD, runtimeGlobals.rpcMatchmakerAdd);
+  initializer.registerRpc(RPC_AUTH_LINK_CUSTOM, rpcAuthLinkCustom);
+  initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
   initializer.registerMatch(MATCH_HANDLER, {
-    matchInit: runtimeGlobals.matchInit,
-    matchJoinAttempt: runtimeGlobals.matchJoinAttempt,
-    matchJoin: runtimeGlobals.matchJoin,
-    matchLeave: runtimeGlobals.matchLeave,
-    matchLoop: runtimeGlobals.matchLoop,
-    matchTerminate: runtimeGlobals.matchTerminate,
-    matchSignal: runtimeGlobals.matchSignal,
+    matchInit,
+    matchJoinAttempt,
+    matchJoin,
+    matchLeave,
+    matchLoop,
+    matchTerminate,
+    matchSignal,
   });
-  initializer.registerMatchmakerMatched(runtimeGlobals.matchmakerMatched);
+  initializer.registerMatchmakerMatched(matchmakerMatched);
 
   logger.info("Nakama runtime module loaded.");
 }
