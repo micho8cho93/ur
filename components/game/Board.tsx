@@ -307,7 +307,11 @@ export const Board: React.FC<BoardProps> = ({
         selectedMove.fromIndex === moveFromTile.fromIndex &&
         selectedMove.toIndex === moveFromTile.toIndex
       ) {
-        setSelectedMove(null);
+        if (moveFromTile.toIndex === PATH_LENGTH) {
+          executeMove(moveFromTile);
+        } else {
+          setSelectedMove(null);
+        }
       } else {
         setSelectedMove(moveFromTile);
       }
