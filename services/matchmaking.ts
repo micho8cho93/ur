@@ -49,6 +49,38 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, message: s
   }
 };
 
+type StatusLikeError = {
+  status?: number;
+  statusText?: string;
+  headers?: {
+    get?: (name: string) => string | null;
+  };
+};
+
+const normalizeMatchmakingError = (error: unknown): Error => {
+  if (error instanceof Error) {
+    return error;
+  }
+
+  if (typeof error === "object" && error !== null) {
+    const responseLike = error as StatusLikeError;
+    const status = responseLike.status;
+    const statusText = responseLike.statusText;
+    const authenticateHeader =
+      responseLike.headers?.get?.("www-authenticate") ?? responseLike.headers?.get?.("WWW-Authenticate");
+
+    if (status === 401 && authenticateHeader?.toLowerCase().includes("server key invalid")) {
+      return new Error("Authentication failed: Nakama server key is invalid or mismatched.");
+    }
+
+    if (typeof status === "number") {
+      return new Error(`Matchmaking request failed (${status}${statusText ? ` ${statusText}` : ""}).`);
+    }
+  }
+
+  return new Error("No opponents found. Try again later.");
+};
+
 const waitForInitialAssignment = (
   socket: Socket,
   matchId: string,
@@ -174,6 +206,6 @@ export const findMatch = async (handlers?: MatchmakingHandlers): Promise<MatchRe
   } catch (error) {
     await cancelMatchmaking();
     nakamaService.disconnectSocket(false);
-    throw error;
+    throw normalizeMatchmakingError(error);
   }
 };

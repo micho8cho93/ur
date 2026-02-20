@@ -39,7 +39,11 @@ services:
       - "-ecx"
       - >
           /nakama/nakama migrate up --database.address "$$NAKAMA_DATABASE_ADDRESS" &&
-          exec /nakama/nakama --config /nakama/data/nakama.yml --database.address "$$NAKAMA_DATABASE_ADDRESS"
+          exec /nakama/nakama
+          --config /nakama/data/nakama.yml
+          --database.address "$$NAKAMA_DATABASE_ADDRESS"
+          --socket.server_key "$$NAKAMA_SOCKET_SERVER_KEY"
+          --runtime.http_key "$$NAKAMA_HTTP_KEY"
     healthcheck:
       test: ["CMD", "/nakama/nakama", "healthcheck"]
       interval: 10s
