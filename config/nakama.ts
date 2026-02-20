@@ -24,8 +24,23 @@ const serverKeyEnvKeys = [
   "NAKAMA_SOCKET_SERVER_KEY",
 ] as const;
 
+// Expo web reliably inlines EXPO_PUBLIC_* only when referenced statically.
+const publicEnv = {
+  EXPO_PUBLIC_GAME_TRANSPORT: process.env.EXPO_PUBLIC_GAME_TRANSPORT,
+  EXPO_PUBLIC_NAKAMA_HOST: process.env.EXPO_PUBLIC_NAKAMA_HOST,
+  EXPO_PUBLIC_NAKAMA_PORT: process.env.EXPO_PUBLIC_NAKAMA_PORT,
+  EXPO_PUBLIC_NAKAMA_USE_SSL: process.env.EXPO_PUBLIC_NAKAMA_USE_SSL,
+  EXPO_PUBLIC_NAKAMA_SOCKET_SERVER_KEY: process.env.EXPO_PUBLIC_NAKAMA_SOCKET_SERVER_KEY,
+  EXPO_PUBLIC_NAKAMA_SERVER_KEY: process.env.EXPO_PUBLIC_NAKAMA_SERVER_KEY,
+  EXPO_PUBLIC_NAKAMA_TIMEOUT_MS: process.env.EXPO_PUBLIC_NAKAMA_TIMEOUT_MS,
+  NAKAMA_SOCKET_SERVER_KEY: process.env.NAKAMA_SOCKET_SERVER_KEY,
+} as const;
+
 const getEnvValue = (key: string): string | number | boolean | undefined => {
-  return process.env[key] ?? extra[key];
+  if (key in publicEnv) {
+    return publicEnv[key as keyof typeof publicEnv] ?? extra[key];
+  }
+  return extra[key];
 };
 
 const parseBoolean = (value: string | number | boolean | undefined): boolean => {
