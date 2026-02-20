@@ -330,7 +330,7 @@ export const Board: React.FC<BoardProps> = ({
       const selectedToTileMatch =
         selectedMove.toIndex !== PATH_LENGTH && mapAssignedIndexToCoord(selectedMove.toIndex, r, c);
       const selectedScoreMatch =
-        selectedMove.toIndex === PATH_LENGTH && mapAssignedIndexToCoord(selectedMove.fromIndex, r, c);
+        selectedMove.toIndex === PATH_LENGTH && mapAssignedIndexToCoord(PATH_LENGTH - 1, r, c);
 
       if (selectedToTileMatch || selectedScoreMatch) {
         executeMove(selectedMove);
@@ -340,7 +340,7 @@ export const Board: React.FC<BoardProps> = ({
 
     const scoringMove = validMoves.find((move) => {
       if (move.toIndex !== PATH_LENGTH) return false;
-      return move.fromIndex >= 0 && mapAssignedIndexToCoord(move.fromIndex, r, c);
+      return mapAssignedIndexToCoord(PATH_LENGTH - 1, r, c);
     });
 
     if (scoringMove) {
@@ -388,10 +388,10 @@ export const Board: React.FC<BoardProps> = ({
           (move) => move.fromIndex >= 0 && isMyTurn && mapAssignedIndexToCoord(move.fromIndex, r, c),
         );
 
-        const isScoreOrigin =
+        const isScoringDestination =
           isMyTurn &&
           validMoves.some(
-            (move) => move.toIndex === PATH_LENGTH && move.fromIndex >= 0 && mapAssignedIndexToCoord(move.fromIndex, r, c),
+            (move) => move.toIndex === PATH_LENGTH && mapAssignedIndexToCoord(PATH_LENGTH - 1, r, c),
           );
 
         const isDestination =
@@ -408,7 +408,7 @@ export const Board: React.FC<BoardProps> = ({
         const isSelectedPiece =
           !!selectedMove && selectedMove.fromIndex >= 0 && mapAssignedIndexToCoord(selectedMove.fromIndex, r, c);
 
-        const isValidTarget = isSelectedDestination || isScoreOrigin || isDestination;
+        const isValidTarget = isSelectedDestination || isScoringDestination || isDestination;
         const isInteractable = isMyTurn && (isValidTarget || !!moveFromTile || isSelectedPiece);
 
         rowCells.push(

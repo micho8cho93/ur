@@ -66,7 +66,9 @@ export default function GameRoom() {
 
   const [showWinModal, setShowWinModal] = React.useState(false);
   const [rollingVisual, setRollingVisual] = React.useState(false);
+  const [showScoreBanner, setShowScoreBanner] = React.useState(false);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useGameLoop(isOffline);
 
@@ -273,6 +275,9 @@ export default function GameRoom() {
       if (rollTimerRef.current) {
         clearTimeout(rollTimerRef.current);
       }
+      if (scoreBannerTimerRef.current) {
+        clearTimeout(scoreBannerTimerRef.current);
+      }
     };
   }, []);
 
@@ -309,6 +314,24 @@ export default function GameRoom() {
       gameState.dark.finishedCount > previous.dark.finishedCount
     ) {
       void gameAudio.play('score');
+
+      if (hasAssignedColor) {
+        const didIScore =
+          playerColor === 'light'
+            ? gameState.light.finishedCount > previous.light.finishedCount
+            : gameState.dark.finishedCount > previous.dark.finishedCount;
+
+        if (didIScore) {
+          setShowScoreBanner(true);
+          if (scoreBannerTimerRef.current) {
+            clearTimeout(scoreBannerTimerRef.current);
+          }
+          scoreBannerTimerRef.current = setTimeout(() => {
+            setShowScoreBanner(false);
+            scoreBannerTimerRef.current = null;
+          }, 1500);
+        }
+      }
     }
 
     if (!previous.winner && gameState.winner) {
@@ -316,7 +339,7 @@ export default function GameRoom() {
     }
 
     previousStateRef.current = gameState;
-  }, [gameState]);
+  }, [gameState, hasAssignedColor, playerColor]);
 
   const handleRoll = () => {
     if (!canRoll || rollingVisual) return;
@@ -416,6 +439,14 @@ export default function GameRoom() {
         </View>
       </ScrollView>
 
+      {showScoreBanner && (
+        <View pointerEvents="none" style={styles.scoreBannerWrap}>
+          <View style={styles.scoreBanner}>
+            <Text style={styles.scoreBannerText}>You scored another point!</Text>
+          </View>
+        </View>
+      )}
+
       <Modal
         visible={showWinModal}
         title={gameState.winner === 'light' ? 'Victory' : 'Defeat'}
@@ -508,6 +539,33 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.35)',
     top: '52%',
     zIndex: 0,
+  },
+  scoreBannerWrap: {
+    position: 'absolute',
+    top: urTheme.spacing.lg,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  scoreBanner: {
+    borderRadius: urTheme.radii.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 220, 146, 0.86)',
+    backgroundColor: 'rgba(27, 39, 23, 0.93)',
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.xs,
+    shadowColor: urTheme.colors.glow,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.44,
+    shadowRadius: 12,
+    elevation: 9,
+  },
+  scoreBannerText: {
+    ...urTypography.label,
+    fontSize: 12,
+    color: 'rgba(231, 255, 214, 0.97)',
+    letterSpacing: 0.4,
   },
   historyStrip: {
     width: '100%',
