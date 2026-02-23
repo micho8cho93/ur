@@ -51,6 +51,8 @@ const FRAME_PADDING = urTheme.spacing.sm;
 const INNER_PADDING = urTheme.spacing.xs;
 const GRID_GAP = Math.max(2, urTheme.spacing.xs - 2);
 const CUE_SIZE = 48;
+const SCORE_CUE_MIN_SIZE = 44;
+const SCORE_CUE_MAX_SIZE = 58;
 
 interface DiamondBorderProps {
   boardWidth: number;
@@ -114,6 +116,7 @@ export const Board: React.FC<BoardProps> = ({
   const [boardHeight, setBoardHeight] = useState(0);
 
   const cuePulse = useSharedValue(0);
+  const scoreCuePulse = useSharedValue(0);
   const previewPulse = useSharedValue(0);
 
   const gameState = gameStateOverride ?? storeGameState;
@@ -196,8 +199,11 @@ export const Board: React.FC<BoardProps> = ({
     () => validMoves.find((move) => move.fromIndex === -1) ?? null,
     [validMoves],
   );
+  const scoringMoves = useMemo(() => validMoves.filter((move) => move.toIndex === PATH_LENGTH), [validMoves]);
 
   const spawnCueColor: 'light' | 'dark' = gameState.currentTurn;
+  const hasScoringMove = scoringMoves.length > 0;
+  const scoreCueSize = Math.round(Math.min(Math.max(cellSize * 0.92, SCORE_CUE_MIN_SIZE), SCORE_CUE_MAX_SIZE));
 
   const spawnCueAnchor = spawnMove
     ? (() => {
@@ -209,6 +215,15 @@ export const Board: React.FC<BoardProps> = ({
         };
       })()
     : null;
+
+  const scoreCueAnchor =
+    hasScoringMove && assignedPlayerColor
+      ? (() => {
+          const path = assignedPlayerColor === 'light' ? PATH_LIGHT : PATH_DARK;
+          const final = path[path.length - 1];
+          return getCellCenter(final.row, final.col - 1);
+        })()
+      : null;
 
   const previewPoints = (() => {
     if (!selectedMove) return [] as Point[];
@@ -297,6 +312,23 @@ export const Board: React.FC<BoardProps> = ({
   }, [cuePulse, spawnMove]);
 
   useEffect(() => {
+    if (!isInteractiveTurn || !hasScoringMove) {
+      cancelAnimation(scoreCuePulse);
+      scoreCuePulse.value = withTiming(0, { duration: urTheme.motion.duration.fast });
+      return;
+    }
+
+    scoreCuePulse.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 640, easing: Easing.inOut(Easing.quad) }),
+        withTiming(0.25, { duration: 640, easing: Easing.inOut(Easing.quad) }),
+      ),
+      -1,
+      true,
+    );
+  }, [hasScoringMove, isInteractiveTurn, scoreCuePulse]);
+
+  useEffect(() => {
     if (!selectedMove) {
       cancelAnimation(previewPulse);
       previewPulse.value = withTiming(0, { duration: urTheme.motion.duration.fast });
@@ -362,6 +394,29 @@ export const Board: React.FC<BoardProps> = ({
     setSelectedMove(spawnMove);
   };
 
+  const handleScoreCuePress = () => {
+    if (!isInteractiveTurn || gameState.phase !== 'moving') return;
+
+    if (selectedMove && selectedMove.toIndex === PATH_LENGTH) {
+      const selectedScoringMove = validMoves.find(
+        (move) =>
+          move.pieceId === selectedMove.pieceId &&
+          move.fromIndex === selectedMove.fromIndex &&
+          move.toIndex === selectedMove.toIndex,
+      );
+
+      if (selectedScoringMove) {
+        executeMove(selectedScoringMove);
+        return;
+      }
+    }
+
+    const fallbackScoringMove = scoringMoves[0];
+    if (!fallbackScoringMove) return;
+
+    executeMove(fallbackScoringMove);
+  };
+
   const handleTilePress = (r: number, c: number) => {
     if (!assignedPlayerColor || !isInteractiveTurn || gameState.phase !== 'moving') return;
 
@@ -376,11 +431,7 @@ export const Board: React.FC<BoardProps> = ({
         selectedMove.fromIndex === moveFromTile.fromIndex &&
         selectedMove.toIndex === moveFromTile.toIndex
       ) {
-        if (moveFromTile.toIndex === PATH_LENGTH) {
-          executeMove(moveFromTile);
-        } else {
-          setSelectedMove(null);
-        }
+        setSelectedMove(null);
       } else {
         setSelectedMove(moveFromTile);
       }
@@ -390,23 +441,11 @@ export const Board: React.FC<BoardProps> = ({
     if (selectedMove) {
       const selectedToTileMatch =
         selectedMove.toIndex !== PATH_LENGTH && mapAssignedIndexToCoord(selectedMove.toIndex, r, c);
-      const selectedScoreMatch =
-        selectedMove.toIndex === PATH_LENGTH && mapAssignedIndexToCoord(PATH_LENGTH - 1, r, c);
 
-      if (selectedToTileMatch || selectedScoreMatch) {
+      if (selectedToTileMatch) {
         executeMove(selectedMove);
         return;
       }
-    }
-
-    const scoringMove = validMoves.find((move) => {
-      if (move.toIndex !== PATH_LENGTH) return false;
-      return mapAssignedIndexToCoord(PATH_LENGTH - 1, r, c);
-    });
-
-    if (scoringMove) {
-      executeMove(scoringMove);
-      return;
     }
 
     const moveToTile = validMoves.find(
@@ -424,6 +463,12 @@ export const Board: React.FC<BoardProps> = ({
   const cueAnimatedStyle = useAnimatedStyle(() => ({
     opacity: 0.3 + cuePulse.value * 0.7,
     transform: [{ scale: 0.94 + cuePulse.value * 0.14 }],
+  }));
+
+  const scoreCueAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: 0.48 + scoreCuePulse.value * 0.52,
+    transform: [{ scale: 0.94 + scoreCuePulse.value * 0.12 }],
+    shadowOpacity: 0.28 + scoreCuePulse.value * 0.44,
   }));
 
   const previewPulseStyle = useAnimatedStyle(() => ({
@@ -449,12 +494,6 @@ export const Board: React.FC<BoardProps> = ({
           (move) => move.fromIndex >= 0 && isMyTurn && mapAssignedIndexToCoord(move.fromIndex, r, c),
         );
 
-        const isScoringDestination =
-          isMyTurn &&
-          validMoves.some(
-            (move) => move.toIndex === PATH_LENGTH && mapAssignedIndexToCoord(PATH_LENGTH - 1, r, c),
-          );
-
         const isDestination =
           isMyTurn &&
           validMoves.some(
@@ -469,7 +508,7 @@ export const Board: React.FC<BoardProps> = ({
         const isSelectedPiece =
           !!selectedMove && selectedMove.fromIndex >= 0 && mapAssignedIndexToCoord(selectedMove.fromIndex, r, c);
 
-        const isValidTarget = isSelectedDestination || isScoringDestination || isDestination;
+        const isValidTarget = isSelectedDestination || isDestination;
         const isInteractable = isInteractiveTurn && (isValidTarget || !!moveFromTile || isSelectedPiece);
 
         rowCells.push(
@@ -505,6 +544,7 @@ export const Board: React.FC<BoardProps> = ({
     spawnMove.pieceId === selectedMove.pieceId &&
     spawnMove.fromIndex === selectedMove.fromIndex &&
     spawnMove.toIndex === selectedMove.toIndex;
+  const scoreCueSelected = !!selectedMove && selectedMove.toIndex === PATH_LENGTH;
 
   return (
     <View
@@ -557,6 +597,44 @@ export const Board: React.FC<BoardProps> = ({
             />
           ))}
         </View>
+      )}
+
+      {isInteractiveTurn && hasScoringMove && scoreCueAnchor && (
+        <Pressable
+          onPress={handleScoreCuePress}
+          style={[
+            styles.scoreCueTouchable,
+            {
+              left: scoreCueAnchor.x - scoreCueSize / 2,
+              top: scoreCueAnchor.y - scoreCueSize / 2,
+              width: scoreCueSize,
+              height: scoreCueSize,
+              borderRadius: scoreCueSize / 2,
+            },
+          ]}
+        >
+          <Animated.View
+            style={[
+              styles.scoreCue,
+              scoreCueSelected && styles.scoreCueSelected,
+              { borderRadius: scoreCueSize / 2 },
+              scoreCueAnimatedStyle,
+            ]}
+          >
+            <View
+              style={[
+                styles.scoreCueInner,
+                {
+                  width: scoreCueSize - 8,
+                  height: scoreCueSize - 8,
+                  borderRadius: (scoreCueSize - 8) / 2,
+                },
+              ]}
+            >
+              <Text style={styles.scoreCueText}>SCORE</Text>
+            </View>
+          </Animated.View>
+        </Pressable>
       )}
 
       {spawnCueAnchor && (
@@ -712,6 +790,37 @@ const styles = StyleSheet.create({
     width: CUE_SIZE,
     height: CUE_SIZE,
     borderRadius: urTheme.radii.pill,
+  },
+  scoreCueTouchable: {
+    position: 'absolute',
+  },
+  scoreCue: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: 'rgba(76, 244, 124, 0.92)',
+    backgroundColor: 'rgba(4, 40, 18, 0.88)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#38EF78',
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  scoreCueSelected: {
+    borderColor: 'rgba(220, 255, 228, 0.98)',
+    shadowColor: '#A8FFC4',
+  },
+  scoreCueInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(8, 66, 28, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(191, 255, 206, 0.48)',
+  },
+  scoreCueText: {
+    color: 'rgba(236, 255, 240, 0.96)',
+    fontSize: 10,
+    letterSpacing: 0.7,
+    fontWeight: '800',
   },
   spawnCue: {
     flex: 1,

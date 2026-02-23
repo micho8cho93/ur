@@ -137,8 +137,7 @@ export const Dice: React.FC<DiceProps> = ({
       { translateY: lift.value },
       { perspective: 850 },
       { rotateX: `${tilt.value * 22}deg` },
-      { rotateY: `${spin.value * 60 - 30}deg` },
-      { rotateZ: `${spin.value * 36 - 18}deg` },
+      { rotateY: `${spin.value * 60}deg` },
       { scale: 1 + resultPulse.value * 0.08 },
     ],
   }));

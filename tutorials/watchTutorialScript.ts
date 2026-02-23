@@ -111,7 +111,7 @@ export const WATCH_TUTORIAL_SCRIPT: TutorialStep[] = [
       ],
       [
         'The path preview helps you read exact landing squares before committing.',
-        'If your roll can score (bear off), the finish-side tile highlight is your clue.',
+        'If your roll can score (bear off), look for the green SCORE circle near the finish.',
       ],
       'Use the highlights as a checklist, then choose the move that improves safety or pressure, not just distance.',
     ),
