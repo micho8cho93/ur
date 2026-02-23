@@ -1,4 +1,4 @@
-import { urTheme, urTextures } from '@/constants/urTheme';
+import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import React, { useEffect } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, {
@@ -6,11 +6,13 @@ import Animated, {
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import Svg, { Circle, Polygon } from 'react-native-svg';
 
 interface DiceProps {
   value: number | null;
@@ -21,6 +23,89 @@ interface DiceProps {
   showNumericResult?: boolean;
 }
 
+interface TetrahedralDieProps {
+  isOn: boolean;
+  settleDelay: number;
+  rolling: boolean;
+}
+
+const TetrahedralDie: React.FC<TetrahedralDieProps> = ({ isOn, settleDelay, rolling }) => {
+  const spinY = useSharedValue(0);
+
+  useEffect(() => {
+    if (rolling) {
+      spinY.value = withSequence(
+        withTiming(1, { duration: 360 + settleDelay * 0.5, easing: Easing.linear }),
+        withDelay(
+          settleDelay,
+          withSpring(0, { mass: 0.5, damping: 9, stiffness: 200 }),
+        ),
+      );
+    }
+  }, [rolling, settleDelay, spinY]);
+
+  const dieAnimStyle = useAnimatedStyle(() => ({
+    transform: [
+      { perspective: 400 },
+      { rotateY: `${spinY.value * 360}deg` },
+      { rotateZ: `${spinY.value * 18 - 9}deg` },
+    ],
+  }));
+
+  // Tetrahedron rendered as triangle in perspective
+  // Left face (darker) + right face (lighter) meeting at center line
+  const size = 36;
+  const cx = size / 2;
+
+  // Overall triangle points (isosceles, apex at top)
+  const apexX = cx;
+  const apexY = 2;
+  const baseLeftX = 2;
+  const baseLeftY = size - 2;
+  const baseRightX = size - 2;
+  const baseRightY = size - 2;
+  // Center dividing line bottom (for two-face illusion)
+  const midBottomX = cx;
+  const midBottomY = size - 2;
+
+  const leftFaceColor = isOn ? '#122A5C' : '#8A6E50';
+  const rightFaceColor = isOn ? '#1A4A8A' : '#C9B08A';
+  const borderColor = isOn ? '#0A1828' : '#1A1208';
+  const pipColor = '#F2E8D5';
+
+  return (
+    <Animated.View style={[{ width: size, height: size }, dieAnimStyle]}>
+      <Svg width={size} height={size} pointerEvents="none">
+        {/* Left face — slightly darker */}
+        <Polygon
+          points={`${apexX},${apexY} ${baseLeftX},${baseLeftY} ${midBottomX},${midBottomY}`}
+          fill={leftFaceColor}
+          stroke={borderColor}
+          strokeWidth={1.2}
+        />
+        {/* Right face — lighter */}
+        <Polygon
+          points={`${apexX},${apexY} ${baseRightX},${baseRightY} ${midBottomX},${midBottomY}`}
+          fill={rightFaceColor}
+          stroke={borderColor}
+          strokeWidth={1.2}
+        />
+        {/* Outer border — full triangle */}
+        <Polygon
+          points={`${apexX},${apexY} ${baseLeftX},${baseLeftY} ${baseRightX},${baseRightY}`}
+          fill="none"
+          stroke={borderColor}
+          strokeWidth={1.5}
+        />
+        {/* Apex pip for "on" state */}
+        {isOn && (
+          <Circle cx={apexX} cy={apexY + 5} r={3.5} fill={pipColor} />
+        )}
+      </Svg>
+    </Animated.View>
+  );
+};
+
 export const Dice: React.FC<DiceProps> = ({
   value,
   rolling,
@@ -30,7 +115,6 @@ export const Dice: React.FC<DiceProps> = ({
   showNumericResult = true,
 }) => {
   const lift = useSharedValue(0);
-  const spin = useSharedValue(0);
   const tilt = useSharedValue(0);
   const readiness = useSharedValue(canRoll ? 0.4 : 0);
   const resultPulse = useSharedValue(0);
@@ -48,13 +132,8 @@ export const Dice: React.FC<DiceProps> = ({
         withTiming(1, { duration: 280, easing: Easing.linear }),
         withTiming(0, { duration: 190, easing: Easing.out(Easing.cubic) }),
       );
-
-      spin.value = withSequence(
-        withTiming(1, { duration: 470, easing: Easing.linear }),
-        withTiming(0, { duration: 0 }),
-      );
     }
-  }, [lift, rolling, spin, tilt]);
+  }, [lift, rolling, tilt]);
 
   useEffect(() => {
     if (canRoll && !rolling) {
@@ -87,8 +166,7 @@ export const Dice: React.FC<DiceProps> = ({
       { translateY: lift.value },
       { perspective: 850 },
       { rotateX: `${tilt.value * 22}deg` },
-      { rotateY: `${spin.value * 60 - 30}deg` },
-      { rotateZ: `${spin.value * 36 - 18}deg` },
+      { rotateZ: `${tilt.value * 8 - 4}deg` },
       { scale: 1 + resultPulse.value * 0.08 },
     ],
   }));
@@ -131,15 +209,13 @@ export const Dice: React.FC<DiceProps> = ({
         <Animated.View style={[styles.diceRow, diceRowStyle]}>
           {[0, 1, 2, 3].map((index) => {
             const isOn = value !== null && index < value;
-
             return (
-              <View key={index} style={[styles.die3dWrap, isOn ? styles.die3dWrapOn : styles.die3dWrapOff]}>
-                <View style={[styles.dieTopFace, isOn ? styles.dieTopFaceOn : styles.dieTopFaceOff]} />
-                <View style={[styles.dieFrontFace, isOn ? styles.dieFrontFaceOn : styles.dieFrontFaceOff]} />
-                <View style={[styles.dieSideFace, isOn ? styles.dieSideFaceOn : styles.dieSideFaceOff]} />
-                <View style={[styles.dieSpecular, isOn ? styles.dieSpecularOn : styles.dieSpecularOff]} />
-                {isOn && <View style={styles.diePip} />}
-              </View>
+              <TetrahedralDie
+                key={index}
+                isOn={isOn}
+                rolling={rolling}
+                settleDelay={index * 80}
+              />
             );
           })}
         </Animated.View>
@@ -177,8 +253,8 @@ const styles = StyleSheet.create({
     borderRadius: urTheme.radii.pill,
   },
   cardActive: {
-    backgroundColor: '#5C3622',
-    borderColor: 'rgba(230, 193, 121, 0.65)',
+    backgroundColor: '#6B2E14',
+    borderColor: 'rgba(200, 152, 30, 0.75)',
   },
   cardLocked: {
     backgroundColor: '#4C4843',
@@ -195,14 +271,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '44%',
-    backgroundColor: 'rgba(255, 224, 168, 0.14)',
+    backgroundColor: 'rgba(255, 200, 120, 0.12)',
   },
   cardBorder: {
     ...StyleSheet.absoluteFillObject,
     margin: 6,
     borderRadius: urTheme.radii.sm,
     borderWidth: 1,
-    borderColor: 'rgba(246, 219, 163, 0.36)',
+    borderColor: 'rgba(240, 192, 64, 0.28)',
   },
   readyHalo: {
     position: 'absolute',
@@ -212,7 +288,7 @@ const styles = StyleSheet.create({
     bottom: 10,
     borderRadius: urTheme.radii.sm,
     borderWidth: 1.5,
-    borderColor: 'rgba(111, 184, 255, 0.8)',
+    borderColor: 'rgba(240, 192, 64, 0.7)',
   },
   groundShadow: {
     position: 'absolute',
@@ -224,102 +300,14 @@ const styles = StyleSheet.create({
   },
   diceRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
     marginBottom: urTheme.spacing.sm,
     marginTop: 2,
   },
-  die3dWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: urTheme.radii.xs,
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  die3dWrapOn: {
-    backgroundColor: '#2A6BBC',
-    borderColor: 'rgba(235, 204, 137, 0.94)',
-    shadowColor: '#2A6BBC',
-    shadowOpacity: 0.45,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  die3dWrapOff: {
-    backgroundColor: '#C9B08A',
-    borderColor: 'rgba(99, 71, 44, 0.56)',
-  },
-  dieTopFace: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '56%',
-    borderTopLeftRadius: urTheme.radii.xs - 1,
-    borderTopRightRadius: urTheme.radii.xs - 1,
-  },
-  dieTopFaceOn: {
-    backgroundColor: 'rgba(153, 201, 255, 0.44)',
-  },
-  dieTopFaceOff: {
-    backgroundColor: 'rgba(255, 242, 209, 0.3)',
-  },
-  dieFrontFace: {
-    position: 'absolute',
-    left: 2,
-    right: 2,
-    bottom: 1,
-    height: '34%',
-    borderBottomLeftRadius: urTheme.radii.xs - 2,
-    borderBottomRightRadius: urTheme.radii.xs - 2,
-  },
-  dieFrontFaceOn: {
-    backgroundColor: 'rgba(15, 35, 58, 0.36)',
-  },
-  dieFrontFaceOff: {
-    backgroundColor: 'rgba(68, 43, 22, 0.15)',
-  },
-  dieSideFace: {
-    position: 'absolute',
-    top: 2,
-    bottom: 3,
-    right: 1,
-    width: 6,
-    borderTopRightRadius: urTheme.radii.xs - 2,
-    borderBottomRightRadius: urTheme.radii.xs - 2,
-  },
-  dieSideFaceOn: {
-    backgroundColor: 'rgba(11, 28, 46, 0.3)',
-  },
-  dieSideFaceOff: {
-    backgroundColor: 'rgba(75, 46, 28, 0.12)',
-  },
-  dieSpecular: {
-    position: 'absolute',
-    top: 4,
-    left: 5,
-    width: 10,
-    height: 4,
-    borderRadius: urTheme.radii.pill,
-  },
-  dieSpecularOn: {
-    backgroundColor: 'rgba(233, 247, 255, 0.62)',
-  },
-  dieSpecularOff: {
-    backgroundColor: 'rgba(255, 243, 221, 0.34)',
-  },
-  diePip: {
-    width: 8,
-    height: 8,
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: urTheme.colors.ivory,
-    borderWidth: 0.8,
-    borderColor: 'rgba(21, 13, 7, 0.54)',
-  },
   title: {
+    ...urTypography.title,
     color: '#F6E6CC',
     fontSize: 14,
-    fontWeight: '700',
     letterSpacing: 1.05,
     textTransform: 'uppercase',
   },

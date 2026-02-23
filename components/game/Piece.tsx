@@ -14,6 +14,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import Svg, { Circle } from 'react-native-svg';
 
 interface PieceProps {
   color: PlayerColor;
@@ -22,6 +23,37 @@ interface PieceProps {
   variant?: 'light' | 'dark' | 'reserve';
   state?: 'idle' | 'active' | 'captured';
 }
+
+// SVG rosette inlay: 6 dots in a ring around a center dot
+const InlayPattern: React.FC<{ diameter: number; dotColor: string }> = ({ diameter, dotColor }) => {
+  const cx = diameter / 2;
+  const cy = diameter / 2;
+  const ringR = diameter * 0.28;
+  const dotR = Math.max(1.2, diameter * 0.06);
+  const centerDotR = Math.max(1.2, diameter * 0.06);
+
+  const dots = Array.from({ length: 6 }, (_, i) => {
+    const angle = (i / 6) * Math.PI * 2 - Math.PI / 2;
+    return {
+      x: cx + Math.cos(angle) * ringR,
+      y: cy + Math.sin(angle) * ringR,
+    };
+  });
+
+  return (
+    <Svg
+      width={diameter}
+      height={diameter}
+      pointerEvents="none"
+      style={{ position: 'absolute' }}
+    >
+      {dots.map((pos, i) => (
+        <Circle key={i} cx={pos.x} cy={pos.y} r={dotR} fill={dotColor} fillOpacity={0.88} />
+      ))}
+      <Circle cx={cx} cy={cy} r={centerDotR} fill={dotColor} fillOpacity={0.9} />
+    </Svg>
+  );
+};
 
 export const Piece: React.FC<PieceProps> = ({
   color,
@@ -104,20 +136,22 @@ export const Piece: React.FC<PieceProps> = ({
   const palette =
     resolvedVariant === 'light'
       ? {
-          shell: '#1F5CAD',
-          rim: '#E3BF6E',
-          core: '#79AFFF',
-          center: '#D6E9FF',
-          specular: 'rgba(228, 243, 255, 0.7)',
-          shadow: '#0A1A2E',
+          shell: urTheme.playerPalette.light.shell,
+          rim: urTheme.playerPalette.light.rim,
+          core: urTheme.playerPalette.light.core,
+          center: urTheme.playerPalette.light.center,
+          inlay: urTheme.playerPalette.light.inlay,
+          specular: 'rgba(255, 244, 228, 0.6)',
+          shadow: '#3A1008',
         }
       : resolvedVariant === 'dark'
         ? {
-            shell: '#141820',
-            rim: '#CA9A42',
-            core: '#765528',
-            center: '#E6D7BF',
-            specular: 'rgba(255, 229, 189, 0.36)',
+            shell: urTheme.playerPalette.dark.shell,
+            rim: urTheme.playerPalette.dark.rim,
+            core: urTheme.playerPalette.dark.core,
+            center: urTheme.playerPalette.dark.center,
+            inlay: urTheme.playerPalette.dark.inlay,
+            specular: 'rgba(212, 232, 255, 0.36)',
             shadow: '#06070A',
           }
         : {
@@ -125,9 +159,13 @@ export const Piece: React.FC<PieceProps> = ({
             rim: '#F1C270',
             core: '#D39440',
             center: '#F7E1B8',
+            inlay: '#FFF4E8',
             specular: 'rgba(255, 244, 219, 0.6)',
             shadow: '#06070A',
           };
+
+  // Inlay diameter is ~40% of piece diameter
+  const inlayDiameter = sizePx * 0.4;
 
   return (
     <Animated.View style={[styles.wrap, { width: sizePx, height: sizePx }, pieceStyle]}>
@@ -144,7 +182,10 @@ export const Piece: React.FC<PieceProps> = ({
             height: sizePx - 2,
             backgroundColor: palette.shell,
             borderColor: palette.rim,
+            borderWidth: 2.4,
             shadowColor: palette.shadow,
+            shadowOpacity: 0.48,
+            shadowRadius: 6,
           },
         ]}
       >
@@ -164,6 +205,10 @@ export const Piece: React.FC<PieceProps> = ({
         >
           <View style={[styles.coreCenter, { width: sizePx * 0.22, height: sizePx * 0.22, backgroundColor: palette.center }]} />
         </View>
+        {/* SVG inlay pattern centered on face */}
+        <View style={[styles.inlayWrap, { width: inlayDiameter, height: inlayDiameter }]}>
+          <InlayPattern diameter={inlayDiameter} dotColor={palette.inlay} />
+        </View>
         <View style={[styles.specular, { width: sizePx * 0.3, height: sizePx * 0.18, backgroundColor: palette.specular }]} />
       </View>
     </Animated.View>
@@ -178,7 +223,7 @@ const styles = StyleSheet.create({
   targetGlow: {
     position: 'absolute',
     borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(111, 184, 255, 0.24)',
+    backgroundColor: 'rgba(240, 192, 64, 0.32)',
   },
   baseShadow: {
     position: 'absolute',
@@ -188,12 +233,9 @@ const styles = StyleSheet.create({
   },
   base: {
     borderRadius: urTheme.radii.pill,
-    borderWidth: 1.8,
     alignItems: 'center',
     justifyContent: 'center',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
     elevation: 6,
   },
   innerRim: {
@@ -207,9 +249,9 @@ const styles = StyleSheet.create({
     top: 1,
     left: 4,
     right: 4,
-    height: '42%',
+    height: '52%',
     borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(255, 245, 214, 0.16)',
+    backgroundColor: 'rgba(255, 245, 214, 0.26)',
   },
   edgeShade: {
     position: 'absolute',
@@ -229,6 +271,11 @@ const styles = StyleSheet.create({
   coreCenter: {
     borderRadius: urTheme.radii.pill,
     opacity: 0.9,
+  },
+  inlayWrap: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   specular: {
     position: 'absolute',

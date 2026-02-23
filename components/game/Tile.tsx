@@ -12,6 +12,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
+import Svg, { Circle, Ellipse, Polygon } from 'react-native-svg';
 import { Piece } from './Piece';
 
 interface TileProps {
@@ -24,6 +25,101 @@ interface TileProps {
   onPress?: () => void;
   highlightMode?: 'subtle' | 'theatrical';
 }
+
+// Rosette SVG: 8-petal flower with alternating teal/orange petals
+const RosetteArtwork: React.FC<{ size: number }> = ({ size }) => {
+  const cx = size / 2;
+  const cy = size / 2;
+  const petalRx = size * 0.18;
+  const petalRy = size * 0.32;
+  const petalOffset = size * 0.15;
+  const ringR = size * 0.42;
+  const centerR = size * 0.1;
+  const dotR = size * 0.035;
+
+  return (
+    <Svg width={size} height={size} pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      {/* 8 petals at 45° intervals */}
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+        const angleDeg = i * 45;
+        const angleRad = (angleDeg * Math.PI) / 180;
+        const ex = cx + Math.cos(angleRad) * petalOffset;
+        const ey = cy + Math.sin(angleRad) * petalOffset;
+        const fill = i % 2 === 0 ? '#2AA89A' : '#D4702A';
+        return (
+          <Ellipse
+            key={i}
+            cx={ex}
+            cy={ey}
+            rx={petalRx}
+            ry={petalRy}
+            fill={fill}
+            fillOpacity={0.82}
+            transform={`rotate(${angleDeg}, ${ex}, ${ey})`}
+          />
+        );
+      })}
+      {/* Outer gold ring */}
+      <Circle cx={cx} cy={cy} r={ringR} fill="none" stroke="#C8981E" strokeWidth={1.2} strokeOpacity={0.85} />
+      {/* Central shell circle */}
+      <Circle cx={cx} cy={cy} r={centerR} fill="#F2E8D5" />
+      {/* Bitumen center dot */}
+      <Circle cx={cx} cy={cy} r={dotR} fill="#1A1208" />
+    </Svg>
+  );
+};
+
+// Regular tile: 2×2 grid of pip dots
+const PipArtwork: React.FC<{ size: number }> = ({ size }) => {
+  const spacing = size * 0.22;
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = size * 0.07;
+  const pipColor = 'rgba(90, 60, 30, 0.55)';
+
+  const positions = [
+    { x: cx - spacing, y: cy - spacing },
+    { x: cx + spacing, y: cy - spacing },
+    { x: cx - spacing, y: cy + spacing },
+    { x: cx + spacing, y: cy + spacing },
+  ];
+
+  return (
+    <Svg width={size} height={size} pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      {positions.map((pos, i) => (
+        <Circle key={i} cx={pos.x} cy={pos.y} r={r} fill={pipColor} />
+      ))}
+    </Svg>
+  );
+};
+
+// War zone tile: 2×2 grid of diamond shapes
+const WarZoneArtwork: React.FC<{ size: number }> = ({ size }) => {
+  const spacing = size * 0.24;
+  const cx = size / 2;
+  const cy = size / 2;
+  const d = size * 0.09; // half-width of diamond
+  const fill = 'rgba(60, 30, 10, 0.4)';
+
+  const centers = [
+    { x: cx - spacing, y: cy - spacing },
+    { x: cx + spacing, y: cy - spacing },
+    { x: cx - spacing, y: cy + spacing },
+    { x: cx + spacing, y: cy + spacing },
+  ];
+
+  return (
+    <Svg width={size} height={size} pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      {centers.map((c, i) => (
+        <Polygon
+          key={i}
+          points={`${c.x},${c.y - d} ${c.x + d},${c.y} ${c.x},${c.y + d} ${c.x - d},${c.y}`}
+          fill={fill}
+        />
+      ))}
+    </Svg>
+  );
+};
 
 export const Tile: React.FC<TileProps> = ({
   row,
@@ -44,7 +140,6 @@ export const Tile: React.FC<TileProps> = ({
   const prevPieceId = useRef<string | null>(piece?.id ?? null);
 
   const tileSeed = useMemo(() => (row * 13 + col * 7) % 5, [col, row]);
-  const toneOffset = tileSeed * 4;
 
   useEffect(() => {
     if (isValidTarget) {
@@ -133,12 +228,15 @@ export const Tile: React.FC<TileProps> = ({
     transform: [{ scale: 0.82 + rosetteBurst.value * 0.7 }],
   }));
 
+  // Period-accurate background colors
+  const toneOffset = tileSeed * 4;
   const baseBackground = rosette
-    ? `rgb(${168 + toneOffset}, ${116 + Math.floor(toneOffset / 2)}, ${58 + Math.floor(toneOffset / 3)})`
+    ? '#B8803A'
     : war
-      ? `rgb(${198 + toneOffset}, ${162 + Math.floor(toneOffset / 2)}, ${120 + Math.floor(toneOffset / 3)})`
-      : `rgb(${206 + toneOffset}, ${178 + Math.floor(toneOffset / 2)}, ${145 + Math.floor(toneOffset / 3)})`;
-  const borderColor = rosette ? 'rgba(255, 219, 144, 0.65)' : 'rgba(98, 62, 36, 0.46)';
+      ? `rgb(${184 + toneOffset}, ${120 + Math.floor(toneOffset / 2)}, ${64 + Math.floor(toneOffset / 3)})`
+      : `rgb(${200 + toneOffset}, ${152 + Math.floor(toneOffset / 2)}, ${88 + Math.floor(toneOffset / 3)})`;
+
+  const borderColor = 'rgba(26, 18, 8, 0.7)';
 
   return (
     <TouchableOpacity
@@ -157,7 +255,11 @@ export const Tile: React.FC<TileProps> = ({
       ]}
     >
       <Image source={urTextures.wood} resizeMode="repeat" style={styles.tileTexture} />
-      {rosette && <Image source={urTextures.rosette} resizeMode="repeat" style={styles.rosettePattern} />}
+
+      {/* Period-accurate SVG artwork — rendered behind overlays */}
+      {rosette && !piece && <RosetteArtwork size={48} />}
+      {!rosette && war && !piece && <WarZoneArtwork size={48} />}
+      {!rosette && !war && !piece && <PipArtwork size={48} />}
 
       <View style={[styles.innerInset, rosette && styles.rosetteInset]} />
       <View style={styles.edgeHighlight} />
@@ -167,14 +269,6 @@ export const Tile: React.FC<TileProps> = ({
       {isValidTarget && <Animated.View style={[styles.validRing, pulseStyle]} />}
       {rosette && <Animated.View style={[styles.rosetteGlow, rosetteGlowStyle]} />}
       {rosette && <Animated.View style={[styles.rosetteBurst, rosetteBurstStyle]} />}
-
-      {rosette && !piece && (
-        <View style={styles.rosetteGlyphWrap}>
-          <View style={styles.rosetteGlyphDiamond} />
-          <View style={[styles.rosetteGlyphDiamond, styles.rosetteGlyphDiamondAlt]} />
-          <View style={styles.rosetteGlyphCore} />
-        </View>
-      )}
 
       {isValidTarget && !piece && <View style={styles.validDot} />}
 
@@ -201,25 +295,21 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   validTile: {
-    shadowColor: urTheme.colors.gold,
+    shadowColor: urTheme.colors.goldGlow,
     shadowOpacity: 0.34,
     shadowRadius: 7,
     elevation: 5,
   },
   selectedTile: {
-    borderColor: 'rgba(111, 184, 255, 0.8)',
-    shadowColor: urTheme.colors.glow,
+    borderColor: 'rgba(240, 192, 64, 0.85)',
+    shadowColor: urTheme.colors.goldGlow,
     shadowOpacity: 0.4,
     shadowRadius: 8,
     elevation: 7,
   },
   tileTexture: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.22,
-  },
-  rosettePattern: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.23,
+    opacity: 0.18,
   },
   innerInset: {
     ...StyleSheet.absoluteFillObject,
@@ -254,7 +344,7 @@ const styles = StyleSheet.create({
     height: '78%',
     borderRadius: urTheme.radii.pill,
     borderWidth: 2.2,
-    borderColor: 'rgba(238, 192, 98, 0.95)',
+    borderColor: 'rgba(240, 192, 64, 0.98)',
   },
   selectedRing: {
     position: 'absolute',
@@ -262,8 +352,8 @@ const styles = StyleSheet.create({
     height: '88%',
     borderRadius: urTheme.radii.pill,
     borderWidth: 1.7,
-    borderColor: 'rgba(111, 184, 255, 0.95)',
-    backgroundColor: 'rgba(111, 184, 255, 0.14)',
+    borderColor: 'rgba(240, 192, 64, 0.92)',
+    backgroundColor: 'rgba(240, 192, 64, 0.12)',
   },
   rosetteGlow: {
     position: 'absolute',
@@ -279,31 +369,6 @@ const styles = StyleSheet.create({
     borderRadius: urTheme.radii.pill,
     borderWidth: 2,
     borderColor: 'rgba(255, 239, 196, 0.92)',
-  },
-  rosetteGlyphWrap: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rosetteGlyphDiamond: {
-    position: 'absolute',
-    width: 20,
-    height: 20,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 224, 173, 0.8)',
-    transform: [{ rotate: '45deg' }],
-  },
-  rosetteGlyphDiamondAlt: {
-    width: 12,
-    height: 12,
-    borderWidth: 1.4,
-  },
-  rosetteGlyphCore: {
-    width: 7,
-    height: 7,
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(255, 239, 206, 0.82)',
   },
   validDot: {
     width: 14,

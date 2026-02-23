@@ -23,12 +23,51 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
+import Svg, { Polygon as SvgPolygon } from 'react-native-svg';
 import { Piece } from './Piece';
 import { Tile } from './Tile';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
+// Decorative diamond/lozenge border overlay
+const DiamondBorder: React.FC<{ boardWidth: number }> = ({ boardWidth }) => {
+  const d = 4; // half-size of diamond (8x8 total)
+  const spacing = 10;
+  const margin = 6; // inset from outer edge
+
+  const diamonds: { x: number; y: number; colorIndex: number }[] = [];
+
+  // Top and bottom edges
+  for (let x = margin + d; x < boardWidth - margin; x += spacing) {
+    diamonds.push({ x, y: margin + d, colorIndex: Math.floor(x / spacing) % 2 });
+    diamonds.push({ x, y: boardWidth * 0.18 - d, colorIndex: Math.floor(x / spacing) % 2 });
+  }
+  // Left and right edges (approximate board height proportional)
+  const boardH = boardWidth * 0.48;
+  for (let y = margin + d + spacing; y < boardH - margin; y += spacing) {
+    diamonds.push({ x: margin + d, y, colorIndex: Math.floor(y / spacing) % 2 });
+    diamonds.push({ x: boardWidth - margin - d, y, colorIndex: Math.floor(y / spacing) % 2 });
+  }
+
+  const goldFill = 'rgba(200, 152, 30, 0.7)';
+  const lightFill = 'rgba(240, 220, 160, 0.5)';
+
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      <Svg width={boardWidth} height={boardH} pointerEvents="none">
+        {diamonds.map((pos, i) => (
+          <SvgPolygon
+            key={i}
+            points={`${pos.x},${pos.y - d} ${pos.x + d},${pos.y} ${pos.x},${pos.y + d} ${pos.x - d},${pos.y}`}
+            fill={pos.colorIndex === 0 ? goldFill : lightFill}
+          />
+        ))}
+      </Svg>
+    </View>
+  );
+};
 
 interface BoardProps {
   showRailHints?: boolean;
@@ -540,6 +579,9 @@ export const Board: React.FC<BoardProps> = ({
         </Pressable>
       )}
 
+      {/* Diamond border pattern overlay */}
+      <DiamondBorder boardWidth={boardWidth} />
+
       {showRailHints && (
         <View pointerEvents="none" style={styles.hintRow}>
           <Text style={styles.hintText}>START</Text>
@@ -555,9 +597,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     borderRadius: urTheme.radii.lg + 6,
     padding: FRAME_PADDING,
-    backgroundColor: '#3A2012',
+    backgroundColor: '#8A3A1A',
     borderWidth: 2,
-    borderColor: 'rgba(217, 164, 65, 0.52)',
+    borderColor: 'rgba(200, 152, 30, 0.85)',
     overflow: 'hidden',
   },
   frameBorderTexture: {
@@ -569,19 +611,19 @@ const styles = StyleSheet.create({
     margin: 2,
     borderRadius: urTheme.radii.lg + 4,
     borderWidth: 1,
-    borderColor: 'rgba(255, 228, 174, 0.2)',
+    borderColor: 'rgba(240, 192, 64, 0.35)',
   },
   frameRimInner: {
     ...StyleSheet.absoluteFillObject,
     margin: 7,
     borderRadius: urTheme.radii.lg,
     borderWidth: 1,
-    borderColor: 'rgba(65, 34, 15, 0.62)',
+    borderColor: 'rgba(240, 192, 64, 0.35)',
   },
   innerFrame: {
     borderRadius: urTheme.radii.lg,
     overflow: 'hidden',
-    backgroundColor: '#54301A',
+    backgroundColor: '#6A3818',
     padding: INNER_PADDING,
   },
   boardTexture: {
@@ -627,6 +669,9 @@ const styles = StyleSheet.create({
     width: `${100 / BOARD_COLS}%`,
     aspectRatio: 1,
     padding: 3,
+    backgroundColor: '#0D1117',
+    borderRadius: 2,
+    opacity: 0.9,
   },
   previewLayer: {
     ...StyleSheet.absoluteFillObject,
