@@ -384,7 +384,7 @@ export default function GameRoom() {
 
   const viewportHorizontalPadding = 0;
   const stageContentWidth = Math.min(Math.max(width - viewportHorizontalPadding * 2, 0), urTheme.layout.stage.maxWidth);
-  const boardBaseWidth = Math.min(width - urTheme.spacing.lg, urTheme.layout.boardMax);
+  const boardBaseWidth = Math.min(width * urTheme.board.widthRatioBaseline, urTheme.layout.boardMax);
   const useSideColumns = width >= 980;
   const compactSupportPanels = width < 460;
   const boardClusterGap = useSideColumns ? urTheme.spacing.xs : urTheme.spacing.sm;
@@ -399,7 +399,7 @@ export default function GameRoom() {
     : Math.max(224, Math.min(urTheme.layout.boardMax, stageContentWidth - 2));
   const boardFramePadding = urTheme.spacing.sm;
   const boardInnerPadding = urTheme.spacing.xs;
-  const boardGridGap = Math.max(2, urTheme.spacing.xs - 2);
+  const boardGridGap = urTheme.board.tileGap;
   const boardOuterPadding = boardFramePadding * 2 + boardInnerPadding * 2;
   const verticalBoardRows = BOARD_COLS;
   const verticalBoardCols = BOARD_ROWS;
@@ -412,8 +412,8 @@ export default function GameRoom() {
       (Math.max(0, boardSlotHeight - boardOuterPadding - verticalBoardGapTotal) * verticalBoardCols) /
         verticalBoardRows,
   );
-  const widenedBoardLayoutTarget = Math.min(urTheme.layout.boardMax, boardWidthLimitByLayout * 1.5);
-  const targetBoardWidth = Math.max(110, Math.min(widenedBoardLayoutTarget, boardWidthLimitByHeight, boardSlotWidth));
+  const widenedBoardLayoutTarget = Math.min(urTheme.layout.boardMax, boardWidthLimitByLayout * 1.12);
+  const targetBoardWidth = Math.max(190, Math.min(widenedBoardLayoutTarget, boardWidthLimitByHeight, boardSlotWidth));
   const boardScale = Math.max(0.24, Math.min(1.2, targetBoardWidth / Math.max(boardBaseWidth, 1)));
   const stageGap = height < 760 ? urTheme.spacing.sm : urTheme.spacing.md;
   const viewportTopPadding = 0;
@@ -628,12 +628,12 @@ export default function GameRoom() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#D9C39A',
+    backgroundColor: urTheme.colors.parchmentBg,
   },
   backdropLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 0,
-    backgroundColor: '#D9C39A',
+    backgroundColor: urTheme.colors.parchmentBg,
   },
   backdropImage: {
     position: 'absolute',

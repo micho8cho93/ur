@@ -45,9 +45,9 @@ interface Point {
   y: number;
 }
 
-const FRAME_PADDING = urTheme.spacing.sm;
+const FRAME_PADDING = urTheme.spacing.xs;
 const INNER_PADDING = urTheme.spacing.xs;
-const GRID_GAP = 0;
+const GRID_GAP = urTheme.board.tileGap;
 const CUE_SIZE = 48;
 const SCORE_CUE_MIN_SIZE = 44;
 const SCORE_CUE_MAX_SIZE = 58;
@@ -534,7 +534,7 @@ export const Board: React.FC<BoardProps> = ({
   const displayCols = isVertical ? BOARD_ROWS : BOARD_COLS;
 
   const boardWidth = useMemo(
-    () => Math.min(width - urTheme.spacing.lg, urTheme.layout.boardMax) * boardScale,
+    () => Math.min(width * urTheme.board.widthRatioBaseline, urTheme.layout.boardMax) * boardScale,
     [boardScale, width],
   );
 
@@ -543,7 +543,7 @@ export const Board: React.FC<BoardProps> = ({
     return gridWidth / displayCols;
   }, [boardWidth, displayCols]);
   const tileShellPadding = useMemo(
-    () => Math.max(MIN_TILE_SHELL_PADDING, Math.round(cellSize * 0.04)),
+    () => Math.max(MIN_TILE_SHELL_PADDING, Math.round(cellSize * 0.03)),
     [cellSize],
   );
   const renderedTileSize = useMemo(
@@ -1222,16 +1222,16 @@ export const Board: React.FC<BoardProps> = ({
 const styles = StyleSheet.create({
   frame: {
     alignSelf: 'center',
-    borderRadius: urTheme.radii.lg + 6,
+    borderRadius: urTheme.board.frameRadius,
     padding: FRAME_PADDING,
     backgroundColor: 'transparent',
     borderWidth: 0,
     borderColor: 'transparent',
     overflow: 'visible',
-    shadowColor: '#120A05',
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
+    shadowColor: urTheme.colors.shadowDark,
+    shadowOpacity: urTheme.board.insetShadowOpacity,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
   boardFrameLayer: {
@@ -1257,12 +1257,12 @@ const styles = StyleSheet.create({
   frameRimInner: {
     ...StyleSheet.absoluteFillObject,
     margin: 7,
-    borderRadius: urTheme.radii.lg,
+    borderRadius: urTheme.board.frameRadius,
     borderWidth: 1,
     borderColor: 'rgba(80, 40, 15, 0.58)',
   },
   innerFrame: {
-    borderRadius: urTheme.radii.lg,
+    borderRadius: urTheme.board.frameRadius,
     overflow: 'visible',
     backgroundColor: 'transparent',
     padding: INNER_PADDING,
@@ -1293,7 +1293,7 @@ const styles = StyleSheet.create({
   innerStroke: {
     ...StyleSheet.absoluteFillObject,
     margin: INNER_PADDING,
-    borderRadius: urTheme.radii.md,
+    borderRadius: urTheme.board.tileRadius,
     borderWidth: 1,
     borderColor: 'rgba(255, 226, 175, 0.22)',
   },

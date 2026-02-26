@@ -8,6 +8,18 @@ const serifFamily = Platform.select({
 
 export const urTheme = {
   colors: {
+    parchmentBg: '#D8C29A',
+    inkBrown: '#4A2E1C',
+    boardDark: '#5B3A24',
+    boardMid: '#8B5E3C',
+    stoneLight: '#CDB692',
+    stoneMid: '#B89A72',
+    navyPanel: '#1F3A56',
+    navyPanelDark: '#162C43',
+    goldAccent: '#C89B3C',
+    turquoiseAccent: '#4EA8A3',
+    orangeAccent: '#D98A3A',
+    shadowDark: 'rgba(0,0,0,0.42)',
     night: '#0D1117',
     ink: '#1C1410',
     tableOak: '#3E2A1F',
@@ -47,6 +59,46 @@ export const urTheme = {
       overlap: 16,
     },
     boardMax: 760,
+  },
+  board: {
+    widthRatioBaseline: 0.21,
+    frameOuterBorder: 2,
+    frameInnerBorder: 1,
+    tileGap: 3,
+    tileRadius: 4,
+    frameRadius: 6,
+    insetShadowOpacity: 0.26,
+    textureOpacity: 0.16,
+  },
+  hud: {
+    badgeMinWidth: 120,
+    capsuleRadius: 18,
+    borderWidth: 1.2,
+    textureOpacity: 0.18,
+    shadowOpacity: 0.3,
+  },
+  scoreBadge: {
+    labelSize: 10,
+    valueSize: 26,
+    radius: 12,
+    borderWidth: 1.1,
+  },
+  reserve: {
+    barHeight: 74,
+    segmentGap: 6,
+    tokenSpacing: 6,
+    radius: 20,
+  },
+  turnPanel: {
+    minHeight: 66,
+    statusDot: 13,
+    radius: 20,
+  },
+  cta: {
+    minHeight: 140,
+    triangleSize: 34,
+    radius: 20,
+    borderWidth: 1.4,
   },
   playerPalette: {
     dark: {
