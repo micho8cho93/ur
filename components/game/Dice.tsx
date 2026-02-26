@@ -154,12 +154,8 @@ export const Dice: React.FC<DiceProps> = ({
     transform: [{ scaleX: 0.92 + Math.min(Math.abs(lift.value) / 18, 1) * 0.16 }],
   }));
 
-  const title = rolling ? 'Casting...' : value !== null ? `Result: ${value}` : 'Cast The Dice';
-  const subtitle = rolling
-    ? 'The astragali are in motion'
-    : canRoll
-      ? 'Tap to roll'
-      : 'Wait for your turn';
+  const title = 'CAST THE DICE';
+  const subtitle = canRoll ? 'TAP TO ROLL' : 'WAIT FOR YOUR TURN';
 
   const isStage = mode === 'stage';
   const dieSize = compact ? 28 : 38;
@@ -207,13 +203,13 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   card: {
-    borderRadius: urTheme.radii.md,
+    borderRadius: urTheme.cta.radius,
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    borderWidth: 1.3,
+    borderWidth: urTheme.cta.borderWidth,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.28,
@@ -224,8 +220,8 @@ const styles = StyleSheet.create({
     minHeight: 144,
   },
   stageCard: {
-    minHeight: 143,
-    borderRadius: urTheme.radii.pill,
+    minHeight: urTheme.cta.minHeight,
+    borderRadius: urTheme.cta.radius,
   },
   compactCard: {
     paddingHorizontal: urTheme.spacing.sm,
@@ -235,17 +231,17 @@ const styles = StyleSheet.create({
     minHeight: 122,
   },
   cardActive: {
-    backgroundColor: '#5A2E10',
-    borderColor: 'rgba(200, 152, 30, 0.78)',
+    backgroundColor: urTheme.colors.boardDark,
+    borderColor: urTheme.colors.inkBrown,
   },
   cardLocked: {
-    backgroundColor: '#3A3228',
+    backgroundColor: urTheme.colors.boardMid,
     borderColor: 'rgba(180, 160, 100, 0.32)',
     opacity: 0.72,
   },
   cardTexture: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.2,
+    opacity: urTheme.hud.textureOpacity,
   },
   cardTopGlow: {
     position: 'absolute',
@@ -258,7 +254,7 @@ const styles = StyleSheet.create({
   cardBorder: {
     ...StyleSheet.absoluteFillObject,
     margin: 6,
-    borderRadius: urTheme.radii.sm,
+    borderRadius: urTheme.board.tileRadius,
     borderWidth: 1,
     borderColor: 'rgba(246, 219, 163, 0.36)',
   },
@@ -268,7 +264,7 @@ const styles = StyleSheet.create({
     left: 10,
     right: 10,
     bottom: 10,
-    borderRadius: urTheme.radii.sm,
+    borderRadius: urTheme.board.tileRadius,
     borderWidth: 1.5,
     borderColor: 'rgba(111, 184, 255, 0.8)',
   },
@@ -327,7 +323,7 @@ const styles = StyleSheet.create({
   },
   stageSubtitle: {
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    fontWeight: '600',
+    letterSpacing: 0.85,
+    fontWeight: '700',
   },
 });

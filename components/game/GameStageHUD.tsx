@@ -66,7 +66,7 @@ export const GameStageHUD: React.FC<GameStageHUDProps> = ({ isMyTurn, canRoll, p
       <Animated.View style={[styles.turnSweep, turnSweepStyle]} />
       <Animated.View style={[styles.turnOrb, turnGlowStyle]} />
       <View style={styles.textWrap}>
-        <Text style={styles.turnTitle}>{isMyTurn ? 'Your Turn' : 'Opponent Turn'}</Text>
+        <Text style={styles.turnTitle}>{isMyTurn ? 'YOUR TURN' : 'OPPONENT TURN'}</Text>
         <Text style={styles.turnHint}>{hint}</Text>
       </View>
     </View>
@@ -76,11 +76,11 @@ export const GameStageHUD: React.FC<GameStageHUDProps> = ({ isMyTurn, canRoll, p
 const styles = StyleSheet.create({
   wrap: {
     width: '100%',
-    minHeight: 67,
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(15, 20, 29, 0.78)',
+    minHeight: urTheme.turnPanel.minHeight,
+    borderRadius: urTheme.turnPanel.radius,
+    backgroundColor: urTheme.colors.navyPanel,
     borderWidth: 1,
-    borderColor: 'rgba(200, 152, 30, 0.72)',
+    borderColor: 'rgba(200,155,80,0.62)',
     paddingVertical: 12,
     paddingHorizontal: urTheme.spacing.md,
     flexDirection: 'row',
@@ -96,13 +96,13 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: '45%',
+    height: '40%',
     backgroundColor: 'rgba(245, 224, 182, 0.1)',
   },
   innerBevel: {
     ...StyleSheet.absoluteFillObject,
     margin: 4,
-    borderRadius: urTheme.radii.pill,
+    borderRadius: urTheme.turnPanel.radius,
     borderWidth: 1,
     borderColor: 'rgba(242, 221, 182, 0.2)',
   },
@@ -115,11 +115,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(200, 152, 30, 0.20)',
   },
   turnOrb: {
-    width: 14,
-    height: 14,
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: '#C89820',
-    shadowColor: '#C89820',
+    width: urTheme.turnPanel.statusDot,
+    height: urTheme.turnPanel.statusDot,
+    borderRadius: urTheme.turnPanel.radius,
+    backgroundColor: urTheme.colors.goldAccent,
+    shadowColor: urTheme.colors.goldAccent,
     shadowOpacity: 0.82,
     shadowRadius: 7,
     elevation: 6,
