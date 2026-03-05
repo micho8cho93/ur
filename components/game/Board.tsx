@@ -3,7 +3,7 @@ import { BOARD_COLS, BOARD_ROWS, PATH_DARK, PATH_LENGTH, PATH_LIGHT } from '@/lo
 import { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { useGameStore } from '@/store/useGameStore';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, useWindowDimensions, View } from 'react-native';
+import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -1097,12 +1097,6 @@ export const Board: React.FC<BoardProps> = ({
           frameBand={frameBand}
         />
       </View>
-      <Image
-        source={require('../../assets/textures/texture-gold-inlay-border-weathered.png')}
-        style={StyleSheet.absoluteFill}
-        resizeMode="stretch"
-        pointerEvents="none"
-      />
 
       <View style={styles.innerFrame}>
         <View style={styles.tileLayer}>

@@ -143,8 +143,8 @@ export const urTextures: Record<
 > = {
   wood: require('../assets/textures/texture-wood-grain.png'),
   woodDark: require('../assets/textures/texture-wood-grain-dark.png'),
-  lapisMosaic: require('../assets/textures/texture-lapis-mosaic.png'),
   rosette: require('../assets/textures/texture-rosette-pattern.png'),
   goldInlay: require('../assets/textures/texture-inlaid-gold-pattern.png'),
   border: require('../assets/textures/texture-gold-inlay-border-weathered.png'),
+  lapisMosaic: require('../assets/textures/texture-lapis-mosaic.png'),
 };
