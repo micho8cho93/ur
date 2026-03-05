@@ -5,6 +5,9 @@
 expo-env.d.ts
 # @end expo-cli
 
+# Dependencies
+node_modules/
+
 # Expo web export output
 dist/
 
@@ -13,3 +16,6 @@ dist/
 .env.*
 !.env.example
 backend/deploy/env.production
+
+# Expo local state
+.expo/
