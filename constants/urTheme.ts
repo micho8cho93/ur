@@ -46,7 +46,7 @@ export const urTheme = {
       tokenSize: 44,
       overlap: 16,
     },
-    boardMax: 650,
+    boardMax: 950,
   },
   playerPalette: {
     dark: {
