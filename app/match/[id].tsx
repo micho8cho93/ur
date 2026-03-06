@@ -414,7 +414,7 @@ export default function GameRoom() {
   );
   const widenedBoardLayoutTarget = Math.min(urTheme.layout.boardMax, boardWidthLimitByLayout * 1.5);
   const targetBoardWidth = Math.max(110, Math.min(widenedBoardLayoutTarget, boardWidthLimitByHeight, boardSlotWidth));
-  const boardScale = Math.max(0.24, Math.min(1.2, targetBoardWidth / Math.max(boardBaseWidth, 1)));
+  const boardScale = Math.max(0.24, Math.min(2.5, targetBoardWidth / Math.max(boardBaseWidth, 1)));
   const stageGap = height < 760 ? urTheme.spacing.sm : urTheme.spacing.md;
   const viewportTopPadding = 0;
   const viewportBottomPadding = Math.max(insets.bottom, urTheme.spacing.xs);
