@@ -397,10 +397,11 @@ export default function GameRoom() {
       )
     : Math.max(224, Math.min(urTheme.layout.boardMax, stageContentWidth - 2));
 
-  const boardBaseWidth = boardWidthLimitByLayout;
+  // Must match Board.tsx base width before boardScale is applied.
+  const boardBaseWidth = Math.min(Math.max(width - urTheme.spacing.lg, 0), urTheme.layout.boardMax);
   const boardFramePadding = urTheme.spacing.sm;
   const boardInnerPadding = urTheme.spacing.xs;
-  const boardGridGap = Math.max(2, urTheme.spacing.xs - 2);
+  const boardGridGap = 0;
   const boardOuterPadding = boardFramePadding * 2 + boardInnerPadding * 2;
   const verticalBoardRows = BOARD_COLS;
   const verticalBoardCols = BOARD_ROWS;
@@ -415,7 +416,7 @@ export default function GameRoom() {
   );
   const widenedBoardLayoutTarget = Math.min(urTheme.layout.boardMax, boardWidthLimitByLayout * 1.5);
   const targetBoardWidth = Math.max(110, Math.min(widenedBoardLayoutTarget, boardWidthLimitByHeight, boardSlotWidth));
-  const boardScale = Math.max(0.24, Math.min(0.5, targetBoardWidth / Math.max(boardBaseWidth, 1)));
+  const boardScale = Math.max(0.24, Math.min(1, targetBoardWidth / Math.max(boardBaseWidth, 1)));
   const stageGap = height < 760 ? urTheme.spacing.sm : urTheme.spacing.md;
   const viewportTopPadding = 0;
   const viewportBottomPadding = Math.max(insets.bottom, urTheme.spacing.xs);
