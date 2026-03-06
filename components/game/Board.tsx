@@ -46,6 +46,7 @@ const CUE_SIZE = 48;
 const SCORE_CUE_MIN_SIZE = 44;
 const SCORE_CUE_MAX_SIZE = 58;
 const MIN_TILE_SHELL_PADDING = 2;
+const BOARD_IMAGE_HORIZONTAL_STRETCH = 1.095;
 
 export const Board: React.FC<BoardProps> = ({
   showRailHints = false,
@@ -583,7 +584,7 @@ export const Board: React.FC<BoardProps> = ({
           style={{
             width: isVertical ? boardWidth : frameHeight,
             height: isVertical ? frameHeight : boardWidth,
-            transform: isVertical ? [] : [{ rotate: '-90deg' }],
+            transform: isVertical ? [] : [{ rotate: '-90deg' }, { scaleX: BOARD_IMAGE_HORIZONTAL_STRETCH }],
           }}
         />
       </View>
