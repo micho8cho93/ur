@@ -37,7 +37,7 @@ export const urTheme = {
   spacing: { xs: 6, sm: 10, md: 16, lg: 24, xl: 32 },
   layout: {
     stage: {
-      maxWidth: 1040,
+      maxWidth: 1200,
       sideRailMin: 200,
       sideRailMax: 320,
       gutter: 18,
