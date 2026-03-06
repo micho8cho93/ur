@@ -37,7 +37,7 @@ export const urTheme = {
   spacing: { xs: 6, sm: 10, md: 16, lg: 24, xl: 32 },
   layout: {
     stage: {
-      maxWidth: 1200,
+      maxWidth: 1040,
       sideRailMin: 200,
       sideRailMax: 320,
       gutter: 18,
@@ -46,7 +46,7 @@ export const urTheme = {
       tokenSize: 44,
       overlap: 16,
     },
-    boardMax: 1200,
+    boardMax: 760,
   },
   playerPalette: {
     dark: {
