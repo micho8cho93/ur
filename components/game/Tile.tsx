@@ -25,6 +25,7 @@ interface TileProps {
   isInteractive?: boolean;
   onPress?: () => void;
   highlightMode?: 'subtle' | 'theatrical';
+  skin?: 'default' | 'transparent';
 }
 
 const RosetteArtwork: React.FC<{ size: number }> = ({ size }) => {
@@ -132,6 +133,7 @@ export const Tile: React.FC<TileProps> = ({
   isInteractive = false,
   onPress,
   highlightMode = 'theatrical',
+  skin = 'default',
 }) => {
   const rosette = isRosette(row, col);
   const war = isWarZone(row, col);
@@ -248,46 +250,59 @@ export const Tile: React.FC<TileProps> = ({
       activeOpacity={0.92}
       style={[
         styles.tile,
-        {
-          backgroundColor: baseBackground,
-          borderColor,
-          borderWidth: rosette ? 1.8 : 1.1,
-          borderRadius: tileRadius,
-        },
+        skin === 'transparent'
+          ? {
+            backgroundColor: 'transparent',
+            borderColor: 'transparent',
+            borderWidth: 0,
+            borderRadius: tileRadius,
+            shadowOpacity: 0,
+            elevation: 0,
+          }
+          : {
+            backgroundColor: baseBackground,
+            borderColor,
+            borderWidth: rosette ? 1.8 : 1.1,
+            borderRadius: tileRadius,
+          },
         isValidTarget && styles.validTile,
         isSelectedPiece && styles.selectedTile,
       ]}
     >
-      <Image
-        source={urTextures.lapisMosaic}
-        resizeMode="cover"
-        style={[
-          styles.tileTexture,
-          styles.tileMottleTexture,
-          rosette && styles.rosetteTextureTint,
-          war && styles.warTextureTint,
-        ]}
-      />
-      <Image source={urTextures.wood} resizeMode="repeat" style={styles.tileTexture} />
-      {rosette && <RosetteArtwork size={cellRenderedSize} />}
-      {!rosette && war && <WarArtwork size={cellRenderedSize} />}
-      {!rosette && !war && <PipArtwork size={cellRenderedSize} />}
+      {skin !== 'transparent' && (
+        <>
+          <Image
+            source={urTextures.lapisMosaic}
+            resizeMode="cover"
+            style={[
+              styles.tileTexture,
+              styles.tileMottleTexture,
+              rosette && styles.rosetteTextureTint,
+              war && styles.warTextureTint,
+            ]}
+          />
+          <Image source={urTextures.wood} resizeMode="repeat" style={styles.tileTexture} />
+          {rosette && <RosetteArtwork size={cellRenderedSize} />}
+          {!rosette && war && <WarArtwork size={cellRenderedSize} />}
+          {!rosette && !war && <PipArtwork size={cellRenderedSize} />}
 
-      <View
-        style={[
-          styles.innerInset,
-          {
-            margin: innerInsetMargin,
-            borderRadius: Math.max(2, tileRadius - 2),
-          },
-          rosette && styles.rosetteInset,
-        ]}
-      />
-      <View style={[styles.topLeftBevel, { borderTopLeftRadius: tileRadius }]} />
-      <View style={[styles.bottomRightShade, { borderBottomRightRadius: tileRadius }]} />
-      <View style={styles.edgeHighlight} />
-      <View style={styles.lowerShade} />
-      <View style={styles.tileDust} />
+          <View
+            style={[
+              styles.innerInset,
+              {
+                margin: innerInsetMargin,
+                borderRadius: Math.max(2, tileRadius - 2),
+              },
+              rosette && styles.rosetteInset,
+            ]}
+          />
+          <View style={[styles.topLeftBevel, { borderTopLeftRadius: tileRadius }]} />
+          <View style={[styles.bottomRightShade, { borderBottomRightRadius: tileRadius }]} />
+          <View style={styles.edgeHighlight} />
+          <View style={styles.lowerShade} />
+          <View style={styles.tileDust} />
+        </>
+      )}
 
       {isSelectedPiece && <Animated.View style={[styles.selectedRing, selectedPulseStyle]} />}
       {isValidTarget && <Animated.View style={[styles.validRing, pulseStyle]} />}
