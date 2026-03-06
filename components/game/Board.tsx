@@ -46,7 +46,7 @@ const CUE_SIZE = 48;
 const SCORE_CUE_MIN_SIZE = 44;
 const SCORE_CUE_MAX_SIZE = 58;
 const MIN_TILE_SHELL_PADDING = 2;
-const BOARD_IMAGE_HORIZONTAL_STRETCH = 1.095;
+const BOARD_IMAGE_HORIZONTAL_STRETCH = 1.5;
 
 export const Board: React.FC<BoardProps> = ({
   showRailHints = false,
