@@ -1,4 +1,4 @@
-import { createInitialState, getValidMoves, applyMove, MoveAction, rollDice } from '../engine';
+import { createInitialState, getValidMoves, applyMove } from '../engine';
 import { GameState } from '../types';
 
 describe('Game Engine', () => {

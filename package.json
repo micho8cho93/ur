@@ -13,7 +13,9 @@
     "backend:up": "npm run build:backend && docker compose -f backend/docker-compose.yml up -d",
     "backend:dev": "npm run build:backend && docker compose -f backend/docker-compose.yml up",
     "backend:prod:up": "docker compose --env-file backend/deploy/env.production -f backend/deploy/docker-compose.prod.yml up -d",
-    "backend:prod:logs": "docker compose --env-file backend/deploy/env.production -f backend/deploy/docker-compose.prod.yml logs -f"
+    "backend:prod:logs": "docker compose --env-file backend/deploy/env.production -f backend/deploy/docker-compose.prod.yml logs -f",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -57,7 +59,10 @@
     "@types/react": "~19.1.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "babel-jest": "^29.7.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5"
   },
   "private": true
 }
