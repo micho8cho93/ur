@@ -1,0 +1,239 @@
+import { useGameStore } from './useGameStore';
+import * as engine from '@/logic/engine';
+import { GameState, MoveAction } from '@/logic/types';
+
+jest.mock('@/logic/engine', () => {
+  const actual = jest.requireActual('@/logic/engine');
+  return {
+    ...actual,
+    rollDice: jest.fn(actual.rollDice),
+  };
+});
+
+const mockedRollDice = engine.rollDice as jest.MockedFunction<typeof engine.rollDice>;
+
+const makeState = (overrides: Partial<GameState> = {}): GameState => {
+  const state = engine.createInitialState();
+  return {
+    ...state,
+    ...overrides,
+  };
+};
+
+describe('useGameStore', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useRealTimers();
+    useGameStore.getState().reset();
+  });
+
+  it('initGame() resets match/game-derived state cleanly', () => {
+    useGameStore.setState({
+      onlineMode: 'nakama',
+      matchId: 'old-match',
+      validMoves: [{ pieceId: 'light-0', fromIndex: -1, toIndex: 1 }],
+      matchPresences: ['u-1'],
+      socketState: 'connected',
+      serverRevision: 12,
+      playerColor: 'light',
+      rollCommandSender: jest.fn(),
+      moveCommandSender: jest.fn(),
+      gameState: makeState({ phase: 'moving', rollValue: 2 }),
+    });
+
+    useGameStore.getState().initGame('new-match');
+    const state = useGameStore.getState();
+
+    expect(state.matchId).toBe('new-match');
+    expect(state.gameState).toEqual(engine.createInitialState());
+    expect(state.validMoves).toEqual([]);
+    expect(state.matchPresences).toEqual([]);
+    expect(state.socketState).toBe('idle');
+    expect(state.serverRevision).toBe(0);
+    expect(state.playerColor).toBeNull();
+    expect(state.rollCommandSender).toBeNull();
+    expect(state.moveCommandSender).toBeNull();
+  });
+
+  it('setGameStateFromServer() recomputes validMoves only when moving with rollValue', () => {
+    const validSpy = jest.spyOn(engine, 'getValidMoves');
+    const movingState = makeState({ phase: 'moving', rollValue: 1 });
+
+    useGameStore.getState().setGameStateFromServer(movingState);
+
+    expect(validSpy).toHaveBeenCalledWith(movingState, 1);
+    expect(useGameStore.getState().validMoves.length).toBeGreaterThan(0);
+
+    validSpy.mockClear();
+    const rollingState = makeState({ phase: 'rolling', rollValue: 1 });
+    useGameStore.getState().setGameStateFromServer(rollingState);
+
+    expect(validSpy).not.toHaveBeenCalled();
+    expect(useGameStore.getState().validMoves).toEqual([]);
+
+    const movingNoRollState = makeState({ phase: 'moving', rollValue: null });
+    useGameStore.getState().setGameStateFromServer(movingNoRollState);
+
+    expect(validSpy).not.toHaveBeenCalled();
+    expect(useGameStore.getState().validMoves).toEqual([]);
+  });
+
+  it('applyServerSnapshot() ignores stale revisions and accepts newer ones', () => {
+    useGameStore.setState({ serverRevision: 3, matchId: 'keep-match' });
+    const staleState = makeState({ phase: 'moving', rollValue: 1 });
+
+    useGameStore.getState().applyServerSnapshot(staleState, 2, 'stale-match');
+
+    expect(useGameStore.getState().serverRevision).toBe(3);
+    expect(useGameStore.getState().matchId).toBe('keep-match');
+    expect(useGameStore.getState().gameState).toEqual(engine.createInitialState());
+
+    const newerState = makeState({ phase: 'moving', rollValue: 1 });
+    useGameStore.getState().applyServerSnapshot(newerState, 4, 'new-match');
+
+    const state = useGameStore.getState();
+    expect(state.serverRevision).toBe(4);
+    expect(state.matchId).toBe('new-match');
+    expect(state.gameState).toEqual(newerState);
+    expect(state.validMoves.length).toBeGreaterThan(0);
+  });
+
+  it('offline roll() during rolling phase sets rollValue, moves to moving phase, and computes validMoves', () => {
+    mockedRollDice.mockReturnValue(1);
+
+    useGameStore.getState().roll();
+
+    const state = useGameStore.getState();
+    expect(mockedRollDice).toHaveBeenCalledTimes(1);
+    expect(state.gameState.phase).toBe('moving');
+    expect(state.gameState.rollValue).toBe(1);
+    expect(state.validMoves.length).toBeGreaterThan(0);
+  });
+
+  it('offline roll() with no valid moves temporarily enters moving, then skips turn after timeout', () => {
+    jest.useFakeTimers();
+    mockedRollDice.mockReturnValue(0);
+
+    useGameStore.getState().roll();
+
+    let state = useGameStore.getState();
+    expect(state.gameState.phase).toBe('moving');
+    expect(state.gameState.rollValue).toBe(0);
+    expect(state.validMoves).toEqual([]);
+
+    jest.advanceTimersByTime(1000);
+
+    state = useGameStore.getState();
+    expect(state.gameState.currentTurn).toBe('dark');
+    expect(state.gameState.phase).toBe('rolling');
+    expect(state.gameState.rollValue).toBeNull();
+    expect(state.validMoves).toEqual([]);
+    expect(state.gameState.history[state.gameState.history.length - 1]).toBe('light rolled 0 but had no moves.');
+  });
+
+  it('offline makeMove() in moving phase applies the move and clears validMoves', () => {
+    const gameState = makeState({ phase: 'moving', rollValue: 1 });
+    const validMove = engine.getValidMoves(gameState, 1)[0] as MoveAction;
+
+    useGameStore.setState({ gameState, validMoves: [validMove] });
+    useGameStore.getState().makeMove(validMove);
+
+    const state = useGameStore.getState();
+    expect(state.gameState.phase).toBe('rolling');
+    expect(state.gameState.rollValue).toBeNull();
+    expect(state.validMoves).toEqual([]);
+  });
+
+  it('in nakama mode, roll() does nothing when it is not the local player turn', () => {
+    const sender = jest.fn();
+    useGameStore.setState({
+      onlineMode: 'nakama',
+      playerColor: 'dark',
+      gameState: makeState({ currentTurn: 'light', phase: 'rolling' }),
+      rollCommandSender: sender,
+    });
+
+    useGameStore.getState().roll();
+
+    expect(sender).not.toHaveBeenCalled();
+  });
+
+  it('in nakama mode, roll() delegates to rollCommandSender when local player turn', () => {
+    const sender = jest.fn();
+    useGameStore.setState({
+      onlineMode: 'nakama',
+      playerColor: 'light',
+      gameState: makeState({ currentTurn: 'light', phase: 'rolling' }),
+      rollCommandSender: sender,
+    });
+
+    useGameStore.getState().roll();
+
+    expect(sender).toHaveBeenCalledTimes(1);
+  });
+
+  it('in nakama mode, makeMove() does nothing when it is not the local player turn', () => {
+    const sender = jest.fn();
+    useGameStore.setState({
+      onlineMode: 'nakama',
+      playerColor: 'dark',
+      gameState: makeState({ currentTurn: 'light', phase: 'moving', rollValue: 1 }),
+      moveCommandSender: sender,
+    });
+
+    useGameStore.getState().makeMove({ pieceId: 'light-0', fromIndex: -1, toIndex: 0 });
+
+    expect(sender).not.toHaveBeenCalled();
+  });
+
+  it('in nakama mode, makeMove() delegates to moveCommandSender when local player turn', () => {
+    const sender = jest.fn();
+    const move = { pieceId: 'light-0', fromIndex: -1, toIndex: 0 };
+
+    useGameStore.setState({
+      onlineMode: 'nakama',
+      playerColor: 'light',
+      gameState: makeState({ currentTurn: 'light', phase: 'moving', rollValue: 1 }),
+      moveCommandSender: sender,
+    });
+
+    useGameStore.getState().makeMove(move);
+
+    expect(sender).toHaveBeenCalledWith(move);
+  });
+
+  it('reset() clears transport/session/match state and restores offline defaults', () => {
+    useGameStore.setState({
+      matchId: 'm-1',
+      matchToken: 't-1',
+      matchPresences: ['u-1'],
+      socketState: 'connected',
+      rollCommandSender: jest.fn(),
+      moveCommandSender: jest.fn(),
+      playerColor: 'dark',
+      onlineMode: 'nakama',
+      serverRevision: 9,
+      nakamaSession: { token: 'token' } as never,
+      userId: 'user-1',
+      validMoves: [{ pieceId: 'light-1', fromIndex: -1, toIndex: 2 }],
+      gameState: makeState({ phase: 'moving', rollValue: 2 }),
+    });
+
+    useGameStore.getState().reset();
+
+    const state = useGameStore.getState();
+    expect(state.matchId).toBeNull();
+    expect(state.matchToken).toBeNull();
+    expect(state.matchPresences).toEqual([]);
+    expect(state.socketState).toBe('idle');
+    expect(state.rollCommandSender).toBeNull();
+    expect(state.moveCommandSender).toBeNull();
+    expect(state.playerColor).toBeNull();
+    expect(state.onlineMode).toBe('offline');
+    expect(state.serverRevision).toBe(0);
+    expect(state.nakamaSession).toBeNull();
+    expect(state.userId).toBeNull();
+    expect(state.validMoves).toEqual([]);
+    expect(state.gameState).toEqual(engine.createInitialState());
+  });
+});
