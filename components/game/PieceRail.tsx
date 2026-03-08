@@ -1,4 +1,4 @@
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import { urTheme, urTypography } from '@/constants/urTheme';
 import React, { useEffect } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -11,6 +11,23 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Piece } from './Piece';
+
+const TRAY_ASSETS = {
+  light: require('../../assets/trays/tray_light.png'),
+  dark: require('../../assets/trays/tray_dark.png'),
+};
+
+const TRAY_ART_FIT = {
+  // Artwork-only fit tuning; does not affect piece coordinates or hitboxes.
+  scale: 1.12,
+  offsetX: 0,
+  offsetY: 0,
+};
+
+const RESERVE_PIECE_ART_SCALE = 1.74;
+const RESERVE_STACK_OFFSET_Y = 2;
+const RESERVE_PIECE_OVERLAP = 6;
+const RESERVE_STACK_LEFT_INSET = 4;
 
 interface PieceRailProps {
   label: string;
@@ -54,7 +71,6 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   }));
 
   const shownCount = Math.min(totalCount, reserveCount);
-  const emptyCount = Math.max(0, totalCount - shownCount);
   const resolvedVariant = tokenVariant ?? color;
 
   return (
@@ -62,21 +78,39 @@ export const PieceRail: React.FC<PieceRailProps> = ({
       <Text style={styles.label}>{label}</Text>
 
       <View style={styles.rail}>
-        <Image source={urTextures.lapisMosaic} resizeMode="cover" style={[styles.railTexture, color === 'dark' && styles.darkRailTexture]} />
-        <View style={styles.railTopGlow} />
-        <View style={styles.railBottomShade} />
+        {/*
+          Reserve tray artwork is rendered as a background PNG.
+          Piece positions and stacking geometry are determined by gameplay layout,
+          not by the tray image.
+        */}
+        <View pointerEvents="none" style={styles.trayArtLayer}>
+          <Image
+            source={TRAY_ASSETS[color]}
+            resizeMode="cover"
+            style={[
+              styles.trayArt,
+              {
+                transform: [
+                  { translateX: TRAY_ART_FIT.offsetX },
+                  { translateY: TRAY_ART_FIT.offsetY },
+                  { scale: TRAY_ART_FIT.scale },
+                ],
+              },
+            ]}
+          />
+        </View>
         <Animated.View style={[styles.activeGlow, glowStyle]} />
-        <View style={styles.innerRail} />
 
         <View style={styles.pieceStack}>
           {Array.from({ length: shownCount }).map((_, index) => (
-            <View key={`piece-${index}`} style={[styles.stackPiece, { marginLeft: index === 0 ? 0 : -12 }]}>
-              <Piece color={color} size="sm" variant={resolvedVariant} />
+            <View key={`piece-${index}`} style={[styles.stackPiece, { marginLeft: index === 0 ? 0 : -RESERVE_PIECE_OVERLAP }]}>
+              <Piece
+                color={color}
+                size="sm"
+                variant={resolvedVariant}
+                artScale={RESERVE_PIECE_ART_SCALE}
+              />
             </View>
-          ))}
-
-          {Array.from({ length: emptyCount }).map((_, index) => (
-            <View key={`empty-${index}`} style={[styles.emptyDot, { marginLeft: shownCount + index === 0 ? 0 : -urTheme.layout.rail.overlap + 2 }]} />
           ))}
         </View>
       </View>
@@ -99,8 +133,8 @@ const styles = StyleSheet.create({
     minHeight: 76,
     borderRadius: urTheme.radii.pill,
     borderWidth: 1.2,
-    borderColor: 'rgba(200, 152, 30, 0.75)',
-    backgroundColor: 'rgba(30, 18, 10, 0.84)',
+    borderColor: 'transparent',
+    backgroundColor: 'transparent',
     overflow: 'hidden',
     justifyContent: 'center',
     paddingHorizontal: 12,
@@ -110,54 +144,28 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     elevation: 6,
   },
-  railTexture: {
+  trayArtLayer: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.28,
+    zIndex: 0,
   },
-  darkRailTexture: {
-    opacity: 0.16,
-  },
-  railTopGlow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '42%',
-    backgroundColor: 'rgba(220, 160, 60, 0.10)',
-  },
-  railBottomShade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '34%',
-    backgroundColor: 'rgba(0, 0, 0, 0.12)',
+  trayArt: {
+    width: '100%',
+    height: '100%',
   },
   activeGlow: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(200, 152, 30, 0.16)',
-  },
-  innerRail: {
-    ...StyleSheet.absoluteFillObject,
-    margin: 5,
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 1,
-    borderColor: 'rgba(248, 231, 196, 0.24)',
+    zIndex: 1,
   },
   pieceStack: {
     flexDirection: 'row',
+    alignSelf: 'flex-start',
     alignItems: 'center',
-    paddingLeft: 4,
+    paddingLeft: RESERVE_STACK_LEFT_INSET,
+    transform: [{ translateY: RESERVE_STACK_OFFSET_Y }],
+    zIndex: 2,
   },
   stackPiece: {
     zIndex: 5,
-  },
-  emptyDot: {
-    width: 24,
-    height: 24,
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 1,
-    borderColor: 'rgba(200, 152, 30, 0.42)',
-    backgroundColor: 'rgba(26, 18, 8, 0.62)',
   },
 });

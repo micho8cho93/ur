@@ -19,6 +19,7 @@ interface TileProps {
   row: number;
   col: number;
   cellSize?: number;
+  piecePixelSize?: number;
   piece?: { id: string; color: PlayerColor };
   isValidTarget?: boolean;
   isSelectedPiece?: boolean;
@@ -127,6 +128,7 @@ export const Tile: React.FC<TileProps> = ({
   row,
   col,
   cellSize = 44,
+  piecePixelSize,
   piece,
   isValidTarget = false,
   isSelectedPiece = false,
@@ -313,7 +315,12 @@ export const Tile: React.FC<TileProps> = ({
 
       {piece && (
         <View style={styles.pieceWrap}>
-          <Piece color={piece.color} highlight={isValidTarget} state={isValidTarget ? 'active' : 'idle'} />
+          <Piece
+            color={piece.color}
+            pixelSize={piecePixelSize}
+            highlight={isValidTarget}
+            state={isValidTarget ? 'active' : 'idle'}
+          />
         </View>
       )}
     </TouchableOpacity>
@@ -457,6 +464,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(67, 40, 21, 0.36)',
   },
   pieceWrap: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
     opacity: 0.98,
   },
 });

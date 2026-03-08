@@ -1,8 +1,7 @@
 import { urTheme } from '@/constants/urTheme';
 import { PlayerColor } from '@/logic/types';
 import React, { useEffect, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
-import Svg, { Circle as SvgCircle } from 'react-native-svg';
+import { Image, ImageSourcePropType, StyleSheet, View } from 'react-native';
 import Animated, {
   Extrapolation,
   Easing,
@@ -16,51 +15,43 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+type PieceVariant = 'light' | 'dark' | 'reserve';
+
 interface PieceProps {
   color: PlayerColor;
   highlight?: boolean;
   size?: 'sm' | 'md' | 'lg';
-  variant?: 'light' | 'dark' | 'reserve';
+  pixelSize?: number;
+  artScale?: number;
+  variant?: PieceVariant;
   state?: 'idle' | 'active' | 'captured';
 }
 
-const InlayPattern: React.FC<{ size: number; color: string }> = ({ size, color }) => {
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = size * 0.3;
-  const dotR = size * 0.055;
-  const angles = [0, 60, 120, 180, 240, 300];
+const PIECE_SIZE_PRESETS = {
+  sm: 34,
+  md: 38,
+  lg: 46,
+} as const;
 
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      style={{ position: 'absolute' }}
-      pointerEvents="none"
-    >
-      {angles.map((angle, i) => {
-        const rad = (angle * Math.PI) / 180;
-        return (
-          <SvgCircle
-            key={i}
-            cx={cx + Math.cos(rad) * r}
-            cy={cy + Math.sin(rad) * r}
-            r={dotR}
-            fill={color}
-            opacity={0.85}
-          />
-        );
-      })}
-      <SvgCircle cx={cx} cy={cy} r={dotR} fill={color} opacity={0.9} />
-    </Svg>
-  );
+const PIECE_ART_SOURCES: Record<PieceVariant, ImageSourcePropType> = {
+  light: require('../../assets/pieces/piece_light.png'),
+  dark: require('../../assets/pieces/piece_dark.png'),
+  reserve: require('../../assets/pieces/piece_reserve.png'),
+};
+
+// Tune PNG-only visual fit here for future artwork revisions (e.g. transparent padding changes).
+const PIECE_ART_FIT = {
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0,
 };
 
 export const Piece: React.FC<PieceProps> = ({
   color,
   highlight = false,
   size = 'md',
+  pixelSize,
+  artScale = 1,
   variant,
   state = 'idle',
 }) => {
@@ -68,7 +59,7 @@ export const Piece: React.FC<PieceProps> = ({
   const glowPulse = useSharedValue(0);
   const motion = useSharedValue(0);
 
-  const resolvedVariant = variant ?? color;
+  const resolvedVariant: PieceVariant = variant ?? color;
 
   useEffect(() => {
     intro.value = withSpring(1, urTheme.motion.spring.game);
@@ -117,17 +108,29 @@ export const Piece: React.FC<PieceProps> = ({
   }, [motion, state]);
 
   const sizePx = useMemo(() => {
-    if (size === 'sm') return 34;
-    if (size === 'lg') return 46;
-    return 38;
-  }, [size]);
+    // Gameplay geometry can pass an exact pixel size; presets remain as fallback for rails/cues.
+    if (typeof pixelSize === 'number' && Number.isFinite(pixelSize) && pixelSize > 0) {
+      return pixelSize;
+    }
+    return PIECE_SIZE_PRESETS[size];
+  }, [pixelSize, size]);
+
+  const artSizePx = useMemo(() => Math.max(1, sizePx * PIECE_ART_FIT.scale * artScale), [artScale, sizePx]);
 
   const pieceStyle = useAnimatedStyle(() => ({
     transform: [
-      { scale: intro.value * interpolate(motion.value, [0, 1], [1, 1.08], Extrapolation.CLAMP) },
-      { translateY: interpolate(motion.value, [0, 1], [0, -2], Extrapolation.CLAMP) },
+      { scale: intro.value * interpolate(motion.value, [0, 1], [1, 1.045], Extrapolation.CLAMP) },
+      { translateY: interpolate(motion.value, [0, 1], [0, -1], Extrapolation.CLAMP) },
     ],
     opacity: state === 'captured' ? interpolate(motion.value, [0, 1], [1, 0.35], Extrapolation.CLAMP) : 1,
+  }));
+
+  const shadowStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(motion.value, [0, 1], [0.22, 0.14], Extrapolation.CLAMP),
+    transform: [
+      { scaleX: interpolate(motion.value, [0, 1], [1, 0.94], Extrapolation.CLAMP) },
+      { scaleY: interpolate(motion.value, [0, 1], [1, 0.88], Extrapolation.CLAMP) },
+    ],
   }));
 
   const glowStyle = useAnimatedStyle(() => ({
@@ -135,60 +138,39 @@ export const Piece: React.FC<PieceProps> = ({
     transform: [{ scale: 0.95 + glowPulse.value * 0.2 }],
   }));
 
-  const palette =
-    resolvedVariant === 'light'
-      ? { ...urTheme.playerPalette.light, specular: 'rgba(255,244,232,0.44)' }
-      : resolvedVariant === 'dark'
-        ? { ...urTheme.playerPalette.dark, specular: 'rgba(140,190,255,0.32)' }
-        : {
-            shell: '#B27830',
-            rim: '#F1C270',
-            core: '#D39440',
-            center: '#F7E1B8',
-            inlay: '#FFF4E8',
-            shadow: '#06070A',
-            specular: 'rgba(255, 244, 219, 0.6)',
-          };
-
   return (
     <Animated.View style={[styles.wrap, { width: sizePx, height: sizePx }, pieceStyle]}>
       {highlight && (
         <Animated.View style={[styles.targetGlow, glowStyle, { width: sizePx + 8, height: sizePx + 8 }]} />
       )}
 
-      <View style={[styles.baseShadow, { width: sizePx - 4, height: sizePx * 0.38 }]} />
-      <View
+      <Animated.View
         style={[
-          styles.base,
+          styles.baseShadow,
+          shadowStyle,
           {
-            width: sizePx - 2,
-            height: sizePx - 2,
-            backgroundColor: palette.shell,
-            borderColor: palette.rim,
-            shadowColor: palette.shadow,
+            width: sizePx * 0.62,
+            height: Math.max(4, sizePx * 0.16),
+            bottom: Math.max(1, sizePx * 0.06),
           },
         ]}
-      >
-        <View style={[styles.innerRim, { borderColor: 'rgba(241, 230, 208, 0.45)' }]} />
-        <View style={styles.topShine} />
-        <View style={styles.edgeShade} />
-        <View
+      />
+      <View style={[styles.artFrame, { width: sizePx, height: sizePx }]}>
+        <Image
+          source={PIECE_ART_SOURCES[resolvedVariant]}
+          resizeMode="contain"
           style={[
-            styles.core,
+            styles.artImage,
             {
-              width: sizePx * 0.5,
-              height: sizePx * 0.5,
-              backgroundColor: palette.core,
-              borderColor: palette.rim,
+              width: artSizePx,
+              height: artSizePx,
+              transform: [
+                { translateX: PIECE_ART_FIT.offsetX },
+                { translateY: PIECE_ART_FIT.offsetY },
+              ],
             },
           ]}
-        >
-          <View style={[styles.coreCenter, { width: sizePx * 0.22, height: sizePx * 0.22, backgroundColor: palette.center }]} />
-        </View>
-        <View style={[styles.specular, { width: sizePx * 0.3, height: sizePx * 0.18, backgroundColor: palette.specular }]} />
-        <View style={[styles.inlayWrap, { width: sizePx * 0.72, height: sizePx * 0.72 }]}>
-          <InlayPattern size={sizePx * 0.72} color={palette.inlay} />
-        </View>
+        />
       </View>
     </Animated.View>
   );
@@ -206,64 +188,14 @@ const styles = StyleSheet.create({
   },
   baseShadow: {
     position: 'absolute',
-    bottom: 2,
     borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(5, 8, 11, 0.34)',
+    backgroundColor: 'rgba(5, 8, 11, 0.26)',
   },
-  base: {
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 2.4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.48,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  innerRim: {
-    ...StyleSheet.absoluteFillObject,
-    margin: 2.4,
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 0.8,
-  },
-  topShine: {
-    position: 'absolute',
-    top: 1,
-    left: 4,
-    right: 4,
-    height: '52%',
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(255, 248, 220, 0.26)',
-  },
-  edgeShade: {
-    position: 'absolute',
-    left: 3,
-    right: 3,
-    bottom: 1,
-    height: '36%',
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(0, 0, 0, 0.16)',
-  },
-  core: {
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 1,
+  artFrame: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  coreCenter: {
-    borderRadius: urTheme.radii.pill,
-    opacity: 0.9,
-  },
-  specular: {
-    position: 'absolute',
-    top: 4,
-    left: 6,
-    borderRadius: urTheme.radii.pill,
-    transform: [{ rotate: '-24deg' }],
-  },
-  inlayWrap: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
+  artImage: {
+    opacity: 0.98,
   },
 });

@@ -74,6 +74,8 @@ const CUE_SIZE = 48;
 const SCORE_CUE_MIN_SIZE = 44;
 const SCORE_CUE_MAX_SIZE = 58;
 const MIN_TILE_SHELL_PADDING = 2;
+// Controls how much of each tile the on-board piece art occupies.
+const BOARD_PIECE_TILE_COVERAGE = 0.86;
 const SHOW_BOARD_ALIGNMENT_DEBUG = false;
 
 // Gameplay geometry is canonical; adjust this object if the PNG asset changes.
@@ -150,6 +152,11 @@ export const Board: React.FC<BoardProps> = ({
   const renderedTileSize = useMemo(
     () => Math.max(18, Math.round(boardLayout.cellSize - tileShellPadding * 2)),
     [boardLayout.cellSize, tileShellPadding],
+  );
+  // On-board PNG size is derived from board/tile geometry, not fixed presets.
+  const boardPiecePixelSize = useMemo(
+    () => Math.max(14, Math.round(renderedTileSize * BOARD_PIECE_TILE_COVERAGE)),
+    [renderedTileSize],
   );
 
   const mapLogicalToDisplayCoord = (r: number, c: number): { row: number; col: number } => {
@@ -666,6 +673,7 @@ export const Board: React.FC<BoardProps> = ({
               row={r}
               col={c}
               cellSize={renderedTileSize}
+              piecePixelSize={boardPiecePixelSize}
               piece={piece}
               isValidTarget={isValidTarget}
               isSelectedPiece={isSelectedPiece}
