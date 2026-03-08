@@ -85,7 +85,8 @@ const BOARD_ART_ALIGNMENT: BoardArtAlignmentConfig = {
   scale: 1,
   insetTop: 0.024,
   insetRight: 0.385,
-  insetBottom: 0.002,
+  // Extend artwork down a touch so last-row side tiles align with gameplay hitboxes/glow.
+  insetBottom: 0.018,
   insetLeft: 0.36,
 };
 
