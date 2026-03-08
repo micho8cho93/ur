@@ -7,15 +7,19 @@ import { PieceRail } from '@/components/game/PieceRail';
 import { TutorialControls } from '@/components/tutorial/TutorialControls';
 import { TutorialModal } from '@/components/tutorial/TutorialModal';
 import { Button } from '@/components/ui/Button';
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
-import { buildTutorialFrames, describeTutorialActionStep, describeTutorialStep } from '@/tutorials/tutorialEngine';
+import { urTheme, urTypography } from '@/constants/urTheme';
+import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
+import { buildTutorialFrames, describeTutorialActionStep } from '@/tutorials/tutorialEngine';
 import { TutorialStep, TutorialTeachingStep, TutorialUiTarget } from '@/tutorials/tutorialTypes';
 import { WATCH_TUTORIAL_SCRIPT } from '@/tutorials/watchTutorialScript';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Stack, useRouter } from 'expo-router';
 import React from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const PLAYER_PERSPECTIVE = 'light' as const;
+const UR_BG_IMAGE = require('../../assets/images/ur_bg.png');
 
 const isTeachingStep = (step: TutorialStep): step is TutorialTeachingStep => step.kind === 'PAUSE' || step.kind === 'UI_HINT';
 
@@ -32,13 +36,15 @@ const getAutoAdvanceDelay = (step: TutorialStep, speed: 1 | 2) => {
 
 export default function WatchTutorialScreen() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [showHowToPlay, setShowHowToPlay] = React.useState(false);
   const [stepIndex, setStepIndex] = React.useState(0);
   const [isPlaying, setIsPlaying] = React.useState(true);
   const [speed, setSpeed] = React.useState<1 | 2>(1);
   const [activeModalStep, setActiveModalStep] = React.useState<TutorialTeachingStep | null>(null);
   const [rollingVisual, setRollingVisual] = React.useState(false);
+  const [boardSlotSize, setBoardSlotSize] = React.useState({ width: 0, height: 0 });
   const resumeAfterModalRef = React.useRef(false);
 
   const tutorialBuild = React.useMemo(() => {
@@ -61,7 +67,6 @@ export default function WatchTutorialScreen() {
   const currentFrame = tutorialBuild.frames ? tutorialBuild.frames[stepIndex] : null;
   const currentFocus = getTeachingFocus(activeModalStep);
   const controlsLocked = activeModalStep !== null;
-  const isCompact = width < 720;
 
   const advanceStep = React.useCallback(() => {
     if (!tutorialBuild.frames) return;
@@ -163,7 +168,7 @@ export default function WatchTutorialScreen() {
   if (!tutorialBuild.frames || !currentFrame) {
     return (
       <View style={styles.screen}>
-        <Stack.Screen options={{ title: 'Tutorial (Watch)' }} />
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.errorWrap}>
           <Text style={styles.errorTitle}>Tutorial failed to load</Text>
           <Text style={styles.errorText}>{tutorialBuild.error?.message ?? 'Unknown error'}</Text>
@@ -185,103 +190,315 @@ export default function WatchTutorialScreen() {
 
   const highlight = (target: TutorialUiTarget) => currentFocus === target;
 
-  const helpButton = (
-    <Pressable
-      onPress={() => setShowHowToPlay(true)}
-      accessibilityRole="button"
-      accessibilityLabel="Open how to play instructions"
-      style={({ pressed }) => [styles.headerHelpButton, pressed && styles.headerHelpButtonPressed]}
-    >
-      <Text style={styles.headerHelpLabel}>Help</Text>
-    </Pressable>
+  const viewportHorizontalPadding = 0;
+  const stageContentWidth = Math.min(Math.max(width - viewportHorizontalPadding * 2, 0), urTheme.layout.stage.maxWidth);
+  const useSideColumns = width >= 980;
+  const compactSupportPanels = width < 460;
+  const boardClusterGap = useSideColumns ? urTheme.spacing.xs : urTheme.spacing.sm;
+  const sideColumnWidth = useSideColumns
+    ? Math.max(224, Math.min(292, Math.floor(stageContentWidth * 0.24)))
+    : 0;
+  const boardWidthLimitByLayout = useSideColumns
+    ? Math.max(
+        224,
+        Math.min(urTheme.layout.boardMax, stageContentWidth - sideColumnWidth * 2 - boardClusterGap * 2),
+      )
+    : Math.max(224, Math.min(urTheme.layout.boardMax, stageContentWidth - 2));
+
+  // Must match Board.tsx base width before boardScale is applied.
+  const boardBaseWidth = Math.min(Math.max(width - urTheme.spacing.lg, 0), urTheme.layout.boardMax);
+  const boardFramePadding = urTheme.spacing.sm;
+  const boardInnerPadding = urTheme.spacing.xs;
+  const boardGridGap = 0;
+  const boardOuterPadding = boardFramePadding * 2 + boardInnerPadding * 2;
+  const verticalBoardRows = BOARD_COLS;
+  const verticalBoardCols = BOARD_ROWS;
+  const verticalBoardGapTotal = (verticalBoardRows - 1) * boardGridGap;
+  const boardSlotWidth = boardSlotSize.width > 0 ? boardSlotSize.width : boardWidthLimitByLayout;
+  const boardSlotHeight = boardSlotSize.height > 0 ? boardSlotSize.height : Math.max(0, height * 0.45);
+  const boardWidthLimitByHeight = Math.min(
+    urTheme.layout.boardMax,
+    boardOuterPadding +
+      (Math.max(0, boardSlotHeight - boardOuterPadding - verticalBoardGapTotal) * verticalBoardCols) / verticalBoardRows,
   );
+  const widenedBoardLayoutTarget = Math.min(urTheme.layout.boardMax, boardWidthLimitByLayout * 1.5);
+  const targetBoardWidth = Math.max(110, Math.min(widenedBoardLayoutTarget, boardWidthLimitByHeight, boardSlotWidth));
+  const boardScale = Math.max(0.24, Math.min(1, targetBoardWidth / Math.max(boardBaseWidth, 1)));
+  const stageGap = height < 760 ? urTheme.spacing.sm : urTheme.spacing.md;
+  const viewportTopPadding = 0;
+  const viewportBottomPadding = Math.max(insets.bottom, urTheme.spacing.xs);
+  const topChromeTop = insets.top + urTheme.spacing.xs;
+  const topChromeHeight = 36;
+  const scoreOverlayTop = topChromeTop + topChromeHeight + urTheme.spacing.xs;
+  const backdropOverscan = Math.ceil(Math.max(width, height) * 0.025);
+  const canvasTopEdgeLift = Math.max(24, Math.min(96, Math.round(height * 0.07)));
+  const sideColumnTopInset = scoreOverlayTop + urTheme.spacing.sm;
 
   return (
     <View style={styles.screen}>
-      <Stack.Screen options={{ title: 'Tutorial (Watch)', headerRight: () => helpButton }} />
+      <Stack.Screen options={{ headerShown: false }} />
 
-      <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.tableGrainPrimary} />
-      <Image source={urTextures.wood} resizeMode="repeat" style={styles.tableGrainSecondary} />
-      <View style={styles.tableTopLight} />
-      <View style={styles.tableBottomShade} />
-      <View style={styles.tableVignetteOuter} />
-      <View style={styles.tableVignetteInner} />
-      <View style={styles.tableSoftSpot} />
+      <View pointerEvents="none" style={styles.backdropLayer}>
+        <Image
+          source={UR_BG_IMAGE}
+          resizeMode="stretch"
+          style={[
+            styles.backdropImage,
+            {
+              left: -backdropOverscan,
+              width: width + backdropOverscan * 2,
+              top: -backdropOverscan - canvasTopEdgeLift,
+              height: height + backdropOverscan * 2 + canvasTopEdgeLift,
+            },
+          ]}
+        />
+      </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.stageWrap}>
-          <View style={styles.topActionsRow}>
-            <View style={styles.tutorialBadgeWrap}>
-              <Text style={styles.tutorialBadge}>Deterministic Replay Tutorial</Text>
-              <Text style={styles.tutorialSubtitle}>
-                {stepIndex >= totalSteps ? 'Tutorial complete' : `Next: ${describeTutorialStep(WATCH_TUTORIAL_SCRIPT[stepIndex])}`}
-              </Text>
-            </View>
-            <View style={styles.skipButtonWrap}>
-              <Button title="Skip tutorial" variant="outline" onPress={() => router.replace('/')} />
-            </View>
-          </View>
-
-          <View style={styles.scoreRow}>
-            <EdgeScore label="Dark Score" value={`${gameState.dark.finishedCount}/7`} active={!isMyTurn} />
-            <EdgeScore label="Light Score" value={`${gameState.light.finishedCount}/7`} active={isMyTurn} align="right" />
-          </View>
-
-          <PieceRail label="Dark Reserve" color="dark" tokenVariant="dark" reserveCount={darkReserve} active={!isMyTurn} />
-
-          <View style={[styles.focusWrap, highlight('turnBanner') && styles.focusWrapActive]}>
-            <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} />
-          </View>
-
-          <View style={[styles.boardCard, (highlight('board') || highlight('pieceSelect')) && styles.focusWrapActive]}>
-            <View style={styles.boardShadow} />
-            <Board
-              showRailHints
-              highlightMode="theatrical"
-              boardScale={isCompact ? 0.95 : 1}
-              gameStateOverride={gameState}
-              validMovesOverride={currentFrame.validMoves}
-              playerColorOverride={PLAYER_PERSPECTIVE}
-              onMakeMoveOverride={() => {}}
-              allowInteraction={false}
-            />
-          </View>
-
-          <PieceRail label="Light Reserve" color="light" tokenVariant="light" reserveCount={lightReserve} active={isMyTurn} />
-
-          <View style={[styles.focusWrap, highlight('dice') && styles.focusWrapActive]}>
-            <Dice value={displayRollValue} rolling={rollingVisual} onRoll={() => {}} canRoll={false} mode="stage" />
-          </View>
-
-          <View style={[styles.focusWrap, highlight('controls') && styles.focusWrapActive]}>
-            <TutorialControls
-              steps={WATCH_TUTORIAL_SCRIPT}
-              stepIndex={stepIndex}
-              isPlaying={isPlaying}
-              speed={speed}
-              controlsLocked={controlsLocked}
-              onTogglePlay={handleTogglePlay}
-              onNext={handleNextStep}
-              onBack={handleBackStep}
-              onRestart={handleRestart}
-              onToggleSpeed={() => setSpeed((prev) => (prev === 1 ? 2 : 1))}
-            />
-          </View>
-
-          <View style={[styles.historyStrip, highlight('log') && styles.focusWrapActive]}>
-            <Text style={styles.historyTitle}>Tutorial Log</Text>
-            {recentTutorialLog.length === 0 ? (
-              <Text style={styles.historyEntryMuted}>Replay ready. Press Play to start.</Text>
-            ) : (
-              recentTutorialLog.map((entry, index) => (
-                <Text key={`${entry}-${index}`} style={styles.historyEntry}>
-                  {entry}
-                </Text>
-              ))
-            )}
-          </View>
+      <View style={[styles.topChrome, { top: topChromeTop }]}>
+        <View style={styles.topChromeLeft}>
+          <Pressable
+            onPress={() => router.replace('/')}
+            accessibilityRole="button"
+            accessibilityLabel="Exit tutorial"
+            style={({ pressed }) => [styles.topChromeIconButton, pressed && styles.headerHelpButtonPressed]}
+          >
+            <MaterialIcons name="arrow-back" size={20} color={urTheme.colors.parchment} />
+          </Pressable>
+          <Text numberOfLines={1} style={styles.topChromeTitle}>
+            Watch Tutorial
+          </Text>
         </View>
-      </ScrollView>
+
+        <View style={styles.topChromeRight}>
+          <Pressable
+            onPress={() => router.replace('/')}
+            accessibilityRole="button"
+            accessibilityLabel="Skip tutorial"
+            style={({ pressed }) => [styles.headerHelpButton, pressed && styles.headerHelpButtonPressed]}
+          >
+            <Text style={styles.headerHelpLabel}>Skip</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setShowHowToPlay(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open how to play instructions"
+            style={({ pressed }) => [styles.headerHelpButton, pressed && styles.headerHelpButtonPressed]}
+          >
+            <Text style={styles.headerHelpLabel}>Help</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <View
+        style={[
+          styles.stageViewport,
+          {
+            paddingHorizontal: viewportHorizontalPadding,
+            paddingTop: viewportTopPadding,
+            paddingBottom: viewportBottomPadding,
+          },
+        ]}
+      >
+        <View style={[styles.stageWrap, { gap: stageGap }]}>
+          <View
+            pointerEvents="none"
+            style={[styles.scoreRow, styles.scoreRowOverlay, { top: scoreOverlayTop }]}
+          >
+            <EdgeScore label="Light Score" value={`${gameState.light.finishedCount}/7`} active={isMyTurn} />
+            <EdgeScore
+              label="Dark Score"
+              value={`${gameState.dark.finishedCount}/7`}
+              active={!isMyTurn}
+              align="right"
+            />
+          </View>
+
+          {useSideColumns ? (
+            <View style={[styles.boardClusterWide, { gap: boardClusterGap }]}>
+              <View style={[styles.sideColumn, { width: sideColumnWidth, paddingTop: sideColumnTopInset }]}>
+                <PieceRail
+                  label="Light Reserve"
+                  color="light"
+                  tokenVariant="light"
+                  reserveCount={lightReserve}
+                  active={isMyTurn}
+                />
+                <View style={[styles.focusWrap, highlight('turnBanner') && styles.focusWrapActive]}>
+                  <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} />
+                </View>
+                <View style={[styles.focusWrap, highlight('controls') && styles.focusWrapActive]}>
+                  <TutorialControls
+                    steps={WATCH_TUTORIAL_SCRIPT}
+                    stepIndex={stepIndex}
+                    isPlaying={isPlaying}
+                    speed={speed}
+                    controlsLocked={controlsLocked}
+                    onTogglePlay={handleTogglePlay}
+                    onNext={handleNextStep}
+                    onBack={handleBackStep}
+                    onRestart={handleRestart}
+                    onToggleSpeed={() => setSpeed((prev) => (prev === 1 ? 2 : 1))}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.boardCenterColumn}>
+                <View
+                  style={styles.boardViewport}
+                  onLayout={(event) => {
+                    const { width: slotWidth, height: slotHeight } = event.nativeEvent.layout;
+                    setBoardSlotSize((prev) =>
+                      prev.width === slotWidth && prev.height === slotHeight
+                        ? prev
+                        : { width: slotWidth, height: slotHeight },
+                    );
+                  }}
+                >
+                  <View style={[styles.boardCard, (highlight('board') || highlight('pieceSelect')) && styles.focusWrapActive]}>
+                    <Board
+                      showRailHints
+                      highlightMode="theatrical"
+                      boardScale={boardScale}
+                      orientation="vertical"
+                      gameStateOverride={gameState}
+                      validMovesOverride={currentFrame.validMoves}
+                      playerColorOverride={PLAYER_PERSPECTIVE}
+                      onMakeMoveOverride={() => {}}
+                      allowInteraction={false}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={[styles.sideColumn, { width: sideColumnWidth, paddingTop: sideColumnTopInset }]}>
+                <PieceRail
+                  label="Dark Reserve"
+                  color="dark"
+                  tokenVariant="dark"
+                  reserveCount={darkReserve}
+                  active={!isMyTurn}
+                />
+                <View style={[styles.focusWrap, highlight('dice') && styles.focusWrapActive]}>
+                  <Dice
+                    value={displayRollValue}
+                    rolling={rollingVisual}
+                    onRoll={() => {}}
+                    canRoll={false}
+                    mode="stage"
+                    compact={compactSupportPanels}
+                    showNumericResult={!compactSupportPanels}
+                  />
+                </View>
+                <View style={[styles.historyStrip, highlight('log') && styles.focusWrapActive]}>
+                  <Text style={styles.historyTitle}>Tutorial Log</Text>
+                  {recentTutorialLog.length === 0 ? (
+                    <Text style={styles.historyEntryMuted}>Replay ready. Press Play to start.</Text>
+                  ) : (
+                    recentTutorialLog.map((entry, index) => (
+                      <Text key={`${entry}-${index}`} style={styles.historyEntry}>
+                        {entry}
+                      </Text>
+                    ))
+                  )}
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={[styles.boardClusterMobile, { gap: urTheme.spacing.sm }]}>
+              <View
+                style={styles.boardViewport}
+                onLayout={(event) => {
+                  const { width: slotWidth, height: slotHeight } = event.nativeEvent.layout;
+                  setBoardSlotSize((prev) =>
+                    prev.width === slotWidth && prev.height === slotHeight
+                      ? prev
+                      : { width: slotWidth, height: slotHeight },
+                  );
+                }}
+              >
+                <View style={[styles.boardCard, (highlight('board') || highlight('pieceSelect')) && styles.focusWrapActive]}>
+                  <Board
+                    showRailHints
+                    highlightMode="theatrical"
+                    boardScale={boardScale}
+                    orientation="vertical"
+                    gameStateOverride={gameState}
+                    validMovesOverride={currentFrame.validMoves}
+                    playerColorOverride={PLAYER_PERSPECTIVE}
+                    onMakeMoveOverride={() => {}}
+                    allowInteraction={false}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.mobileSupportStack}>
+                <View style={styles.mobileReserveRow}>
+                  <View style={styles.mobileReserveCell}>
+                    <PieceRail
+                      label="Light Reserve"
+                      color="light"
+                      tokenVariant="light"
+                      reserveCount={lightReserve}
+                      active={isMyTurn}
+                    />
+                    <View style={[styles.focusWrap, highlight('turnBanner') && styles.focusWrapActive]}>
+                      <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} />
+                    </View>
+                  </View>
+                  <View style={styles.mobileReserveCell}>
+                    <PieceRail
+                      label="Dark Reserve"
+                      color="dark"
+                      tokenVariant="dark"
+                      reserveCount={darkReserve}
+                      active={!isMyTurn}
+                    />
+                    <View style={[styles.focusWrap, highlight('dice') && styles.focusWrapActive]}>
+                      <Dice
+                        value={displayRollValue}
+                        rolling={rollingVisual}
+                        onRoll={() => {}}
+                        canRoll={false}
+                        mode="stage"
+                        compact={compactSupportPanels}
+                        showNumericResult={!compactSupportPanels}
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                <View style={[styles.focusWrap, highlight('controls') && styles.focusWrapActive]}>
+                  <TutorialControls
+                    steps={WATCH_TUTORIAL_SCRIPT}
+                    stepIndex={stepIndex}
+                    isPlaying={isPlaying}
+                    speed={speed}
+                    controlsLocked={controlsLocked}
+                    onTogglePlay={handleTogglePlay}
+                    onNext={handleNextStep}
+                    onBack={handleBackStep}
+                    onRestart={handleRestart}
+                    onToggleSpeed={() => setSpeed((prev) => (prev === 1 ? 2 : 1))}
+                  />
+                </View>
+
+                <View style={[styles.historyStrip, highlight('log') && styles.focusWrapActive]}>
+                  <Text style={styles.historyTitle}>Tutorial Log</Text>
+                  {recentTutorialLog.length === 0 ? (
+                    <Text style={styles.historyEntryMuted}>Replay ready. Press Play to start.</Text>
+                  ) : (
+                    recentTutorialLog.map((entry, index) => (
+                      <Text key={`${entry}-${index}`} style={styles.historyEntry}>
+                        {entry}
+                      </Text>
+                    ))
+                  )}
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+      </View>
 
       <TutorialModal visible={Boolean(activeModalStep)} step={activeModalStep} onContinue={handleContinueModal} />
       <HowToPlayModal visible={showHowToPlay} onClose={() => setShowHowToPlay(false)} />
@@ -292,93 +509,128 @@ export default function WatchTutorialScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: urTheme.colors.tableWalnut,
+    backgroundColor: '#D9C39A',
   },
-  tableGrainPrimary: {
+  backdropLayer: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.3,
+    zIndex: 0,
+    backgroundColor: '#D9C39A',
   },
-  tableGrainSecondary: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.16,
-    transform: [{ rotate: '180deg' }],
-  },
-  tableTopLight: {
+  backdropImage: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '42%',
-    backgroundColor: 'rgba(255, 213, 166, 0.16)',
+    opacity: 1,
   },
-  tableBottomShade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '54%',
-    backgroundColor: 'rgba(12, 6, 4, 0.44)',
-  },
-  tableVignetteOuter: {
-    ...StyleSheet.absoluteFillObject,
-    borderColor: 'rgba(0, 0, 0, 0.24)',
-    borderWidth: 24,
-  },
-  tableVignetteInner: {
-    ...StyleSheet.absoluteFillObject,
-    borderColor: 'rgba(0, 0, 0, 0.13)',
-    borderWidth: 10,
-  },
-  tableSoftSpot: {
-    position: 'absolute',
-    top: '28%',
-    left: '16%',
-    width: '68%',
-    height: '36%',
-    borderRadius: urTheme.radii.lg,
-    backgroundColor: 'rgba(255, 238, 211, 0.06)',
-  },
-  scrollContent: {
+  stageViewport: {
+    flex: 1,
     paddingHorizontal: urTheme.spacing.md,
-    paddingTop: urTheme.spacing.md,
-    paddingBottom: urTheme.spacing.xl,
     alignItems: 'center',
   },
   stageWrap: {
     width: '100%',
     maxWidth: urTheme.layout.stage.maxWidth,
-    gap: urTheme.spacing.md,
+    flex: 1,
+    minHeight: 0,
   },
-  topActionsRow: {
+  topChrome: {
+    position: 'absolute',
+    left: urTheme.spacing.xs,
+    right: urTheme.spacing.xs,
+    zIndex: 7,
     flexDirection: 'row',
-    gap: urTheme.spacing.sm,
     alignItems: 'center',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
+    gap: urTheme.spacing.sm,
   },
-  tutorialBadgeWrap: {
+  topChromeLeft: {
     flex: 1,
-    minWidth: 220,
-    gap: 2,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: urTheme.spacing.xs,
   },
-  tutorialBadge: {
+  topChromeRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: urTheme.spacing.xs,
+    flexShrink: 0,
+  },
+  topChromeIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: 'rgba(217, 164, 65, 0.78)',
+    backgroundColor: 'rgba(13, 15, 18, 0.38)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  topChromeTitle: {
     ...urTypography.label,
-    color: 'rgba(241, 230, 208, 0.95)',
-    fontSize: 11,
-  },
-  tutorialSubtitle: {
-    color: 'rgba(235, 223, 202, 0.86)',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  skipButtonWrap: {
-    width: 150,
-    maxWidth: '100%',
+    color: urTheme.colors.clay,
+    fontSize: 13,
+    letterSpacing: 0.35,
+    textShadowColor: 'rgba(0, 0, 0, 0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+    flexShrink: 1,
   },
   scoreRow: {
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: urTheme.spacing.sm,
+    flexShrink: 0,
+  },
+  scoreRowOverlay: {
+    position: 'absolute',
+    left: urTheme.spacing.xs,
+    right: urTheme.spacing.xs,
+    zIndex: 5,
+  },
+  boardClusterWide: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    flex: 1,
+    minHeight: 0,
+  },
+  boardClusterMobile: {
+    width: '100%',
+    flex: 1,
+    minHeight: 0,
+  },
+  sideColumn: {
+    justifyContent: 'flex-start',
+    gap: urTheme.spacing.sm,
+    flexShrink: 0,
+  },
+  boardCenterColumn: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+  },
+  boardViewport: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  mobileSupportStack: {
+    width: '100%',
+    gap: urTheme.spacing.sm,
+    flexShrink: 0,
+  },
+  mobileReserveRow: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: urTheme.spacing.md,
+    alignItems: 'flex-start',
+  },
+  mobileReserveCell: {
+    flex: 1,
+    minWidth: 0,
     gap: urTheme.spacing.sm,
   },
   boardCard: {
@@ -388,16 +640,6 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginTop: 2,
     marginBottom: 2,
-    borderRadius: urTheme.radii.md,
-  },
-  boardShadow: {
-    position: 'absolute',
-    width: '84%',
-    height: 44,
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
-    top: '52%',
-    zIndex: 0,
   },
   focusWrap: {
     width: '100%',
