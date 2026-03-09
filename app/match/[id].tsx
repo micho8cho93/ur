@@ -384,7 +384,7 @@ export default function GameRoom() {
 
   const viewportHorizontalPadding = 0;
   const stageContentWidth = Math.min(Math.max(width - viewportHorizontalPadding * 2, 0), urTheme.layout.stage.maxWidth);
-  const useSideColumns = true;
+  const useSideColumns = width >= 760;
   const boardClusterGap = useSideColumns ? urTheme.spacing.xs : urTheme.spacing.sm;
   const sideColumnWidth = useSideColumns
     ? Math.max(88, Math.min(264, Math.floor(stageContentWidth * (width < 720 ? 0.2 : 0.24))))
@@ -406,7 +406,7 @@ export default function GameRoom() {
   const verticalBoardCols = BOARD_ROWS;
   const verticalBoardGapTotal = (verticalBoardRows - 1) * boardGridGap;
   const boardSlotWidth = boardSlotSize.width > 0 ? boardSlotSize.width : boardWidthLimitByLayout;
-  const boardSlotHeight = boardSlotSize.height > 0 ? boardSlotSize.height : Math.max(0, height * 0.9);
+  const boardSlotHeight = boardSlotSize.height > 0 ? boardSlotSize.height : Math.max(0, height * (useSideColumns ? 0.9 : 0.45));
   const boardWidthLimitByHeight = Math.min(
     urTheme.layout.boardMax,
     boardOuterPadding +
@@ -580,7 +580,60 @@ export default function GameRoom() {
                 />
               </View>
             </View>
-          ) : null}
+          ) : (
+            <View style={[styles.boardClusterMobile, { gap: urTheme.spacing.sm }]}>
+              <View
+                style={styles.boardViewport}
+                onLayout={(event) => {
+                  const { width: slotWidth, height: slotHeight } = event.nativeEvent.layout;
+                  setBoardSlotSize((prev) =>
+                    prev.width === slotWidth && prev.height === slotHeight
+                      ? prev
+                      : { width: slotWidth, height: slotHeight },
+                  );
+                }}
+              >
+                <View style={styles.boardCard}>
+                  <Board showRailHints highlightMode="theatrical" boardScale={boardScale} orientation="vertical" />
+                </View>
+              </View>
+
+              <View style={styles.mobileSupportStack}>
+                <View style={styles.mobileReserveRow}>
+                  <View style={styles.mobileReserveCell}>
+                    <PieceRail
+                      label="Light Reserve"
+                      color="light"
+                      tokenVariant="light"
+                      piecePixelSize={scaledReservePiecePixelSize}
+                      reserveCount={lightReserve}
+                      active={isMyTurn}
+                    />
+                    <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} compact={compactSupportUi} />
+                  </View>
+
+                  <View style={styles.mobileReserveCell}>
+                    <PieceRail
+                      label="Dark Reserve"
+                      color="dark"
+                      tokenVariant="dark"
+                      piecePixelSize={scaledReservePiecePixelSize}
+                      reserveCount={darkReserve}
+                      active={!isMyTurn}
+                    />
+                    <Dice
+                      value={gameState.rollValue}
+                      rolling={rollingVisual}
+                      onRoll={handleRoll}
+                      canRoll={canRoll}
+                      mode="stage"
+                      compact={compactSupportUi}
+                    />
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
         </View>
       </View>
 
@@ -688,6 +741,11 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
   },
+  boardClusterMobile: {
+    width: '100%',
+    flex: 1,
+    minHeight: 0,
+  },
   sideColumn: {
     justifyContent: 'flex-start',
     gap: urTheme.spacing.md,
@@ -704,6 +762,22 @@ const styles = StyleSheet.create({
     width: '100%',
     justifyContent: 'flex-start',
     alignItems: 'center',
+  },
+  mobileSupportStack: {
+    width: '100%',
+    gap: urTheme.spacing.sm,
+    flexShrink: 0,
+  },
+  mobileReserveRow: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: urTheme.spacing.md,
+    alignItems: 'flex-start',
+  },
+  mobileReserveCell: {
+    flex: 1,
+    minWidth: 0,
+    gap: urTheme.spacing.sm,
   },
   headerHelpButton: {
     minHeight: 34,
