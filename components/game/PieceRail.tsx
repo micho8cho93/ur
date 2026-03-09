@@ -1,6 +1,6 @@
-import { urTheme, urTypography } from '@/constants/urTheme';
+import { urTheme } from '@/constants/urTheme';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -92,7 +92,6 @@ export const PieceRail: React.FC<PieceRailProps> = ({
 
   const shownCount = Math.min(totalCount, reserveCount);
   const resolvedVariant = tokenVariant ?? color;
-  const railLabel = color === 'light' ? 'LIGHT' : 'DARK';
   const reservePieceSize = piecePixelSize ?? DEFAULT_RESERVE_PIECE_SIZE;
 
   const pieceLayout = useMemo(() => {
@@ -136,8 +135,6 @@ export const PieceRail: React.FC<PieceRailProps> = ({
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>{railLabel}</Text>
-
       <View
         style={[
           styles.rail,
@@ -211,13 +208,6 @@ export const PieceRail: React.FC<PieceRailProps> = ({
 const styles = StyleSheet.create({
   wrap: {
     width: '100%',
-    gap: 4,
-  },
-  label: {
-    ...urTypography.label,
-    color: urTheme.colors.clay,
-    fontSize: 12,
-    textAlign: 'left',
   },
   rail: {
     borderRadius: urTheme.radii.pill,

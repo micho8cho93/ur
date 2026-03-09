@@ -1,6 +1,6 @@
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 interface EdgeScoreProps {
   label: string;
@@ -10,8 +10,18 @@ interface EdgeScoreProps {
 }
 
 export const EdgeScore: React.FC<EdgeScoreProps> = ({ label, value, active = false, align = 'left' }) => {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 760;
+
   return (
-    <View style={[styles.wrap, align === 'right' && styles.rightWrap, active && styles.activeWrap]}>
+    <View
+      style={[
+        styles.wrap,
+        isMobile && styles.mobileWrap,
+        align === 'right' && styles.rightWrap,
+        active && styles.activeWrap,
+      ]}
+    >
       <Image source={urTextures.lapisMosaic} resizeMode="cover" style={styles.texture} />
       <View style={styles.topGlow} />
       <View style={styles.innerBorder} />
@@ -32,6 +42,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(11, 16, 23, 0.74)',
     alignItems: 'flex-start',
     overflow: 'hidden',
+  },
+  mobileWrap: {
+    minWidth: 96,
+    paddingHorizontal: 10,
   },
   rightWrap: {
     alignItems: 'flex-end',

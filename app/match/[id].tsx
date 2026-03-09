@@ -442,8 +442,10 @@ export default function GameRoom() {
     scoreOverlayTop + urTheme.spacing.sm,
     Math.round(height * 0.74) - (compactSupportUi ? 188 : 244),
   );
-  const mobileBoardOffsetTop = isMobileLayout ? Math.max(scoreOverlayTop, Math.round(height * 0.09)) : 0;
-  const mobileBoardOffsetBottom = isMobileLayout ? Math.max(urTheme.spacing.sm, Math.round(height * 0.035)) : 0;
+  const mobileBoardOffsetTop = isMobileLayout
+    ? Math.max(scoreOverlayTop - urTheme.spacing.xs, Math.round(height * 0.065))
+    : 0;
+  const mobileBoardOffsetBottom = isMobileLayout ? Math.max(urTheme.spacing.md, Math.round(height * 0.06)) : 0;
 
   return (
     <View style={styles.screen}>
