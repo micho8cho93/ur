@@ -39,10 +39,14 @@ type RuntimeRecord = Record<string, unknown>;
 
 const TICK_RATE = 10;
 const MAX_PLAYERS = 2;
+const ONLINE_TTL_MS = 30_000;
 
 const RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 const RPC_MATCHMAKER_ADD = "matchmaker_add";
+const RPC_PRESENCE_HEARTBEAT = "presence_heartbeat";
+const RPC_PRESENCE_COUNT = "presence_count";
 const MATCH_HANDLER = "authoritative_match";
+const onlinePresenceByDevice = new Map<string, number>();
 
 const asRecord = (value: unknown): RuntimeRecord | null =>
   typeof value === "object" && value !== null ? (value as RuntimeRecord) : null;
@@ -136,6 +140,24 @@ const getMatchId = (ctx: nkruntime.Context): string =>
 const getMessageOpCode = (message: nkruntime.MatchMessage): number | null =>
   readNumberField(message, ["opCode", "op_code"]);
 
+const getContextUserId = (ctx: nkruntime.Context): string | null =>
+  readStringField(ctx, ["userId", "user_id"]);
+
+const pruneOnlinePresence = (nowMs: number): void => {
+  onlinePresenceByDevice.forEach((lastSeenMs, deviceKey) => {
+    if (nowMs - lastSeenMs > ONLINE_TTL_MS) {
+      onlinePresenceByDevice.delete(deviceKey);
+    }
+  });
+};
+
+const encodeOnlinePresencePayload = (nowMs: number): string =>
+  JSON.stringify({
+    onlineCount: onlinePresenceByDevice.size,
+    onlineTtlMs: ONLINE_TTL_MS,
+    serverTimeMs: nowMs,
+  });
+
 // Nakama's JS runtime parser can panic on shorthand object properties in registerMatch.
 // Use distinct local aliases so emitted JS keeps explicit key:value pairs.
 const matchInitHandler = matchInit;
@@ -154,6 +176,8 @@ function InitModule(
 ) {
   initializer.registerRpc(RPC_AUTH_LINK_CUSTOM, rpcAuthLinkCustom);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
+  initializer.registerRpc(RPC_PRESENCE_HEARTBEAT, rpcPresenceHeartbeat);
+  initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,
@@ -166,6 +190,39 @@ function InitModule(
   initializer.registerMatchmakerMatched(matchmakerMatched);
 
   logger.info("Nakama runtime module loaded.");
+}
+
+function rpcPresenceHeartbeat(
+  ctx: nkruntime.Context,
+  _logger: nkruntime.Logger,
+  _nk: nkruntime.Nakama,
+  _payload: string
+): string {
+  const userId = getContextUserId(ctx);
+  if (!userId) {
+    throw new Error("Authentication required.");
+  }
+
+  const nowMs = Date.now();
+  onlinePresenceByDevice.set(userId, nowMs);
+  pruneOnlinePresence(nowMs);
+  return encodeOnlinePresencePayload(nowMs);
+}
+
+function rpcPresenceCount(
+  ctx: nkruntime.Context,
+  _logger: nkruntime.Logger,
+  _nk: nkruntime.Nakama,
+  _payload: string
+): string {
+  const userId = getContextUserId(ctx);
+  if (!userId) {
+    throw new Error("Authentication required.");
+  }
+
+  const nowMs = Date.now();
+  pruneOnlinePresence(nowMs);
+  return encodeOnlinePresencePayload(nowMs);
 }
 
 function rpcAuthLinkCustom(
@@ -583,6 +640,8 @@ type RuntimeGlobalBindings = {
   InitModule: typeof InitModule;
   rpcAuthLinkCustom: typeof rpcAuthLinkCustom;
   rpcMatchmakerAdd: typeof rpcMatchmakerAdd;
+  rpcPresenceHeartbeat: typeof rpcPresenceHeartbeat;
+  rpcPresenceCount: typeof rpcPresenceCount;
   matchmakerMatched: typeof matchmakerMatched;
   matchInit: typeof matchInit;
   matchJoinAttempt: typeof matchJoinAttempt;
@@ -597,6 +656,8 @@ const runtimeGlobals: RuntimeGlobalBindings = {
   InitModule,
   rpcAuthLinkCustom,
   rpcMatchmakerAdd,
+  rpcPresenceHeartbeat,
+  rpcPresenceCount,
   matchmakerMatched,
   matchInit,
   matchJoinAttempt,

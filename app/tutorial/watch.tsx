@@ -200,9 +200,9 @@ export default function WatchTutorialScreen() {
     : 0;
   const boardWidthLimitByLayout = useSideColumns
     ? Math.max(
-        224,
-        Math.min(urTheme.layout.boardMax, stageContentWidth - sideColumnWidth * 2 - boardClusterGap * 2),
-      )
+      224,
+      Math.min(urTheme.layout.boardMax, stageContentWidth - sideColumnWidth * 2 - boardClusterGap * 2),
+    )
     : Math.max(224, Math.min(urTheme.layout.boardMax, stageContentWidth - 2));
 
   // Must match Board.tsx base width before boardScale is applied.
@@ -219,7 +219,7 @@ export default function WatchTutorialScreen() {
   const boardWidthLimitByHeight = Math.min(
     urTheme.layout.boardMax,
     boardOuterPadding +
-      (Math.max(0, boardSlotHeight - boardOuterPadding - verticalBoardGapTotal) * verticalBoardCols) / verticalBoardRows,
+    (Math.max(0, boardSlotHeight - boardOuterPadding - verticalBoardGapTotal) * verticalBoardCols) / verticalBoardRows,
   );
   const widenedBoardLayoutTarget = Math.min(urTheme.layout.boardMax, boardWidthLimitByLayout * 1.5);
   const targetBoardWidth = Math.max(110, Math.min(widenedBoardLayoutTarget, boardWidthLimitByHeight, boardSlotWidth));
@@ -255,7 +255,7 @@ export default function WatchTutorialScreen() {
       <View pointerEvents="none" style={styles.backdropLayer}>
         <Image
           source={UR_BG_IMAGE}
-          resizeMode="stretch"
+          resizeMode="cover"
           style={[
             styles.backdropImage,
             {
@@ -383,7 +383,7 @@ export default function WatchTutorialScreen() {
                       gameStateOverride={gameState}
                       validMovesOverride={currentFrame.validMoves}
                       playerColorOverride={PLAYER_PERSPECTIVE}
-                      onMakeMoveOverride={() => {}}
+                      onMakeMoveOverride={() => { }}
                       allowInteraction={false}
                     />
                   </View>
@@ -403,7 +403,7 @@ export default function WatchTutorialScreen() {
                   <Dice
                     value={displayRollValue}
                     rolling={rollingVisual}
-                    onRoll={() => {}}
+                    onRoll={() => { }}
                     canRoll={false}
                     mode="stage"
                     compact={compactSupportPanels}
@@ -446,7 +446,7 @@ export default function WatchTutorialScreen() {
                     gameStateOverride={gameState}
                     validMovesOverride={currentFrame.validMoves}
                     playerColorOverride={PLAYER_PERSPECTIVE}
-                    onMakeMoveOverride={() => {}}
+                    onMakeMoveOverride={() => { }}
                     allowInteraction={false}
                   />
                 </View>
@@ -480,7 +480,7 @@ export default function WatchTutorialScreen() {
                       <Dice
                         value={displayRollValue}
                         rolling={rollingVisual}
-                        onRoll={() => {}}
+                        onRoll={() => { }}
                         canRoll={false}
                         mode="stage"
                         compact={compactSupportPanels}

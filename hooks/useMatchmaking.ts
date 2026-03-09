@@ -1,6 +1,6 @@
 import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
 import { cancelMatchmaking, findMatch } from '@/services/matchmaking';
-import { nakamaService } from '@/services/nakama';
+import { getOnlineDeviceCount } from '@/services/presence';
 import { useGameStore } from '@/store/useGameStore';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -30,21 +30,8 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
 
         const fetchOnlineCount = async () => {
             try {
-                const session = await nakamaService.ensureAuthenticatedDevice();
-                const client = nakamaService.getClient();
-                if (!client || cancelled) return;
-
-                // Use Nakama's matchmaker status or list matches to estimate online count
-                // We'll count active matches and presences as a proxy
-                // Count players visible in authoritative matches and include open
-                // waiting slots as online players looking for opponents.
-                const result = await client.listMatches(session, 100, true, '', 0, 2);
-                if (!cancelled) {
-                    const matches = result.matches ?? [];
-                    const playersInMatches = matches.reduce((count, match) => count + (match.size ?? 0), 0);
-                    const playersWaiting = matches.filter((match) => (match.size ?? 0) === 1).length;
-                    setOnlineCount(playersInMatches + playersWaiting);
-                }
+                const count = await getOnlineDeviceCount();
+                if (!cancelled) setOnlineCount(count);
             } catch {
                 // Silently fail — count is cosmetic
                 if (!cancelled) setOnlineCount(null);

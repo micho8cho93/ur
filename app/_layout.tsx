@@ -1,10 +1,36 @@
+import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
 import { urTheme } from '@/constants/urTheme';
+import { sendPresenceHeartbeat } from '@/services/presence';
 import { Stack } from 'expo-router';
+import { useEffect } from 'react';
 import { View } from 'react-native';
 
 import '../global.css';
 
 export default function Layout() {
+  useEffect(() => {
+    if (!isNakamaEnabled() || !hasNakamaConfig()) {
+      return;
+    }
+
+    const sendHeartbeat = async () => {
+      try {
+        await sendPresenceHeartbeat();
+      } catch {
+        // Presence heartbeat is best-effort and should not block UI.
+      }
+    };
+
+    void sendHeartbeat();
+    const intervalId = setInterval(() => {
+      void sendHeartbeat();
+    }, 10_000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []);
+
   return (
     <View style={{ flex: 1, backgroundColor: urTheme.colors.night }}>
       <Stack

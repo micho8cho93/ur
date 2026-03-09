@@ -219,12 +219,12 @@ export default function GameRoom() {
         reconnectTimerRef.current = null;
       }
       if (!isOffline && socketRef.current && matchId) {
-        void socketRef.current.leaveMatch(matchId).catch(() => {});
+        void socketRef.current.leaveMatch(matchId).catch(() => { });
       }
       if (socketRef.current) {
-        socketRef.current.onmatchdata = () => {};
-        socketRef.current.onmatchpresence = () => {};
-        socketRef.current.ondisconnect = () => {};
+        socketRef.current.onmatchdata = () => { };
+        socketRef.current.onmatchpresence = () => { };
+        socketRef.current.ondisconnect = () => { };
       }
     };
   }, [
@@ -370,7 +370,7 @@ export default function GameRoom() {
 
   const handleExit = () => {
     if (!isOffline && socketRef.current && matchId) {
-      void socketRef.current.leaveMatch(matchId).catch(() => {});
+      void socketRef.current.leaveMatch(matchId).catch(() => { });
       nakamaService.disconnectSocket(true);
     }
     setShowWinModal(false);
@@ -391,9 +391,9 @@ export default function GameRoom() {
     : 0;
   const boardWidthLimitByLayout = useSideColumns
     ? Math.max(
-        224,
-        Math.min(urTheme.layout.boardMax, stageContentWidth - sideColumnWidth * 2 - boardClusterGap * 2),
-      )
+      224,
+      Math.min(urTheme.layout.boardMax, stageContentWidth - sideColumnWidth * 2 - boardClusterGap * 2),
+    )
     : Math.max(224, Math.min(urTheme.layout.boardMax, stageContentWidth - 2));
 
   // Must match Board.tsx base width before boardScale is applied.
@@ -410,13 +410,13 @@ export default function GameRoom() {
   const boardWidthLimitByHeight = Math.min(
     urTheme.layout.boardMax,
     boardOuterPadding +
-      (Math.max(0, boardSlotHeight - boardOuterPadding - verticalBoardGapTotal) * verticalBoardCols) /
-        verticalBoardRows,
+    (Math.max(0, boardSlotHeight - boardOuterPadding - verticalBoardGapTotal) * verticalBoardCols) /
+    verticalBoardRows,
   );
   const widenedBoardLayoutTarget = Math.min(urTheme.layout.boardMax, boardWidthLimitByLayout * 1.5);
   const targetBoardWidth = Math.max(110, Math.min(widenedBoardLayoutTarget, boardWidthLimitByHeight, boardSlotWidth));
   const isMobileLayout = width < 760;
-  const mobileBoardScaleBoost = isMobileLayout ? 1.2 : 1;
+  const mobileBoardScaleBoost = isMobileLayout ? 1 : 1;
   const boardScale = Math.max(
     0.24,
     Math.min(1.2, (targetBoardWidth / Math.max(boardBaseWidth, 1)) * mobileBoardScaleBoost),
@@ -443,9 +443,9 @@ export default function GameRoom() {
     Math.round(height * 0.74) - (compactSupportUi ? 188 : 244),
   );
   const mobileBoardOffsetTop = isMobileLayout
-    ? Math.max(scoreOverlayTop - urTheme.spacing.xs, Math.round(height * 0.065))
+    ? Math.max(scoreOverlayTop - urTheme.spacing.xs, Math.round(height * 0.100))
     : 0;
-  const mobileBoardOffsetBottom = isMobileLayout ? Math.max(urTheme.spacing.md, Math.round(height * 0.06)) : 0;
+
 
   return (
     <View style={styles.screen}>
@@ -454,7 +454,7 @@ export default function GameRoom() {
       <View pointerEvents="none" style={styles.backdropLayer}>
         <Image
           source={UR_BG_IMAGE}
-          resizeMode="stretch"
+          resizeMode="cover"
           style={[
             styles.backdropImage,
             {
@@ -605,7 +605,7 @@ export default function GameRoom() {
               ]}
             >
               <View
-                style={[styles.boardViewport, { paddingBottom: mobileBoardOffsetBottom }]}
+                style={[styles.boardViewport]}
                 onLayout={(event) => {
                   const { width: slotWidth, height: slotHeight } = event.nativeEvent.layout;
                   setBoardSlotSize((prev) =>

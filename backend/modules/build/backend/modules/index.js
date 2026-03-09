@@ -215,9 +215,13 @@ var decodePayload = (raw) => {
 // backend/modules/index.ts
 var TICK_RATE = 10;
 var MAX_PLAYERS = 2;
+var ONLINE_TTL_MS = 3e4;
 var RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 var RPC_MATCHMAKER_ADD = "matchmaker_add";
+var RPC_PRESENCE_HEARTBEAT = "presence_heartbeat";
+var RPC_PRESENCE_COUNT = "presence_count";
 var MATCH_HANDLER = "authoritative_match";
+var onlinePresenceByDevice = /* @__PURE__ */ new Map();
 var asRecord = (value) => typeof value === "object" && value !== null ? value : null;
 var readStringField = (value, keys) => {
   const record = asRecord(value);
@@ -288,6 +292,19 @@ var getMatchId = (ctx) => {
   return (_a = readStringField(ctx, ["matchId", "match_id"])) != null ? _a : "";
 };
 var getMessageOpCode = (message) => readNumberField(message, ["opCode", "op_code"]);
+var getContextUserId = (ctx) => readStringField(ctx, ["userId", "user_id"]);
+var pruneOnlinePresence = (nowMs) => {
+  onlinePresenceByDevice.forEach((lastSeenMs, deviceKey) => {
+    if (nowMs - lastSeenMs > ONLINE_TTL_MS) {
+      onlinePresenceByDevice.delete(deviceKey);
+    }
+  });
+};
+var encodeOnlinePresencePayload = (nowMs) => JSON.stringify({
+  onlineCount: onlinePresenceByDevice.size,
+  onlineTtlMs: ONLINE_TTL_MS,
+  serverTimeMs: nowMs
+});
 var matchInitHandler = matchInit;
 var matchJoinAttemptHandler = matchJoinAttempt;
 var matchJoinHandler = matchJoin;
@@ -298,6 +315,8 @@ var matchSignalHandler = matchSignal;
 function InitModule(_ctx, logger, _nk, initializer) {
   initializer.registerRpc(RPC_AUTH_LINK_CUSTOM, rpcAuthLinkCustom);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
+  initializer.registerRpc(RPC_PRESENCE_HEARTBEAT, rpcPresenceHeartbeat);
+  initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,
@@ -309,6 +328,25 @@ function InitModule(_ctx, logger, _nk, initializer) {
   });
   initializer.registerMatchmakerMatched(matchmakerMatched);
   logger.info("Nakama runtime module loaded.");
+}
+function rpcPresenceHeartbeat(ctx, _logger, _nk, _payload) {
+  const userId = getContextUserId(ctx);
+  if (!userId) {
+    throw new Error("Authentication required.");
+  }
+  const nowMs = Date.now();
+  onlinePresenceByDevice.set(userId, nowMs);
+  pruneOnlinePresence(nowMs);
+  return encodeOnlinePresencePayload(nowMs);
+}
+function rpcPresenceCount(ctx, _logger, _nk, _payload) {
+  const userId = getContextUserId(ctx);
+  if (!userId) {
+    throw new Error("Authentication required.");
+  }
+  const nowMs = Date.now();
+  pruneOnlinePresence(nowMs);
+  return encodeOnlinePresencePayload(nowMs);
 }
 function rpcAuthLinkCustom(ctx, logger, nk, payload) {
   if (!ctx.userId) {
@@ -568,6 +606,8 @@ var runtimeGlobals = {
   InitModule,
   rpcAuthLinkCustom,
   rpcMatchmakerAdd,
+  rpcPresenceHeartbeat,
+  rpcPresenceCount,
   matchmakerMatched,
   matchInit,
   matchJoinAttempt,
