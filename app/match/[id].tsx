@@ -420,6 +420,10 @@ export default function GameRoom() {
     () => getBoardPiecePixelSize({ viewportWidth: width, boardScale, orientation: 'vertical' }),
     [boardScale, width],
   );
+  const compactSupportUi = width <= 1024;
+  const scaledReservePiecePixelSize = compactSupportUi
+    ? Math.max(12, Math.round(reservePiecePixelSize * (width < 760 ? 0.72 : 0.84)))
+    : reservePiecePixelSize;
   const stageGap = height < 760 ? urTheme.spacing.xs : urTheme.spacing.sm;
   const viewportTopPadding = 0;
   const viewportBottomPadding = Math.max(insets.bottom, urTheme.spacing.xs);
@@ -428,8 +432,11 @@ export default function GameRoom() {
   const scoreOverlayTop = topChromeTop + topChromeHeight + urTheme.spacing.xs;
   const backdropOverscan = Math.ceil(Math.max(width, height) * 0.025);
   const canvasTopEdgeLift = Math.max(24, Math.min(96, Math.round(height * 0.07)));
-  const wideSupportColumnTopInset = scoreOverlayTop + urTheme.spacing.md;
-  const wideSupportColumnBottomInset = Math.max(viewportBottomPadding, urTheme.spacing.sm);
+  const supportColumnBottomInset = Math.max(viewportBottomPadding + Math.round(height * 0.02), urTheme.spacing.sm);
+  const supportColumnTopInset = Math.max(
+    scoreOverlayTop + urTheme.spacing.sm,
+    Math.round(height * 0.74) - (compactSupportUi ? 188 : 244),
+  );
 
   return (
     <View style={styles.screen}>
@@ -511,8 +518,8 @@ export default function GameRoom() {
                   styles.sideColumn,
                   {
                     width: sideColumnWidth,
-                    paddingTop: wideSupportColumnTopInset,
-                    paddingBottom: wideSupportColumnBottomInset,
+                    paddingTop: supportColumnTopInset,
+                    paddingBottom: supportColumnBottomInset,
                   },
                 ]}
               >
@@ -520,11 +527,11 @@ export default function GameRoom() {
                   label="Light Reserve"
                   color="light"
                   tokenVariant="light"
-                  piecePixelSize={reservePiecePixelSize}
+                  piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={lightReserve}
                   active={isMyTurn}
                 />
-                <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} />
+                <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} compact={compactSupportUi} />
               </View>
 
               <View style={styles.boardCenterColumn}>
@@ -550,8 +557,8 @@ export default function GameRoom() {
                   styles.sideColumn,
                   {
                     width: sideColumnWidth,
-                    paddingTop: wideSupportColumnTopInset,
-                    paddingBottom: wideSupportColumnBottomInset,
+                    paddingTop: supportColumnTopInset,
+                    paddingBottom: supportColumnBottomInset,
                   },
                 ]}
               >
@@ -559,7 +566,7 @@ export default function GameRoom() {
                   label="Dark Reserve"
                   color="dark"
                   tokenVariant="dark"
-                  piecePixelSize={reservePiecePixelSize}
+                  piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={darkReserve}
                   active={!isMyTurn}
                 />
@@ -569,6 +576,7 @@ export default function GameRoom() {
                   onRoll={handleRoll}
                   canRoll={canRoll}
                   mode="stage"
+                  compact={compactSupportUi}
                 />
               </View>
             </View>

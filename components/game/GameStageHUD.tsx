@@ -15,9 +15,10 @@ interface GameStageHUDProps {
   isMyTurn: boolean;
   canRoll: boolean;
   phase: 'rolling' | 'moving' | 'ended';
+  compact?: boolean;
 }
 
-export const GameStageHUD: React.FC<GameStageHUDProps> = ({ isMyTurn, canRoll, phase }) => {
+export const GameStageHUD: React.FC<GameStageHUDProps> = ({ isMyTurn, canRoll, phase, compact = false }) => {
   const turnGlow = useSharedValue(isMyTurn ? 0.75 : 0.2);
   const turnSweep = useSharedValue(0);
 
@@ -59,15 +60,15 @@ export const GameStageHUD: React.FC<GameStageHUDProps> = ({ isMyTurn, canRoll, p
         : 'Awaiting move';
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, compact && styles.compactWrap]}>
       <Image source={urTextures.lapisMosaic} resizeMode="cover" style={styles.texture} />
       <View style={styles.topEdgeHighlight} />
       <View style={styles.innerBevel} />
       <Animated.View style={[styles.turnSweep, turnSweepStyle]} />
-      <Animated.View style={[styles.turnOrb, turnGlowStyle]} />
-      <View style={styles.textWrap}>
-        <Text style={styles.turnTitle}>{isMyTurn ? 'Your Turn' : 'Opponent Turn'}</Text>
-        <Text style={styles.turnHint}>{hint}</Text>
+      <Animated.View style={[styles.turnOrb, compact && styles.compactTurnOrb, turnGlowStyle]} />
+      <View style={[styles.textWrap, compact && styles.compactTextWrap]}>
+        <Text style={[styles.turnTitle, compact && styles.compactTurnTitle]}>{isMyTurn ? 'Your Turn' : 'Opponent Turn'}</Text>
+        <Text style={[styles.turnHint, compact && styles.compactTurnHint]}>{hint}</Text>
       </View>
     </View>
   );
@@ -86,6 +87,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     overflow: 'hidden',
+  },
+  compactWrap: {
+    minHeight: 56,
+    paddingVertical: 8,
+    paddingHorizontal: urTheme.spacing.sm,
   },
   texture: {
     ...StyleSheet.absoluteFillObject,
@@ -124,10 +130,17 @@ const styles = StyleSheet.create({
     shadowRadius: 7,
     elevation: 6,
   },
+  compactTurnOrb: {
+    width: 11,
+    height: 11,
+  },
   textWrap: {
     marginLeft: urTheme.spacing.sm,
     flex: 1,
     minWidth: 0,
+  },
+  compactTextWrap: {
+    marginLeft: urTheme.spacing.xs,
   },
   turnTitle: {
     ...urTypography.label,
@@ -136,11 +149,19 @@ const styles = StyleSheet.create({
     letterSpacing: 1.15,
     flexShrink: 1,
   },
+  compactTurnTitle: {
+    fontSize: 10,
+    letterSpacing: 0.9,
+  },
   turnHint: {
     color: 'rgba(235, 220, 193, 0.84)',
     fontSize: 11,
     lineHeight: 13,
     marginTop: 1,
     flexShrink: 1,
+  },
+  compactTurnHint: {
+    fontSize: 9,
+    lineHeight: 11,
   },
 });
