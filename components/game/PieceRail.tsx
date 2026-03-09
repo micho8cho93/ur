@@ -57,15 +57,16 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   totalCount = 7,
   active = false,
 }) => {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const glow = useSharedValue(active ? 0.5 : 0);
   const [railWidth, setRailWidth] = useState(0);
   const isMobile = width < 760;
-  const railScale = isMobile ? MOBILE_RAIL_SCALE : 1;
+  const isTabletPortrait = width >= 760 && width <= 1024 && height > width;
+  const railScale = isMobile ? MOBILE_RAIL_SCALE : isTabletPortrait ? 0.9 : 1;
   const railMinHeight = Math.round(RAIL_MIN_HEIGHT * railScale);
   const railHorizontalPadding = Math.round(RAIL_HORIZONTAL_PADDING * railScale);
   const reserveStackOffsetY = Math.round(RESERVE_STACK_OFFSET_Y * railScale);
-  const trayArtScale = TRAY_ART_FIT.scale * (isMobile ? 0.78 : 1);
+  const trayArtScale = TRAY_ART_FIT.scale * (isMobile ? 0.78 : isTabletPortrait ? 0.92 : 1);
 
   useEffect(() => {
     if (active) {

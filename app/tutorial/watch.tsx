@@ -223,7 +223,12 @@ export default function WatchTutorialScreen() {
   );
   const widenedBoardLayoutTarget = Math.min(urTheme.layout.boardMax, boardWidthLimitByLayout * 1.5);
   const targetBoardWidth = Math.max(110, Math.min(widenedBoardLayoutTarget, boardWidthLimitByHeight, boardSlotWidth));
-  const boardScale = Math.max(0.24, Math.min(1, targetBoardWidth / Math.max(boardBaseWidth, 1)));
+  const isMobileLayout = width < 760;
+  const mobileBoardScaleBoost = isMobileLayout ? 1.2 : 1;
+  const boardScale = Math.max(
+    0.24,
+    Math.min(1.2, (targetBoardWidth / Math.max(boardBaseWidth, 1)) * mobileBoardScaleBoost),
+  );
   const reservePiecePixelSize = getBoardPiecePixelSize({
     viewportWidth: width,
     boardScale,
@@ -307,7 +312,12 @@ export default function WatchTutorialScreen() {
         <View style={[styles.stageWrap, { gap: stageGap }]}>
           <View
             pointerEvents="none"
-            style={[styles.scoreRow, styles.scoreRowOverlay, { top: scoreOverlayTop }]}
+            style={[
+              styles.scoreRow,
+              styles.scoreRowOverlay,
+              { top: scoreOverlayTop },
+              isMobileLayout && styles.scoreRowOverlayMobile,
+            ]}
           >
             <EdgeScore label="Light Score" value={`${gameState.light.finishedCount}/7`} active={isMyTurn} />
             <EdgeScore
@@ -596,6 +606,9 @@ const styles = StyleSheet.create({
     left: urTheme.spacing.xs,
     right: urTheme.spacing.xs,
     zIndex: 5,
+  },
+  scoreRowOverlayMobile: {
+    right: urTheme.spacing.sm,
   },
   boardClusterWide: {
     width: '100%',
