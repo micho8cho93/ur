@@ -475,9 +475,17 @@ export default function GameRoom() {
             onPress={handleExit}
             accessibilityRole="button"
             accessibilityLabel="Exit game"
-            style={({ pressed }) => [styles.topChromeIconButton, pressed && styles.headerHelpButtonPressed]}
+            style={({ pressed }) => [
+              styles.topChromeIconButton,
+              isMobileLayout && styles.topChromeIconButtonMobile,
+              pressed && styles.headerHelpButtonPressed,
+            ]}
           >
-            <MaterialIcons name="arrow-back" size={20} color={urTheme.colors.parchment} />
+            <MaterialIcons
+              name="arrow-back"
+              size={20}
+              color={isMobileLayout ? urTheme.colors.clay : urTheme.colors.parchment}
+            />
           </Pressable>
           <Text numberOfLines={1} style={styles.topChromeTitle}>
             {matchTitle}
@@ -488,9 +496,13 @@ export default function GameRoom() {
           onPress={() => setShowHowToPlay(true)}
           accessibilityRole="button"
           accessibilityLabel="Open how to play instructions"
-          style={({ pressed }) => [styles.headerHelpButton, pressed && styles.headerHelpButtonPressed]}
+          style={({ pressed }) => [
+            styles.headerHelpButton,
+            isMobileLayout && styles.headerHelpButtonMobile,
+            pressed && styles.headerHelpButtonPressed,
+          ]}
         >
-          <Text style={styles.headerHelpLabel}>Help</Text>
+          <Text style={[styles.headerHelpLabel, isMobileLayout && styles.headerHelpLabelMobile]}>Help</Text>
         </Pressable>
       </View>
 
@@ -729,12 +741,22 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.78)',
-    backgroundColor: 'rgba(13, 15, 18, 0.38)',
+    borderWidth: 2.1,
+    borderColor: 'rgba(46, 24, 10, 0.98)',
+    backgroundColor: 'rgba(248, 236, 210, 0.9)',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+  },
+  topChromeIconButtonMobile: {
+    borderWidth: 2.4,
+    borderColor: 'rgba(46, 24, 10, 0.98)',
+    backgroundColor: 'rgba(248, 236, 210, 0.94)',
+    shadowColor: 'rgba(46, 24, 10, 0.92)',
+    shadowOpacity: 0.32,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 6,
   },
   topChromeTitle: {
     ...urTypography.label,
@@ -809,11 +831,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: urTheme.radii.pill,
-    borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.78)',
-    backgroundColor: 'rgba(13, 15, 18, 0.38)',
+    borderWidth: 2.1,
+    borderColor: 'rgba(46, 24, 10, 0.98)',
+    backgroundColor: 'rgba(248, 236, 210, 0.9)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerHelpButtonMobile: {
+    borderWidth: 2.4,
+    borderColor: 'rgba(46, 24, 10, 0.98)',
+    backgroundColor: 'rgba(248, 236, 210, 0.94)',
+    shadowColor: 'rgba(46, 24, 10, 0.92)',
+    shadowOpacity: 0.32,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 6,
   },
   headerHelpButtonPressed: {
     opacity: 0.8,
@@ -823,6 +855,9 @@ const styles = StyleSheet.create({
     color: urTheme.colors.parchment,
     fontSize: 11,
     letterSpacing: 0.8,
+  },
+  headerHelpLabelMobile: {
+    color: urTheme.colors.clay,
   },
   boardCard: {
     width: '100%',

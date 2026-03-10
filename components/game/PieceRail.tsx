@@ -95,8 +95,8 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   const reservePieceSize = piecePixelSize ?? DEFAULT_RESERVE_PIECE_SIZE;
 
   const pieceLayout = useMemo(() => {
-    const minOverlapRatio = isMobile ? 0.3 : 0.22;
-    const preferredOverlapRatio = isMobile ? 0.4 : 0.3;
+    const minOverlapRatio = isMobile ? 0.5 : 0.22;
+    const preferredOverlapRatio = isMobile ? 0.58 : 0.3;
     const minOverlap = Math.max(1, Math.round(reservePieceSize * minOverlapRatio));
     const preferredOverlap = Math.max(minOverlap, Math.round(reservePieceSize * preferredOverlapRatio));
     const preferredInset = Math.max(10, Math.round(reservePieceSize * 0.28));
@@ -191,7 +191,6 @@ export const PieceRail: React.FC<PieceRailProps> = ({
                   marginLeft: index === 0 ? 0 : -pieceLayout.overlap,
                   width: reservePieceSize,
                   height: reservePieceSize,
-                  transform: [{ translateY: Math.round(index * (isMobile ? 1.1 : 0.8)) }],
                   zIndex: index + 1,
                 },
               ]}
