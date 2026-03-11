@@ -1,5 +1,5 @@
 import { urTheme } from '@/constants/urTheme';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
@@ -47,6 +47,16 @@ interface PieceRailProps {
   reserveCount: number;
   totalCount?: number;
   active?: boolean;
+  hideReservePieces?: boolean;
+  onReserveSlotsLayout?: (slots: ReserveSlotMeasurement[]) => void;
+}
+
+export interface ReserveSlotMeasurement {
+  color: 'light' | 'dark';
+  index: number;
+  x: number;
+  y: number;
+  size: number;
 }
 
 export const PieceRail: React.FC<PieceRailProps> = ({
@@ -56,6 +66,8 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   reserveCount,
   totalCount = 7,
   active = false,
+  hideReservePieces = false,
+  onReserveSlotsLayout,
 }) => {
   const { width, height } = useWindowDimensions();
   const glow = useSharedValue(active ? 0.5 : 0);
@@ -93,6 +105,8 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   const shownCount = Math.min(totalCount, reserveCount);
   const resolvedVariant = tokenVariant ?? color;
   const reservePieceSize = piecePixelSize ?? DEFAULT_RESERVE_PIECE_SIZE;
+  const slotRefs = useRef<(View | null)[]>([]);
+  const reportedSlotsKeyRef = useRef<string>('');
 
   const pieceLayout = useMemo(() => {
     const minOverlapRatio = isMobile ? 0.5 : 0.22;
@@ -135,6 +149,54 @@ export const PieceRail: React.FC<PieceRailProps> = ({
     };
   }, [isMobile, railWidth, reservePieceSize, shownCount]);
 
+  const reportReserveSlots = useCallback(() => {
+    if (!onReserveSlotsLayout) return;
+
+    if (shownCount <= 0) {
+      reportedSlotsKeyRef.current = 'empty';
+      onReserveSlotsLayout([]);
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      const measuredSlots: (ReserveSlotMeasurement | null)[] = Array.from({ length: shownCount }, () => null);
+      let pendingMeasurements = shownCount;
+
+      slotRefs.current.slice(0, shownCount).forEach((slotRef, index) => {
+        if (!slotRef) {
+          pendingMeasurements -= 1;
+          return;
+        }
+
+        slotRef.measureInWindow((x, y, width, height) => {
+          measuredSlots[index] = {
+            color,
+            index,
+            x,
+            y,
+            size: Math.min(width, height),
+          };
+
+          pendingMeasurements -= 1;
+          if (pendingMeasurements === 0) {
+            const completeSlots = measuredSlots.filter(
+              (slot): slot is ReserveSlotMeasurement => slot !== null,
+            );
+            const nextKey = JSON.stringify(completeSlots);
+            if (nextKey !== reportedSlotsKeyRef.current) {
+              reportedSlotsKeyRef.current = nextKey;
+              onReserveSlotsLayout(completeSlots);
+            }
+          }
+        });
+      });
+    });
+  }, [color, onReserveSlotsLayout, shownCount]);
+
+  useEffect(() => {
+    reportReserveSlots();
+  }, [reportReserveSlots, reservePieceSize, pieceLayout.horizontalInset, pieceLayout.overlap, reserveStackOffsetY, railWidth]);
+
   return (
     <View style={styles.wrap}>
       <View
@@ -148,6 +210,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
         onLayout={(event) => {
           const nextWidth = Math.round(event.nativeEvent.layout.width);
           setRailWidth((prev) => (prev === nextWidth ? prev : nextWidth));
+          reportReserveSlots();
         }}
       >
         {/*
@@ -185,6 +248,9 @@ export const PieceRail: React.FC<PieceRailProps> = ({
           {Array.from({ length: shownCount }).map((_, index) => (
             <View
               key={`piece-${index}`}
+              ref={(node) => {
+                slotRefs.current[index] = node;
+              }}
               style={[
                 styles.stackPiece,
                 {
@@ -195,11 +261,13 @@ export const PieceRail: React.FC<PieceRailProps> = ({
                 },
               ]}
             >
-              <Piece
-                color={color}
-                pixelSize={reservePieceSize}
-                variant={resolvedVariant}
-              />
+              {!hideReservePieces && (
+                <Piece
+                  color={color}
+                  pixelSize={reservePieceSize}
+                  variant={resolvedVariant}
+                />
+              )}
             </View>
           ))}
         </View>

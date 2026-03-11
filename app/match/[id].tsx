@@ -3,7 +3,8 @@ import { Dice } from '@/components/game/Dice';
 import { EdgeScore } from '@/components/game/EdgeScore';
 import { GameStageHUD } from '@/components/game/GameStageHUD';
 import { HowToPlayModal } from '@/components/HowToPlayModal';
-import { PieceRail } from '@/components/game/PieceRail';
+import { PieceRail, ReserveSlotMeasurement } from '@/components/game/PieceRail';
+import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
 import { Modal } from '@/components/ui/Modal';
 import { urTheme, urTypography } from '@/constants/urTheme';
 import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
@@ -93,6 +94,10 @@ export default function GameRoom() {
   const [rollingVisual, setRollingVisual] = React.useState(false);
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
   const [boardSlotSize, setBoardSlotSize] = React.useState({ width: 0, height: 0 });
+  const [lightReserveSlots, setLightReserveSlots] = React.useState<ReserveSlotMeasurement[]>([]);
+  const [darkReserveSlots, setDarkReserveSlots] = React.useState<ReserveSlotMeasurement[]>([]);
+  const [showReserveCascadeIntro, setShowReserveCascadeIntro] = React.useState(false);
+  const [hasPlayedReserveCascadeIntro, setHasPlayedReserveCascadeIntro] = React.useState(false);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -103,6 +108,13 @@ export default function GameRoom() {
       setShowWinModal(true);
     }
   }, [gameState.winner]);
+
+  useEffect(() => {
+    setLightReserveSlots([]);
+    setDarkReserveSlots([]);
+    setShowReserveCascadeIntro(false);
+    setHasPlayedReserveCascadeIntro(false);
+  }, [matchId]);
 
   useEffect(() => {
     if (!matchId) return;
@@ -461,6 +473,36 @@ export default function GameRoom() {
   const mobileScoreRowInset = Math.max(urTheme.spacing.xs, Math.round(width / 65));
   const mobileScoreIndicatorGap = Math.max(10, Math.round(width * 0.6));
 
+  const reserveCascadeTargets = useMemo<ReserveCascadePieceTarget[]>(() => {
+    const orderedLight = [...lightReserveSlots].sort((a, b) => a.index - b.index);
+    const orderedDark = [...darkReserveSlots].sort((a, b) => a.index - b.index);
+
+    return [...orderedLight, ...orderedDark].map((slot, index) => ({
+      key: `${slot.color}-${slot.index}`,
+      color: slot.color,
+      x: slot.x,
+      y: slot.y,
+      size: slot.size,
+      order: index,
+    }));
+  }, [darkReserveSlots, lightReserveSlots]);
+
+  useEffect(() => {
+    if (hasPlayedReserveCascadeIntro || showReserveCascadeIntro) return;
+    if (reserveCascadeTargets.length === 0) return;
+    if (lightReserveSlots.length !== lightReserve) return;
+    if (darkReserveSlots.length !== darkReserve) return;
+
+    setShowReserveCascadeIntro(true);
+  }, [
+    darkReserve,
+    darkReserveSlots.length,
+    hasPlayedReserveCascadeIntro,
+    lightReserve,
+    lightReserveSlots.length,
+    reserveCascadeTargets.length,
+    showReserveCascadeIntro,
+  ]);
 
   return (
     <View style={styles.screen}>
@@ -572,6 +614,8 @@ export default function GameRoom() {
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={lightReserve}
                   active={isMyTurn}
+                  hideReservePieces={showReserveCascadeIntro}
+                  onReserveSlotsLayout={setLightReserveSlots}
                 />
                 <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} compact={compactSupportUi} />
               </View>
@@ -611,6 +655,8 @@ export default function GameRoom() {
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={darkReserve}
                   active={!isMyTurn}
+                  hideReservePieces={showReserveCascadeIntro}
+                  onReserveSlotsLayout={setDarkReserveSlots}
                 />
                 <Dice
                   value={gameState.rollValue}
@@ -658,6 +704,8 @@ export default function GameRoom() {
                       piecePixelSize={scaledReservePiecePixelSize}
                       reserveCount={lightReserve}
                       active={isMyTurn}
+                      hideReservePieces={showReserveCascadeIntro}
+                      onReserveSlotsLayout={setLightReserveSlots}
                     />
                     <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} compact={compactSupportUi} />
                   </View>
@@ -670,6 +718,8 @@ export default function GameRoom() {
                       piecePixelSize={scaledReservePiecePixelSize}
                       reserveCount={darkReserve}
                       active={!isMyTurn}
+                      hideReservePieces={showReserveCascadeIntro}
+                      onReserveSlotsLayout={setDarkReserveSlots}
                     />
                     <Dice
                       value={gameState.rollValue}
@@ -686,6 +736,15 @@ export default function GameRoom() {
           )}
         </View>
       </View>
+
+      <ReserveCascadeIntro
+        visible={showReserveCascadeIntro}
+        pieceTargets={reserveCascadeTargets}
+        onComplete={() => {
+          setShowReserveCascadeIntro(false);
+          setHasPlayedReserveCascadeIntro(true);
+        }}
+      />
 
       {showScoreBanner && (
         <View pointerEvents="none" style={styles.scoreBannerWrap}>
