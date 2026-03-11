@@ -4,6 +4,7 @@ import {
   BOARD_IMAGE_SOURCE,
   getBoardPiecePixelSize,
 } from '@/components/game/Board';
+import { AmbientBackgroundEffects } from '@/components/game/AmbientBackgroundEffects';
 import { BoardDropIntro } from '@/components/game/BoardDropIntro';
 import { Dice } from '@/components/game/Dice';
 import { EdgeScore } from '@/components/game/EdgeScore';
@@ -38,6 +39,14 @@ import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'r
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const UR_BG_IMAGE = require('../../assets/images/ur_bg.png');
+
+const MATCH_AMBIENT_EFFECTS = {
+  bugEnabled: true,
+  dustEnabled: true,
+  leafEnabled: true,
+  maxVisibleBugs: 1,
+  maxVisibleLeaves: 1,
+} as const;
 
 interface BoardTargetFrame {
   x: number;
@@ -621,6 +630,18 @@ export default function GameRoom() {
         />
       </View>
 
+      <AmbientBackgroundEffects
+        width={width}
+        height={height}
+        centerSafeZone={boardTargetFrame}
+        bugEnabled={MATCH_AMBIENT_EFFECTS.bugEnabled}
+        dustEnabled={MATCH_AMBIENT_EFFECTS.dustEnabled}
+        leafEnabled={MATCH_AMBIENT_EFFECTS.leafEnabled}
+        maxVisibleBugs={MATCH_AMBIENT_EFFECTS.maxVisibleBugs}
+        maxVisibleLeaves={MATCH_AMBIENT_EFFECTS.maxVisibleLeaves}
+        style={styles.ambientLayer}
+      />
+
       <View style={[styles.topChrome, { top: topChromeTop }]}>
         <View style={styles.topChromeLeft}>
           <Pressable
@@ -888,6 +909,9 @@ const styles = StyleSheet.create({
   backdropImage: {
     position: 'absolute',
     opacity: 1,
+  },
+  ambientLayer: {
+    zIndex: 0,
   },
   stageViewport: {
     flex: 1,
