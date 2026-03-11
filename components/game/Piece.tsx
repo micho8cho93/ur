@@ -134,8 +134,16 @@ export const Piece: React.FC<PieceProps> = ({
     opacity: state === 'captured' ? interpolate(motion.value, [0, 1], [1, 0.35], Extrapolation.CLAMP) : 1,
   }));
 
-  const shadowStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(motion.value, [0, 1], [0.22, 0.14], Extrapolation.CLAMP),
+  const contactShadowStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(motion.value, [0, 1], [0.34, 0.2], Extrapolation.CLAMP),
+    transform: [
+      { scaleX: interpolate(motion.value, [0, 1], [1, 0.9], Extrapolation.CLAMP) },
+      { scaleY: interpolate(motion.value, [0, 1], [1, 0.84], Extrapolation.CLAMP) },
+    ],
+  }));
+
+  const castShadowStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(motion.value, [0, 1], [0.12, 0.08], Extrapolation.CLAMP),
     transform: [
       { scaleX: interpolate(motion.value, [0, 1], [1, 0.94], Extrapolation.CLAMP) },
       { scaleY: interpolate(motion.value, [0, 1], [1, 0.88], Extrapolation.CLAMP) },
@@ -162,18 +170,30 @@ export const Piece: React.FC<PieceProps> = ({
         />
       )}
 
+      {/* Tight contact shadow anchors the piece to the board surface. */}
       <Animated.View
         style={[
-          styles.baseShadow,
-          shadowStyle,
+          styles.contactShadow,
+          contactShadowStyle,
           {
-            width: sizePx * 0.62,
-            height: Math.max(4, sizePx * 0.16),
-            bottom: Math.max(1, sizePx * 0.06),
+            width: sizePx * 0.52,
+            height: Math.max(3, sizePx * 0.13),
+            bottom: Math.max(1, sizePx * 0.08),
           },
         ]}
       />
-      <View style={[styles.artFrame, { width: sizePx, height: sizePx }]}>
+      <Animated.View
+        style={[
+          styles.castShadow,
+          castShadowStyle,
+          {
+            width: sizePx * 0.66,
+            height: Math.max(4, sizePx * 0.17),
+            bottom: Math.max(0, sizePx * 0.01),
+          },
+        ]}
+      />
+      <View style={[styles.artFrame, { width: sizePx, height: sizePx }]}> 
         <Image
           source={resolvedSource}
           resizeMode="contain"
@@ -206,10 +226,15 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(246, 212, 138, 0.9)',
     backgroundColor: 'rgba(240, 192, 64, 0.18)',
   },
-  baseShadow: {
+  contactShadow: {
     position: 'absolute',
     borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(5, 8, 11, 0.26)',
+    backgroundColor: 'rgba(5, 8, 11, 0.38)',
+  },
+  castShadow: {
+    position: 'absolute',
+    borderRadius: urTheme.radii.pill,
+    backgroundColor: 'rgba(5, 8, 11, 0.2)',
   },
   artFrame: {
     alignItems: 'center',
