@@ -3,8 +3,9 @@ import { Dice } from '@/components/game/Dice';
 import { EdgeScore } from '@/components/game/EdgeScore';
 import { GameStageHUD } from '@/components/game/GameStageHUD';
 import { HowToPlayModal } from '@/components/HowToPlayModal';
+import { BoardDropIntro } from '@/components/game/BoardDropIntro';
 import { PieceRail, ReserveSlotMeasurement } from '@/components/game/PieceRail';
-import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
+import { ReserveCascadeIntro } from '@/components/game/ReserveCascadeIntro';
 import { Modal } from '@/components/ui/Modal';
 import { urTheme, urTypography } from '@/constants/urTheme';
 import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
@@ -94,10 +95,15 @@ export default function GameRoom() {
   const [rollingVisual, setRollingVisual] = React.useState(false);
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
   const [boardSlotSize, setBoardSlotSize] = React.useState({ width: 0, height: 0 });
+  const [boardTargetFrame, setBoardTargetFrame] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [showBoardIntro, setShowBoardIntro] = React.useState(false);
   const [lightReserveSlots, setLightReserveSlots] = React.useState<ReserveSlotMeasurement[]>([]);
   const [darkReserveSlots, setDarkReserveSlots] = React.useState<ReserveSlotMeasurement[]>([]);
   const [showReserveCascadeIntro, setShowReserveCascadeIntro] = React.useState(false);
+  const [hasPlayedBoardIntro, setHasPlayedBoardIntro] = React.useState(false);
   const [hasPlayedReserveCascadeIntro, setHasPlayedReserveCascadeIntro] = React.useState(false);
+  const boardCardRef = useRef<View | null>(null);
+  const playedIntroMatchIdsRef = useRef<Record<string, true>>({});
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -110,9 +116,12 @@ export default function GameRoom() {
   }, [gameState.winner]);
 
   useEffect(() => {
+    setBoardTargetFrame(null);
+    setShowBoardIntro(false);
     setLightReserveSlots([]);
     setDarkReserveSlots([]);
     setShowReserveCascadeIntro(false);
+    setHasPlayedBoardIntro(false);
     setHasPlayedReserveCascadeIntro(false);
   }, [matchId]);
 
@@ -405,6 +414,7 @@ export default function GameRoom() {
 
   const lightReserve = gameState.light.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
   const darkReserve = gameState.dark.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
+  const totalReservePieces = lightReserve + darkReserve;
   const matchTitle = `Game #${matchId ?? 'local'}`;
 
   const viewportHorizontalPadding = 0;
@@ -472,35 +482,83 @@ export default function GameRoom() {
     : 0;
   const mobileScoreRowInset = Math.max(urTheme.spacing.xs, Math.round(width / 65));
   const mobileScoreIndicatorGap = Math.max(10, Math.round(width * 0.6));
+  const shouldPlayIntroForMatch = Boolean(matchId && !playedIntroMatchIdsRef.current[matchId]);
 
-  const reserveCascadeTargets = useMemo<ReserveCascadePieceTarget[]>(() => {
-    const orderedLight = [...lightReserveSlots].sort((a, b) => a.index - b.index);
-    const orderedDark = [...darkReserveSlots].sort((a, b) => a.index - b.index);
+  const measureBoardTargetFrame = React.useCallback(() => {
+    if (!shouldPlayIntroForMatch || !boardCardRef.current) return;
 
-    return [...orderedLight, ...orderedDark].map((slot, index) => ({
-      key: `${slot.color}-${slot.index}`,
-      color: slot.color,
-      x: slot.x,
-      y: slot.y,
-      size: slot.size,
-      order: index,
-    }));
-  }, [darkReserveSlots, lightReserveSlots]);
+    requestAnimationFrame(() => {
+      boardCardRef.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => {
+        if (!measuredWidth || !measuredHeight) return;
+        const nextFrame = {
+          x,
+          y,
+          width: measuredWidth,
+          height: measuredHeight,
+        };
+
+        setBoardTargetFrame((prev) => {
+          if (
+            prev &&
+            Math.abs(prev.x - nextFrame.x) < 1 &&
+            Math.abs(prev.y - nextFrame.y) < 1 &&
+            Math.abs(prev.width - nextFrame.width) < 1 &&
+            Math.abs(prev.height - nextFrame.height) < 1
+          ) {
+            return prev;
+          }
+          return nextFrame;
+        });
+      });
+    });
+  }, [shouldPlayIntroForMatch]);
 
   useEffect(() => {
-    if (hasPlayedReserveCascadeIntro || showReserveCascadeIntro) return;
-    if (reserveCascadeTargets.length === 0) return;
+    measureBoardTargetFrame();
+  }, [measureBoardTargetFrame, boardScale, boardSlotSize.height, boardSlotSize.width, isMobileLayout, useSideColumns]);
+
+  const introsActive = showBoardIntro || showReserveCascadeIntro;
+
+  useEffect(() => {
+    if (!matchId || hasPlayedBoardIntro || boardTargetFrame === null || showBoardIntro) return;
+    if (playedIntroMatchIdsRef.current[matchId]) {
+      setHasPlayedBoardIntro(true);
+      setHasPlayedReserveCascadeIntro(true);
+      return;
+    }
+
+    setShowBoardIntro(true);
+  }, [boardTargetFrame, hasPlayedBoardIntro, matchId, showBoardIntro]);
+
+  useEffect(() => {
+    if (!hasPlayedBoardIntro || hasPlayedReserveCascadeIntro || showReserveCascadeIntro) return;
     if (lightReserveSlots.length !== lightReserve) return;
     if (darkReserveSlots.length !== darkReserve) return;
 
-    setShowReserveCascadeIntro(true);
+    if (totalReservePieces === 0) {
+      setHasPlayedReserveCascadeIntro(true);
+      if (matchId) {
+        playedIntroMatchIdsRef.current[matchId] = true;
+      }
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setShowReserveCascadeIntro(true);
+    }, 120);
+
+    return () => {
+      clearTimeout(timer);
+    };
   }, [
     darkReserve,
     darkReserveSlots.length,
+    hasPlayedBoardIntro,
     hasPlayedReserveCascadeIntro,
+    totalReservePieces,
     lightReserve,
     lightReserveSlots.length,
-    reserveCascadeTargets.length,
+    matchId,
     showReserveCascadeIntro,
   ]);
 
@@ -614,8 +672,8 @@ export default function GameRoom() {
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={lightReserve}
                   active={isMyTurn}
-                  hideReservePieces={showReserveCascadeIntro}
-                  onReserveSlotsLayout={setLightReserveSlots}
+                  introHidden={introsActive}
+                  onSlotsMeasured={setLightReserveSlots}
                 />
                 <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} compact={compactSupportUi} />
               </View>
@@ -630,10 +688,21 @@ export default function GameRoom() {
                         ? prev
                         : { width: slotWidth, height: slotHeight },
                     );
+                    measureBoardTargetFrame();
                   }}
                 >
-                  <View style={styles.boardCard}>
-                    <Board showRailHints highlightMode="theatrical" boardScale={boardScale} orientation="vertical" />
+                  <View
+                    ref={boardCardRef}
+                    style={[styles.boardCard, shouldPlayIntroForMatch && showBoardIntro && styles.boardHiddenDuringIntro]}
+                    onLayout={measureBoardTargetFrame}
+                  >
+                    <Board
+                      showRailHints
+                      highlightMode="theatrical"
+                      boardScale={boardScale}
+                      orientation="vertical"
+                      allowInteraction={!introsActive}
+                    />
                   </View>
                 </View>
               </View>
@@ -655,8 +724,8 @@ export default function GameRoom() {
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={darkReserve}
                   active={!isMyTurn}
-                  hideReservePieces={showReserveCascadeIntro}
-                  onReserveSlotsLayout={setDarkReserveSlots}
+                  introHidden={introsActive}
+                  onSlotsMeasured={setDarkReserveSlots}
                 />
                 <Dice
                   value={gameState.rollValue}
@@ -687,10 +756,21 @@ export default function GameRoom() {
                       ? prev
                       : { width: slotWidth, height: slotHeight },
                   );
+                  measureBoardTargetFrame();
                 }}
               >
-                <View style={styles.boardCard}>
-                  <Board showRailHints highlightMode="theatrical" boardScale={boardScale} orientation="vertical" />
+                <View
+                  ref={boardCardRef}
+                  style={[styles.boardCard, shouldPlayIntroForMatch && showBoardIntro && styles.boardHiddenDuringIntro]}
+                  onLayout={measureBoardTargetFrame}
+                >
+                  <Board
+                    showRailHints
+                    highlightMode="theatrical"
+                    boardScale={boardScale}
+                    orientation="vertical"
+                    allowInteraction={!introsActive}
+                  />
                 </View>
               </View>
 
@@ -704,8 +784,8 @@ export default function GameRoom() {
                       piecePixelSize={scaledReservePiecePixelSize}
                       reserveCount={lightReserve}
                       active={isMyTurn}
-                      hideReservePieces={showReserveCascadeIntro}
-                      onReserveSlotsLayout={setLightReserveSlots}
+                      introHidden={introsActive}
+                      onSlotsMeasured={setLightReserveSlots}
                     />
                     <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} compact={compactSupportUi} />
                   </View>
@@ -718,8 +798,8 @@ export default function GameRoom() {
                       piecePixelSize={scaledReservePiecePixelSize}
                       reserveCount={darkReserve}
                       active={!isMyTurn}
-                      hideReservePieces={showReserveCascadeIntro}
-                      onReserveSlotsLayout={setDarkReserveSlots}
+                      introHidden={introsActive}
+                      onSlotsMeasured={setDarkReserveSlots}
                     />
                     <Dice
                       value={gameState.rollValue}
@@ -737,14 +817,29 @@ export default function GameRoom() {
         </View>
       </View>
 
-      <ReserveCascadeIntro
-        visible={showReserveCascadeIntro}
-        pieceTargets={reserveCascadeTargets}
-        onComplete={() => {
-          setShowReserveCascadeIntro(false);
-          setHasPlayedReserveCascadeIntro(true);
-        }}
-      />
+      {shouldPlayIntroForMatch && showBoardIntro && boardTargetFrame && (
+        <BoardDropIntro
+          targetFrame={boardTargetFrame}
+          onComplete={() => {
+            setShowBoardIntro(false);
+            setHasPlayedBoardIntro(true);
+          }}
+        />
+      )}
+
+      {shouldPlayIntroForMatch && showReserveCascadeIntro && (
+        <ReserveCascadeIntro
+          lightSlots={lightReserveSlots}
+          darkSlots={darkReserveSlots}
+          onComplete={() => {
+            setShowReserveCascadeIntro(false);
+            setHasPlayedReserveCascadeIntro(true);
+            if (matchId) {
+              playedIntroMatchIdsRef.current[matchId] = true;
+            }
+          }}
+        />
+      )}
 
       {showScoreBanner && (
         <View pointerEvents="none" style={styles.scoreBannerWrap}>
@@ -938,6 +1033,9 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginTop: 2,
     marginBottom: 2,
+  },
+  boardHiddenDuringIntro: {
+    opacity: 0,
   },
   scoreBannerWrap: {
     position: 'absolute',
