@@ -67,7 +67,7 @@ const FallingPiece: React.FC<{
   }, [landingBounce, onLanded, progress, target.order, visible]);
 
   const pieceStyle = useAnimatedStyle(() => {
-    const startY = -Math.max(160, target.size * 4.2);
+    const startY = -Math.max(260, target.y + target.size + 32);
     const y = interpolate(progress.value, [0, 1], [startY, 0]);
     const rotate = interpolate(progress.value, [0, 1], [-12, 0]);
     const bounceY = interpolate(landingBounce.value, [0, 1], [0, -7]);
