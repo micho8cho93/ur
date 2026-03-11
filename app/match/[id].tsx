@@ -4,6 +4,7 @@ import { EdgeScore } from '@/components/game/EdgeScore';
 import { GameStageHUD } from '@/components/game/GameStageHUD';
 import { HowToPlayModal } from '@/components/HowToPlayModal';
 import { PieceRail, ReserveSlotMeasurement } from '@/components/game/PieceRail';
+import { BoardDropIntro } from '@/components/game/BoardDropIntro';
 import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
 import { Modal } from '@/components/ui/Modal';
 import { urTheme, urTypography } from '@/constants/urTheme';
@@ -27,7 +28,7 @@ import {
 import { MatchData, MatchPresenceEvent, Socket } from '@heroiclabs/nakama-js';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -98,8 +99,12 @@ export default function GameRoom() {
   const [darkReserveSlots, setDarkReserveSlots] = React.useState<ReserveSlotMeasurement[]>([]);
   const [showReserveCascadeIntro, setShowReserveCascadeIntro] = React.useState(false);
   const [hasPlayedReserveCascadeIntro, setHasPlayedReserveCascadeIntro] = React.useState(false);
+  const [showBoardDropIntro, setShowBoardDropIntro] = React.useState(false);
+  const [hasPlayedBoardDropIntro, setHasPlayedBoardDropIntro] = React.useState(false);
+  const [boardTargetRect, setBoardTargetRect] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const boardCardRef = useRef<View | null>(null);
 
   useGameLoop(isOffline);
 
@@ -114,7 +119,46 @@ export default function GameRoom() {
     setDarkReserveSlots([]);
     setShowReserveCascadeIntro(false);
     setHasPlayedReserveCascadeIntro(false);
+    setShowBoardDropIntro(false);
+    setHasPlayedBoardDropIntro(false);
+    setBoardTargetRect(null);
   }, [matchId]);
+
+  const measureBoardTarget = useCallback(() => {
+    const node = boardCardRef.current;
+    if (!node) return;
+
+    node.measureInWindow((x, y, measuredWidth, measuredHeight) => {
+      if (measuredWidth <= 0 || measuredHeight <= 0) return;
+      setBoardTargetRect((prev) => {
+        if (
+          prev &&
+          Math.abs(prev.x - x) < 1 &&
+          Math.abs(prev.y - y) < 1 &&
+          Math.abs(prev.width - measuredWidth) < 1 &&
+          Math.abs(prev.height - measuredHeight) < 1
+        ) {
+          return prev;
+        }
+
+        return { x, y, width: measuredWidth, height: measuredHeight };
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      measureBoardTarget();
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [height, measureBoardTarget, width]);
+
+  useEffect(() => {
+    if (hasPlayedBoardDropIntro || showBoardDropIntro) return;
+    if (!boardTargetRect) return;
+    setShowBoardDropIntro(true);
+  }, [boardTargetRect, hasPlayedBoardDropIntro, showBoardDropIntro]);
 
   useEffect(() => {
     if (!matchId) return;
@@ -406,6 +450,8 @@ export default function GameRoom() {
   const lightReserve = gameState.light.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
   const darkReserve = gameState.dark.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
   const matchTitle = `Game #${matchId ?? 'local'}`;
+  const areIntrosComplete = hasPlayedBoardDropIntro && hasPlayedReserveCascadeIntro;
+  const interactionLocked = !areIntrosComplete || showBoardDropIntro || showReserveCascadeIntro;
 
   const viewportHorizontalPadding = 0;
   const stageContentWidth = Math.min(Math.max(width - viewportHorizontalPadding * 2, 0), urTheme.layout.stage.maxWidth);
@@ -630,10 +676,19 @@ export default function GameRoom() {
                         ? prev
                         : { width: slotWidth, height: slotHeight },
                     );
+                    requestAnimationFrame(() => {
+                      measureBoardTarget();
+                    });
                   }}
                 >
-                  <View style={styles.boardCard}>
-                    <Board showRailHints highlightMode="theatrical" boardScale={boardScale} orientation="vertical" />
+                  <View ref={boardCardRef} collapsable={false} style={[styles.boardCard, !hasPlayedBoardDropIntro && styles.boardHidden]}>
+                    <Board
+                      showRailHints
+                      highlightMode="theatrical"
+                      boardScale={boardScale}
+                      orientation="vertical"
+                      allowInteraction={!interactionLocked}
+                    />
                   </View>
                 </View>
               </View>
@@ -662,7 +717,7 @@ export default function GameRoom() {
                   value={gameState.rollValue}
                   rolling={rollingVisual}
                   onRoll={handleRoll}
-                  canRoll={canRoll}
+                  canRoll={canRoll && !interactionLocked}
                   mode="stage"
                   compact={compactSupportUi}
                 />
@@ -687,10 +742,19 @@ export default function GameRoom() {
                       ? prev
                       : { width: slotWidth, height: slotHeight },
                   );
+                  requestAnimationFrame(() => {
+                    measureBoardTarget();
+                  });
                 }}
               >
-                <View style={styles.boardCard}>
-                  <Board showRailHints highlightMode="theatrical" boardScale={boardScale} orientation="vertical" />
+                <View ref={boardCardRef} collapsable={false} style={[styles.boardCard, !hasPlayedBoardDropIntro && styles.boardHidden]}>
+                  <Board
+                    showRailHints
+                    highlightMode="theatrical"
+                    boardScale={boardScale}
+                    orientation="vertical"
+                    allowInteraction={!interactionLocked}
+                  />
                 </View>
               </View>
 
@@ -725,7 +789,7 @@ export default function GameRoom() {
                       value={gameState.rollValue}
                       rolling={rollingVisual}
                       onRoll={handleRoll}
-                      canRoll={canRoll}
+                      canRoll={canRoll && !interactionLocked}
                       mode="stage"
                       compact={compactSupportUi}
                     />
@@ -745,6 +809,20 @@ export default function GameRoom() {
           setHasPlayedReserveCascadeIntro(true);
         }}
       />
+
+      {boardTargetRect && (
+        <BoardDropIntro
+          visible={showBoardDropIntro}
+          targetX={boardTargetRect.x}
+          targetY={boardTargetRect.y}
+          targetWidth={boardTargetRect.width}
+          targetHeight={boardTargetRect.height}
+          onComplete={() => {
+            setShowBoardDropIntro(false);
+            setHasPlayedBoardDropIntro(true);
+          }}
+        />
+      )}
 
       {showScoreBanner && (
         <View pointerEvents="none" style={styles.scoreBannerWrap}>
@@ -938,6 +1016,9 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginTop: 2,
     marginBottom: 2,
+  },
+  boardHidden: {
+    opacity: 0,
   },
   scoreBannerWrap: {
     position: 'absolute',
