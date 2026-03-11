@@ -497,7 +497,7 @@ export default function GameRoom() {
             <MaterialIcons
               name="arrow-back"
               size={20}
-              color={isMobileLayout ? urTheme.colors.clay : urTheme.colors.parchment}
+              color={urTheme.colors.glow}
             />
           </Pressable>
           <Text numberOfLines={1} style={styles.topChromeTitle}>
@@ -756,7 +756,7 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     borderWidth: 2.1,
     borderColor: 'rgba(46, 24, 10, 0.98)',
-    backgroundColor: 'rgba(248, 236, 210, 0.9)',
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -764,7 +764,7 @@ const styles = StyleSheet.create({
   topChromeIconButtonMobile: {
     borderWidth: 2.4,
     borderColor: 'rgba(46, 24, 10, 0.98)',
-    backgroundColor: 'rgba(248, 236, 210, 0.94)',
+    backgroundColor: 'transparent',
     shadowColor: 'rgba(46, 24, 10, 0.92)',
     shadowOpacity: 0.32,
     shadowRadius: 3,
@@ -773,7 +773,7 @@ const styles = StyleSheet.create({
   },
   topChromeTitle: {
     ...urTypography.label,
-    color: urTheme.colors.clay,
+    color: urTheme.colors.glow,
     fontSize: 13,
     letterSpacing: 0.35,
     textShadowColor: 'rgba(0, 0, 0, 0.45)',
@@ -846,14 +846,14 @@ const styles = StyleSheet.create({
     borderRadius: urTheme.radii.pill,
     borderWidth: 2.1,
     borderColor: 'rgba(46, 24, 10, 0.98)',
-    backgroundColor: 'rgba(248, 236, 210, 0.9)',
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerHelpButtonMobile: {
     borderWidth: 2.4,
     borderColor: 'rgba(46, 24, 10, 0.98)',
-    backgroundColor: 'rgba(248, 236, 210, 0.94)',
+    backgroundColor: 'transparent',
     shadowColor: 'rgba(46, 24, 10, 0.92)',
     shadowOpacity: 0.32,
     shadowRadius: 3,
@@ -865,12 +865,12 @@ const styles = StyleSheet.create({
   },
   headerHelpLabel: {
     ...urTypography.label,
-    color: urTheme.colors.parchment,
+    color: urTheme.colors.glow,
     fontSize: 11,
     letterSpacing: 0.8,
   },
   headerHelpLabelMobile: {
-    color: urTheme.colors.clay,
+    color: urTheme.colors.glow,
   },
   boardCard: {
     width: '100%',
