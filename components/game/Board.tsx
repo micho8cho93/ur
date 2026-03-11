@@ -3,7 +3,18 @@ import { BOARD_COLS, BOARD_ROWS, PATH_DARK, PATH_LENGTH, PATH_LIGHT } from '@/lo
 import { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { useGameStore } from '@/store/useGameStore';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, useWindowDimensions, View } from 'react-native';
+import {
+  Image,
+  LayoutAnimation,
+  LayoutChangeEvent,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  UIManager,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -16,7 +27,7 @@ import Animated, {
 import { Piece } from './Piece';
 import { Tile } from './Tile';
 
-const boardImage = require('../../assets/board/board_design.png');
+export const BOARD_IMAGE_SOURCE = require('../../assets/board/board_design.png');
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -32,6 +43,7 @@ interface BoardProps {
   onMakeMoveOverride?: (move: MoveAction) => void;
   playerColorOverride?: PlayerColor | null;
   allowInteraction?: boolean;
+  onBoardImageLayout?: (layout: BoardImageLayoutFrame) => void;
 }
 
 interface Point {
@@ -55,6 +67,13 @@ interface BoardArtImageLayout {
   left: number;
   top: number;
   rotate?: '-90deg';
+}
+
+export interface BoardImageLayoutFrame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 interface BoardArtAlignmentConfig {
@@ -122,6 +141,7 @@ export const Board: React.FC<BoardProps> = ({
   onMakeMoveOverride,
   playerColorOverride,
   allowInteraction = true,
+  onBoardImageLayout,
 }) => {
   const storeGameState = useGameStore((state) => state.gameState);
   const storeValidMoves = useGameStore((state) => state.validMoves);
@@ -822,13 +842,21 @@ export const Board: React.FC<BoardProps> = ({
     spawnMove.toIndex === selectedMove.toIndex;
   const scoreCueSelected = !!selectedMove && selectedMove.toIndex === PATH_LENGTH;
 
+  const handleBoardImageLayout = (event: LayoutChangeEvent) => {
+    if (!onBoardImageLayout) return;
+
+    const { x, y, width, height } = event.nativeEvent.layout;
+    onBoardImageLayout({ x, y, width, height });
+  };
+
   return (
     <View
       style={[styles.frame, { width: boardLayout.frameWidth, height: boardLayout.frameHeight }]}
     >
       <View pointerEvents="none" style={styles.boardArtLayer}>
         <Image
-          source={boardImage}
+          source={BOARD_IMAGE_SOURCE}
+          onLayout={handleBoardImageLayout}
           resizeMode="stretch"
           style={[
             styles.boardArtImage,

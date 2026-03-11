@@ -1,4 +1,10 @@
-import { Board, getBoardPiecePixelSize } from '@/components/game/Board';
+import {
+  Board,
+  BoardImageLayoutFrame,
+  BOARD_IMAGE_SOURCE,
+  getBoardPiecePixelSize,
+} from '@/components/game/Board';
+import { BoardDropIntro } from '@/components/game/BoardDropIntro';
 import { Dice } from '@/components/game/Dice';
 import { EdgeScore } from '@/components/game/EdgeScore';
 import { GameStageHUD } from '@/components/game/GameStageHUD';
@@ -32,6 +38,13 @@ import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'r
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const UR_BG_IMAGE = require('../../assets/images/ur_bg.png');
+
+interface BoardTargetFrame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export default function GameRoom() {
   const { id, offline, botDifficulty } = useLocalSearchParams<{
@@ -94,12 +107,55 @@ export default function GameRoom() {
   const [rollingVisual, setRollingVisual] = React.useState(false);
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
   const [boardSlotSize, setBoardSlotSize] = React.useState({ width: 0, height: 0 });
+  const [boardTargetFrame, setBoardTargetFrame] = React.useState<BoardTargetFrame | null>(null);
   const [lightReserveSlots, setLightReserveSlots] = React.useState<ReserveSlotMeasurement[]>([]);
   const [darkReserveSlots, setDarkReserveSlots] = React.useState<ReserveSlotMeasurement[]>([]);
+  const [showBoardDropIntro, setShowBoardDropIntro] = React.useState(false);
+  const [hasPlayedBoardDropIntro, setHasPlayedBoardDropIntro] = React.useState(false);
   const [showReserveCascadeIntro, setShowReserveCascadeIntro] = React.useState(false);
   const [hasPlayedReserveCascadeIntro, setHasPlayedReserveCascadeIntro] = React.useState(false);
+  const boardMeasureRef = useRef<View | null>(null);
+  const boardImageLayoutRef = useRef<BoardImageLayoutFrame | null>(null);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const syncBoardTargetFrame = React.useCallback(() => {
+    const boardImageLayout = boardImageLayoutRef.current;
+    const boardNode = boardMeasureRef.current;
+
+    if (!boardImageLayout || !boardNode) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      boardNode.measureInWindow((x, y) => {
+        const nextFrame = {
+          x: x + boardImageLayout.x,
+          y: y + boardImageLayout.y,
+          width: boardImageLayout.width,
+          height: boardImageLayout.height,
+        };
+
+        setBoardTargetFrame((previous) =>
+          previous &&
+            previous.x === nextFrame.x &&
+            previous.y === nextFrame.y &&
+            previous.width === nextFrame.width &&
+            previous.height === nextFrame.height
+            ? previous
+            : nextFrame,
+        );
+      });
+    });
+  }, []);
+
+  const handleLiveBoardImageLayout = React.useCallback(
+    (layout: BoardImageLayoutFrame) => {
+      boardImageLayoutRef.current = layout;
+      syncBoardTargetFrame();
+    },
+    [syncBoardTargetFrame],
+  );
 
   useGameLoop(isOffline);
 
@@ -110,6 +166,10 @@ export default function GameRoom() {
   }, [gameState.winner]);
 
   useEffect(() => {
+    boardImageLayoutRef.current = null;
+    setBoardTargetFrame(null);
+    setShowBoardDropIntro(false);
+    setHasPlayedBoardDropIntro(false);
     setLightReserveSlots([]);
     setDarkReserveSlots([]);
     setShowReserveCascadeIntro(false);
@@ -487,7 +547,24 @@ export default function GameRoom() {
     }));
   }, [darkReserveSlots, lightReserveSlots]);
 
+  const isBoardTargetFrameReady =
+    boardTargetFrame !== null &&
+    boardTargetFrame.width > 0 &&
+    boardTargetFrame.height > 0 &&
+    boardSlotSize.width > 0 &&
+    boardSlotSize.height > 0;
+
+  const shouldHideReservePieces = !hasPlayedReserveCascadeIntro;
+
   useEffect(() => {
+    if (hasPlayedBoardDropIntro || showBoardDropIntro) return;
+    if (!isBoardTargetFrameReady) return;
+
+    setShowBoardDropIntro(true);
+  }, [hasPlayedBoardDropIntro, isBoardTargetFrameReady, showBoardDropIntro]);
+
+  useEffect(() => {
+    if (!hasPlayedBoardDropIntro) return;
     if (hasPlayedReserveCascadeIntro || showReserveCascadeIntro) return;
     if (reserveCascadeTargets.length === 0) return;
     if (lightReserveSlots.length !== lightReserve) return;
@@ -497,12 +574,32 @@ export default function GameRoom() {
   }, [
     darkReserve,
     darkReserveSlots.length,
+    hasPlayedBoardDropIntro,
     hasPlayedReserveCascadeIntro,
     lightReserve,
     lightReserveSlots.length,
     reserveCascadeTargets.length,
     showReserveCascadeIntro,
   ]);
+
+  const liveBoard = (
+    <View
+      ref={boardMeasureRef}
+      collapsable={false}
+      onLayout={syncBoardTargetFrame}
+      style={styles.liveBoardMeasure}
+    >
+      <View style={[styles.liveBoardWrap, !hasPlayedBoardDropIntro && styles.liveBoardHidden]}>
+        <Board
+          showRailHints
+          highlightMode="theatrical"
+          boardScale={boardScale}
+          orientation="vertical"
+          onBoardImageLayout={handleLiveBoardImageLayout}
+        />
+      </View>
+    </View>
+  );
 
   return (
     <View style={styles.screen}>
@@ -614,7 +711,7 @@ export default function GameRoom() {
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={lightReserve}
                   active={isMyTurn}
-                  hideReservePieces={showReserveCascadeIntro}
+                  hideReservePieces={shouldHideReservePieces}
                   onReserveSlotsLayout={setLightReserveSlots}
                 />
                 <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} compact={compactSupportUi} />
@@ -633,7 +730,7 @@ export default function GameRoom() {
                   }}
                 >
                   <View style={styles.boardCard}>
-                    <Board showRailHints highlightMode="theatrical" boardScale={boardScale} orientation="vertical" />
+                    {liveBoard}
                   </View>
                 </View>
               </View>
@@ -655,7 +752,7 @@ export default function GameRoom() {
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={darkReserve}
                   active={!isMyTurn}
-                  hideReservePieces={showReserveCascadeIntro}
+                  hideReservePieces={shouldHideReservePieces}
                   onReserveSlotsLayout={setDarkReserveSlots}
                 />
                 <Dice
@@ -690,7 +787,7 @@ export default function GameRoom() {
                 }}
               >
                 <View style={styles.boardCard}>
-                  <Board showRailHints highlightMode="theatrical" boardScale={boardScale} orientation="vertical" />
+                  {liveBoard}
                 </View>
               </View>
 
@@ -704,7 +801,7 @@ export default function GameRoom() {
                       piecePixelSize={scaledReservePiecePixelSize}
                       reserveCount={lightReserve}
                       active={isMyTurn}
-                      hideReservePieces={showReserveCascadeIntro}
+                      hideReservePieces={shouldHideReservePieces}
                       onReserveSlotsLayout={setLightReserveSlots}
                     />
                     <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} compact={compactSupportUi} />
@@ -718,7 +815,7 @@ export default function GameRoom() {
                       piecePixelSize={scaledReservePiecePixelSize}
                       reserveCount={darkReserve}
                       active={!isMyTurn}
-                      hideReservePieces={showReserveCascadeIntro}
+                      hideReservePieces={shouldHideReservePieces}
                       onReserveSlotsLayout={setDarkReserveSlots}
                     />
                     <Dice
@@ -736,6 +833,17 @@ export default function GameRoom() {
           )}
         </View>
       </View>
+
+      {showBoardDropIntro && boardTargetFrame && (
+        <BoardDropIntro
+          targetFrame={boardTargetFrame}
+          boardSource={BOARD_IMAGE_SOURCE}
+          onComplete={() => {
+            setShowBoardDropIntro(false);
+            setHasPlayedBoardDropIntro(true);
+          }}
+        />
+      )}
 
       <ReserveCascadeIntro
         visible={showReserveCascadeIntro}
@@ -938,6 +1046,17 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginTop: 2,
     marginBottom: 2,
+  },
+  liveBoardMeasure: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveBoardWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveBoardHidden: {
+    opacity: 0,
   },
   scoreBannerWrap: {
     position: 'absolute',
