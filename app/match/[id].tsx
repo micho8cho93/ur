@@ -102,7 +102,7 @@ export default function GameRoom() {
   const [showReserveCascadeIntro, setShowReserveCascadeIntro] = React.useState(false);
   const [hasPlayedBoardIntro, setHasPlayedBoardIntro] = React.useState(false);
   const [hasPlayedReserveCascadeIntro, setHasPlayedReserveCascadeIntro] = React.useState(false);
-  const boardViewportRef = useRef<View | null>(null);
+  const boardCardRef = useRef<View | null>(null);
   const playedIntroMatchIdsRef = useRef<Record<string, true>>({});
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -485,10 +485,10 @@ export default function GameRoom() {
   const shouldPlayIntroForMatch = Boolean(matchId && !playedIntroMatchIdsRef.current[matchId]);
 
   const measureBoardTargetFrame = React.useCallback(() => {
-    if (!shouldPlayIntroForMatch || !boardViewportRef.current) return;
+    if (!shouldPlayIntroForMatch || !boardCardRef.current) return;
 
     requestAnimationFrame(() => {
-      boardViewportRef.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => {
+      boardCardRef.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => {
         if (!measuredWidth || !measuredHeight) return;
         const nextFrame = {
           x,
@@ -680,7 +680,6 @@ export default function GameRoom() {
 
               <View style={styles.boardCenterColumn}>
                 <View
-                  ref={boardViewportRef}
                   style={styles.boardViewport}
                   onLayout={(event) => {
                     const { width: slotWidth, height: slotHeight } = event.nativeEvent.layout;
@@ -692,7 +691,11 @@ export default function GameRoom() {
                     measureBoardTargetFrame();
                   }}
                 >
-                  <View style={[styles.boardCard, shouldPlayIntroForMatch && showBoardIntro && styles.boardHiddenDuringIntro]}>
+                  <View
+                    ref={boardCardRef}
+                    style={[styles.boardCard, shouldPlayIntroForMatch && showBoardIntro && styles.boardHiddenDuringIntro]}
+                    onLayout={measureBoardTargetFrame}
+                  >
                     <Board
                       showRailHints
                       highlightMode="theatrical"
@@ -745,7 +748,6 @@ export default function GameRoom() {
               ]}
             >
               <View
-                ref={boardViewportRef}
                 style={[styles.boardViewport]}
                 onLayout={(event) => {
                   const { width: slotWidth, height: slotHeight } = event.nativeEvent.layout;
@@ -757,7 +759,11 @@ export default function GameRoom() {
                   measureBoardTargetFrame();
                 }}
               >
-                <View style={[styles.boardCard, shouldPlayIntroForMatch && showBoardIntro && styles.boardHiddenDuringIntro]}>
+                <View
+                  ref={boardCardRef}
+                  style={[styles.boardCard, shouldPlayIntroForMatch && showBoardIntro && styles.boardHiddenDuringIntro]}
+                  onLayout={measureBoardTargetFrame}
+                >
                   <Board
                     showRailHints
                     highlightMode="theatrical"

@@ -106,13 +106,10 @@ export const BoardDropIntro: React.FC<BoardDropIntroProps> = ({ targetFrame, onI
     const startY = -targetFrame.y - targetFrame.height - 160;
     const dropY = interpolate(dropProgress.value, [0, 1], [startY, 0]);
     const settleY = interpolate(settleProgress.value, [0, 1], [0, 14]);
-    const compression = settleProgress.value;
 
     return {
       transform: [
         { translateY: dropY + settleY },
-        { scaleX: 1 + compression * 0.04 },
-        { scaleY: 1 - compression * 0.05 },
         { rotate: `${interpolate(settleProgress.value, [0, 1], [0.6, 0])}deg` },
       ],
     };
