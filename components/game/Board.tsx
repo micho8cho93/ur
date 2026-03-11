@@ -95,9 +95,9 @@ export const getBoardPiecePixelSize = ({
   const boardWidth = Math.min(viewportWidth - urTheme.spacing.lg, urTheme.layout.boardMax) * boardScale;
   const gridWidth = boardWidth - FRAME_PADDING * 2 - INNER_PADDING * 2;
   const cellSize = gridWidth / displayCols;
-  const tileShellPadding = Math.max(MIN_TILE_SHELL_PADDING, cellSize * 0.04);
-  const renderedTileSize = Math.max(18, cellSize - tileShellPadding * 2);
-  return Math.max(14, renderedTileSize * BOARD_PIECE_TILE_COVERAGE);
+  const tileShellPadding = Math.max(MIN_TILE_SHELL_PADDING, Math.round(cellSize * 0.04));
+  const renderedTileSize = Math.max(18, Math.round(cellSize - tileShellPadding * 2));
+  return Math.max(14, Math.round(renderedTileSize * BOARD_PIECE_TILE_COVERAGE));
 };
 
 // Gameplay geometry is canonical; adjust this object if the PNG asset changes.
@@ -170,16 +170,16 @@ export const Board: React.FC<BoardProps> = ({
   }, [boardWidth, displayCols, displayRows]);
 
   const tileShellPadding = useMemo(
-    () => Math.max(MIN_TILE_SHELL_PADDING, boardLayout.cellSize * 0.04),
+    () => Math.max(MIN_TILE_SHELL_PADDING, Math.round(boardLayout.cellSize * 0.04)),
     [boardLayout.cellSize],
   );
   const renderedTileSize = useMemo(
-    () => Math.max(18, boardLayout.cellSize - tileShellPadding * 2),
+    () => Math.max(18, Math.round(boardLayout.cellSize - tileShellPadding * 2)),
     [boardLayout.cellSize, tileShellPadding],
   );
   // On-board PNG size is derived from board/tile geometry, not fixed presets.
   const boardPiecePixelSize = useMemo(
-    () => Math.max(14, renderedTileSize * BOARD_PIECE_TILE_COVERAGE),
+    () => Math.max(14, Math.round(renderedTileSize * BOARD_PIECE_TILE_COVERAGE)),
     [renderedTileSize],
   );
   const spawnCueSize = useMemo(
