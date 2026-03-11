@@ -47,6 +47,8 @@ interface PieceRailProps {
   reserveCount: number;
   totalCount?: number;
   active?: boolean;
+  introHidden?: boolean;
+  onSlotsMeasured?: (slots: ReserveSlotMeasurement[]) => void;
   hideReservePieces?: boolean;
   onReserveSlotsLayout?: (slots: ReserveSlotMeasurement[]) => void;
 }
@@ -66,6 +68,8 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   reserveCount,
   totalCount = 7,
   active = false,
+  introHidden = false,
+  onSlotsMeasured,
   hideReservePieces = false,
   onReserveSlotsLayout,
 }) => {
@@ -104,6 +108,11 @@ export const PieceRail: React.FC<PieceRailProps> = ({
 
   const shownCount = Math.min(totalCount, reserveCount);
   const resolvedVariant = tokenVariant ?? color;
+  const shouldHideReservePieces = introHidden || hideReservePieces;
+  const notifySlotsMeasured = useMemo(
+    () => onSlotsMeasured ?? onReserveSlotsLayout,
+    [onReserveSlotsLayout, onSlotsMeasured],
+  );
   const reservePieceSize = piecePixelSize ?? DEFAULT_RESERVE_PIECE_SIZE;
   const slotRefs = useRef<(View | null)[]>([]);
   const reportedSlotsKeyRef = useRef<string>('');
@@ -150,11 +159,11 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   }, [isMobile, railWidth, reservePieceSize, shownCount]);
 
   const reportReserveSlots = useCallback(() => {
-    if (!onReserveSlotsLayout) return;
+    if (!notifySlotsMeasured) return;
 
     if (shownCount <= 0) {
       reportedSlotsKeyRef.current = 'empty';
-      onReserveSlotsLayout([]);
+      notifySlotsMeasured([]);
       return;
     }
 
@@ -185,13 +194,13 @@ export const PieceRail: React.FC<PieceRailProps> = ({
             const nextKey = JSON.stringify(completeSlots);
             if (nextKey !== reportedSlotsKeyRef.current) {
               reportedSlotsKeyRef.current = nextKey;
-              onReserveSlotsLayout(completeSlots);
+              notifySlotsMeasured(completeSlots);
             }
           }
         });
       });
     });
-  }, [color, onReserveSlotsLayout, shownCount]);
+  }, [color, notifySlotsMeasured, shownCount]);
 
   useEffect(() => {
     reportReserveSlots();
@@ -261,7 +270,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
                 },
               ]}
             >
-              {!hideReservePieces && (
+              {!shouldHideReservePieces && (
                 <Piece
                   color={color}
                   pixelSize={reservePieceSize}
