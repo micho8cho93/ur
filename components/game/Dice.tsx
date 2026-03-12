@@ -1,7 +1,8 @@
+import { DiceRollScene } from '@/components/3d/DiceRollScene';
+import { DEFAULT_DICE_ROLL_DURATION_MS } from '@/components/3d/DiceRollScene.shared';
 import { urTheme, urTextures } from '@/constants/urTheme';
-import React, { useEffect } from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Svg, { Circle, Line, Polygon } from 'react-native-svg';
+import React, { useEffect, useRef, useState } from 'react';
+import { Image, StyleProp, StyleSheet, Text, TouchableOpacity, View, ViewStyle, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -9,9 +10,12 @@ import Animated, {
   useSharedValue,
   withRepeat,
   withSequence,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
+
+const STAGE_ROLL_BUTTON_WIDTH_SCALE = 1.2;
+const STAGE_ROLL_BUTTON_HEIGHT_SCALE = 0.8;
+const STAGE_ROLL_SCENE_SCALE = 0.92;
 
 interface DiceProps {
   value: number | null;
@@ -23,55 +27,6 @@ interface DiceProps {
   compact?: boolean;
 }
 
-interface TetrahedralDieProps {
-  isOn: boolean;
-  size?: number;
-}
-
-const TetrahedralDie: React.FC<TetrahedralDieProps> = ({ isOn, size = 38 }) => {
-  const w = size;
-  const h = size;
-  const apex = `${w / 2},3`;
-  const baseLeft = `2,${h - 4}`;
-  const baseRight = `${w - 2},${h - 4}`;
-  const baseCenter = `${w / 2},${h - 4}`;
-
-  const leftFacePoints = `${apex} ${baseLeft} ${baseCenter}`;
-  const rightFacePoints = `${apex} ${baseCenter} ${baseRight}`;
-
-  const leftFillOn = '#1A3A7A';
-  const rightFillOn = '#2A5AAE';
-  const leftFillOff = '#A07840';
-  const rightFillOff = '#C89858';
-  const strokeColor = '#1A1208';
-
-  return (
-    <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} pointerEvents="none">
-      <Polygon
-        points={leftFacePoints}
-        fill={isOn ? leftFillOn : leftFillOff}
-        stroke={strokeColor}
-        strokeWidth={1.2}
-      />
-      <Polygon
-        points={rightFacePoints}
-        fill={isOn ? rightFillOn : rightFillOff}
-        stroke={strokeColor}
-        strokeWidth={1.2}
-      />
-      <Line x1={w / 2} y1={3} x2={w / 2} y2={h - 4} stroke={strokeColor} strokeWidth={1} />
-      <Polygon
-        points={`${w / 2 + 4},${Math.floor(h * 0.28)} ${w - 8},${h - 10} ${w / 2 + 2},${h - 10}`}
-        fill={isOn ? 'rgba(140,180,255,0.28)' : 'rgba(255,240,200,0.22)'}
-        stroke="none"
-      />
-      {isOn && (
-        <Circle cx={w / 2} cy={11} r={3.5} fill="#F2E8D5" stroke={strokeColor} strokeWidth={0.8} />
-      )}
-    </Svg>
-  );
-};
-
 export const Dice: React.FC<DiceProps> = ({
   value,
   rolling,
@@ -81,32 +36,21 @@ export const Dice: React.FC<DiceProps> = ({
   showNumericResult = true,
   compact = false,
 }) => {
-  const lift = useSharedValue(0);
-  const spin = useSharedValue(0);
-  const tilt = useSharedValue(0);
+  const { width } = useWindowDimensions();
   const readiness = useSharedValue(canRoll ? 0.4 : 0);
-  const resultPulse = useSharedValue(0);
+  const wasRollingRef = useRef(false);
+  const [showThreeRollScene, setShowThreeRollScene] = useState(false);
+  const [scenePlaybackId, setScenePlaybackId] = useState(0);
 
   useEffect(() => {
-    if (rolling) {
-      lift.value = withSequence(
-        withTiming(-18, { duration: 110, easing: Easing.out(Easing.cubic) }),
-        withTiming(9, { duration: 120, easing: Easing.inOut(Easing.quad) }),
-        withTiming(-7, { duration: 100, easing: Easing.inOut(Easing.quad) }),
-        withSpring(0, urTheme.motion.spring.settle),
-      );
-
-      tilt.value = withSequence(
-        withTiming(1, { duration: 280, easing: Easing.linear }),
-        withTiming(0, { duration: 190, easing: Easing.out(Easing.cubic) }),
-      );
-
-      spin.value = withSequence(
-        withTiming(1, { duration: 470, easing: Easing.linear }),
-        withTiming(0, { duration: 0 }),
-      );
+    // Replay the decorative 3D cast every time the existing roll state starts.
+    if (rolling && !wasRollingRef.current) {
+      setShowThreeRollScene(true);
+      setScenePlaybackId((current) => current + 1);
     }
-  }, [lift, rolling, spin, tilt]);
+
+    wasRollingRef.current = rolling;
+  }, [rolling]);
 
   useEffect(() => {
     if (canRoll && !rolling) {
@@ -125,37 +69,14 @@ export const Dice: React.FC<DiceProps> = ({
     readiness.value = withTiming(0, { duration: 180 });
   }, [canRoll, readiness, rolling]);
 
-  useEffect(() => {
-    if (value === null || rolling) return;
-
-    resultPulse.value = withSequence(
-      withTiming(1, { duration: 170, easing: Easing.out(Easing.cubic) }),
-      withTiming(0, { duration: 320, easing: Easing.inOut(Easing.quad) }),
-    );
-  }, [resultPulse, rolling, value]);
-
-  const diceRowStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: lift.value },
-      { perspective: 850 },
-      { rotateX: `${tilt.value * 22}deg` },
-      { rotateY: `${spin.value * 60}deg` },
-      { scale: 1 + resultPulse.value * 0.08 },
-    ],
-  }));
-
   const readinessStyle = useAnimatedStyle(() => ({
     opacity: readiness.value,
     transform: [{ scale: 0.98 + readiness.value * 0.06 }],
   }));
 
-  const groundShadowStyle = useAnimatedStyle(() => ({
-    opacity: 0.22 + (1 - Math.min(Math.abs(lift.value) / 18, 1)) * 0.35,
-    transform: [{ scaleX: 0.92 + Math.min(Math.abs(lift.value) / 18, 1) * 0.16 }],
-  }));
-
-  const title = rolling ? 'Casting...' : value !== null ? `Result: ${value}` : 'Cast The Dice';
-  const subtitle = rolling
+  const isSceneRolling = showThreeRollScene && scenePlaybackId > 0;
+  const title = isSceneRolling ? 'Casting...' : value !== null ? `Result: ${value}` : 'Cast The Dice';
+  const subtitle = isSceneRolling
     ? 'The astragali are in motion'
     : canRoll
       ? 'Tap to roll'
@@ -163,13 +84,33 @@ export const Dice: React.FC<DiceProps> = ({
 
   const isStage = mode === 'stage';
   const isCompactStage = compact && isStage;
-  const dieSize = isCompactStage ? 18 : compact ? 28 : 38;
-  const dieGap = isCompactStage ? 3 : compact ? 6 : 12;
-  const compactStageTitle = rolling ? 'Casting...' : value !== null ? `Result ${value}` : 'Cast Dice';
-  const compactStageSubtitle = rolling ? 'Rolling' : canRoll ? 'Tap to roll' : 'Wait turn';
+  const isLaptopUp = width >= 1024;
+  const sceneBaseSize = isCompactStage ? 0.78 : compact ? 1.06 : 1.32;
+  const sceneSize = sceneBaseSize * (isStage ? STAGE_ROLL_SCENE_SCALE : 1);
+  const compactStageTitle = isSceneRolling ? 'Casting...' : value !== null ? `Result ${value}` : 'Cast Dice';
+  const compactStageSubtitle = isSceneRolling ? 'Rolling' : canRoll ? 'Tap to roll' : 'Wait turn';
+
+  const renderDiceVisual = (sceneStyle?: StyleProp<ViewStyle>) => (
+    <View pointerEvents="none" style={[styles.rollSceneViewport, sceneStyle]}>
+      <DiceRollScene
+        playbackId={isSceneRolling ? scenePlaybackId : scenePlaybackId + 1}
+        durationMs={DEFAULT_DICE_ROLL_DURATION_MS}
+        size={sceneSize}
+        variant={isSceneRolling ? 'animated' : 'start'}
+        onComplete={() => {
+          setShowThreeRollScene(false);
+        }}
+      />
+    </View>
+  );
 
   return (
-    <TouchableOpacity onPress={onRoll} disabled={!canRoll || rolling} activeOpacity={0.9} style={styles.touchable}>
+    <TouchableOpacity
+      onPress={onRoll}
+      disabled={!canRoll || rolling}
+      activeOpacity={0.9}
+      style={[styles.touchable, isStage && styles.stageTouchable]}
+    >
       <View
         style={[
           styles.card,
@@ -184,23 +125,11 @@ export const Dice: React.FC<DiceProps> = ({
         <View style={styles.cardBorder} />
         <Animated.View style={[styles.readyHalo, readinessStyle]} />
 
-        <Animated.View style={[styles.groundShadow, compact && styles.compactGroundShadow, groundShadowStyle]} />
-
         {isCompactStage ? (
           <View style={styles.compactStageContent}>
-            <Animated.View
-              style={[styles.diceRow, styles.compactDiceRow, styles.compactStageDiceRow, { gap: dieGap }, diceRowStyle]}
-            >
-              {[0, 1, 2, 3].map((index) => {
-                const isOn = value !== null && index < value;
-
-                return (
-                  <View key={index} style={[styles.dieWrap, styles.compactStageDieWrap]}>
-                    <TetrahedralDie isOn={isOn} size={dieSize} />
-                  </View>
-                );
-              })}
-            </Animated.View>
+            <View style={[styles.diceRow, styles.compactDiceRow, styles.compactStageDiceRow]}>
+              {renderDiceVisual(styles.compactStageRollSceneViewport)}
+            </View>
             <View style={styles.compactStageTextWrap}>
               {showNumericResult && <Text style={[styles.title, styles.compactTitle, styles.compactStageTitle]}>{compactStageTitle}</Text>}
               <Text style={[styles.subtitle, styles.compactSubtitle, styles.compactStageSubtitle]}>{compactStageSubtitle}</Text>
@@ -208,19 +137,21 @@ export const Dice: React.FC<DiceProps> = ({
           </View>
         ) : (
           <>
-            <Animated.View style={[styles.diceRow, compact && styles.compactDiceRow, { gap: dieGap }, diceRowStyle]}>
-              {[0, 1, 2, 3].map((index) => {
-                const isOn = value !== null && index < value;
+            <View style={[styles.diceRow, compact && styles.compactDiceRow]}>
+              {renderDiceVisual(isStage ? styles.stageRollSceneViewport : compact ? styles.compactRollSceneViewport : undefined)}
+            </View>
 
-                return (
-                  <View key={index} style={[styles.dieWrap, compact && styles.compactDieWrap]}>
-                    <TetrahedralDie isOn={isOn} size={dieSize} />
-                  </View>
-                );
-              })}
-            </Animated.View>
-
-            {showNumericResult && <Text style={[styles.title, compact && styles.compactTitle]}>{title}</Text>}
+            {showNumericResult && (
+              <Text
+                style={[
+                  styles.title,
+                  compact && styles.compactTitle,
+                  isLaptopUp && value !== null && !isSceneRolling && styles.resultTitleLarge,
+                ]}
+              >
+                {title}
+              </Text>
+            )}
             <Text style={[styles.subtitle, compact && styles.compactSubtitle, isStage && styles.stageSubtitle]}>{subtitle}</Text>
           </>
         )}
@@ -232,6 +163,10 @@ export const Dice: React.FC<DiceProps> = ({
 const styles = StyleSheet.create({
   touchable: {
     width: '100%',
+  },
+  stageTouchable: {
+    width: '120%',
+    alignSelf: 'center',
   },
   card: {
     borderRadius: urTheme.radii.md,
@@ -251,16 +186,19 @@ const styles = StyleSheet.create({
     minHeight: 144,
   },
   stageCard: {
-    minHeight: 143,
+    minHeight: Math.round(143 * STAGE_ROLL_BUTTON_HEIGHT_SCALE),
     borderRadius: urTheme.radii.pill,
+    paddingHorizontal: Math.round(urTheme.spacing.md * STAGE_ROLL_BUTTON_WIDTH_SCALE),
+    paddingVertical: Math.round(urTheme.spacing.md * STAGE_ROLL_BUTTON_HEIGHT_SCALE),
   },
   compactCard: {
     paddingHorizontal: urTheme.spacing.sm,
     paddingVertical: urTheme.spacing.sm,
   },
   compactStageCard: {
-    minHeight: 56,
-    paddingVertical: 7,
+    minHeight: Math.round(56 * STAGE_ROLL_BUTTON_HEIGHT_SCALE),
+    paddingHorizontal: Math.round(urTheme.spacing.sm * STAGE_ROLL_BUTTON_WIDTH_SCALE),
+    paddingVertical: Math.round(7 * STAGE_ROLL_BUTTON_HEIGHT_SCALE),
   },
   cardActive: {
     backgroundColor: '#5A2E10',
@@ -300,27 +238,28 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: 'rgba(111, 184, 255, 0.8)',
   },
-  groundShadow: {
-    position: 'absolute',
-    width: 136,
-    height: 24,
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(5, 10, 17, 0.4)',
-    top: 58,
-  },
-  compactGroundShadow: {
-    width: 96,
-    height: 18,
-    top: 42,
-  },
   diceRow: {
-    flexDirection: 'row',
-    gap: 12,
     marginBottom: urTheme.spacing.sm,
     marginTop: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   compactDiceRow: {
     marginBottom: urTheme.spacing.xs,
+  },
+  rollSceneViewport: {
+    width: 244,
+    height: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactRollSceneViewport: {
+    width: 204,
+    height: 78,
+  },
+  stageRollSceneViewport: {
+    width: Math.round(244 * STAGE_ROLL_BUTTON_WIDTH_SCALE),
+    height: Math.round(100 * STAGE_ROLL_BUTTON_HEIGHT_SCALE),
   },
   compactStageContent: {
     width: '100%',
@@ -333,24 +272,14 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     flexShrink: 0,
   },
+  compactStageRollSceneViewport: {
+    width: Math.round(118 * STAGE_ROLL_BUTTON_WIDTH_SCALE),
+    height: Math.round(48 * STAGE_ROLL_BUTTON_HEIGHT_SCALE),
+  },
   compactStageTextWrap: {
     marginLeft: 8,
     flex: 1,
     minWidth: 0,
-  },
-  compactStageDieWrap: {
-    width: 18,
-    height: 18,
-  },
-  dieWrap: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  compactDieWrap: {
-    width: 28,
-    height: 28,
   },
   title: {
     color: '#F6E6CC',
@@ -362,6 +291,10 @@ const styles = StyleSheet.create({
   compactTitle: {
     fontSize: 12,
     letterSpacing: 0.8,
+  },
+  resultTitleLarge: {
+    fontSize: 18,
+    lineHeight: 22,
   },
   compactStageTitle: {
     fontSize: 10,

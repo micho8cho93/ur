@@ -4,6 +4,7 @@ import {
   BOARD_IMAGE_SOURCE,
   getBoardPiecePixelSize,
 } from '@/components/game/Board';
+import { AudioSettingsModal } from '@/components/game/AudioSettingsModal';
 import { AmbientBackgroundEffects } from '@/components/game/AmbientBackgroundEffects';
 import { BoardDropIntro } from '@/components/game/BoardDropIntro';
 import { Dice } from '@/components/game/Dice';
@@ -47,6 +48,8 @@ const MATCH_AMBIENT_EFFECTS = {
   maxVisibleBugs: 1,
   maxVisibleLeaves: 1,
 } as const;
+const TOP_CHROME_ACCENT = '#C89820';
+const TOP_CHROME_BORDER = urTheme.colors.cedar;
 
 interface BoardTargetFrame {
   x: number;
@@ -113,8 +116,11 @@ export default function GameRoom() {
 
   const [showWinModal, setShowWinModal] = React.useState(false);
   const [showHowToPlay, setShowHowToPlay] = React.useState(false);
+  const [showAudioSettings, setShowAudioSettings] = React.useState(false);
   const [rollingVisual, setRollingVisual] = React.useState(false);
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
+  const [musicEnabled, setMusicEnabled] = React.useState(true);
+  const [sfxEnabled, setSfxEnabled] = React.useState(true);
   const [boardSlotSize, setBoardSlotSize] = React.useState({ width: 0, height: 0 });
   const [boardTargetFrame, setBoardTargetFrame] = React.useState<BoardTargetFrame | null>(null);
   const [lightReserveSlots, setLightReserveSlots] = React.useState<ReserveSlotMeasurement[]>([]);
@@ -177,6 +183,7 @@ export default function GameRoom() {
   useEffect(() => {
     boardImageLayoutRef.current = null;
     setBoardTargetFrame(null);
+    setRollingVisual(false);
     setShowBoardDropIntro(false);
     setHasPlayedBoardDropIntro(false);
     setLightReserveSlots([]);
@@ -396,12 +403,33 @@ export default function GameRoom() {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadAudioPreferences = async () => {
+      const preferences = await gameAudio.getPreferences();
+      if (!isMounted) {
+        return;
+      }
+
+      setMusicEnabled(preferences.musicEnabled);
+      setSfxEnabled(preferences.sfxEnabled);
+    };
+
+    void loadAudioPreferences();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const previousStateRef = useRef(gameState);
 
   useEffect(() => {
     const previous = previousStateRef.current;
+    const isBotRoll = isOffline && gameState.currentTurn === 'dark';
 
-    if (previous.rollValue !== gameState.rollValue && gameState.rollValue !== null) {
+    if (previous.rollValue !== gameState.rollValue && gameState.rollValue !== null && !rollingVisual && !isBotRoll) {
       void gameAudio.play('roll');
     }
 
@@ -447,12 +475,13 @@ export default function GameRoom() {
     }
 
     previousStateRef.current = gameState;
-  }, [didPlayerWin, gameState, hasAssignedColor, playerColor]);
+  }, [didPlayerWin, gameState, hasAssignedColor, isOffline, playerColor, rollingVisual]);
 
   const handleRoll = () => {
     if (!canRoll || rollingVisual) return;
 
     setRollingVisual(true);
+    void gameAudio.play('roll');
     roll();
     if (rollTimerRef.current) {
       clearTimeout(rollTimerRef.current);
@@ -461,6 +490,16 @@ export default function GameRoom() {
       setRollingVisual(false);
       rollTimerRef.current = null;
     }, 560);
+  };
+
+  const handleToggleMusic = async (enabled: boolean) => {
+    setMusicEnabled(enabled);
+    await gameAudio.setMusicEnabled(enabled);
+  };
+
+  const handleToggleSfx = async (enabled: boolean) => {
+    setSfxEnabled(enabled);
+    await gameAudio.setSfxEnabled(enabled);
   };
 
   const handleExit = () => {
@@ -658,7 +697,7 @@ export default function GameRoom() {
             <MaterialIcons
               name="arrow-back"
               size={20}
-              color={urTheme.colors.glow}
+              color={TOP_CHROME_ACCENT}
             />
           </Pressable>
           <Text numberOfLines={1} style={styles.topChromeTitle}>
@@ -666,18 +705,33 @@ export default function GameRoom() {
           </Text>
         </View>
 
-        <Pressable
-          onPress={() => setShowHowToPlay(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Open how to play instructions"
-          style={({ pressed }) => [
-            styles.headerHelpButton,
-            isMobileLayout && styles.headerHelpButtonMobile,
-            pressed && styles.headerHelpButtonPressed,
-          ]}
-        >
-          <Text style={[styles.headerHelpLabel, isMobileLayout && styles.headerHelpLabelMobile]}>Help</Text>
-        </Pressable>
+        <View style={styles.topChromeRight}>
+          <Pressable
+            onPress={() => setShowHowToPlay(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open how to play instructions"
+            style={({ pressed }) => [
+              styles.headerHelpButton,
+              isMobileLayout && styles.headerHelpButtonMobile,
+              pressed && styles.headerHelpButtonPressed,
+            ]}
+          >
+            <Text style={[styles.headerHelpLabel, isMobileLayout && styles.headerHelpLabelMobile]}>Help</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setShowAudioSettings(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open audio settings"
+            style={({ pressed }) => [
+              styles.headerHelpButton,
+              isMobileLayout && styles.headerHelpButtonMobile,
+              pressed && styles.headerHelpButtonPressed,
+            ]}
+          >
+            <Text style={[styles.headerHelpLabel, isMobileLayout && styles.headerHelpLabelMobile]}>Settings</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View
@@ -896,6 +950,18 @@ export default function GameRoom() {
         onAction={handleExit}
       />
 
+      <AudioSettingsModal
+        visible={showAudioSettings}
+        musicEnabled={musicEnabled}
+        sfxEnabled={sfxEnabled}
+        onClose={() => setShowAudioSettings(false)}
+        onToggleMusic={(enabled) => {
+          void handleToggleMusic(enabled);
+        }}
+        onToggleSfx={(enabled) => {
+          void handleToggleSfx(enabled);
+        }}
+      />
       <HowToPlayModal visible={showHowToPlay} onClose={() => setShowHowToPlay(false)} />
     </View>
   );
@@ -935,7 +1001,7 @@ const styles = StyleSheet.create({
     right: urTheme.spacing.xs,
     zIndex: 7,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: urTheme.spacing.sm,
   },
@@ -946,12 +1012,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: urTheme.spacing.xs,
   },
+  topChromeRight: {
+    gap: urTheme.spacing.xs,
+    alignItems: 'stretch',
+    flexShrink: 0,
+  },
   topChromeIconButton: {
     width: 34,
     height: 34,
     borderRadius: 17,
     borderWidth: 2.1,
-    borderColor: 'rgba(46, 24, 10, 0.98)',
+    borderColor: TOP_CHROME_BORDER,
     backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
@@ -959,9 +1030,9 @@ const styles = StyleSheet.create({
   },
   topChromeIconButtonMobile: {
     borderWidth: 2.4,
-    borderColor: 'rgba(46, 24, 10, 0.98)',
+    borderColor: TOP_CHROME_BORDER,
     backgroundColor: 'transparent',
-    shadowColor: 'rgba(46, 24, 10, 0.92)',
+    shadowColor: TOP_CHROME_BORDER,
     shadowOpacity: 0.32,
     shadowRadius: 3,
     shadowOffset: { width: 0, height: 1 },
@@ -969,7 +1040,7 @@ const styles = StyleSheet.create({
   },
   topChromeTitle: {
     ...urTypography.label,
-    color: urTheme.colors.glow,
+    color: TOP_CHROME_ACCENT,
     fontSize: 13,
     letterSpacing: 0.35,
     textShadowColor: 'rgba(0, 0, 0, 0.45)',
@@ -1041,16 +1112,16 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: urTheme.radii.pill,
     borderWidth: 2.1,
-    borderColor: 'rgba(46, 24, 10, 0.98)',
+    borderColor: TOP_CHROME_BORDER,
     backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerHelpButtonMobile: {
     borderWidth: 2.4,
-    borderColor: 'rgba(46, 24, 10, 0.98)',
+    borderColor: TOP_CHROME_BORDER,
     backgroundColor: 'transparent',
-    shadowColor: 'rgba(46, 24, 10, 0.92)',
+    shadowColor: TOP_CHROME_BORDER,
     shadowOpacity: 0.32,
     shadowRadius: 3,
     shadowOffset: { width: 0, height: 1 },
@@ -1061,12 +1132,12 @@ const styles = StyleSheet.create({
   },
   headerHelpLabel: {
     ...urTypography.label,
-    color: urTheme.colors.glow,
+    color: TOP_CHROME_ACCENT,
     fontSize: 11,
     letterSpacing: 0.8,
   },
   headerHelpLabelMobile: {
-    color: urTheme.colors.glow,
+    color: TOP_CHROME_ACCENT,
   },
   boardCard: {
     width: '100%',
