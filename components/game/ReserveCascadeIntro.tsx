@@ -24,6 +24,7 @@ export interface ReserveCascadePieceTarget {
 interface ReserveCascadeIntroProps {
   pieceTargets: ReserveCascadePieceTarget[];
   visible: boolean;
+  onPieceLand?: (landedCount: number) => void;
   onComplete: () => void;
 }
 
@@ -32,7 +33,7 @@ const PIECE_SPRITES: Record<'light' | 'dark', ImageSourcePropType> = {
   dark: require('../../assets/pieces/piece_dark.png'),
 };
 
-const FALL_STAGGER_MS = 70;
+const FALL_STAGGER_MS = 210;
 
 const FallingPiece: React.FC<{
   target: ReserveCascadePieceTarget;
@@ -117,7 +118,12 @@ const FallingPiece: React.FC<{
   );
 };
 
-export const ReserveCascadeIntro: React.FC<ReserveCascadeIntroProps> = ({ pieceTargets, visible, onComplete }) => {
+export const ReserveCascadeIntro: React.FC<ReserveCascadeIntroProps> = ({
+  pieceTargets,
+  visible,
+  onPieceLand,
+  onComplete,
+}) => {
   const landedCountRef = useRef(0);
 
   useEffect(() => {
@@ -137,6 +143,7 @@ export const ReserveCascadeIntro: React.FC<ReserveCascadeIntroProps> = ({ pieceT
           visible={visible}
           onLanded={() => {
             landedCountRef.current += 1;
+            onPieceLand?.(landedCountRef.current);
             if (landedCountRef.current >= pieceTargets.length) {
               onComplete();
             }

@@ -442,11 +442,12 @@ export default function GameRoom() {
     }
 
     if (!previous.winner && gameState.winner) {
-      void gameAudio.play('win');
+      const resultCue = hasAssignedColor ? (didPlayerWin ? 'win' : 'lose') : 'win';
+      void gameAudio.play(resultCue);
     }
 
     previousStateRef.current = gameState;
-  }, [gameState, hasAssignedColor, playerColor]);
+  }, [didPlayerWin, gameState, hasAssignedColor, playerColor]);
 
   const handleRoll = () => {
     if (!canRoll || rollingVisual) return;
@@ -869,6 +870,10 @@ export default function GameRoom() {
       <ReserveCascadeIntro
         visible={showReserveCascadeIntro}
         pieceTargets={reserveCascadeTargets}
+        onPieceLand={(landedCount) => {
+          if (landedCount % 2 === 0) return;
+          void gameAudio.play('tray');
+        }}
         onComplete={() => {
           setShowReserveCascadeIntro(false);
           setHasPlayedReserveCascadeIntro(true);
