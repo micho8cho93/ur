@@ -51,6 +51,9 @@ const MATCH_AMBIENT_EFFECTS = {
 } as const;
 const TOP_CHROME_ACCENT = '#C89820';
 const TOP_CHROME_BORDER = urTheme.colors.cedar;
+// Tune these until the match layer exposes a real server-backed turn clock.
+const VISUAL_TURN_TIMER_DURATION_MS = 18_000;
+const VISUAL_TURN_TIMER_WARNING_THRESHOLD = 0.22;
 
 interface BoardTargetFrame {
   x: number;
@@ -131,10 +134,16 @@ export default function GameRoom() {
   const [hasPlayedBoardDropIntro, setHasPlayedBoardDropIntro] = React.useState(false);
   const [showReserveCascadeIntro, setShowReserveCascadeIntro] = React.useState(false);
   const [hasPlayedReserveCascadeIntro, setHasPlayedReserveCascadeIntro] = React.useState(false);
+  const [turnTimerCycleId, setTurnTimerCycleId] = React.useState(0);
   const boardMeasureRef = useRef<View | null>(null);
   const boardImageLayoutRef = useRef<BoardImageLayoutFrame | null>(null);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previousTurnTimerStateRef = useRef<{
+    matchId: string | null;
+    currentTurn: PlayerColor;
+    phase: typeof gameState.phase;
+  } | null>(null);
 
   const syncBoardTargetFrame = React.useCallback(() => {
     const boardImageLayout = boardImageLayoutRef.current;
@@ -201,6 +210,28 @@ export default function GameRoom() {
     setShowReserveCascadeIntro(false);
     setHasPlayedReserveCascadeIntro(false);
   }, [matchId]);
+
+  useEffect(() => {
+    const previous = previousTurnTimerStateRef.current;
+    const nextSnapshot = {
+      matchId: matchId ?? null,
+      currentTurn: gameState.currentTurn,
+      phase: gameState.phase,
+    };
+
+    const shouldResetVisualTimer =
+      !previous ||
+      previous.matchId !== nextSnapshot.matchId ||
+      (gameState.phase === 'rolling' &&
+        (previous.currentTurn !== gameState.currentTurn || previous.phase !== 'rolling'));
+
+    // This app has no authoritative turn countdown yet, so the HUD timer resets only on turn boundaries.
+    if (shouldResetVisualTimer) {
+      setTurnTimerCycleId((current) => current + 1);
+    }
+
+    previousTurnTimerStateRef.current = nextSnapshot;
+  }, [gameState.currentTurn, gameState.phase, matchId]);
 
   useEffect(() => {
     if (!matchId) return;
@@ -615,6 +646,7 @@ export default function GameRoom() {
     boardSlotSize.height > 0;
 
   const shouldHideReservePieces = !hasPlayedReserveCascadeIntro;
+  const isVisualTurnTimerRunning = gameState.phase !== 'ended' && gameState.winner === null;
 
   useEffect(() => {
     if (hasPlayedBoardDropIntro || showBoardDropIntro) return;
@@ -820,7 +852,16 @@ export default function GameRoom() {
                   hideReservePieces={shouldHideReservePieces}
                   onReserveSlotsLayout={setLightReserveSlots}
                 />
-                <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} compact={compactSupportUi} />
+                <GameStageHUD
+                  isMyTurn={isMyTurn}
+                  canRoll={canRoll}
+                  phase={gameState.phase}
+                  compact={compactSupportUi}
+                  timerDurationMs={VISUAL_TURN_TIMER_DURATION_MS}
+                  timerIsRunning={isVisualTurnTimerRunning}
+                  timerKey={turnTimerCycleId}
+                  timerWarningThreshold={VISUAL_TURN_TIMER_WARNING_THRESHOLD}
+                />
               </View>
 
               <View style={styles.boardCenterColumn}>
@@ -910,7 +951,16 @@ export default function GameRoom() {
                       hideReservePieces={shouldHideReservePieces}
                       onReserveSlotsLayout={setLightReserveSlots}
                     />
-                    <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} compact={compactSupportUi} />
+                    <GameStageHUD
+                      isMyTurn={isMyTurn}
+                      canRoll={canRoll}
+                      phase={gameState.phase}
+                      compact={compactSupportUi}
+                      timerDurationMs={VISUAL_TURN_TIMER_DURATION_MS}
+                      timerIsRunning={isVisualTurnTimerRunning}
+                      timerKey={turnTimerCycleId}
+                      timerWarningThreshold={VISUAL_TURN_TIMER_WARNING_THRESHOLD}
+                    />
                   </View>
 
                   <View style={styles.mobileReserveCell}>

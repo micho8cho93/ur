@@ -1,5 +1,6 @@
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import { HourglassTimer } from '@/components/timer/HourglassTimer';
 import React, { useEffect } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -17,9 +18,26 @@ interface GameStageHUDProps {
   canRoll: boolean;
   phase: 'rolling' | 'moving' | 'ended';
   compact?: boolean;
+  timerDurationMs?: number;
+  timerRemainingMs?: number;
+  timerProgress?: number;
+  timerIsRunning?: boolean;
+  timerKey?: number | string;
+  timerWarningThreshold?: number;
 }
 
-export const GameStageHUD: React.FC<GameStageHUDProps> = ({ isMyTurn, canRoll, phase, compact = false }) => {
+export const GameStageHUD: React.FC<GameStageHUDProps> = ({
+  isMyTurn,
+  canRoll,
+  phase,
+  compact = false,
+  timerDurationMs,
+  timerRemainingMs,
+  timerProgress,
+  timerIsRunning = true,
+  timerKey,
+  timerWarningThreshold,
+}) => {
   const turnGlow = useSharedValue(isMyTurn ? 0.75 : 0.2);
   const turnSweep = useSharedValue(0);
 
@@ -71,6 +89,20 @@ export const GameStageHUD: React.FC<GameStageHUDProps> = ({ isMyTurn, canRoll, p
         <Text style={[styles.turnTitle, compact && styles.compactTurnTitle]}>{isMyTurn ? 'Your Turn' : 'Opponent Turn'}</Text>
         <Text style={[styles.turnHint, compact && styles.compactTurnHint]}>{hint}</Text>
       </View>
+      {timerDurationMs ? (
+        <View style={styles.timerWrap}>
+          <HourglassTimer
+            key={timerKey}
+            durationMs={timerDurationMs}
+            remainingMs={timerRemainingMs}
+            progress={timerProgress}
+            isRunning={timerIsRunning}
+            warningThreshold={timerWarningThreshold}
+            // Keep the HUD timer readable without letting it overpower the turn copy.
+            size={compact ? 34 : 40}
+          />
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -144,6 +176,12 @@ const styles = StyleSheet.create({
   },
   compactTextWrap: {
     marginLeft: urTheme.spacing.xs,
+  },
+  timerWrap: {
+    marginLeft: urTheme.spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   turnTitle: {
     ...urTypography.label,
