@@ -237,7 +237,9 @@ export default function WatchTutorialScreen() {
   const scoreOverlayTop = topChromeTop + topChromeHeight + urTheme.spacing.xs;
   const backdropOverscan = Math.ceil(Math.max(width, height) * 0.025);
   const canvasTopEdgeLift = Math.max(24, Math.min(96, Math.round(height * 0.07)));
-  const wideLayoutSupportColumnOffset = useSideColumns ? Math.max(urTheme.spacing.lg, Math.round(height * 0.05)) : 0;
+  const wideLayoutSupportColumnOffset = useSideColumns
+    ? Math.max(56, Math.round(height * 0.11))
+    : 0;
   const sideColumnTopInset = scoreOverlayTop + urTheme.spacing.sm + wideLayoutSupportColumnOffset;
   const mobileBoardOffsetTop = isMobileLayout
     ? Math.max(scoreOverlayTop - urTheme.spacing.xs, Math.round(height * 0.065))
