@@ -240,6 +240,7 @@ export default function WatchTutorialScreen() {
     ? Math.max(scoreOverlayTop - urTheme.spacing.xs, Math.round(height * 0.065))
     : 0;
   const mobileBoardOffsetBottom = isMobileLayout ? Math.max(urTheme.spacing.md, Math.round(height * 0.06)) : 0;
+  const mobileSupportOffsetTop = isMobileLayout ? Math.max(urTheme.spacing.md, Math.round(height * 0.05)) : 0;
 
   return (
     <View style={styles.screen}>
@@ -351,6 +352,7 @@ export default function WatchTutorialScreen() {
                     onBack={handleBackStep}
                     onRestart={handleRestart}
                     onToggleSpeed={() => setSpeed((prev) => (prev === 1 ? 2 : 1))}
+                    compact
                   />
                 </View>
               </View>
@@ -433,7 +435,7 @@ export default function WatchTutorialScreen() {
                 </View>
               </View>
 
-              <View style={styles.mobileSupportStack}>
+              <View style={[styles.mobileSupportStack, { marginTop: mobileSupportOffsetTop }]}>
                 <View style={styles.mobileReserveRow}>
                   <View style={styles.mobileReserveCell}>
                     <PieceRail
