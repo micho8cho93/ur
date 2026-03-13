@@ -351,6 +351,7 @@ export default function WatchTutorialScreen() {
                     onBack={handleBackStep}
                     onRestart={handleRestart}
                     onToggleSpeed={() => setSpeed((prev) => (prev === 1 ? 2 : 1))}
+                    compact
                   />
                 </View>
               </View>

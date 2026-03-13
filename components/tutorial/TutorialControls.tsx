@@ -16,6 +16,7 @@ interface TutorialControlsProps {
   onBack: () => void;
   onRestart: () => void;
   onToggleSpeed: () => void;
+  compact?: boolean;
 }
 
 interface ControlChipProps {
@@ -51,6 +52,7 @@ export const TutorialControls: React.FC<TutorialControlsProps> = ({
   onBack,
   onRestart,
   onToggleSpeed,
+  compact = false,
 }) => {
   const totalSteps = steps.length;
   const progress = totalSteps === 0 ? 0 : stepIndex / totalSteps;
@@ -59,17 +61,17 @@ export const TutorialControls: React.FC<TutorialControlsProps> = ({
   const nextLabel = currentStep ? describeTutorialStep(currentStep) : 'Tutorial complete';
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, compact && styles.wrapCompact]}>
       <Image source={urTextures.lapisMosaic} resizeMode="cover" style={styles.texture} />
       <View style={styles.topGlow} />
       <View style={styles.innerBorder} />
 
-      <View style={styles.progressHeader}>
+      <View style={[styles.progressHeader, compact && styles.progressHeaderCompact]}>
         <Text style={styles.progressText}>Step {clampedStepIndex} / {totalSteps}</Text>
-        <Text style={styles.progressHint}>{controlsLocked ? 'Paused for lesson' : nextLabel}</Text>
+        <Text style={[styles.progressHint, compact && styles.progressHintCompact]}>{controlsLocked ? 'Paused for lesson' : nextLabel}</Text>
       </View>
 
-      <View style={styles.timelineTrack}>
+      <View style={[styles.timelineTrack, compact && styles.timelineTrackCompact]}>
         <View style={[styles.timelineFill, { width: `${Math.max(0, Math.min(100, progress * 100))}%` }]} />
         <View style={styles.markerRow} pointerEvents="none">
           {steps.map((step, index) => {
@@ -94,12 +96,22 @@ export const TutorialControls: React.FC<TutorialControlsProps> = ({
         </View>
       </View>
 
-      <View style={styles.controlsRow}>
-        <ControlChip label={isPlaying ? 'Pause' : 'Play'} onPress={onTogglePlay} disabled={controlsLocked || stepIndex >= totalSteps} active={isPlaying} />
-        <ControlChip label="Next" onPress={onNext} disabled={controlsLocked || stepIndex >= totalSteps} />
-        <ControlChip label="Back" onPress={onBack} disabled={controlsLocked || stepIndex <= 0} />
-        <ControlChip label="Restart" onPress={onRestart} />
-        <ControlChip label={`Speed ${speed}x`} onPress={onToggleSpeed} active={speed === 2} disabled={controlsLocked} />
+      <View style={[styles.controlsRow, compact && styles.controlsRowCompact]}>
+        <View style={[styles.controlChipWrap, compact && styles.controlChipWrapCompact]}>
+          <ControlChip label={isPlaying ? 'Pause' : 'Play'} onPress={onTogglePlay} disabled={controlsLocked || stepIndex >= totalSteps} active={isPlaying} />
+        </View>
+        <View style={[styles.controlChipWrap, compact && styles.controlChipWrapCompact]}>
+          <ControlChip label="Next" onPress={onNext} disabled={controlsLocked || stepIndex >= totalSteps} />
+        </View>
+        <View style={[styles.controlChipWrap, compact && styles.controlChipWrapCompact]}>
+          <ControlChip label="Back" onPress={onBack} disabled={controlsLocked || stepIndex <= 0} />
+        </View>
+        <View style={[styles.controlChipWrap, compact && styles.controlChipWrapCompact]}>
+          <ControlChip label="Restart" onPress={onRestart} />
+        </View>
+        <View style={[styles.controlChipWrap, compact && styles.controlChipWrapCompact]}>
+          <ControlChip label={`Speed ${speed}x`} onPress={onToggleSpeed} active={speed === 2} disabled={controlsLocked} />
+        </View>
       </View>
     </View>
   );
@@ -115,6 +127,10 @@ const styles = StyleSheet.create({
     padding: urTheme.spacing.md,
     gap: urTheme.spacing.sm,
     overflow: 'hidden',
+  },
+  wrapCompact: {
+    padding: urTheme.spacing.sm,
+    gap: urTheme.spacing.xs,
   },
   texture: {
     ...StyleSheet.absoluteFillObject,
@@ -138,6 +154,9 @@ const styles = StyleSheet.create({
   progressHeader: {
     gap: 4,
   },
+  progressHeaderCompact: {
+    gap: 2,
+  },
   progressText: {
     ...urTypography.label,
     color: urTheme.colors.parchment,
@@ -148,6 +167,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
+  progressHintCompact: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
   timelineTrack: {
     position: 'relative',
     height: 18,
@@ -157,6 +180,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(248, 229, 189, 0.14)',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  timelineTrackCompact: {
+    height: 14,
   },
   timelineFill: {
     position: 'absolute',
@@ -200,6 +226,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: urTheme.spacing.xs,
+  },
+  controlsRowCompact: {
+    flexWrap: 'nowrap',
+  },
+  controlChipWrap: {
+    flexShrink: 1,
+  },
+  controlChipWrapCompact: {
+    flex: 1,
+    minWidth: 0,
   },
   controlChip: {
     minHeight: 38,
