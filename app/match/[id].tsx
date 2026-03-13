@@ -7,6 +7,7 @@ import {
 import { AudioSettingsModal } from '@/components/game/AudioSettingsModal';
 import { AmbientBackgroundEffects } from '@/components/game/AmbientBackgroundEffects';
 import { BoardDropIntro } from '@/components/game/BoardDropIntro';
+import { DEFAULT_DICE_ROLL_DURATION_MS } from '@/components/3d/DiceRollScene.shared';
 import { Dice } from '@/components/game/Dice';
 import { EdgeScore } from '@/components/game/EdgeScore';
 import { GameStageHUD } from '@/components/game/GameStageHUD';
@@ -125,6 +126,7 @@ export default function GameRoom() {
   const [showAudioSettings, setShowAudioSettings] = React.useState(false);
   const [showTopMenu, setShowTopMenu] = React.useState(false);
   const [rollingVisual, setRollingVisual] = React.useState(false);
+  const [showDestinationHighlights, setShowDestinationHighlights] = React.useState(false);
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
   const [musicEnabled, setMusicEnabled] = React.useState(true);
   const [sfxEnabled, setSfxEnabled] = React.useState(true);
@@ -188,13 +190,11 @@ export default function GameRoom() {
   );
 
   useGameLoop(isOffline);
-
   useEffect(() => {
     if (gameState.winner) {
       setShowWinModal(true);
     }
   }, [gameState.winner]);
-
   useEffect(() => {
     if (!showHowToPlay && !showAudioSettings && !showWinModal) {
       return;
@@ -202,11 +202,11 @@ export default function GameRoom() {
 
     setShowTopMenu(false);
   }, [showAudioSettings, showHowToPlay, showWinModal]);
-
   useEffect(() => {
     boardImageLayoutRef.current = null;
     setBoardTargetFrame(null);
     setRollingVisual(false);
+    setShowDestinationHighlights(false);
     setShowBoardDropIntro(false);
     setHasPlayedBoardDropIntro(false);
     setLightReserveSlots([]);
@@ -214,7 +214,6 @@ export default function GameRoom() {
     setShowReserveCascadeIntro(false);
     setHasPlayedReserveCascadeIntro(false);
   }, [matchId]);
-
   useEffect(() => {
     const previous = previousTurnTimerStateRef.current;
     const nextSnapshot = {
@@ -236,7 +235,6 @@ export default function GameRoom() {
 
     previousTurnTimerStateRef.current = nextSnapshot;
   }, [gameState.currentTurn, gameState.phase, matchId]);
-
   useEffect(() => {
     if (turnTimeoutTimerRef.current) {
       clearTimeout(turnTimeoutTimerRef.current);
@@ -280,7 +278,6 @@ export default function GameRoom() {
       }
     };
   }, [gameState.phase, gameState.winner, isMyTurn, turnTimerCycleId]);
-
   useEffect(() => {
     if (!forceMoveAfterRollRef.current) {
       return;
@@ -298,7 +295,6 @@ export default function GameRoom() {
     forceMoveAfterRollRef.current = false;
     makeMove(validMoves[0]);
   }, [gameState.phase, gameState.winner, isMyTurn, makeMove, validMoves]);
-
   useEffect(() => {
     if (!matchId) return;
     if (isOffline || storedMatchId !== matchId) {
@@ -309,7 +305,6 @@ export default function GameRoom() {
 
   const socketRef = useRef<Socket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   useEffect(() => {
     if (!matchId) return;
     if (isOffline) {
@@ -447,7 +442,6 @@ export default function GameRoom() {
     updateMatchPresences,
     userId,
   ]);
-
   useEffect(() => {
     if (!matchId) return;
     if (isOffline) {
@@ -490,7 +484,6 @@ export default function GameRoom() {
       setMoveCommandSender(null);
     };
   }, [isOffline, matchId, serverRevision, setMoveCommandSender, setRollCommandSender]);
-
   useEffect(() => {
     return () => {
       if (rollTimerRef.current) {
@@ -501,7 +494,6 @@ export default function GameRoom() {
       }
     };
   }, []);
-
   useEffect(() => {
     void gameAudio.start();
 
@@ -509,7 +501,6 @@ export default function GameRoom() {
       void gameAudio.stopAll();
     };
   }, []);
-
   useEffect(() => {
     let isMounted = true;
 
@@ -531,7 +522,6 @@ export default function GameRoom() {
   }, []);
 
   const previousStateRef = useRef(gameState);
-
   useEffect(() => {
     const previous = previousStateRef.current;
     const isBotRoll = isOffline && gameState.currentTurn === 'dark';
@@ -584,10 +574,17 @@ export default function GameRoom() {
     previousStateRef.current = gameState;
   }, [didPlayerWin, gameState, hasAssignedColor, isOffline, playerColor, rollingVisual]);
 
+  useEffect(() => {
+    if (gameState.phase !== 'moving' || validMoves.length === 0) {
+      setShowDestinationHighlights(false);
+    }
+  }, [gameState.phase, validMoves.length]);
+
   const handleRoll = () => {
     if (!canRoll || rollingVisual) return;
 
     setRollingVisual(true);
+    setShowDestinationHighlights(false);
     void gameAudio.play('roll');
     roll();
     if (rollTimerRef.current) {
@@ -596,8 +593,12 @@ export default function GameRoom() {
     rollTimerRef.current = setTimeout(() => {
       setRollingVisual(false);
       rollTimerRef.current = null;
-    }, 560);
+    }, DEFAULT_DICE_ROLL_DURATION_MS);
   };
+
+  const handleDiceResultShown = React.useCallback(() => {
+    setShowDestinationHighlights(true);
+  }, []);
 
   const handleToggleMusic = async (enabled: boolean) => {
     setMusicEnabled(enabled);
@@ -713,15 +714,13 @@ export default function GameRoom() {
 
   const shouldHideReservePieces = !hasPlayedReserveCascadeIntro;
   const isVisualTurnTimerRunning = gameState.phase !== 'ended' && gameState.winner === null;
-  const displayedValidMoves = rollingVisual ? [] : validMoves;
-
+  const displayedValidMoves = showDestinationHighlights ? validMoves : [];
   useEffect(() => {
     if (hasPlayedBoardDropIntro || showBoardDropIntro) return;
     if (!isBoardTargetFrameReady) return;
 
     setShowBoardDropIntro(true);
   }, [hasPlayedBoardDropIntro, isBoardTargetFrameReady, showBoardDropIntro]);
-
   useEffect(() => {
     if (!hasPlayedBoardDropIntro) return;
     if (hasPlayedReserveCascadeIntro || showReserveCascadeIntro) return;
@@ -974,6 +973,7 @@ export default function GameRoom() {
                   value={gameState.rollValue}
                   rolling={rollingVisual}
                   onRoll={handleRoll}
+                  onResultShown={handleDiceResultShown}
                   canRoll={canRoll}
                   mode="stage"
                   compact={compactSupportUi}
@@ -1046,6 +1046,7 @@ export default function GameRoom() {
                       value={gameState.rollValue}
                       rolling={rollingVisual}
                       onRoll={handleRoll}
+                      onResultShown={handleDiceResultShown}
                       canRoll={canRoll}
                       mode="stage"
                       compact={compactSupportUi}
