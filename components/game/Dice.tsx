@@ -27,6 +27,7 @@ interface DiceProps {
   mode?: 'panel' | 'stage';
   showNumericResult?: boolean;
   compact?: boolean;
+  onResultShown?: () => void;
 }
 
 export const Dice: React.FC<DiceProps> = ({
@@ -37,6 +38,7 @@ export const Dice: React.FC<DiceProps> = ({
   mode = 'panel',
   showNumericResult = true,
   compact = false,
+  onResultShown,
 }) => {
   const { width } = useWindowDimensions();
   const isMobileWidth = width < 760;
@@ -78,6 +80,30 @@ export const Dice: React.FC<DiceProps> = ({
   }));
 
   const isSceneRolling = showThreeRollScene && scenePlaybackId > 0;
+
+  const reportedResultPlaybackRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!showThreeRollScene) {
+      return;
+    }
+
+    // Reset result reporting for the active cast so we can notify exactly once once it settles.
+    reportedResultPlaybackRef.current = 0;
+  }, [showThreeRollScene]);
+
+  useEffect(() => {
+    if (!onResultShown || value === null || isSceneRolling) {
+      return;
+    }
+
+    if (reportedResultPlaybackRef.current === scenePlaybackId) {
+      return;
+    }
+
+    reportedResultPlaybackRef.current = scenePlaybackId;
+    onResultShown();
+  }, [isSceneRolling, onResultShown, scenePlaybackId, value]);
   const shouldHoldSettledDice = value !== null && !isSceneRolling;
   const sceneVariant = isSceneRolling ? 'animated' : shouldHoldSettledDice ? 'settled' : 'start';
   const renderedPlaybackId = sceneVariant === 'start' ? scenePlaybackId + 1 : Math.max(scenePlaybackId, 1);
