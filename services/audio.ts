@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Audio } from 'expo-av';
+import { AudioPlayer, createAudioPlayer, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 import { Platform } from 'react-native';
 
 type AudioEvent = 'bgm' | 'roll' | 'move' | 'score' | 'capture' | 'win' | 'lose' | 'tray';
@@ -56,7 +56,7 @@ const AUDIO_POLYPHONY: Record<StandardAudioEvent, number> = {
 };
 
 class GameAudio {
-  private sounds: Partial<Record<AudioEvent, Audio.Sound[]>> = {};
+  private sounds: Partial<Record<AudioEvent, AudioPlayer[]>> = {};
   private soundCursor: Partial<Record<AudioEvent, number>> = {};
   private warned = new Set<string>();
   private initialized = false;
@@ -141,11 +141,12 @@ class GameAudio {
     }
 
     await Promise.all(
-      soundGroup.map(async (sound) => {
+      soundGroup.map(async (player) => {
         try {
-          const status = await sound.getStatusAsync();
-          if (status.isLoaded && status.isPlaying) {
-            await sound.stopAsync();
+          player.pause();
+
+          if (player.currentTime > 0) {
+            await player.seekTo(0);
           }
         } catch (error) {
           this.warnOnce(`stop-${eventKey}`, `Failed to stop ${eventKey} audio event.`, error);
@@ -154,32 +155,94 @@ class GameAudio {
     );
   }
 
+  private waitForLoad(player: AudioPlayer) {
+    if (player.isLoaded) {
+      return Promise.resolve(true);
+    }
+
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      let subscription: { remove: () => void } | null = null;
+
+      const finish = (result: boolean) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        subscription?.remove();
+        resolve(result);
+      };
+
+      timeoutId = setTimeout(() => finish(player.isLoaded), 4_000);
+      subscription = player.addListener('playbackStatusUpdate', (status) => {
+        if (status.isLoaded) {
+          finish(true);
+        }
+      });
+    });
+  }
+
   private async loadSound(eventKey: AudioEvent, source: number, warningId: string, label?: string) {
-    const sound = new Audio.Sound();
+    let player: AudioPlayer | null = null;
 
     try {
-      await sound.loadAsync(
-        source,
-        {
-          isLooping: eventKey === 'bgm',
-          shouldPlay: false,
-          volume: AUDIO_VOLUMES[eventKey],
-        },
-        false,
-      );
+      player = createAudioPlayer(source, { downloadFirst: true, updateInterval: 120 });
+      player.loop = eventKey === 'bgm';
+      player.volume = AUDIO_VOLUMES[eventKey];
 
-      return sound;
+      const isLoaded = await this.waitForLoad(player);
+      if (isLoaded) {
+        return player;
+      }
+
+      this.warnOnce(
+        warningId,
+        `Could not load ${label ?? eventKey} audio. Gameplay will continue without this sound.`,
+      );
+      player.remove();
+      return null;
     } catch (error) {
       this.warnOnce(
         warningId,
         `Could not load ${label ?? eventKey} audio. Gameplay will continue without this sound.`,
         error,
       );
+
+      if (player) {
+        try {
+          player.remove();
+        } catch {
+          // Best effort cleanup.
+        }
+      }
+
       return null;
     }
   }
 
-  private async replayAndWait(sound: Audio.Sound, eventKey: AudioEvent, playbackToken: number) {
+  private async restartPlayer(player: AudioPlayer, eventKey: AudioEvent) {
+    try {
+      if (player.playing) {
+        player.pause();
+      }
+
+      if (player.currentTime > 0) {
+        await player.seekTo(0);
+      }
+
+      player.play();
+    } catch (error) {
+      this.warnOnce(`play-${eventKey}`, `Failed to play ${eventKey} audio event.`, error);
+      throw error;
+    }
+  }
+
+  private async replayAndWait(player: AudioPlayer, eventKey: AudioEvent, playbackToken: number) {
     return new Promise<boolean>((resolve) => {
       let settled = false;
 
@@ -189,16 +252,11 @@ class GameAudio {
         }
 
         settled = true;
-        sound.setOnPlaybackStatusUpdate(null);
+        subscription.remove();
         resolve(result);
       };
 
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (!status.isLoaded) {
-          finish(false);
-          return;
-        }
-
+      const subscription = player.addListener('playbackStatusUpdate', (status) => {
         if (playbackToken !== this.rollPlaybackToken) {
           finish(false);
           return;
@@ -209,8 +267,7 @@ class GameAudio {
         }
       });
 
-      void sound.replayAsync().catch((error) => {
-        this.warnOnce(`play-${eventKey}`, `Failed to play ${eventKey} audio event.`, error);
+      void this.restartPlayer(player, eventKey).catch(() => {
         finish(false);
       });
     });
@@ -227,30 +284,24 @@ class GameAudio {
     const playbackToken = this.rollPlaybackToken;
 
     await Promise.all(
-      soundGroup.map(async (sound) => {
+      soundGroup.map(async (player) => {
         try {
-          const status = await sound.getStatusAsync();
-          if (!status.isLoaded) {
-            return;
+          player.pause();
+          if (player.currentTime > 0) {
+            await player.seekTo(0);
           }
-
-          if (status.isPlaying) {
-            await sound.stopAsync();
-          }
-
-          await sound.setPositionAsync(0);
         } catch (error) {
           this.warnOnce('stop-roll', 'Failed to reset roll audio event.', error);
         }
       }),
     );
 
-    for (const sound of soundGroup) {
+    for (const player of soundGroup) {
       if (playbackToken !== this.rollPlaybackToken) {
         return;
       }
 
-      const completed = await this.replayAndWait(sound, 'roll', playbackToken);
+      const completed = await this.replayAndWait(player, 'roll', playbackToken);
       if (!completed) {
         return;
       }
@@ -261,20 +312,21 @@ class GameAudio {
     await this.ensurePreferences();
 
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldPlayInBackground: false,
+        interruptionMode: 'duckOthers',
+        shouldRouteThroughEarpiece: false,
       });
+      await setIsAudioActiveAsync(true);
     } catch (error) {
       this.warnOnce('audio-mode', 'Audio mode initialization failed. Continuing without guaranteed playback mode.', error);
     }
 
     await Promise.all([
       ...(Object.keys(AUDIO_SOURCES) as StandardAudioEvent[]).map(async (eventKey) => {
-        const loadedSounds: Audio.Sound[] = [];
+        const loadedSounds: AudioPlayer[] = [];
 
         for (let index = 0; index < AUDIO_POLYPHONY[eventKey]; index += 1) {
           const sound = await this.loadSound(eventKey, AUDIO_SOURCES[eventKey], `load-${eventKey}`);
@@ -289,7 +341,7 @@ class GameAudio {
         }
       }),
       (async () => {
-        const loadedRollSequence: Audio.Sound[] = [];
+        const loadedRollSequence: AudioPlayer[] = [];
 
         for (const [index, source] of ROLL_SEQUENCE_SOURCES.entries()) {
           const sound = await this.loadSound('roll', source, `load-roll-${index}`, `roll cue ${index + 1}`);
@@ -338,20 +390,19 @@ class GameAudio {
 
     try {
       if (eventKey === 'bgm') {
-        const sound = soundGroup[0];
-        const status = await sound.getStatusAsync();
-        if (status.isLoaded && status.isPlaying) {
+        const player = soundGroup[0];
+        if (player.playing) {
           return;
         }
 
-        await sound.playAsync();
+        player.play();
         return;
       }
 
       const cursor = this.soundCursor[eventKey] ?? 0;
-      const sound = soundGroup[cursor % soundGroup.length];
+      const player = soundGroup[cursor % soundGroup.length];
       this.soundCursor[eventKey] = (cursor + 1) % soundGroup.length;
-      await sound.replayAsync();
+      await this.restartPlayer(player, eventKey);
     } catch (error) {
       this.warnOnce(`play-${eventKey}`, `Failed to play ${eventKey} audio event.`, error);
     }
@@ -390,21 +441,27 @@ class GameAudio {
 
     const soundList = Object.values(this.sounds)
       .flat()
-      .filter((sound): sound is Audio.Sound => !!sound);
+      .filter((player): player is AudioPlayer => !!player);
 
     await Promise.all(
-      soundList.map(async (sound) => {
+      soundList.map(async (player) => {
         try {
-          const status = await sound.getStatusAsync();
-          if (status.isLoaded && status.isPlaying) {
-            await sound.stopAsync();
+          player.pause();
+          if (player.currentTime > 0) {
+            await player.seekTo(0);
           }
-          await sound.unloadAsync();
+          player.remove();
         } catch (error) {
           this.warnOnce('stop-unload', 'Error while unloading audio resources. Resources may stay allocated.', error);
         }
       }),
     );
+
+    try {
+      await setIsAudioActiveAsync(false);
+    } catch (error) {
+      this.warnOnce('audio-deactivate', 'Audio session deactivation failed after stopping all sounds.', error);
+    }
 
     this.sounds = {};
     this.soundCursor = {};

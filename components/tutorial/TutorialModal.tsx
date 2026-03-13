@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { TutorialTeachingStep, TutorialUiTarget } from '@/tutorials/tutorialTypes';
 import React from 'react';
@@ -93,11 +94,13 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: 'rgba(217, 164, 65, 0.7)',
     padding: urTheme.spacing.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.34,
-    shadowRadius: 18,
-    elevation: 12,
+    ...boxShadow({
+      color: '#000',
+      opacity: 0.34,
+      offset: { width: 0, height: 12 },
+      blurRadius: 18,
+      elevation: 12,
+    }),
   },
   texture: {
     ...StyleSheet.absoluteFillObject,

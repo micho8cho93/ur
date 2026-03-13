@@ -1,3 +1,4 @@
+import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import React from 'react';
 import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -65,10 +66,12 @@ const styles = StyleSheet.create({
   },
   activeWrap: {
     borderColor: 'rgba(240, 192, 64, 0.95)',
-    shadowColor: '#F0C040',
-    shadowOpacity: 0.34,
-    shadowRadius: 8,
-    elevation: 5,
+    ...boxShadow({
+      color: '#F0C040',
+      opacity: 0.34,
+      blurRadius: 8,
+      elevation: 5,
+    }),
   },
   texture: {
     ...StyleSheet.absoluteFillObject,

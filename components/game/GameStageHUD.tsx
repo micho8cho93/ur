@@ -1,3 +1,4 @@
+import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import React, { useEffect } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
@@ -125,10 +126,12 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: urTheme.radii.pill,
     backgroundColor: '#C89820',
-    shadowColor: '#C89820',
-    shadowOpacity: 0.82,
-    shadowRadius: 7,
-    elevation: 6,
+    ...boxShadow({
+      color: '#C89820',
+      opacity: 0.82,
+      blurRadius: 7,
+      elevation: 6,
+    }),
   },
   compactTurnOrb: {
     width: 11,

@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import { boxShadow } from '@/constants/styleEffects';
 import { HowToPlayModal } from '@/components/HowToPlayModal';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { useRouter } from 'expo-router';
@@ -119,11 +120,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: 'rgba(13, 15, 18, 0.62)',
     padding: urTheme.spacing.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.28,
-    shadowRadius: 14,
-    elevation: 10,
+    ...boxShadow({
+      color: '#000',
+      opacity: 0.28,
+      offset: { width: 0, height: 10 },
+      blurRadius: 14,
+      elevation: 10,
+    }),
   },
   panelTexture: {
     ...StyleSheet.absoluteFillObject,

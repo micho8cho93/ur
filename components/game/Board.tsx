@@ -1,3 +1,4 @@
+import { boxShadow } from '@/constants/styleEffects';
 import { urTheme } from '@/constants/urTheme';
 import { BOARD_COLS, BOARD_ROWS, PATH_DARK, PATH_LENGTH, PATH_LIGHT } from '@/logic/constants';
 import { GameState, MoveAction, PlayerColor } from '@/logic/types';
@@ -737,12 +738,10 @@ export const Board: React.FC<BoardProps> = ({
   const scoreCueAnimatedStyle = useAnimatedStyle(() => ({
     opacity: 0.48 + scoreCuePulse.value * 0.52,
     transform: [{ scale: 0.94 + scoreCuePulse.value * 0.12 }],
-    shadowOpacity: 0.28 + scoreCuePulse.value * 0.44,
   }));
 
   const previewPulseStyle = useAnimatedStyle(() => ({
     opacity: 0.28 + previewPulse.value * 0.64,
-    shadowOpacity: 0.26 + previewPulse.value * 0.5,
   }));
 
   const renderGrid = () => {
@@ -1046,11 +1045,6 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     borderColor: 'transparent',
     overflow: 'visible',
-    shadowColor: 'transparent',
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 0,
   },
   boardArtLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -1177,9 +1171,12 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: urTheme.radii.pill,
     backgroundColor: 'rgba(111, 184, 255, 0.95)',
-    shadowColor: urTheme.colors.glow,
-    shadowRadius: 7,
-    elevation: 6,
+    ...boxShadow({
+      color: urTheme.colors.glow,
+      opacity: 0.36,
+      blurRadius: 7,
+      elevation: 6,
+    }),
   },
   previewPoint: {
     position: 'absolute',
@@ -1189,9 +1186,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(241, 230, 208, 0.92)',
     borderWidth: 1,
     borderColor: 'rgba(63, 40, 18, 0.48)',
-    shadowColor: urTheme.colors.glow,
-    shadowRadius: 8,
-    elevation: 6,
+    ...boxShadow({
+      color: urTheme.colors.glow,
+      opacity: 0.4,
+      blurRadius: 8,
+      elevation: 6,
+    }),
   },
   spawnCueTouchable: {
     position: 'absolute',
@@ -1206,13 +1206,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(4, 40, 18, 0.88)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#38EF78',
-    shadowRadius: 10,
-    elevation: 8,
+    ...boxShadow({
+      color: '#38EF78',
+      opacity: 0.42,
+      blurRadius: 10,
+      elevation: 8,
+    }),
   },
   scoreCueSelected: {
     borderColor: 'rgba(220, 255, 228, 0.98)',
-    shadowColor: '#A8FFC4',
+    ...boxShadow({
+      color: '#A8FFC4',
+      opacity: 0.5,
+      blurRadius: 10,
+      elevation: 8,
+    }),
   },
   scoreCueInner: {
     alignItems: 'center',
@@ -1231,16 +1239,22 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: urTheme.colors.glow,
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    elevation: 7,
+    ...boxShadow({
+      color: urTheme.colors.glow,
+      opacity: 0.22,
+      blurRadius: 8,
+      elevation: 7,
+    }),
   },
   spawnCueReadonly: {
     opacity: 0.8,
   },
   spawnCueSelected: {
-    shadowColor: '#F5D695',
-    shadowOpacity: 0.34,
+    ...boxShadow({
+      color: '#F5D695',
+      opacity: 0.34,
+      blurRadius: 8,
+      elevation: 7,
+    }),
   },
 });

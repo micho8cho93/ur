@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { LobbyMode, useMatchmaking } from '@/hooks/useMatchmaking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -125,11 +126,13 @@ const styles = StyleSheet.create({
     padding: urTheme.spacing.lg,
     overflow: 'hidden',
     backgroundColor: 'rgba(13, 15, 18, 0.64)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.28,
-    shadowRadius: 14,
-    elevation: 9,
+    ...boxShadow({
+      color: '#000',
+      opacity: 0.28,
+      offset: { width: 0, height: 10 },
+      blurRadius: 14,
+      elevation: 9,
+    }),
   },
   cardTexture: {
     ...StyleSheet.absoluteFillObject,
@@ -171,10 +174,11 @@ const styles = StyleSheet.create({
   },
   onlineDotActive: {
     backgroundColor: '#4ADE80',
-    shadowColor: '#4ADE80',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 4,
+    ...boxShadow({
+      color: '#4ADE80',
+      opacity: 0.6,
+      blurRadius: 4,
+    }),
   },
   onlineCountText: {
     ...urTypography.label,

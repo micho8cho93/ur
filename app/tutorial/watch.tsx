@@ -7,6 +7,7 @@ import { PieceRail } from '@/components/game/PieceRail';
 import { TutorialControls } from '@/components/tutorial/TutorialControls';
 import { TutorialModal } from '@/components/tutorial/TutorialModal';
 import { Button } from '@/components/ui/Button';
+import { boxShadow, textShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import { buildTutorialFrames, describeTutorialActionStep } from '@/tutorials/tutorialEngine';
@@ -593,9 +594,11 @@ const styles = StyleSheet.create({
     color: urTheme.colors.clay,
     fontSize: 13,
     letterSpacing: 0.35,
-    textShadowColor: 'rgba(0, 0, 0, 0.45)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    ...textShadow({
+      color: 'rgba(0, 0, 0, 0.45)',
+      offset: { width: 0, height: 1 },
+      blurRadius: 2,
+    }),
     flexShrink: 1,
   },
   scoreRow: {
@@ -674,10 +677,12 @@ const styles = StyleSheet.create({
   focusWrapActive: {
     borderWidth: 1.2,
     borderColor: 'rgba(111, 184, 255, 0.92)',
-    shadowColor: urTheme.colors.glow,
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    elevation: 6,
+    ...boxShadow({
+      color: urTheme.colors.glow,
+      opacity: 0.22,
+      blurRadius: 10,
+      elevation: 6,
+    }),
     backgroundColor: 'rgba(111, 184, 255, 0.05)',
   },
   historyStrip: {

@@ -14,6 +14,7 @@ import { HowToPlayModal } from '@/components/HowToPlayModal';
 import { PieceRail, ReserveSlotMeasurement } from '@/components/game/PieceRail';
 import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
 import { Modal } from '@/components/ui/Modal';
+import { boxShadow, textShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
 import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
 import { useGameLoop } from '@/hooks/useGameLoop';
@@ -1032,20 +1033,24 @@ const styles = StyleSheet.create({
     borderWidth: 2.4,
     borderColor: TOP_CHROME_BORDER,
     backgroundColor: 'transparent',
-    shadowColor: TOP_CHROME_BORDER,
-    shadowOpacity: 0.32,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 6,
+    ...boxShadow({
+      color: TOP_CHROME_BORDER,
+      opacity: 0.32,
+      offset: { width: 0, height: 1 },
+      blurRadius: 3,
+      elevation: 6,
+    }),
   },
   topChromeTitle: {
     ...urTypography.label,
     color: TOP_CHROME_ACCENT,
     fontSize: 13,
     letterSpacing: 0.35,
-    textShadowColor: 'rgba(0, 0, 0, 0.45)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    ...textShadow({
+      color: 'rgba(0, 0, 0, 0.45)',
+      offset: { width: 0, height: 1 },
+      blurRadius: 2,
+    }),
     flexShrink: 1,
   },
   scoreRow: {
@@ -1121,11 +1126,13 @@ const styles = StyleSheet.create({
     borderWidth: 2.4,
     borderColor: TOP_CHROME_BORDER,
     backgroundColor: 'transparent',
-    shadowColor: TOP_CHROME_BORDER,
-    shadowOpacity: 0.32,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 6,
+    ...boxShadow({
+      color: TOP_CHROME_BORDER,
+      opacity: 0.32,
+      offset: { width: 0, height: 1 },
+      blurRadius: 3,
+      elevation: 6,
+    }),
   },
   headerHelpButtonPressed: {
     opacity: 0.8,
@@ -1173,11 +1180,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(27, 39, 23, 0.93)',
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.xs,
-    shadowColor: urTheme.colors.glow,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.44,
-    shadowRadius: 12,
-    elevation: 9,
+    ...boxShadow({
+      color: urTheme.colors.glow,
+      opacity: 0.44,
+      blurRadius: 12,
+      elevation: 9,
+    }),
   },
   scoreBannerText: {
     ...urTypography.label,

@@ -1,3 +1,4 @@
+import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures } from '@/constants/urTheme';
 import { isRosette, isWarZone } from '@/logic/constants';
 import { PlayerColor } from '@/logic/types';
@@ -171,8 +172,6 @@ export const Tile: React.FC<TileProps> = ({
         borderColor: 'transparent',
         borderWidth: 0,
         borderRadius: tileRadius,
-        shadowOpacity: 0,
-        elevation: 0,
       }
       : {
         backgroundColor: baseBackground,
@@ -362,27 +361,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    shadowColor: '#140B06',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.16,
-    shadowRadius: 2,
-    elevation: 2,
+    ...boxShadow({
+      color: '#140B06',
+      opacity: 0.16,
+      offset: { width: 0, height: 1 },
+      blurRadius: 2,
+      elevation: 2,
+    }),
   },
   tilePressed: {
     opacity: 0.92,
   },
   validTile: {
-    shadowColor: '#B8FFB3',
-    shadowOpacity: 0.22,
-    shadowRadius: 6,
-    elevation: 5,
+    ...boxShadow({
+      color: '#B8FFB3',
+      opacity: 0.22,
+      blurRadius: 6,
+      elevation: 5,
+    }),
   },
   selectedTile: {
     borderColor: 'rgba(240, 200, 104, 0.72)',
-    shadowColor: urTheme.colors.goldGlow,
-    shadowOpacity: 0.26,
-    shadowRadius: 7,
-    elevation: 7,
+    ...boxShadow({
+      color: urTheme.colors.goldGlow,
+      opacity: 0.26,
+      blurRadius: 7,
+      elevation: 7,
+    }),
   },
   tileTexture: {
     ...StyleSheet.absoluteFillObject,
@@ -458,10 +463,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.8,
     borderColor: 'rgba(246, 212, 138, 0.95)',
     backgroundColor: 'rgba(240, 192, 64, 0.18)',
-    shadowColor: urTheme.colors.goldGlow,
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
+    ...boxShadow({
+      color: urTheme.colors.goldGlow,
+      opacity: 0.35,
+      blurRadius: 8,
+      elevation: 6,
+    }),
   },
   selectedRing: {
     position: 'absolute',

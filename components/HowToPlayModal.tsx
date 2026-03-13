@@ -1,4 +1,5 @@
 import { HOW_TO_PLAY_FINAL_NOTE, HOW_TO_PLAY_SECTIONS, HOW_TO_PLAY_TITLE } from '@/content/howToPlay';
+import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import React from 'react';
 import { Image, Modal as RNModal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -119,11 +120,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: urTheme.spacing.lg,
     paddingTop: urTheme.spacing.lg,
     paddingBottom: urTheme.spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.34,
-    shadowRadius: 18,
-    elevation: 12,
+    ...boxShadow({
+      color: '#000',
+      opacity: 0.34,
+      offset: { width: 0, height: 12 },
+      blurRadius: 18,
+      elevation: 12,
+    }),
   },
   texture: {
     ...StyleSheet.absoluteFillObject,

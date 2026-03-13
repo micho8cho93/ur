@@ -1,4 +1,5 @@
 import { ImageSourcePropType, Platform, TextStyle, ViewStyle } from 'react-native';
+import { boxShadow } from './styleEffects';
 
 const serifFamily = Platform.select({
   ios: 'Times New Roman',
@@ -99,18 +100,22 @@ export const urTheme = {
   },
   shadow: {
     soft: {
-      shadowColor: '#000',
-      shadowOpacity: 0.18,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 4,
+      ...boxShadow({
+        color: '#000',
+        opacity: 0.18,
+        offset: { width: 0, height: 6 },
+        blurRadius: 10,
+        elevation: 4,
+      }),
     },
     deep: {
-      shadowColor: '#000',
-      shadowOpacity: 0.28,
-      shadowRadius: 16,
-      shadowOffset: { width: 0, height: 10 },
-      elevation: 8,
+      ...boxShadow({
+        color: '#000',
+        opacity: 0.28,
+        offset: { width: 0, height: 10 },
+        blurRadius: 16,
+        elevation: 8,
+      }),
     },
   },
 } as const;

@@ -287,11 +287,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     overflow: 'visible',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 0,
   },
   trayArtLayer: {
     ...StyleSheet.absoluteFillObject,

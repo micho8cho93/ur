@@ -1,4 +1,5 @@
 import { urTheme, urTypography } from '@/constants/urTheme';
+import { boxShadow } from '@/constants/styleEffects';
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, TouchableOpacityProps, View, ViewStyle } from 'react-native';
 
@@ -83,11 +84,13 @@ const styles = StyleSheet.create({
     paddingVertical: urTheme.spacing.sm + 2,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.24,
-    shadowRadius: 7,
-    elevation: 5,
+    ...boxShadow({
+      color: '#000',
+      opacity: 0.24,
+      offset: { width: 0, height: 5 },
+      blurRadius: 7,
+      elevation: 5,
+    }),
     overflow: 'hidden',
   },
   glossOverlay: {
@@ -105,7 +108,12 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.52,
-    shadowOpacity: 0.08,
-    elevation: 1,
+    ...boxShadow({
+      color: '#000',
+      opacity: 0.08,
+      offset: { width: 0, height: 5 },
+      blurRadius: 7,
+      elevation: 1,
+    }),
   },
 });

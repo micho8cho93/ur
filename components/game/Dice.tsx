@@ -1,5 +1,6 @@
 import { DiceRollScene } from '@/components/3d/DiceRollScene';
 import { DEFAULT_DICE_ROLL_DURATION_MS } from '@/components/3d/DiceRollScene.shared';
+import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures } from '@/constants/urTheme';
 import React, { useEffect, useRef, useState } from 'react';
 import { Image, StyleProp, StyleSheet, Text, TouchableOpacity, View, ViewStyle, useWindowDimensions } from 'react-native';
@@ -176,11 +177,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
     borderWidth: 1.3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.28,
-    shadowRadius: 8,
-    elevation: 8,
+    ...boxShadow({
+      color: '#000',
+      opacity: 0.28,
+      offset: { width: 0, height: 6 },
+      blurRadius: 8,
+      elevation: 8,
+    }),
   },
   panelCard: {
     minHeight: 144,

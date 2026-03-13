@@ -1,3 +1,4 @@
+import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { describeTutorialStep } from '@/tutorials/tutorialEngine';
 import { TutorialStep } from '@/tutorials/tutorialTypes';
@@ -188,10 +189,12 @@ const styles = StyleSheet.create({
   },
   markerCurrent: {
     backgroundColor: '#F6C26A',
-    shadowColor: '#F6C26A',
-    shadowOpacity: 0.7,
-    shadowRadius: 4,
-    elevation: 4,
+    ...boxShadow({
+      color: '#F6C26A',
+      opacity: 0.7,
+      blurRadius: 4,
+      elevation: 4,
+    }),
   },
   controlsRow: {
     flexDirection: 'row',
