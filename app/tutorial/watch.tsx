@@ -177,6 +177,8 @@ export default function WatchTutorialScreen() {
   const isMyTurn = gameState.currentTurn === PLAYER_PERSPECTIVE;
   const canRoll = isMyTurn && gameState.phase === 'rolling';
   const displayRollValue = gameState.rollValue ?? currentFrame.displayRollValue;
+  const showDestinationHighlights = !rollingVisual && displayRollValue !== null;
+  const displayedValidMoves = showDestinationHighlights ? currentFrame.validMoves : [];
 
   const lightReserve = gameState.light.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
   const darkReserve = gameState.dark.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
@@ -235,7 +237,8 @@ export default function WatchTutorialScreen() {
   const scoreOverlayTop = topChromeTop + topChromeHeight + urTheme.spacing.xs;
   const backdropOverscan = Math.ceil(Math.max(width, height) * 0.025);
   const canvasTopEdgeLift = Math.max(24, Math.min(96, Math.round(height * 0.07)));
-  const sideColumnTopInset = scoreOverlayTop + urTheme.spacing.sm;
+  const wideLayoutSupportColumnOffset = useSideColumns ? Math.max(urTheme.spacing.lg, Math.round(height * 0.05)) : 0;
+  const sideColumnTopInset = scoreOverlayTop + urTheme.spacing.sm + wideLayoutSupportColumnOffset;
   const mobileBoardOffsetTop = isMobileLayout
     ? Math.max(scoreOverlayTop - urTheme.spacing.xs, Math.round(height * 0.065))
     : 0;
@@ -376,7 +379,7 @@ export default function WatchTutorialScreen() {
                       boardScale={boardScale}
                       orientation="vertical"
                       gameStateOverride={gameState}
-                      validMovesOverride={currentFrame.validMoves}
+                      validMovesOverride={displayedValidMoves}
                       playerColorOverride={PLAYER_PERSPECTIVE}
                       onMakeMoveOverride={() => { }}
                       allowInteraction={false}
@@ -427,7 +430,7 @@ export default function WatchTutorialScreen() {
                     boardScale={boardScale}
                     orientation="vertical"
                     gameStateOverride={gameState}
-                    validMovesOverride={currentFrame.validMoves}
+                    validMovesOverride={displayedValidMoves}
                     playerColorOverride={PLAYER_PERSPECTIVE}
                     onMakeMoveOverride={() => { }}
                     allowInteraction={false}
