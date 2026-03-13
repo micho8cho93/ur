@@ -17,6 +17,7 @@ import Animated, {
 const STAGE_ROLL_BUTTON_WIDTH_SCALE = 1.2;
 const STAGE_ROLL_BUTTON_HEIGHT_SCALE = 0.8;
 const STAGE_ROLL_SCENE_SCALE = 0.92;
+const MOBILE_DICE_SCALE = 1.2;
 
 interface DiceProps {
   value: number | null;
@@ -92,7 +93,7 @@ export const Dice: React.FC<DiceProps> = ({
   const isMobileCompactStage = isCompactStage && isMobileWidth;
   const isLaptopUp = width >= 1024;
   const sceneBaseSize = isCompactStage ? (isMobileCompactStage ? 0.64 : 0.78) : compact ? 1.06 : 1.32;
-  const sceneSize = sceneBaseSize * (isStage ? STAGE_ROLL_SCENE_SCALE : 1);
+  const sceneSize = sceneBaseSize * (isStage ? STAGE_ROLL_SCENE_SCALE : 1) * (isMobileWidth ? MOBILE_DICE_SCALE : 1);
   const compactStageTitle = isSceneRolling ? 'Casting...' : value !== null ? `Result ${value}` : 'Cast Dice';
   const compactStageSubtitle = isSceneRolling ? 'Rolling' : canRoll ? 'Tap to roll' : 'Wait turn';
 
