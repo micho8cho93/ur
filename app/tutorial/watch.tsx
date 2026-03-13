@@ -240,7 +240,7 @@ export default function WatchTutorialScreen() {
     ? Math.max(scoreOverlayTop - urTheme.spacing.xs, Math.round(height * 0.065))
     : 0;
   const mobileBoardOffsetBottom = isMobileLayout ? Math.max(urTheme.spacing.md, Math.round(height * 0.06)) : 0;
-  const mobileSupportOffsetTop = isMobileLayout ? Math.max(urTheme.spacing.sm, Math.round(height * 0.025)) : 0;
+  const mobileSupportOffsetTop = isMobileLayout ? Math.max(urTheme.spacing.md, Math.round(height * 0.05)) : 0;
 
   return (
     <View style={styles.screen}>
