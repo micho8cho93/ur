@@ -24,20 +24,22 @@ interface ControlChipProps {
   onPress: () => void;
   disabled?: boolean;
   active?: boolean;
+  compact?: boolean;
 }
 
-const ControlChip: React.FC<ControlChipProps> = ({ label, onPress, disabled = false, active = false }) => (
+const ControlChip: React.FC<ControlChipProps> = ({ label, onPress, disabled = false, active = false, compact = false }) => (
   <Pressable
     onPress={onPress}
     disabled={disabled}
     style={({ pressed }) => [
       styles.controlChip,
+      compact && styles.controlChipCompact,
       active && styles.controlChipActive,
       disabled && styles.controlChipDisabled,
       pressed && !disabled && styles.controlChipPressed,
     ]}
   >
-    <Text style={[styles.controlChipLabel, active && styles.controlChipLabelActive]}>{label}</Text>
+    <Text style={[styles.controlChipLabel, compact && styles.controlChipLabelCompact, active && styles.controlChipLabelActive]}>{label}</Text>
   </Pressable>
 );
 
@@ -98,19 +100,19 @@ export const TutorialControls: React.FC<TutorialControlsProps> = ({
 
       <View style={[styles.controlsRow, compact && styles.controlsRowCompact]}>
         <View style={[styles.controlChipWrap, compact && styles.controlChipWrapCompact]}>
-          <ControlChip label={isPlaying ? 'Pause' : 'Play'} onPress={onTogglePlay} disabled={controlsLocked || stepIndex >= totalSteps} active={isPlaying} />
+          <ControlChip label={isPlaying ? 'Pause' : 'Play'} onPress={onTogglePlay} disabled={controlsLocked || stepIndex >= totalSteps} active={isPlaying} compact={compact} />
         </View>
         <View style={[styles.controlChipWrap, compact && styles.controlChipWrapCompact]}>
-          <ControlChip label="Next" onPress={onNext} disabled={controlsLocked || stepIndex >= totalSteps} />
+          <ControlChip label="Next" onPress={onNext} disabled={controlsLocked || stepIndex >= totalSteps} compact={compact} />
         </View>
         <View style={[styles.controlChipWrap, compact && styles.controlChipWrapCompact]}>
-          <ControlChip label="Back" onPress={onBack} disabled={controlsLocked || stepIndex <= 0} />
+          <ControlChip label="Back" onPress={onBack} disabled={controlsLocked || stepIndex <= 0} compact={compact} />
         </View>
         <View style={[styles.controlChipWrap, compact && styles.controlChipWrapCompact]}>
-          <ControlChip label="Restart" onPress={onRestart} />
+          <ControlChip label="Restart" onPress={onRestart} compact={compact} />
         </View>
         <View style={[styles.controlChipWrap, compact && styles.controlChipWrapCompact]}>
-          <ControlChip label={`Speed ${speed}x`} onPress={onToggleSpeed} active={speed === 2} disabled={controlsLocked} />
+          <ControlChip label={`Speed ${speed}x`} onPress={onToggleSpeed} active={speed === 2} disabled={controlsLocked} compact={compact} />
         </View>
       </View>
     </View>
@@ -229,6 +231,7 @@ const styles = StyleSheet.create({
   },
   controlsRowCompact: {
     flexWrap: 'nowrap',
+    gap: 4,
   },
   controlChipWrap: {
     flexShrink: 1,
@@ -247,6 +250,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  controlChipCompact: {
+    minHeight: 32,
+    paddingHorizontal: 4,
+  },
   controlChipActive: {
     borderColor: 'rgba(111, 184, 255, 0.84)',
     backgroundColor: 'rgba(19, 44, 66, 0.95)',
@@ -261,6 +268,10 @@ const styles = StyleSheet.create({
     ...urTypography.label,
     fontSize: 11,
     color: urTheme.colors.parchment,
+  },
+  controlChipLabelCompact: {
+    fontSize: 10,
+    letterSpacing: 0.2,
   },
   controlChipLabelActive: {
     color: '#D7EEFF',
