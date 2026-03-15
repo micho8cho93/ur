@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react-native';
 import React from 'react';
-import { Text } from 'react-native';
+import AuthenticatedHome from './AuthenticatedHome';
 
 const mockUseAuth = jest.fn();
 const mockPush = jest.fn();
@@ -15,13 +15,14 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
-jest.mock('@/components/HowToPlayModal', () => ({
-  HowToPlayModal: () => null,
+jest.mock('@/components/FiveStepTutorialModal', () => ({
+  FiveStepTutorialModal: () => null,
 }));
 
 jest.mock('@/components/ui/Button', () => ({
   Button: ({ title, onPress }: { title: string; onPress?: () => void }) => {
-    const { Text, TouchableOpacity } = require('react-native');
+    const React = jest.requireActual('react');
+    const { Text, TouchableOpacity } = jest.requireActual('react-native');
     return (
       <TouchableOpacity onPress={onPress}>
         <Text>{title}</Text>
@@ -29,8 +30,6 @@ jest.mock('@/components/ui/Button', () => ({
     );
   },
 }));
-
-import AuthenticatedHome from './AuthenticatedHome';
 
 describe('AuthenticatedHome', () => {
   beforeEach(() => {

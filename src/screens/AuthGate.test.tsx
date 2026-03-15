@@ -1,5 +1,6 @@
 import { render } from '@testing-library/react-native';
 import React from 'react';
+import AuthGate from './AuthGate';
 
 const mockUseAuth = jest.fn();
 
@@ -8,16 +9,24 @@ jest.mock('@/src/auth/useAuth', () => ({
 }));
 
 jest.mock('./LoginScreen', () => {
-  const { Text } = require('react-native');
-  return () => <Text>LOGIN_SCREEN</Text>;
+  const React = jest.requireActual('react');
+  const { Text } = jest.requireActual('react-native');
+  const MockLoginScreen = () => <Text>LOGIN_SCREEN</Text>;
+
+  MockLoginScreen.displayName = 'MockLoginScreen';
+
+  return MockLoginScreen;
 });
 
 jest.mock('./AuthenticatedHome', () => {
-  const { Text } = require('react-native');
-  return () => <Text>AUTH_HOME</Text>;
-});
+  const React = jest.requireActual('react');
+  const { Text } = jest.requireActual('react-native');
+  const MockAuthenticatedHome = () => <Text>AUTH_HOME</Text>;
 
-import AuthGate from './AuthGate';
+  MockAuthenticatedHome.displayName = 'MockAuthenticatedHome';
+
+  return MockAuthenticatedHome;
+});
 
 describe('AuthGate', () => {
   beforeEach(() => {

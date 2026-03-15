@@ -1,9 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AudioPlayer, createAudioPlayer, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
+import type { AudioStatus } from 'expo-audio';
 import { Platform } from 'react-native';
+import { createShuffledPlaylistOrder } from './audioPlaylist';
 
 type AudioEvent = 'bgm' | 'roll' | 'move' | 'score' | 'capture' | 'win' | 'lose' | 'tray' | 'boardImpact';
-type StandardAudioEvent = Exclude<AudioEvent, 'roll'>;
+type SoundEffectEvent = Exclude<AudioEvent, 'bgm' | 'roll'>;
 type AudioPreferences = {
   musicEnabled: boolean;
   sfxEnabled: boolean;
@@ -18,13 +20,19 @@ const DEFAULT_AUDIO_PREFERENCES: AudioPreferences = {
 const selectSfxSource = (oggSource: number, iosSource: number) => (Platform.OS === 'ios' ? iosSource : oggSource);
 
 /* eslint-disable @typescript-eslint/no-require-imports */
+const BGM_SOURCES = [
+  require('../assets/audio/bgm/ancient-ambience.mp3'),
+  require('../assets/audio/bgm/freepik-orbis-romanus.mp3'),
+  require('../assets/audio/bgm/freepik-saltatio-in-atrio.mp3'),
+  require('../assets/audio/bgm/freepik-the-persian-king.mp3'),
+] as const;
+
 const ROLL_SEQUENCE_SOURCES = [
   selectSfxSource(require('../assets/audio/sfx/dice-shake-3.ogg'), require('../assets/audio/sfx/dice-shake-3.m4a')),
   selectSfxSource(require('../assets/audio/sfx/die-throw-2.ogg'), require('../assets/audio/sfx/die-throw-2.m4a')),
 ] as const;
 
-const AUDIO_SOURCES: Record<StandardAudioEvent, number> = {
-  bgm: require('../assets/audio/bgm/ancient-ambience.mp3'),
+const SOUND_EFFECT_SOURCES: Record<SoundEffectEvent, number> = {
   move: selectSfxSource(require('../assets/audio/sfx/move.ogg'), require('../assets/audio/sfx/move.m4a')),
   score: selectSfxSource(require('../assets/audio/sfx/score.ogg'), require('../assets/audio/sfx/score.m4a')),
   capture: selectSfxSource(require('../assets/audio/sfx/capture.ogg'), require('../assets/audio/sfx/capture.m4a')),
@@ -47,8 +55,7 @@ const AUDIO_VOLUMES: Record<AudioEvent, number> = {
   boardImpact: 0.9,
 };
 
-const AUDIO_POLYPHONY: Record<StandardAudioEvent, number> = {
-  bgm: 1,
+const AUDIO_POLYPHONY: Record<SoundEffectEvent, number> = {
   move: 1,
   score: 1,
   capture: 1,
@@ -68,6 +75,10 @@ class GameAudio {
   private preferencesLoaded = false;
   private preferencesPromise: Promise<void> | null = null;
   private rollPlaybackToken = 0;
+  private bgmQueue: number[] = [];
+  private bgmCurrentPlayerIndex: number | null = null;
+  private bgmLastPlayerIndex: number | null = null;
+  private bgmPlaybackToken = 0;
 
   private warnOnce(id: string, message: string, error?: unknown) {
     if (this.warned.has(id)) return;
@@ -133,9 +144,96 @@ class GameAudio {
     }
   }
 
+  private async resetPlayer(player: AudioPlayer, warningId: string, message: string) {
+    try {
+      player.pause();
+
+      if (player.currentTime > 0) {
+        await player.seekTo(0);
+      }
+    } catch (error) {
+      this.warnOnce(warningId, message, error);
+    }
+  }
+
+  private refillBgmQueue(trackCount: number) {
+    this.bgmQueue = createShuffledPlaylistOrder(trackCount, this.bgmLastPlayerIndex);
+  }
+
+  private getNextBgmTrackIndex(trackCount: number) {
+    if (this.bgmQueue.length === 0) {
+      this.refillBgmQueue(trackCount);
+    }
+
+    const nextIndex = this.bgmQueue.shift();
+    if (nextIndex === undefined) {
+      return null;
+    }
+
+    this.bgmLastPlayerIndex = nextIndex;
+    return nextIndex;
+  }
+
+  private handleBgmStatusUpdate(trackIndex: number, status: AudioStatus) {
+    if (!status.didJustFinish || !this.preferences.musicEnabled) {
+      return;
+    }
+
+    if (this.bgmCurrentPlayerIndex !== trackIndex) {
+      return;
+    }
+
+    void this.playNextBgmTrack(this.bgmPlaybackToken).catch(() => {
+      // restartPlayer already logs the playback failure.
+    });
+  }
+
+  private async playNextBgmTrack(playbackToken: number) {
+    const soundGroup = this.sounds.bgm;
+    if (!soundGroup || soundGroup.length === 0) {
+      this.warnOnce('missing-bgm', 'Sound not available for bgm.');
+      return;
+    }
+
+    if (!this.preferences.musicEnabled || playbackToken !== this.bgmPlaybackToken) {
+      return;
+    }
+
+    const nextIndex = this.getNextBgmTrackIndex(soundGroup.length);
+    if (nextIndex === null) {
+      return;
+    }
+
+    const player = soundGroup[nextIndex];
+    this.bgmCurrentPlayerIndex = nextIndex;
+
+    try {
+      await this.restartPlayer(player, 'bgm');
+    } catch (error) {
+      this.bgmCurrentPlayerIndex = null;
+      throw error;
+    } finally {
+      if (!this.preferences.musicEnabled || playbackToken !== this.bgmPlaybackToken) {
+        await this.resetPlayer(player, 'stop-bgm-track', 'Failed to stop bgm audio event.');
+      }
+    }
+  }
+
   private async stopEvent(eventKey: AudioEvent) {
     if (eventKey === 'roll') {
       this.rollPlaybackToken += 1;
+    }
+
+    if (eventKey === 'bgm') {
+      this.bgmPlaybackToken += 1;
+
+      const currentTrackIndex = this.bgmCurrentPlayerIndex;
+      const currentTrack = currentTrackIndex === null ? null : this.sounds.bgm?.[currentTrackIndex];
+      if (currentTrackIndex !== null && currentTrack?.playing) {
+        this.bgmQueue.unshift(currentTrackIndex);
+      }
+
+      this.bgmCurrentPlayerIndex = null;
     }
 
     const soundGroup = this.sounds[eventKey];
@@ -144,17 +242,7 @@ class GameAudio {
     }
 
     await Promise.all(
-      soundGroup.map(async (player) => {
-        try {
-          player.pause();
-
-          if (player.currentTime > 0) {
-            await player.seekTo(0);
-          }
-        } catch (error) {
-          this.warnOnce(`stop-${eventKey}`, `Failed to stop ${eventKey} audio event.`, error);
-        }
-      }),
+      soundGroup.map((player) => this.resetPlayer(player, `stop-${eventKey}`, `Failed to stop ${eventKey} audio event.`)),
     );
   }
 
@@ -195,7 +283,7 @@ class GameAudio {
 
     try {
       player = createAudioPlayer(source, { downloadFirst: true, updateInterval: 120 });
-      player.loop = eventKey === 'bgm';
+      player.loop = false;
       player.volume = AUDIO_VOLUMES[eventKey];
 
       const isLoaded = await this.waitForLoad(player);
@@ -287,16 +375,7 @@ class GameAudio {
     const playbackToken = this.rollPlaybackToken;
 
     await Promise.all(
-      soundGroup.map(async (player) => {
-        try {
-          player.pause();
-          if (player.currentTime > 0) {
-            await player.seekTo(0);
-          }
-        } catch (error) {
-          this.warnOnce('stop-roll', 'Failed to reset roll audio event.', error);
-        }
-      }),
+      soundGroup.map((player) => this.resetPlayer(player, 'stop-roll', 'Failed to reset roll audio event.')),
     );
 
     for (const player of soundGroup) {
@@ -328,11 +407,11 @@ class GameAudio {
     }
 
     await Promise.all([
-      ...(Object.keys(AUDIO_SOURCES) as StandardAudioEvent[]).map(async (eventKey) => {
+      ...(Object.keys(SOUND_EFFECT_SOURCES) as SoundEffectEvent[]).map(async (eventKey) => {
         const loadedSounds: AudioPlayer[] = [];
 
         for (let index = 0; index < AUDIO_POLYPHONY[eventKey]; index += 1) {
-          const sound = await this.loadSound(eventKey, AUDIO_SOURCES[eventKey], `load-${eventKey}`);
+          const sound = await this.loadSound(eventKey, SOUND_EFFECT_SOURCES[eventKey], `load-${eventKey}`);
           if (sound) {
             loadedSounds.push(sound);
           }
@@ -343,6 +422,24 @@ class GameAudio {
           this.soundCursor[eventKey] = 0;
         }
       }),
+      (async () => {
+        const loadedBgmTracks: AudioPlayer[] = [];
+
+        for (const [sourceIndex, source] of BGM_SOURCES.entries()) {
+          const sound = await this.loadSound('bgm', source, `load-bgm-${sourceIndex}`, `bgm track ${sourceIndex + 1}`);
+          if (sound) {
+            const trackIndex = loadedBgmTracks.length;
+            sound.addListener('playbackStatusUpdate', (status) => {
+              this.handleBgmStatusUpdate(trackIndex, status);
+            });
+            loadedBgmTracks.push(sound);
+          }
+        }
+
+        if (loadedBgmTracks.length > 0) {
+          this.sounds.bgm = loadedBgmTracks;
+        }
+      })(),
       (async () => {
         const loadedRollSequence: AudioPlayer[] = [];
 
@@ -393,12 +490,12 @@ class GameAudio {
 
     try {
       if (eventKey === 'bgm') {
-        const player = soundGroup[0];
-        if (player.playing) {
+        if (this.bgmCurrentPlayerIndex !== null || soundGroup.some((player) => player.playing)) {
           return;
         }
 
-        player.play();
+        this.bgmPlaybackToken += 1;
+        await this.playNextBgmTrack(this.bgmPlaybackToken);
         return;
       }
 
@@ -441,6 +538,7 @@ class GameAudio {
 
   async stopAll() {
     this.rollPlaybackToken += 1;
+    this.bgmPlaybackToken += 1;
 
     const soundList = Object.values(this.sounds)
       .flat()
@@ -468,6 +566,9 @@ class GameAudio {
 
     this.sounds = {};
     this.soundCursor = {};
+    this.bgmQueue = [];
+    this.bgmCurrentPlayerIndex = null;
+    this.bgmLastPlayerIndex = null;
     this.initialized = false;
     this.initPromise = null;
   }

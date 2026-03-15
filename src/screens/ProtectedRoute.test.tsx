@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react-native';
 import React from 'react';
 import { Text } from 'react-native';
+import { ProtectedRoute } from './ProtectedRoute';
 
 const mockUseAuth = jest.fn();
 
@@ -9,13 +10,16 @@ jest.mock('@/src/auth/useAuth', () => ({
 }));
 
 jest.mock('expo-router', () => ({
-  Redirect: ({ href }: { href: string }) => {
-    const { Text } = require('react-native');
-    return <Text>{`REDIRECT:${href}`}</Text>;
-  },
-}));
+  Redirect: (() => {
+    const React = jest.requireActual('react');
+    const { Text } = jest.requireActual('react-native');
+    const MockRedirect = ({ href }: { href: string }) => <Text>{`REDIRECT:${href}`}</Text>;
 
-import ProtectedRoute from './ProtectedRoute';
+    MockRedirect.displayName = 'MockRedirect';
+
+    return MockRedirect;
+  })(),
+}));
 
 describe('ProtectedRoute', () => {
   beforeEach(() => {

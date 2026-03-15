@@ -1,7 +1,7 @@
 import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
 import { urTheme } from '@/constants/urTheme';
 import { sendPresenceHeartbeat } from '@/services/presence';
-import AuthProvider from '@/src/auth/AuthProvider';
+import { AuthProvider } from '@/src/auth/AuthProvider';
 import { useAuth } from '@/src/auth/useAuth';
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
@@ -48,20 +48,22 @@ function RootNavigator() {
     <View style={{ flex: 1, backgroundColor: urTheme.colors.night }}>
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: '#122736' },
+          headerTransparent: true,
+          headerBackground: () => null,
+          headerStyle: { backgroundColor: 'transparent' },
           headerTintColor: urTheme.colors.parchment,
           headerShadowVisible: false,
           headerTitleStyle: {
             fontFamily: 'serif',
             fontWeight: '700',
           },
-          contentStyle: { backgroundColor: urTheme.colors.night },
+          contentStyle: { backgroundColor: 'transparent' },
         }}
       >
         <Stack.Screen name="index" options={{ title: 'Royal Game of Ur', headerShown: false }} />
-        <Stack.Screen name="(game)/lobby" options={{ title: 'Lobby' }} />
-        <Stack.Screen name="match/[id]" options={{ title: 'Game Room', headerBackTitle: 'Lobby' }} />
-        <Stack.Screen name="tutorial/watch" options={{ title: 'Tutorial (Watch)' }} />
+        <Stack.Screen name="(game)" options={{ headerShown: false }} />
+        <Stack.Screen name="match" options={{ headerShown: false }} />
+        <Stack.Screen name="tutorial" options={{ headerShown: false }} />
         <Stack.Screen name="oauthredirect" options={{ headerShown: false }} />
       </Stack>
     </View>

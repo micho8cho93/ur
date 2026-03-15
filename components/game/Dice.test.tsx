@@ -1,17 +1,17 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 import { Platform } from 'react-native';
+import { Dice } from './Dice';
 
 const mockDiceRollScene = jest.fn(({ playbackId, variant }: { playbackId: number; variant: string }) => {
-  const { Text } = require('react-native');
+  const React = jest.requireActual('react');
+  const { Text } = jest.requireActual('react-native');
   return <Text testID="mock-dice-roll-scene">{`${playbackId}:${variant}`}</Text>;
 });
 
 jest.mock('@/components/3d/DiceRollScene', () => ({
   DiceRollScene: (props: { playbackId: number; variant: string }) => mockDiceRollScene(props),
 }));
-
-import { Dice } from './Dice';
 
 describe('Dice', () => {
   beforeEach(() => {

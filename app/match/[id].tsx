@@ -14,7 +14,7 @@ import { GameStageHUD } from '@/components/game/GameStageHUD';
 import { MatchDiceRollStage } from '@/components/game/MatchDiceRollStage';
 import { MatchMomentIndicator } from '@/components/game/MatchMomentIndicator';
 import type { MatchMomentIndicatorCue } from '@/components/game/MatchMomentIndicator';
-import { HowToPlayModal } from '@/components/HowToPlayModal';
+import { FiveStepTutorialModal } from '@/components/FiveStepTutorialModal';
 import { PieceRail, ReserveSlotMeasurement } from '@/components/game/PieceRail';
 import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
 import { Modal } from '@/components/ui/Modal';
@@ -1626,7 +1626,7 @@ export function GameRoom() {
           void handleToggleBotTimer(enabled);
         }}
       />
-      <HowToPlayModal visible={showHowToPlay} onClose={() => setShowHowToPlay(false)} />
+      <FiveStepTutorialModal visible={showHowToPlay} onClose={() => setShowHowToPlay(false)} />
     </View>
   );
 }

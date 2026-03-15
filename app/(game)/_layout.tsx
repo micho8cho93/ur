@@ -1,10 +1,27 @@
-import ProtectedRoute from '@/src/screens/ProtectedRoute';
-import { Slot } from 'expo-router';
+import { ProtectedRoute } from '@/src/screens/ProtectedRoute';
+import { urTheme } from '@/constants/urTheme';
+import { Stack } from 'expo-router';
 
 export default function GameLayout() {
   return (
     <ProtectedRoute>
-      <Slot />
+      <Stack
+        screenOptions={{
+          headerTransparent: true,
+          headerBackground: () => null,
+          headerStyle: { backgroundColor: 'transparent' },
+          headerTintColor: urTheme.colors.parchment,
+          headerShadowVisible: false,
+          headerTitleStyle: {
+            fontFamily: 'serif',
+            fontWeight: '700',
+          },
+          contentStyle: { backgroundColor: 'transparent' },
+        }}
+      >
+        <Stack.Screen name="lobby" options={{ title: 'Lobby' }} />
+        <Stack.Screen name="bot" options={{ title: 'Bot Match' }} />
+      </Stack>
     </ProtectedRoute>
   );
 }

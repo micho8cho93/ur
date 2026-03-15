@@ -1,11 +1,14 @@
 import { Button } from '@/components/ui/Button';
+import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { useMatchmaking } from '@/hooks/useMatchmaking';
 import { BotDifficulty } from '@/logic/bot/types';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React from 'react';
-import { Image, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+
+const botWideBackground = require('../../assets/images/bot_bg.png');
 
 type BotLevelCard = {
   difficulty: BotDifficulty;
@@ -56,6 +59,7 @@ export default function BotSelection() {
   const { startBotGame } = useMatchmaking('bot');
   const [pendingDifficulty, setPendingDifficulty] = React.useState<BotDifficulty | null>(null);
   const isCompactLayout = width < 820;
+  const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
 
   const handleSelect = (difficulty: BotDifficulty) => {
     setPendingDifficulty(difficulty);
@@ -64,7 +68,16 @@ export default function BotSelection() {
 
   return (
     <View style={styles.screen}>
-      <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
+      <WideScreenBackground
+        source={botWideBackground}
+        visible={showWideBackground}
+        overlayColor="rgba(8, 10, 15, 0.22)"
+      />
+      <Image
+        source={urTextures.woodDark}
+        resizeMode="repeat"
+        style={[styles.texture, showWideBackground && styles.textureWide]}
+      />
       <View style={styles.topGlow} />
       <View style={styles.bottomShade} />
 
@@ -165,6 +178,9 @@ const styles = StyleSheet.create({
   texture: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.28,
+  },
+  textureWide: {
+    opacity: 0.12,
   },
   topGlow: {
     position: 'absolute',

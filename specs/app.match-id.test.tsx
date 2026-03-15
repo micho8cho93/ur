@@ -136,11 +136,11 @@ jest.mock('@/components/game/AudioSettingsModal', () => {
   };
 });
 
-jest.mock('@/components/HowToPlayModal', () => {
+jest.mock('@/components/FiveStepTutorialModal', () => {
   const React = require('react');
   const { View } = require('react-native');
   return {
-    HowToPlayModal: () => <View testID="mock-how-to-play" />,
+    FiveStepTutorialModal: () => <View testID="mock-how-to-play" />,
   };
 });
 

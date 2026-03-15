@@ -1,17 +1,22 @@
-import { HowToPlayModal } from '@/components/HowToPlayModal';
+import { FiveStepTutorialModal } from '@/components/FiveStepTutorialModal';
+import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { Button } from '@/components/ui/Button';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { useAuth } from '@/src/auth/useAuth';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+
+const homeWideBackground = require('../../assets/images/home_bg.png');
 
 export default function AuthenticatedHome() {
+  const { width } = useWindowDimensions();
   const router = useRouter();
   const { user, logout } = useAuth();
   const [showHowToPlay, setShowHowToPlay] = React.useState(false);
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
+  const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const blackButtonLabel = styles.blackButtonLabel;
 
   const handleLogout = async () => {
@@ -26,7 +31,16 @@ export default function AuthenticatedHome() {
 
   return (
     <View style={styles.screen}>
-      <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
+      <WideScreenBackground
+        source={homeWideBackground}
+        visible={showWideBackground}
+        overlayColor="rgba(7, 10, 15, 0.18)"
+      />
+      <Image
+        source={urTextures.woodDark}
+        resizeMode="repeat"
+        style={[styles.texture, showWideBackground && styles.textureWide]}
+      />
       <View style={styles.topGlow} />
       <View style={styles.midGlow} />
       <View style={styles.bottomShade} />
@@ -85,7 +99,7 @@ export default function AuthenticatedHome() {
         </View>
       </View>
 
-      <HowToPlayModal visible={showHowToPlay} onClose={() => setShowHowToPlay(false)} />
+      <FiveStepTutorialModal visible={showHowToPlay} onClose={() => setShowHowToPlay(false)} />
     </View>
   );
 }
@@ -101,6 +115,9 @@ const styles = StyleSheet.create({
   texture: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.3,
+  },
+  textureWide: {
+    opacity: 0.1,
   },
   topGlow: {
     position: 'absolute',

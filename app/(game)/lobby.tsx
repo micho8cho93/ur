@@ -1,16 +1,21 @@
 import { Button } from '@/components/ui/Button';
+import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { LobbyMode, useMatchmaking } from '@/hooks/useMatchmaking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+
+const multiplayerWideBackground = require('../../assets/images/multiplayer_bg.png');
 
 export default function Lobby() {
+  const { width } = useWindowDimensions();
   const { mode: rawMode } = useLocalSearchParams<{ mode?: string }>();
   const mode: LobbyMode = useMemo(() => (rawMode === 'online' ? 'online' : 'bot'), [rawMode]);
   const router = useRouter();
   const { startMatch, status, errorMessage, onlineCount } = useMatchmaking(mode);
+  const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
 
   useEffect(() => {
     if (mode === 'bot') {
@@ -51,7 +56,16 @@ export default function Lobby() {
 
   return (
     <View style={styles.screen}>
-      <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.pageTexture} />
+      <WideScreenBackground
+        source={multiplayerWideBackground}
+        visible={showWideBackground}
+        overlayColor="rgba(7, 10, 16, 0.24)"
+      />
+      <Image
+        source={urTextures.woodDark}
+        resizeMode="repeat"
+        style={[styles.pageTexture, showWideBackground && styles.pageTextureWide]}
+      />
       <View style={styles.pageGlow} />
       <View style={styles.pageShade} />
 
@@ -100,6 +114,9 @@ const styles = StyleSheet.create({
   pageTexture: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.28,
+  },
+  pageTextureWide: {
+    opacity: 0.12,
   },
   pageGlow: {
     position: 'absolute',
