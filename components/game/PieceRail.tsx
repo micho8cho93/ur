@@ -23,6 +23,7 @@ const TRAY_SIZE_BOOST = 1.3;
 const TRAY_SIZE_REDUCTION = 0.85;
 const TRAY_SIZE_REGAIN = 1.15;
 const DEFAULT_RESERVE_PIECE_SIZE = 34;
+const RESERVE_PIECE_SIZE_BOOST = 1.15;
 
 const TRAY_ART_FIT = {
   // Artwork-only fit tuning; does not affect piece coordinates or hitboxes.
@@ -104,7 +105,10 @@ export const PieceRail: React.FC<PieceRailProps> = ({
 
   const shownCount = Math.min(totalCount, reserveCount);
   const resolvedVariant = tokenVariant ?? color;
-  const reservePieceSize = piecePixelSize ?? DEFAULT_RESERVE_PIECE_SIZE;
+  const reservePieceSize = Math.max(
+    1,
+    Math.round((piecePixelSize ?? DEFAULT_RESERVE_PIECE_SIZE) * RESERVE_PIECE_SIZE_BOOST),
+  );
   const slotRefs = useRef<(View | null)[]>([]);
   const reportedSlotsKeyRef = useRef<string>('');
 

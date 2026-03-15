@@ -16,6 +16,9 @@ export type LandingZone = {
 
 export const STAGE_MARGIN = 16;
 export const BOARD_CLEARANCE = 12;
+export const COMPACT_STAGE_LEFT_NUDGE = 16;
+export const COMPACT_STAGE_MIN_X = -28;
+export const MOBILE_DICE_STAGE_WIDTH_SCALE = 1.5;
 export const MATCH_DICE_STAGE_RIGHT_PADDING_RATIO = 0.08;
 export const MATCH_DICE_STAGE_PROJECTION = {
   horizontalCenterRatio: 0.47,
@@ -38,13 +41,20 @@ export const computeLandingZone = ({
   viewportHeight: number;
   viewportWidth: number;
 }): LandingZone => {
-  const availableLeftGutter = Math.max(96, boardFrame.x - STAGE_MARGIN - BOARD_CLEARANCE);
+  const isMobileViewport = viewportWidth < 760;
+  const leftBoundary = compact ? COMPACT_STAGE_MIN_X : STAGE_MARGIN;
+  const boardGap = BOARD_CLEARANCE + (compact ? COMPACT_STAGE_LEFT_NUDGE : 0);
+  const availableLeftGutter = Math.max(96, boardFrame.x - leftBoundary - boardGap);
   const targetWidth = compact
     ? Math.min(252, Math.max(174, availableLeftGutter * 0.92))
     : Math.min(344, Math.max(228, availableLeftGutter * 0.86));
-  const width = Math.min(targetWidth, availableLeftGutter);
-  const height = compact ? Math.max(138, width * 0.68) : Math.max(162, width * 0.64);
-  const x = Math.max(STAGE_MARGIN, boardFrame.x - BOARD_CLEARANCE - width);
+  const baseWidth = Math.min(targetWidth, availableLeftGutter);
+  const width =
+    compact && isMobileViewport
+      ? Math.min(availableLeftGutter, baseWidth * MOBILE_DICE_STAGE_WIDTH_SCALE)
+      : baseWidth;
+  const height = compact ? Math.max(138, baseWidth * 0.68) : Math.max(162, width * 0.64);
+  const x = Math.max(leftBoundary, boardFrame.x - boardGap - width);
   const minY = Math.max(84, Math.round(viewportHeight * 0.09));
   const bottomClearance = Math.max(182, Math.round(viewportHeight * 0.14));
   const maxY = Math.max(minY, viewportHeight - height - bottomClearance);

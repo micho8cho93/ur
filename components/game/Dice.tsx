@@ -18,6 +18,8 @@ const STAGE_ROLL_BUTTON_WIDTH_SCALE = 1.2;
 const STAGE_ROLL_BUTTON_HEIGHT_SCALE = 0.8;
 const STAGE_ROLL_SCENE_SCALE = 0.92;
 const MOBILE_DICE_SCALE = 1.44;
+const MOBILE_DICE_VIEWPORT_WIDTH_SCALE = 1.5;
+const ROLL_BUTTON_ART = require('../../assets/buttons/roll_button.png');
 
 interface DiceProps {
   value: number | null;
@@ -28,40 +30,53 @@ interface DiceProps {
   showNumericResult?: boolean;
   compact?: boolean;
   onResultShown?: () => void;
+  showVisual?: boolean;
   visualPlacement?: 'embedded' | 'external';
+  artSize?: number;
 }
 
-export const Dice: React.FC<DiceProps> = ({
+interface DiceStageVisualProps {
+  value: number | null;
+  rolling: boolean;
+  canRoll: boolean;
+  compact?: boolean;
+  visible?: boolean;
+}
+
+interface DiceSceneStateParams {
+  value: number | null;
+  rolling: boolean;
+  canRoll: boolean;
+  showVisual: boolean;
+  onResultShown?: () => void;
+}
+
+const useDiceSceneState = ({
   value,
   rolling,
-  onRoll,
   canRoll,
-  mode = 'panel',
-  showNumericResult = true,
-  compact = false,
+  showVisual,
   onResultShown,
-  visualPlacement = 'embedded',
-}) => {
-  const { width } = useWindowDimensions();
-  const isMobileWidth = width < 760;
-  const isIOS = Platform.OS === 'ios';
-  const showEmbeddedVisual = visualPlacement === 'embedded';
-  const readiness = useSharedValue(canRoll ? 0.4 : 0);
+}: DiceSceneStateParams) => {
+  const previousShowVisualRef = useRef(showVisual);
   const wasRollingRef = useRef(false);
+  const reportedResultPlaybackRef = useRef<number>(0);
   const [scenePlaybackId, setScenePlaybackId] = useState(0);
   const [lastResolvedValue, setLastResolvedValue] = useState<number | null>(value);
 
   useEffect(() => {
-    if (rolling && !wasRollingRef.current) {
+    const visualActivatedDuringRoll = showVisual && rolling && !previousShowVisualRef.current;
+
+    if (rolling && (!wasRollingRef.current || visualActivatedDuringRoll)) {
       setLastResolvedValue(null);
-      if (showEmbeddedVisual) {
-        // Replay the decorative 3D cast only when this button owns the visual.
+      if (showVisual) {
         setScenePlaybackId((current) => current + 1);
       }
     }
 
+    previousShowVisualRef.current = showVisual;
     wasRollingRef.current = rolling;
-  }, [rolling, showEmbeddedVisual]);
+  }, [rolling, showVisual]);
 
   useEffect(() => {
     if (value !== null) {
@@ -74,6 +89,123 @@ export const Dice: React.FC<DiceProps> = ({
       setLastResolvedValue(null);
     }
   }, [canRoll, rolling, value]);
+
+  const resolvedValue = value ?? lastResolvedValue;
+  const isSceneRolling = showVisual && rolling;
+
+  useEffect(() => {
+    if (!rolling) {
+      return;
+    }
+
+    // Reset result reporting for the active cast so we can notify exactly once once it settles.
+    reportedResultPlaybackRef.current = 0;
+  }, [rolling]);
+
+  useEffect(() => {
+    if (!showVisual || !onResultShown || resolvedValue === null || isSceneRolling || scenePlaybackId === 0) {
+      return;
+    }
+
+    if (reportedResultPlaybackRef.current === scenePlaybackId) {
+      return;
+    }
+
+    reportedResultPlaybackRef.current = scenePlaybackId;
+    onResultShown();
+  }, [isSceneRolling, onResultShown, resolvedValue, scenePlaybackId, showVisual]);
+
+  const hasSettledResult = resolvedValue !== null && !rolling;
+  const shouldHoldSettledDice = hasSettledResult && showVisual;
+  const sceneVariant: 'animated' | 'settled' | 'start' = isSceneRolling
+    ? 'animated'
+    : shouldHoldSettledDice
+      ? 'settled'
+      : 'start';
+  const renderedPlaybackId = sceneVariant === 'start' ? scenePlaybackId + 1 : Math.max(scenePlaybackId, 1);
+
+  return {
+    hasSettledResult,
+    isSceneRolling,
+    renderedPlaybackId,
+    resolvedValue,
+    sceneVariant,
+  };
+};
+
+export const DiceStageVisual: React.FC<DiceStageVisualProps> = ({
+  value,
+  rolling,
+  canRoll,
+  compact = false,
+  visible = true,
+}) => {
+  const { width } = useWindowDimensions();
+  const isCompactVisual = compact || width < 1280;
+  const sceneSize = isCompactVisual ? 0.98 : 1.12;
+  const { renderedPlaybackId, sceneVariant } = useDiceSceneState({
+    value,
+    rolling,
+    canRoll,
+    showVisual: visible,
+  });
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <View pointerEvents="none" testID="dice-stage-visual" style={styles.externalStageVisualWrap}>
+      <View
+        pointerEvents="none"
+        style={[
+          styles.externalStageVisualViewport,
+          isCompactVisual && styles.externalStageVisualViewportCompact,
+        ]}
+      >
+        <DiceRollScene
+          playbackId={renderedPlaybackId}
+          durationMs={DEFAULT_DICE_ROLL_DURATION_MS}
+          size={sceneSize}
+          variant={sceneVariant}
+        />
+      </View>
+    </View>
+  );
+};
+
+export const Dice: React.FC<DiceProps> = ({
+  value,
+  rolling,
+  onRoll,
+  canRoll,
+  mode = 'panel',
+  showNumericResult = true,
+  compact = false,
+  onResultShown,
+  showVisual = true,
+  visualPlacement = 'embedded',
+  artSize,
+}) => {
+  const { width } = useWindowDimensions();
+  const isMobileWidth = width < 760;
+  const isIOS = Platform.OS === 'ios';
+  const showEmbeddedVisual = visualPlacement === 'embedded';
+  const shouldRenderEmbeddedVisual = showEmbeddedVisual && showVisual;
+  const readiness = useSharedValue(canRoll ? 0.4 : 0);
+  const {
+    hasSettledResult,
+    isSceneRolling,
+    renderedPlaybackId,
+    resolvedValue,
+    sceneVariant,
+  } = useDiceSceneState({
+    value,
+    rolling,
+    canRoll,
+    showVisual: shouldRenderEmbeddedVisual,
+    onResultShown,
+  });
 
   useEffect(() => {
     if (canRoll && !rolling) {
@@ -97,37 +229,6 @@ export const Dice: React.FC<DiceProps> = ({
     transform: [{ scale: 0.98 + readiness.value * 0.06 }],
   }));
 
-  const resolvedValue = value ?? lastResolvedValue;
-  const isSceneRolling = showEmbeddedVisual && rolling;
-
-  const reportedResultPlaybackRef = useRef<number>(0);
-
-  useEffect(() => {
-    if (!rolling) {
-      return;
-    }
-
-    // Reset result reporting for the active cast so we can notify exactly once once it settles.
-    reportedResultPlaybackRef.current = 0;
-  }, [rolling]);
-
-  useEffect(() => {
-    if (!showEmbeddedVisual || !onResultShown || resolvedValue === null || isSceneRolling || scenePlaybackId === 0) {
-      return;
-    }
-
-    if (reportedResultPlaybackRef.current === scenePlaybackId) {
-      return;
-    }
-
-    reportedResultPlaybackRef.current = scenePlaybackId;
-    onResultShown();
-  }, [isSceneRolling, onResultShown, resolvedValue, scenePlaybackId, showEmbeddedVisual]);
-
-  const hasSettledResult = resolvedValue !== null && !rolling;
-  const shouldHoldSettledDice = hasSettledResult && showEmbeddedVisual;
-  const sceneVariant = isSceneRolling ? 'animated' : shouldHoldSettledDice ? 'settled' : 'start';
-  const renderedPlaybackId = sceneVariant === 'start' ? scenePlaybackId + 1 : Math.max(scenePlaybackId, 1);
   const title = isSceneRolling ? 'Casting...' : resolvedValue !== null ? `Result: ${resolvedValue}` : 'Cast The Dice';
   const subtitle = isSceneRolling
     ? 'The astragali are in motion'
@@ -141,6 +242,12 @@ export const Dice: React.FC<DiceProps> = ({
   const isCompactStage = compact && isStage;
   const isMobileCompactStage = isCompactStage && isMobileWidth;
   const isLaptopUp = width >= 1024;
+  const useRollButtonArt = isStage && (isMobileCompactStage || Platform.OS === 'web');
+  const rollButtonSize = artSize ?? (
+    isMobileCompactStage
+      ? Math.min(Math.max(Math.round(width * 0.24), 82), 108)
+      : Math.min(Math.max(Math.round(width * (compact ? 0.14 : 0.12)), compact ? 110 : 122), compact ? 136 : 156)
+  );
   const sceneBaseSize = isCompactStage
     ? isMobileCompactStage
       ? isIOS
@@ -168,6 +275,50 @@ export const Dice: React.FC<DiceProps> = ({
     </View>
   );
 
+  if (useRollButtonArt) {
+    return (
+      <TouchableOpacity
+        onPress={onRoll}
+        disabled={!canRoll || rolling}
+        activeOpacity={0.9}
+        testID="dice-roll-button"
+        style={[styles.touchable, isMobileCompactStage && styles.mobileStageTouchable, styles.artStageTouchable]}
+      >
+        <View style={styles.mobileArtStack}>
+          {shouldRenderEmbeddedVisual ? (
+            <View style={styles.mobileArtVisualRow}>
+              {renderDiceVisual(styles.mobileArtRollSceneViewport)}
+            </View>
+          ) : null}
+
+          <View
+            style={[
+              styles.mobileArtButtonWrap,
+              {
+                minWidth: rollButtonSize + 5,
+                minHeight: rollButtonSize + 5,
+              },
+              !canRoll && styles.mobileArtButtonWrapLocked,
+            ]}
+          >
+            <Image
+              testID="dice-roll-art"
+              source={ROLL_BUTTON_ART}
+              resizeMode="contain"
+              style={[
+                styles.mobileArtButtonImage,
+                {
+                  width: rollButtonSize,
+                  height: rollButtonSize,
+                },
+              ]}
+            />
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <TouchableOpacity
       onPress={onRoll}
@@ -192,7 +343,7 @@ export const Dice: React.FC<DiceProps> = ({
 
         {isCompactStage ? (
           <View style={[styles.compactStageContent, isMobileCompactStage && styles.mobileCompactStageContent]}>
-            {showEmbeddedVisual ? (
+            {shouldRenderEmbeddedVisual ? (
               <View style={[styles.diceRow, styles.compactDiceRow, styles.compactStageDiceRow]}>
                 {renderDiceVisual([
                   styles.compactStageRollSceneViewport,
@@ -205,7 +356,7 @@ export const Dice: React.FC<DiceProps> = ({
             <View
               style={[
                 styles.compactStageTextWrap,
-                !showEmbeddedVisual && styles.externalCompactStageTextWrap,
+                !shouldRenderEmbeddedVisual && styles.externalCompactStageTextWrap,
                 isMobileCompactStage && styles.mobileCompactStageTextWrap,
               ]}
             >
@@ -246,7 +397,7 @@ export const Dice: React.FC<DiceProps> = ({
           </View>
         ) : (
           <>
-            {showEmbeddedVisual ? (
+            {shouldRenderEmbeddedVisual ? (
               <View style={[styles.diceRow, compact && styles.compactDiceRow]}>
                 {renderDiceVisual(isStage ? styles.stageRollSceneViewport : compact ? styles.compactRollSceneViewport : undefined)}
               </View>
@@ -282,6 +433,10 @@ const styles = StyleSheet.create({
   mobileStageTouchable: {
     width: '100%',
     alignSelf: 'stretch',
+  },
+  artStageTouchable: {
+    width: 'auto',
+    alignSelf: 'center',
   },
   card: {
     borderRadius: urTheme.radii.md,
@@ -402,11 +557,11 @@ const styles = StyleSheet.create({
     height: Math.round(56 * STAGE_ROLL_BUTTON_HEIGHT_SCALE),
   },
   mobileCompactStageRollSceneViewport: {
-    width: 118,
+    width: Math.round(118 * MOBILE_DICE_VIEWPORT_WIDTH_SCALE),
     height: 46,
   },
   iosMobileCompactStageRollSceneViewport: {
-    width: 128,
+    width: Math.round(128 * MOBILE_DICE_VIEWPORT_WIDTH_SCALE),
     height: 50,
   },
   compactStageTextWrap: {
@@ -508,6 +663,50 @@ const styles = StyleSheet.create({
     fontSize: 7,
     lineHeight: 9,
     letterSpacing: 0.3,
+  },
+  mobileArtStack: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mobileArtVisualRow: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 72,
+    marginBottom: 4,
+  },
+  mobileArtRollSceneViewport: {
+    width: Math.round(168 * MOBILE_DICE_VIEWPORT_WIDTH_SCALE),
+    height: 76,
+  },
+  mobileArtButtonWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mobileArtButtonWrapLocked: {
+    opacity: 0.62,
+  },
+  mobileArtButtonImage: {
+    alignSelf: 'center',
+  },
+  externalStageVisualWrap: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'stretch',
+    justifyContent: 'center',
+  },
+  externalStageVisualViewport: {
+    width: '100%',
+    maxWidth: 232,
+    height: 112,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  externalStageVisualViewportCompact: {
+    maxWidth: 216,
+    height: 96,
   },
   stageSubtitle: {
     textTransform: 'uppercase',

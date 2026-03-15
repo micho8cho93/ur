@@ -1,16 +1,23 @@
 import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import { urTheme, urTextures } from '@/constants/urTheme';
 import React from 'react';
-import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 
 interface EdgeScoreProps {
   label: string;
   value: string;
   active?: boolean;
   align?: 'left' | 'right';
+  style?: StyleProp<ViewStyle>;
 }
 
-export const EdgeScore: React.FC<EdgeScoreProps> = ({ label, value, active = false, align = 'left' }) => {
+export const EdgeScore: React.FC<EdgeScoreProps> = ({
+  label,
+  value,
+  active = false,
+  align = 'left',
+  style,
+}) => {
   const { width } = useWindowDimensions();
   const isMobile = width < 760;
   const teamLabel = label.replace(/score/gi, '').trim();
@@ -22,6 +29,7 @@ export const EdgeScore: React.FC<EdgeScoreProps> = ({ label, value, active = fal
         isMobile && styles.mobileWrap,
         align === 'right' && styles.rightWrap,
         active && styles.activeWrap,
+        style,
       ]}
     >
       <Image source={urTextures.lapisMosaic} resizeMode="cover" style={styles.texture} />
@@ -93,8 +101,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(248, 228, 188, 0.2)',
   },
   label: {
-    ...urTypography.label,
     fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
     color: 'rgba(241, 230, 208, 0.82)',
   },
   mobileLabel: {
@@ -103,11 +113,12 @@ const styles = StyleSheet.create({
     lineHeight: 8,
   },
   mobileScoreWord: {
-    ...urTypography.label,
     marginTop: 1,
     fontSize: 6,
+    fontWeight: '700',
+    textTransform: 'uppercase',
     lineHeight: 8,
-    letterSpacing: 0.65,
+    letterSpacing: 1.2,
     color: 'rgba(241, 230, 208, 0.74)',
   },
   value: {

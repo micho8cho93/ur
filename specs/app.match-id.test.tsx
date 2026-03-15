@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { createInitialState } from '@/logic/engine';
-import type { MoveAction } from '@/logic/types';
+import type { GameState, MoveAction } from '@/logic/types';
 
 const mockMatchDiceRollStage = jest.fn(({ playbackId }: { playbackId: number }) => {
   const { Text } = require('react-native');
@@ -27,10 +27,10 @@ const mockSetSocketState = jest.fn();
 const mockSetRollCommandSender = jest.fn();
 const mockSetMoveCommandSender = jest.fn();
 
-const baseGameState = {
+const baseGameState: GameState = {
   ...createInitialState(),
-  currentTurn: 'light' as const,
-  phase: 'rolling' as const,
+  currentTurn: 'light',
+  phase: 'rolling',
   rollValue: null,
 };
 
@@ -266,5 +266,50 @@ describe('GameRoom match dice stage', () => {
       }),
     );
     expect(mockDiceRollScene).not.toHaveBeenCalled();
+  });
+
+  it('clears the embedded dice visual before an offline bot roll resolves on Android', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'android',
+    });
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('dice-roll-button'));
+    });
+
+    expect(screen.queryByTestId('dice-roll-scene-host')).not.toBeNull();
+
+    mockStoreState.gameState = {
+      ...baseGameState,
+      currentTurn: 'light',
+      phase: 'moving',
+      rollValue: 2,
+    };
+
+    await act(async () => {
+      view.rerender(<GameRoom />);
+    });
+
+    expect(screen.queryByTestId('dice-roll-scene-host')).not.toBeNull();
+
+    mockStoreState.gameState = {
+      ...baseGameState,
+      currentTurn: 'dark',
+      phase: 'moving',
+      rollValue: 3,
+    };
+
+    await act(async () => {
+      view.rerender(<GameRoom />);
+    });
+
+    expect(screen.queryByTestId('dice-roll-scene-host')).toBeNull();
   });
 });

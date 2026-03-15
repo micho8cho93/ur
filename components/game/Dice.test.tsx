@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 const mockDiceRollScene = jest.fn(({ playbackId, variant }: { playbackId: number; variant: string }) => {
   const { Text } = require('react-native');
@@ -15,6 +16,10 @@ import { Dice } from './Dice';
 describe('Dice', () => {
   beforeEach(() => {
     mockDiceRollScene.mockClear();
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'ios',
+    });
   });
 
   it('does not mount the inline scene while the external match stage is active', () => {
@@ -30,6 +35,45 @@ describe('Dice', () => {
       />,
     );
 
+    expect(screen.queryByTestId('dice-roll-scene-host')).toBeNull();
+    expect(mockDiceRollScene).not.toHaveBeenCalled();
+  });
+
+  it('hides the embedded scene when visuals are disabled', () => {
+    render(
+      <Dice
+        value={2}
+        rolling={false}
+        onRoll={jest.fn()}
+        canRoll={false}
+        mode="stage"
+        compact
+        showVisual={false}
+      />,
+    );
+
+    expect(screen.queryByTestId('dice-roll-scene-host')).toBeNull();
+    expect(mockDiceRollScene).not.toHaveBeenCalled();
+  });
+
+  it('uses the roll button art for the web stage control', () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+
+    render(
+      <Dice
+        value={null}
+        rolling={false}
+        onRoll={jest.fn()}
+        canRoll
+        mode="stage"
+        showVisual={false}
+      />,
+    );
+
+    expect(screen.getByTestId('dice-roll-art')).toBeTruthy();
     expect(screen.queryByTestId('dice-roll-scene-host')).toBeNull();
     expect(mockDiceRollScene).not.toHaveBeenCalled();
   });
