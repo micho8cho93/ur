@@ -14,7 +14,7 @@ export const DiceRollScene: React.FC<DiceRollSceneContentProps> = (props) => (
         gl.setClearColor(0x000000, 0);
       }}
     >
-      <DiceRollSceneContent {...props} />
+      <DiceRollSceneContent {...props} renderProfile="web" />
     </Canvas>
   </View>
 );

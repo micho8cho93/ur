@@ -11,6 +11,9 @@ import { DEFAULT_DICE_ROLL_DURATION_MS } from '@/components/3d/DiceRollScene.sha
 import { Dice } from '@/components/game/Dice';
 import { EdgeScore } from '@/components/game/EdgeScore';
 import { GameStageHUD } from '@/components/game/GameStageHUD';
+import { MatchDiceRollStage } from '@/components/game/MatchDiceRollStage';
+import { MatchMomentIndicator } from '@/components/game/MatchMomentIndicator';
+import type { MatchMomentIndicatorCue } from '@/components/game/MatchMomentIndicator';
 import { HowToPlayModal } from '@/components/HowToPlayModal';
 import { PieceRail, ReserveSlotMeasurement } from '@/components/game/PieceRail';
 import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
@@ -21,7 +24,7 @@ import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
 import { useGameLoop } from '@/hooks/useGameLoop';
 import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty } from '@/logic/bot/types';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
-import { PlayerColor } from '@/logic/types';
+import type { GameState, PlayerColor } from '@/logic/types';
 import { gameAudio } from '@/services/audio';
 import { nakamaService } from '@/services/nakama';
 import { useGameStore } from '@/store/useGameStore';
@@ -36,9 +39,10 @@ import {
 } from '@/shared/urMatchProtocol';
 import { MatchData, MatchPresenceEvent, Socket } from '@heroiclabs/nakama-js';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { useFonts } from 'expo-font';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const UR_BG_IMAGE = require('../../assets/images/ur_bg.png');
@@ -55,6 +59,62 @@ const TOP_CHROME_BORDER = urTheme.colors.cedar;
 // Tune these until the match layer exposes a real server-backed turn clock.
 const VISUAL_TURN_TIMER_DURATION_MS = 20_000;
 const VISUAL_TURN_TIMER_WARNING_THRESHOLD = 0.22;
+const MATCH_CUE_FONT_FAMILY = 'CinzelDecorativeBold';
+const LOCAL_NO_MOVE_HISTORY_RE = /^(light|dark) rolled ([0-4]) but had no moves\.$/;
+const LOCAL_MOVE_HISTORY_RE = /^(light|dark) moved to \d+\. Rosette: (true|false)$/;
+
+type MatchMomentCueKind = 'play' | 'yourTurn' | 'zero' | 'stuck' | 'timeout' | 'rosette';
+
+const MATCH_MOMENT_CUES: Record<MatchMomentCueKind, Omit<MatchMomentIndicatorCue, 'id'>> = {
+  play: {
+    message: 'Play!',
+    accent: urTheme.colors.goldBright,
+    border: 'rgba(240, 192, 64, 0.86)',
+    glow: 'rgba(240, 192, 64, 0.26)',
+    background: 'rgba(48, 28, 14, 0.94)',
+    durationMs: 1100,
+  },
+  yourTurn: {
+    message: 'Your Turn',
+    accent: urTheme.colors.lapisBright,
+    border: 'rgba(126, 177, 255, 0.84)',
+    glow: 'rgba(90, 168, 255, 0.2)',
+    background: 'rgba(13, 26, 43, 0.94)',
+    durationMs: 1200,
+  },
+  zero: {
+    message: 'Zero: no move',
+    accent: urTheme.colors.ember,
+    border: 'rgba(240, 168, 64, 0.84)',
+    glow: 'rgba(240, 168, 64, 0.22)',
+    background: 'rgba(54, 24, 10, 0.95)',
+    durationMs: 1250,
+  },
+  stuck: {
+    message: "You're stuck!",
+    accent: urTheme.colors.carnelianBright,
+    border: 'rgba(232, 98, 46, 0.84)',
+    glow: 'rgba(232, 98, 46, 0.24)',
+    background: 'rgba(56, 20, 11, 0.95)',
+    durationMs: 1250,
+  },
+  timeout: {
+    message: "Time's up",
+    accent: urTheme.colors.gold,
+    border: 'rgba(232, 210, 176, 0.82)',
+    glow: 'rgba(240, 192, 64, 0.18)',
+    background: 'rgba(39, 23, 14, 0.94)',
+    durationMs: 1300,
+  },
+  rosette: {
+    message: 'Roll Again!',
+    accent: urTheme.colors.goldGlow,
+    border: 'rgba(246, 214, 151, 0.88)',
+    glow: 'rgba(240, 192, 64, 0.24)',
+    background: 'rgba(29, 31, 50, 0.94)',
+    durationMs: 1300,
+  },
+};
 
 interface BoardTargetFrame {
   x: number;
@@ -63,7 +123,7 @@ interface BoardTargetFrame {
   height: number;
 }
 
-export default function GameRoom() {
+export function GameRoom() {
   const { id, offline, botDifficulty } = useLocalSearchParams<{
     id?: string | string[];
     offline?: string | string[];
@@ -72,6 +132,10 @@ export default function GameRoom() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const isMatchStageExternal = Platform.OS === 'ios';
+  const [ancientCueFontLoaded, ancientCueFontError] = useFonts({
+    [MATCH_CUE_FONT_FAMILY]: require('../../assets/fonts/CinzelDecorative-Bold.ttf'),
+  });
 
   const matchId = useMemo(() => (Array.isArray(id) ? id[0] : id), [id]);
   const offlineParam = useMemo(() => (Array.isArray(offline) ? offline[0] : offline), [offline]);
@@ -126,7 +190,7 @@ export default function GameRoom() {
   const [showAudioSettings, setShowAudioSettings] = React.useState(false);
   const [showTopMenu, setShowTopMenu] = React.useState(false);
   const [rollingVisual, setRollingVisual] = React.useState(false);
-  const [showDestinationHighlights, setShowDestinationHighlights] = React.useState(false);
+  const [diceStagePlaybackId, setDiceStagePlaybackId] = React.useState(0);
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
   const [musicEnabled, setMusicEnabled] = React.useState(true);
   const [sfxEnabled, setSfxEnabled] = React.useState(true);
@@ -139,17 +203,87 @@ export default function GameRoom() {
   const [showReserveCascadeIntro, setShowReserveCascadeIntro] = React.useState(false);
   const [hasPlayedReserveCascadeIntro, setHasPlayedReserveCascadeIntro] = React.useState(false);
   const [turnTimerCycleId, setTurnTimerCycleId] = React.useState(0);
+  const [activeMatchCue, setActiveMatchCue] = React.useState<MatchMomentIndicatorCue | null>(null);
   const boardMeasureRef = useRef<View | null>(null);
   const boardImageLayoutRef = useRef<BoardImageLayoutFrame | null>(null);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turnTimeoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const forceMoveAfterRollRef = useRef(false);
+  const activeMatchCueRef = useRef<MatchMomentIndicatorCue | null>(null);
+  const queuedMatchCuesRef = useRef<MatchMomentIndicatorCue[]>([]);
+  const matchCueIdRef = useRef(0);
+  const lastQueuedMatchCueRef = useRef<{
+    kind: MatchMomentCueKind;
+    matchId: string | null;
+    timestamp: number;
+  } | null>(null);
+  const hasShownOpeningCueRef = useRef<string | null>(null);
+  const previousStateRef = useRef<{ matchId: string | null; state: GameState }>({
+    matchId: matchId ?? null,
+    state: gameState,
+  });
   const previousTurnTimerStateRef = useRef<{
     matchId: string | null;
     currentTurn: PlayerColor;
     phase: typeof gameState.phase;
   } | null>(null);
+
+  const cueSystemReady = ancientCueFontLoaded || Boolean(ancientCueFontError);
+  const cueFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : undefined;
+
+  const setLiveMatchCue = React.useCallback((cue: MatchMomentIndicatorCue | null) => {
+    activeMatchCueRef.current = cue;
+    setActiveMatchCue(cue);
+  }, []);
+
+  const enqueueMatchCue = React.useCallback(
+    (kind: MatchMomentCueKind) => {
+      const now = Date.now();
+      const previousCue = lastQueuedMatchCueRef.current;
+
+      if (
+        previousCue &&
+        previousCue.kind === kind &&
+        previousCue.matchId === (matchId ?? null) &&
+        now - previousCue.timestamp < 1_600
+      ) {
+        return;
+      }
+
+      lastQueuedMatchCueRef.current = {
+        kind,
+        matchId: matchId ?? null,
+        timestamp: now,
+      };
+
+      matchCueIdRef.current += 1;
+      const cue: MatchMomentIndicatorCue = {
+        id: matchCueIdRef.current,
+        ...MATCH_MOMENT_CUES[kind],
+      };
+
+      if (!activeMatchCueRef.current) {
+        setLiveMatchCue(cue);
+        return;
+      }
+
+      queuedMatchCuesRef.current.push(cue);
+    },
+    [matchId, setLiveMatchCue],
+  );
+
+  const handleMatchCueHidden = React.useCallback(
+    (cueId: number) => {
+      if (activeMatchCueRef.current?.id !== cueId) {
+        return;
+      }
+
+      const nextCue = queuedMatchCuesRef.current.shift() ?? null;
+      setLiveMatchCue(nextCue);
+    },
+    [setLiveMatchCue],
+  );
 
   const syncBoardTargetFrame = React.useCallback(() => {
     const boardImageLayout = boardImageLayoutRef.current;
@@ -206,14 +340,35 @@ export default function GameRoom() {
     boardImageLayoutRef.current = null;
     setBoardTargetFrame(null);
     setRollingVisual(false);
-    setShowDestinationHighlights(false);
+    setDiceStagePlaybackId(0);
     setShowBoardDropIntro(false);
     setHasPlayedBoardDropIntro(false);
     setLightReserveSlots([]);
     setDarkReserveSlots([]);
     setShowReserveCascadeIntro(false);
     setHasPlayedReserveCascadeIntro(false);
-  }, [matchId]);
+    queuedMatchCuesRef.current = [];
+    lastQueuedMatchCueRef.current = null;
+    hasShownOpeningCueRef.current = null;
+    matchCueIdRef.current = 0;
+    setLiveMatchCue(null);
+  }, [matchId, setLiveMatchCue]);
+  useEffect(() => {
+    if (!cueSystemReady || !matchId || !hasAssignedColor) {
+      return;
+    }
+
+    if (hasShownOpeningCueRef.current === matchId) {
+      return;
+    }
+
+    if (gameState.winner !== null || gameState.phase === 'ended' || gameState.history.length > 0) {
+      return;
+    }
+
+    hasShownOpeningCueRef.current = matchId;
+    enqueueMatchCue('play');
+  }, [cueSystemReady, enqueueMatchCue, gameState.history.length, gameState.phase, gameState.winner, hasAssignedColor, matchId]);
   useEffect(() => {
     const previous = previousTurnTimerStateRef.current;
     const nextSnapshot = {
@@ -259,6 +414,8 @@ export default function GameRoom() {
         return;
       }
 
+      enqueueMatchCue('timeout');
+
       if (liveState.phase === 'rolling') {
         forceMoveAfterRollRef.current = true;
         useGameStore.getState().roll();
@@ -277,7 +434,7 @@ export default function GameRoom() {
         turnTimeoutTimerRef.current = null;
       }
     };
-  }, [gameState.phase, gameState.winner, isMyTurn, turnTimerCycleId]);
+  }, [enqueueMatchCue, gameState.phase, gameState.winner, isMyTurn, turnTimerCycleId]);
   useEffect(() => {
     if (!forceMoveAfterRollRef.current) {
       return;
@@ -521,13 +678,30 @@ export default function GameRoom() {
     };
   }, []);
 
-  const previousStateRef = useRef(gameState);
   useEffect(() => {
-    const previous = previousStateRef.current;
+    const previousSnapshot = previousStateRef.current;
+    if (previousSnapshot.matchId !== (matchId ?? null)) {
+      previousStateRef.current = { matchId: matchId ?? null, state: gameState };
+      return;
+    }
+
+    const previous = previousSnapshot.state;
     const isBotRoll = isOffline && gameState.currentTurn === 'dark';
+    const justEnteredNoMoveState =
+      hasAssignedColor &&
+      playerColor !== null &&
+      gameState.currentTurn === playerColor &&
+      gameState.phase === 'moving' &&
+      gameState.rollValue !== null &&
+      validMoves.length === 0 &&
+      (previous.phase !== gameState.phase || previous.rollValue !== gameState.rollValue);
 
     if (previous.rollValue !== gameState.rollValue && gameState.rollValue !== null && !rollingVisual && !isBotRoll) {
       void gameAudio.play('roll');
+    }
+
+    if (justEnteredNoMoveState) {
+      enqueueMatchCue(gameState.rollValue === 0 ? 'zero' : 'stuck');
     }
 
     if (gameState.history.length > previous.history.length) {
@@ -537,6 +711,21 @@ export default function GameRoom() {
           void gameAudio.play('capture');
         } else if (entry.includes('moved to')) {
           void gameAudio.play('move');
+        }
+
+        if (!playerColor) {
+          continue;
+        }
+
+        const noMoveMatch = entry.match(LOCAL_NO_MOVE_HISTORY_RE);
+        if (noMoveMatch && noMoveMatch[1] === playerColor) {
+          enqueueMatchCue(noMoveMatch[2] === '0' ? 'zero' : 'stuck');
+          continue;
+        }
+
+        const moveMatch = entry.match(LOCAL_MOVE_HISTORY_RE);
+        if (moveMatch && moveMatch[1] === playerColor && moveMatch[2] === 'true') {
+          enqueueMatchCue('rosette');
         }
       }
     }
@@ -571,20 +760,35 @@ export default function GameRoom() {
       void gameAudio.play(resultCue);
     }
 
-    previousStateRef.current = gameState;
-  }, [didPlayerWin, gameState, hasAssignedColor, isOffline, playerColor, rollingVisual]);
-
-  useEffect(() => {
-    if (gameState.phase !== 'moving' || validMoves.length === 0) {
-      setShowDestinationHighlights(false);
+    if (
+      hasAssignedColor &&
+      playerColor !== null &&
+      gameState.currentTurn === playerColor &&
+      previous.currentTurn !== gameState.currentTurn &&
+      gameState.phase === 'rolling' &&
+      gameState.winner === null
+    ) {
+      enqueueMatchCue('yourTurn');
     }
-  }, [gameState.phase, validMoves.length]);
+
+    previousStateRef.current = { matchId: matchId ?? null, state: gameState };
+  }, [
+    didPlayerWin,
+    enqueueMatchCue,
+    gameState,
+    hasAssignedColor,
+    isOffline,
+    matchId,
+    playerColor,
+    rollingVisual,
+    validMoves.length,
+  ]);
 
   const handleRoll = () => {
     if (!canRoll || rollingVisual) return;
 
+    setDiceStagePlaybackId((current) => current + 1);
     setRollingVisual(true);
-    setShowDestinationHighlights(false);
     void gameAudio.play('roll');
     roll();
     if (rollTimerRef.current) {
@@ -595,10 +799,6 @@ export default function GameRoom() {
       rollTimerRef.current = null;
     }, DEFAULT_DICE_ROLL_DURATION_MS);
   };
-
-  const handleDiceResultShown = React.useCallback(() => {
-    setShowDestinationHighlights(true);
-  }, []);
 
   const handleToggleMusic = async (enabled: boolean) => {
     setMusicEnabled(enabled);
@@ -714,6 +914,7 @@ export default function GameRoom() {
 
   const shouldHideReservePieces = !hasPlayedReserveCascadeIntro;
   const isVisualTurnTimerRunning = gameState.phase !== 'ended' && gameState.winner === null;
+  const showDestinationHighlights = !rollingVisual && gameState.rollValue !== null;
   const displayedValidMoves = showDestinationHighlights ? validMoves : [];
   useEffect(() => {
     if (hasPlayedBoardDropIntro || showBoardDropIntro) return;
@@ -791,6 +992,18 @@ export default function GameRoom() {
         maxVisibleLeaves={MATCH_AMBIENT_EFFECTS.maxVisibleLeaves}
         style={styles.ambientLayer}
       />
+
+      {isMatchStageExternal ? (
+        <MatchDiceRollStage
+          boardFrame={boardTargetFrame}
+          compact={compactSupportUi}
+          playbackId={diceStagePlaybackId}
+          rollValue={gameState.rollValue}
+          viewportHeight={height}
+          viewportWidth={width}
+          visible
+        />
+      ) : null}
 
       <View style={[styles.topChrome, { top: topChromeTop }]}>
         <View style={styles.topChromeLeft}>
@@ -973,10 +1186,10 @@ export default function GameRoom() {
                   value={gameState.rollValue}
                   rolling={rollingVisual}
                   onRoll={handleRoll}
-                  onResultShown={handleDiceResultShown}
                   canRoll={canRoll}
                   mode="stage"
                   compact={compactSupportUi}
+                  visualPlacement={isMatchStageExternal ? 'external' : 'embedded'}
                 />
               </View>
             </View>
@@ -1046,10 +1259,10 @@ export default function GameRoom() {
                       value={gameState.rollValue}
                       rolling={rollingVisual}
                       onRoll={handleRoll}
-                      onResultShown={handleDiceResultShown}
                       canRoll={canRoll}
                       mode="stage"
                       compact={compactSupportUi}
+                      visualPlacement={isMatchStageExternal ? 'external' : 'embedded'}
                     />
                   </View>
                 </View>
@@ -1094,6 +1307,12 @@ export default function GameRoom() {
         </View>
       )}
 
+      <MatchMomentIndicator
+        cue={activeMatchCue}
+        fontFamily={cueFontFamily}
+        onHidden={handleMatchCueHidden}
+      />
+
       <Modal
         visible={showWinModal}
         title={winModalTitle}
@@ -1119,6 +1338,8 @@ export default function GameRoom() {
   );
 }
 
+export default GameRoom;
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -1140,6 +1361,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: urTheme.spacing.md,
     alignItems: 'center',
+    zIndex: 2,
   },
   stageWrap: {
     width: '100%',

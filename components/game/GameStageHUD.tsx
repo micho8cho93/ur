@@ -1,17 +1,10 @@
-import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import { urTheme, urTypography } from '@/constants/urTheme';
 import { HourglassTimer } from '@/components/timer/HourglassTimer';
-import React, { useEffect } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  Easing,
-  cancelAnimation,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import { useFonts } from 'expo-font';
+import React, { useEffect, useMemo, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+
+const MATCH_CUE_FONT_FAMILY = 'CinzelDecorativeBold';
 
 interface GameStageHUDProps {
   isMyTurn: boolean;
@@ -27,9 +20,6 @@ interface GameStageHUDProps {
 }
 
 export const GameStageHUD: React.FC<GameStageHUDProps> = ({
-  isMyTurn,
-  canRoll,
-  phase,
   compact = false,
   timerDurationMs,
   timerRemainingMs,
@@ -38,69 +28,78 @@ export const GameStageHUD: React.FC<GameStageHUDProps> = ({
   timerKey,
   timerWarningThreshold,
 }) => {
-  const turnGlow = useSharedValue(isMyTurn ? 0.75 : 0.2);
-  const turnSweep = useSharedValue(0);
+  const [ancientFontLoaded] = useFonts({
+    [MATCH_CUE_FONT_FAMILY]: require('../../assets/fonts/CinzelDecorative-Bold.ttf'),
+  });
+  const [localElapsedMs, setLocalElapsedMs] = useState(0);
 
   useEffect(() => {
-    if (isMyTurn) {
-      turnGlow.value = withRepeat(
-        withSequence(
-          withTiming(0.95, { duration: 680, easing: Easing.inOut(Easing.quad) }),
-          withTiming(0.35, { duration: 680, easing: Easing.inOut(Easing.quad) }),
-        ),
-        -1,
-        true,
-      );
-      turnSweep.value = 1;
-      turnSweep.value = withTiming(0, { duration: 560, easing: Easing.out(Easing.cubic) });
+    setLocalElapsedMs(0);
+
+    if (!timerDurationMs || !timerIsRunning || typeof timerRemainingMs === 'number' || typeof timerProgress === 'number') {
       return;
     }
 
-    cancelAnimation(turnGlow);
-    turnGlow.value = withTiming(0.2, { duration: 220 });
-  }, [isMyTurn, turnGlow, turnSweep]);
+    const startedAt = Date.now();
+    const intervalId = setInterval(() => {
+      setLocalElapsedMs(Math.min(Date.now() - startedAt, timerDurationMs));
+    }, 200);
 
-  const turnGlowStyle = useAnimatedStyle(() => ({
-    opacity: turnGlow.value,
-    transform: [{ scale: 0.95 + turnGlow.value * 0.1 }],
-  }));
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [timerDurationMs, timerIsRunning, timerKey, timerProgress, timerRemainingMs]);
 
-  const turnSweepStyle = useAnimatedStyle(() => ({
-    opacity: turnSweep.value * 0.7,
-    transform: [{ translateX: (1 - turnSweep.value) * 220 - 110 }],
-  }));
+  const resolvedRemainingMs = useMemo(() => {
+    if (!timerDurationMs) {
+      return null;
+    }
 
-  const hint = canRoll
-    ? 'Cast the dice to advance'
-    : phase === 'moving'
-      ? 'Select a glowing destination'
-      : phase === 'ended'
-        ? 'Match complete'
-        : 'Awaiting move';
+    if (typeof timerRemainingMs === 'number') {
+      return Math.max(0, timerRemainingMs);
+    }
+
+    if (typeof timerProgress === 'number') {
+      return Math.max(0, Math.round(timerDurationMs * (1 - timerProgress)));
+    }
+
+    return Math.max(0, timerDurationMs - localElapsedMs);
+  }, [localElapsedMs, timerDurationMs, timerProgress, timerRemainingMs]);
+
+  const countdownSeconds = resolvedRemainingMs === null ? null : Math.max(0, Math.ceil(resolvedRemainingMs / 1000));
+  const countdownFontFamily = ancientFontLoaded ? MATCH_CUE_FONT_FAMILY : urTypography.title.fontFamily;
 
   return (
     <View style={[styles.wrap, compact && styles.compactWrap]}>
-      <Image source={urTextures.lapisMosaic} resizeMode="cover" style={styles.texture} />
-      <View style={styles.topEdgeHighlight} />
-      <View style={styles.innerBevel} />
-      <Animated.View style={[styles.turnSweep, turnSweepStyle]} />
-      <Animated.View style={[styles.turnOrb, compact && styles.compactTurnOrb, turnGlowStyle]} />
-      <View style={[styles.textWrap, compact && styles.compactTextWrap]}>
-        <Text style={[styles.turnTitle, compact && styles.compactTurnTitle]}>{isMyTurn ? 'Your Turn' : 'Opponent Turn'}</Text>
-        <Text style={[styles.turnHint, compact && styles.compactTurnHint]}>{hint}</Text>
-      </View>
       {timerDurationMs ? (
-        <View style={styles.timerWrap}>
-          <HourglassTimer
-            key={timerKey}
-            durationMs={timerDurationMs}
-            remainingMs={timerRemainingMs}
-            progress={timerProgress}
-            isRunning={timerIsRunning}
-            warningThreshold={timerWarningThreshold}
-            // Keep the HUD timer readable without letting it overpower the turn copy.
-            size={compact ? 34 : 40}
-          />
+        <View
+          style={[
+            styles.timerWrap,
+            compact ? styles.compactTimerWrap : styles.regularTimerWrap,
+          ]}
+        >
+          <View style={styles.timerStack}>
+            <HourglassTimer
+              key={timerKey}
+              durationMs={timerDurationMs}
+              remainingMs={resolvedRemainingMs ?? undefined}
+              progress={timerProgress}
+              isRunning={timerIsRunning}
+              warningThreshold={timerWarningThreshold}
+              size={compact ? 34 : 40}
+            />
+            {countdownSeconds !== null ? (
+              <Text
+                style={[
+                  styles.timerCountdown,
+                  compact && styles.compactTimerCountdown,
+                  { fontFamily: countdownFontFamily },
+                ]}
+              >
+                {countdownSeconds}s
+              </Text>
+            ) : null}
+          </View>
         </View>
       ) : null}
     </View>
@@ -110,99 +109,40 @@ export const GameStageHUD: React.FC<GameStageHUDProps> = ({
 const styles = StyleSheet.create({
   wrap: {
     width: '100%',
-    minHeight: 67,
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(15, 20, 29, 0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(200, 152, 30, 0.72)',
-    paddingVertical: 12,
-    paddingHorizontal: urTheme.spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    overflow: 'hidden',
+    alignItems: 'flex-start',
   },
   compactWrap: {
-    minHeight: 56,
-    paddingVertical: 8,
-    paddingHorizontal: urTheme.spacing.sm,
-  },
-  texture: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.22,
-  },
-  topEdgeHighlight: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '45%',
-    backgroundColor: 'rgba(245, 224, 182, 0.1)',
-  },
-  innerBevel: {
-    ...StyleSheet.absoluteFillObject,
-    margin: 4,
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 1,
-    borderColor: 'rgba(242, 221, 182, 0.2)',
-  },
-  turnSweep: {
-    position: 'absolute',
-    left: -100,
-    top: 0,
-    bottom: 0,
-    width: 100,
-    backgroundColor: 'rgba(200, 152, 30, 0.20)',
-  },
-  turnOrb: {
-    width: 14,
-    height: 14,
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: '#C89820',
-    ...boxShadow({
-      color: '#C89820',
-      opacity: 0.82,
-      blurRadius: 7,
-      elevation: 6,
-    }),
-  },
-  compactTurnOrb: {
-    width: 11,
-    height: 11,
-  },
-  textWrap: {
-    marginLeft: urTheme.spacing.sm,
-    flex: 1,
-    minWidth: 0,
-  },
-  compactTextWrap: {
-    marginLeft: urTheme.spacing.xs,
+    alignItems: 'flex-start',
   },
   timerWrap: {
-    marginLeft: urTheme.spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+    paddingHorizontal: 0,
   },
-  turnTitle: {
-    ...urTypography.label,
-    color: urTheme.colors.ivory,
-    fontSize: 12,
-    letterSpacing: 1.15,
-    flexShrink: 1,
+  regularTimerWrap: {
+    paddingVertical: urTheme.spacing.sm,
   },
-  compactTurnTitle: {
-    fontSize: 10,
-    letterSpacing: 0.9,
+  compactTimerWrap: {
+    paddingVertical: urTheme.spacing.xs,
   },
-  turnHint: {
-    color: 'rgba(235, 220, 193, 0.84)',
-    fontSize: 11,
-    lineHeight: 13,
-    marginTop: 1,
-    flexShrink: 1,
+  timerStack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: urTheme.spacing.xs,
   },
-  compactTurnHint: {
-    fontSize: 9,
-    lineHeight: 11,
+  timerCountdown: {
+    ...urTypography.title,
+    color: urTheme.colors.parchment,
+    fontSize: 21,
+    lineHeight: 24,
+    letterSpacing: 0.7,
+    minWidth: 34,
+    textAlign: 'left',
+  },
+  compactTimerCountdown: {
+    fontSize: 18,
+    lineHeight: 20,
+    minWidth: 30,
   },
 });

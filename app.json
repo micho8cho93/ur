@@ -1,17 +1,22 @@
 {
   "expo": {
     "name": "royal-game-of-ur",
-    "slug": "royal-game-of-ur",
+    "slug": "royalgameur",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "royalgameofur",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "newArchEnabled": true,
+      "supportsTablet": true,
+      "bundleIdentifier": "com.micho8cho93sorganization.royalgameur",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "newArchEnabled": true,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -19,7 +24,12 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.micho8cho93sorganization.royalgameur"
     },
     "web": {
       "output": "static",
@@ -39,11 +49,19 @@
           }
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a2fd3895-c861-4c2b-b63b-9c2367aae070"
+      }
+    },
+    "owner": "micho8cho93s-organization"
   }
 }

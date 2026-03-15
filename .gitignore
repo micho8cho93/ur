@@ -6,6 +6,7 @@ expo-env.d.ts
 # @end expo-cli
 
 node_modules/
+react-native-filament-1.9.0.tgz
 
 # Expo web export output
 dist/

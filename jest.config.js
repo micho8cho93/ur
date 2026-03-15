@@ -1,8 +1,8 @@
 /** @type {import('jest').Config} */
 module.exports = {
-  preset: 'ts-jest',
-  testEnvironment: 'node',
+  preset: 'jest-expo',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
 };
