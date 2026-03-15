@@ -1,13 +1,14 @@
 import { urTheme, urTypography } from '@/constants/urTheme';
 import { boxShadow } from '@/constants/styleEffects';
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, TouchableOpacityProps, View, ViewStyle } from 'react-native';
+import { ActivityIndicator, StyleProp, StyleSheet, Text, TextStyle, TouchableOpacity, TouchableOpacityProps, View, ViewStyle } from 'react-native';
 
 interface ButtonProps extends TouchableOpacityProps {
   title: string;
   variant?: 'primary' | 'secondary' | 'outline';
   loading?: boolean;
   className?: string;
+  labelStyle?: StyleProp<TextStyle>;
 }
 
 type VariantStyle = {
@@ -53,6 +54,7 @@ export const Button: React.FC<ButtonProps> = ({
   disabled,
   style,
   className,
+  labelStyle,
   ...props
 }) => {
   const config = variants[variant];
@@ -70,7 +72,7 @@ export const Button: React.FC<ButtonProps> = ({
       {loading ? (
         <ActivityIndicator color={config.spinnerColor} />
       ) : (
-        <Text style={[styles.label, { color: config.textColor }]}>{title}</Text>
+        <Text style={[styles.label, { color: config.textColor }, labelStyle]}>{title}</Text>
       )}
     </TouchableOpacity>
   );

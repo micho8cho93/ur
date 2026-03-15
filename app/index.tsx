@@ -9,6 +9,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 export default function Home() {
   const router = useRouter();
   const [showHowToPlay, setShowHowToPlay] = React.useState(false);
+  const blackButtonLabel = styles.blackButtonLabel;
 
   return (
     <View style={styles.screen}>
@@ -30,10 +31,27 @@ export default function Home() {
         <View style={styles.panelBorder} />
 
         <View style={styles.buttonStack}>
-          <Button title="Play Local vs Bot" onPress={() => router.push('/(game)/bot')} />
-          <Button title="Online Multiplayer" variant="outline" onPress={() => router.push('/(game)/lobby?mode=online')} />
-          <Button title="Watch tutorial" variant="outline" onPress={() => router.push('/tutorial/watch' as never)} />
-          <Button title="How to play" variant="secondary" onPress={() => setShowHowToPlay(true)} />
+          <Button
+            title="Quick Play"
+            onPress={() => router.push('/(game)/bot')}
+            style={styles.quickPlayButton}
+            labelStyle={blackButtonLabel}
+          />
+          <Button
+            title="Play Online"
+            variant="outline"
+            onPress={() => router.push('/(game)/lobby?mode=online')}
+            style={styles.playOnlineButton}
+            labelStyle={blackButtonLabel}
+          />
+          <Button
+            title="Watch Extended Tutorial"
+            variant="outline"
+            onPress={() => router.push('/tutorial/watch' as never)}
+            style={styles.extendedTutorialButton}
+            labelStyle={blackButtonLabel}
+          />
+          <Button title="5 Step Tutorial" variant="secondary" onPress={() => setShowHowToPlay(true)} />
         </View>
       </View>
 
@@ -141,5 +159,23 @@ const styles = StyleSheet.create({
   },
   buttonStack: {
     gap: urTheme.spacing.sm,
+  },
+  quickPlayButton: {
+    backgroundColor: '#D9CCB1',
+    borderColor: 'rgba(92, 73, 42, 0.24)',
+    borderWidth: 1.2,
+  },
+  playOnlineButton: {
+    backgroundColor: '#B28A3C',
+    borderColor: 'rgba(61, 41, 14, 0.38)',
+    borderWidth: 1.2,
+  },
+  extendedTutorialButton: {
+    backgroundColor: '#F3E9D2',
+    borderColor: 'rgba(92, 73, 42, 0.2)',
+    borderWidth: 1.2,
+  },
+  blackButtonLabel: {
+    color: '#121212',
   },
 });

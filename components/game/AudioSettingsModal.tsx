@@ -8,18 +8,24 @@ interface AudioSettingsModalProps {
   visible: boolean;
   musicEnabled: boolean;
   sfxEnabled: boolean;
+  timerEnabled?: boolean;
+  showTimerToggle?: boolean;
   onClose: () => void;
   onToggleMusic: (enabled: boolean) => void;
   onToggleSfx: (enabled: boolean) => void;
+  onToggleTimer?: (enabled: boolean) => void;
 }
 
 export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   visible,
   musicEnabled,
   sfxEnabled,
+  timerEnabled = true,
+  showTimerToggle = false,
   onClose,
   onToggleMusic,
   onToggleSfx,
+  onToggleTimer,
 }) => (
   <RNModal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
     <Pressable style={styles.backdrop} onPress={onClose}>
@@ -29,8 +35,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         <View style={styles.sheetGlow} />
         <View style={styles.border} />
 
-        <Text style={styles.title}>Audio Settings</Text>
-        <Text style={styles.subtitle}>Choose whether the hall stays musical and whether game sounds remain active.</Text>
+        <Text style={styles.title}>Match Settings</Text>
+        <Text style={styles.subtitle}>Adjust the match atmosphere and, in bot games, whether the turn timer stays active.</Text>
 
         <View style={styles.optionList}>
           <View style={styles.optionRow}>
@@ -58,6 +64,21 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               thumbColor={sfxEnabled ? '#F4D38A' : '#E7D2B1'}
             />
           </View>
+
+          {showTimerToggle ? (
+            <View style={styles.optionRow}>
+              <View style={styles.copyWrap}>
+                <Text style={styles.optionTitle}>Turn Timer</Text>
+                <Text style={styles.optionHint}>Show the hourglass and allow timeout auto-roll and auto-move in bot matches</Text>
+              </View>
+              <Switch
+                value={timerEnabled}
+                onValueChange={onToggleTimer}
+                trackColor={{ false: 'rgba(92, 66, 41, 0.72)', true: 'rgba(200, 152, 32, 0.62)' }}
+                thumbColor={timerEnabled ? '#F4D38A' : '#E7D2B1'}
+              />
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.buttonWrap}>

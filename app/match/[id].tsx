@@ -26,6 +26,7 @@ import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty } from '@/logic/bot/types';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import type { GameState, PlayerColor } from '@/logic/types';
 import { gameAudio } from '@/services/audio';
+import { getBotMatchPreferences, setBotTimerEnabled as persistBotTimerEnabled } from '@/services/botMatchPreferences';
 import { nakamaService } from '@/services/nakama';
 import { useGameStore } from '@/store/useGameStore';
 import {
@@ -196,6 +197,7 @@ export function GameRoom() {
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
   const [musicEnabled, setMusicEnabled] = React.useState(true);
   const [sfxEnabled, setSfxEnabled] = React.useState(true);
+  const [botTimerEnabled, setBotTimerEnabled] = React.useState(true);
   const [boardSlotSize, setBoardSlotSize] = React.useState({ width: 0, height: 0 });
   const [boardTargetFrame, setBoardTargetFrame] = React.useState<BoardTargetFrame | null>(null);
   const [lightReserveSlots, setLightReserveSlots] = React.useState<ReserveSlotMeasurement[]>([]);
@@ -235,7 +237,7 @@ export function GameRoom() {
 
   const cueSystemReady = ancientCueFontLoaded || Boolean(ancientCueFontError);
   const cueFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : undefined;
-  const mobileRollResultFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : urTypography.title.fontFamily;
+  const rollResultFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : urTypography.title.fontFamily;
 
   const setLiveMatchCue = React.useCallback((cue: MatchMomentIndicatorCue | null) => {
     activeMatchCueRef.current = cue;
@@ -403,7 +405,7 @@ export function GameRoom() {
       turnTimeoutTimerRef.current = null;
     }
 
-    if (!isMyTurn || gameState.winner !== null || gameState.phase === 'ended') {
+    if ((isOffline && !botTimerEnabled) || !isMyTurn || gameState.winner !== null || gameState.phase === 'ended') {
       forceMoveAfterRollRef.current = false;
       return;
     }
@@ -441,7 +443,7 @@ export function GameRoom() {
         turnTimeoutTimerRef.current = null;
       }
     };
-  }, [enqueueMatchCue, gameState.phase, gameState.winner, isMyTurn, turnTimerCycleId]);
+  }, [botTimerEnabled, enqueueMatchCue, gameState.phase, gameState.winner, isMyTurn, isOffline, turnTimerCycleId]);
   useEffect(() => {
     if (!forceMoveAfterRollRef.current) {
       return;
@@ -684,6 +686,31 @@ export function GameRoom() {
       isMounted = false;
     };
   }, []);
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!isOffline) {
+      setBotTimerEnabled(true);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const loadBotMatchPreferences = async () => {
+      const preferences = await getBotMatchPreferences();
+      if (!isMounted) {
+        return;
+      }
+
+      setBotTimerEnabled(preferences.timerEnabled);
+    };
+
+    void loadBotMatchPreferences();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOffline]);
 
   useEffect(() => {
     const previousSnapshot = previousStateRef.current;
@@ -826,6 +853,17 @@ export function GameRoom() {
     await gameAudio.setSfxEnabled(enabled);
   };
 
+  const handleToggleBotTimer = async (enabled: boolean) => {
+    forceMoveAfterRollRef.current = false;
+    setBotTimerEnabled(enabled);
+
+    if (enabled) {
+      setTurnTimerCycleId((current) => current + 1);
+    }
+
+    await persistBotTimerEnabled(enabled);
+  };
+
   const handleExit = () => {
     setShowTopMenu(false);
     if (!isOffline && socketRef.current && matchId) {
@@ -845,6 +883,7 @@ export function GameRoom() {
   const stageContentWidth = Math.min(Math.max(width - viewportHorizontalPadding * 2, 0), urTheme.layout.stage.maxWidth);
   const useSideColumns = width >= 760;
   const isWebLayout = Platform.OS === 'web';
+  const isMobileWebLayout = isWebLayout && width < 760;
   const showWebSideDiceVisual = Platform.OS === 'web' && useSideColumns;
   const boardClusterGap = useSideColumns ? urTheme.spacing.xs : urTheme.spacing.sm;
   const sideColumnWidth = useSideColumns
@@ -921,7 +960,25 @@ export function GameRoom() {
   const webCountdownFontSize = showWebSideDiceVisual
     ? Math.max(34, Math.round(webRollButtonSize * 0.38))
     : 0;
-  const shouldDetachDiceVisual = isMatchStageExternal || showWebSideDiceVisual;
+  const mobileWebDiceVisualFrame = useMemo(() => {
+    if (!isMobileWebLayout || !boardTargetFrame) {
+      return null;
+    }
+
+    const width = Math.min(216, Math.max(168, Math.round(boardTargetFrame.width * 0.72)));
+    const height = Math.max(84, Math.round(width * 0.42));
+    const left = Math.max(urTheme.spacing.xs, Math.round(boardTargetFrame.x - width * 0.18));
+    const top = Math.round(boardTargetFrame.y + boardTargetFrame.height * 0.62 - height / 2);
+
+    return {
+      height,
+      left,
+      top,
+      width,
+    };
+  }, [boardTargetFrame, isMobileWebLayout]);
+  const showMobileWebDetachedDiceVisual = mobileWebDiceVisualFrame !== null;
+  const shouldDetachDiceVisual = isMatchStageExternal || showWebSideDiceVisual || showMobileWebDetachedDiceVisual;
   const detachedDiceVisualPlacement = shouldDetachDiceVisual ? 'external' : 'embedded';
   const mobileStatusRowHeight = Math.max(
     mobileScoreRowHeight,
@@ -987,10 +1044,12 @@ export function GameRoom() {
   }, [boardScale, mobileBoardVisualOffset, mobileScoreRowHeight, syncBoardTargetFrame]);
 
   const shouldHideReservePieces = !hasPlayedReserveCascadeIntro;
-  const isVisualTurnTimerRunning = gameState.phase !== 'ended' && gameState.winner === null;
+  const isTurnTimerEnabled = !isOffline || botTimerEnabled;
+  const isVisualTurnTimerRunning = isTurnTimerEnabled && gameState.phase !== 'ended' && gameState.winner === null;
   const showDestinationHighlights = !rollingVisual && gameState.rollValue !== null;
   const displayedValidMoves = showDestinationHighlights ? validMoves : [];
   const showMobileRollResult = isMobileLayout && !rollingVisual && gameState.rollValue !== null && gameState.rollValue !== 0;
+  const showWebRollResult = showWebSideDiceVisual && !rollingVisual && gameState.rollValue !== null;
   useEffect(() => {
     if (hasPlayedBoardDropIntro || showBoardDropIntro) return;
     if (!isBoardTargetFrameReady) return;
@@ -1081,6 +1140,28 @@ export function GameRoom() {
           viewportWidth={width}
           visible
         />
+      ) : null}
+      {showMobileWebDetachedDiceVisual && mobileWebDiceVisualFrame ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.mobileWebDiceVisualOverlay,
+            {
+              left: mobileWebDiceVisualFrame.left,
+              top: mobileWebDiceVisualFrame.top,
+              width: mobileWebDiceVisualFrame.width,
+              height: mobileWebDiceVisualFrame.height,
+            },
+          ]}
+        >
+          <DiceStageVisual
+            value={gameState.rollValue}
+            rolling={rollingVisual}
+            canRoll={canRoll}
+            compact
+            visible={showLocalDiceVisual}
+          />
+        </View>
       ) : null}
 
       <View style={[styles.topChrome, { top: topChromeTop }]}>
@@ -1179,7 +1260,7 @@ export function GameRoom() {
             style={[
               styles.scoreRow,
               styles.scoreRowOverlay,
-              isMobileLayout && styles.mobileScoreRow,
+              isMobileLayout && isTurnTimerEnabled && styles.mobileScoreRow,
               { top: isMobileLayout ? scoreOverlayTop - mobileScoreRowLift : scoreOverlayTop },
               isMobileLayout && styles.scoreRowOverlayMobile,
               isMobileLayout && { left: mobileScoreRowInset, right: mobileScoreRowInset },
@@ -1194,7 +1275,7 @@ export function GameRoom() {
               value={`${gameState.light.finishedCount}/7`}
               active={isMyTurn}
             />
-            {isMobileLayout ? (
+            {isMobileLayout && isTurnTimerEnabled ? (
               <View style={styles.scoreTimerSlot}>
                 <GameStageHUD
                   isMyTurn={isMyTurn}
@@ -1215,7 +1296,7 @@ export function GameRoom() {
               value={`${gameState.dark.finishedCount}/7`}
               active={!isMyTurn}
               align="right"
-              style={isMobileLayout ? { marginRight: mobileDarkScoreNudge } : undefined}
+              style={isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined}
             />
           </View>
 
@@ -1224,13 +1305,31 @@ export function GameRoom() {
               <View
                 style={[
                   styles.sideColumn,
+                  showWebSideDiceVisual && styles.webDiceSideColumn,
                   {
                     width: sideColumnWidth,
-                    paddingTop: supportColumnTopInset,
+                    paddingTop: showWebSideDiceVisual ? webDiceVisualTopInset : supportColumnTopInset,
                     paddingBottom: supportColumnBottomInset,
                   },
                 ]}
               >
+                {showWebSideDiceVisual ? (
+                  <View pointerEvents="none" style={[styles.webDiceVisualSlot, styles.webRollResultSlot, { height: webDiceVisualSlotHeight }]}>
+                    <Text
+                      style={[
+                        styles.webRollResultValue,
+                        {
+                          fontFamily: rollResultFontFamily,
+                          fontSize: webCountdownFontSize,
+                          lineHeight: webRollButtonSize,
+                        },
+                        !showWebRollResult && styles.webRollResultValueMuted,
+                      ]}
+                    >
+                      {showWebRollResult ? String(gameState.rollValue) : '-'}
+                    </Text>
+                  </View>
+                ) : null}
                 <PieceRail
                   label="Light Reserve"
                   color="light"
@@ -1241,7 +1340,7 @@ export function GameRoom() {
                   hideReservePieces={shouldHideReservePieces}
                   onReserveSlotsLayout={setLightReserveSlots}
                 />
-                {!showWebSideDiceVisual ? (
+                {!showWebSideDiceVisual && isTurnTimerEnabled ? (
                   <GameStageHUD
                     isMyTurn={isMyTurn}
                     canRoll={canRoll}
@@ -1253,7 +1352,7 @@ export function GameRoom() {
                     timerWarningThreshold={VISUAL_TURN_TIMER_WARNING_THRESHOLD}
                   />
                 ) : null}
-                {showWebSideDiceVisual ? (
+                {showWebSideDiceVisual && isTurnTimerEnabled ? (
                   <View style={[styles.webUnderTrayControl, { minHeight: webRollButtonSize }]}>
                     <GameStageHUD
                       isMyTurn={isMyTurn}
@@ -1386,7 +1485,7 @@ export function GameRoom() {
                     numberOfLines={1}
                     style={[
                       styles.mobileRollResultValue,
-                      { fontFamily: mobileRollResultFontFamily, transform: [{ translateY: mobileRollResultOffset }] },
+                      { fontFamily: rollResultFontFamily, transform: [{ translateY: mobileRollResultOffset }] },
                     ]}
                   >
                     {gameState.rollValue}
@@ -1450,7 +1549,7 @@ export function GameRoom() {
                       mode="stage"
                       compact={compactSupportUi}
                       showNumericResult={false}
-                      showVisual={showLocalDiceVisual}
+                      showVisual={showLocalDiceVisual && !showMobileWebDetachedDiceVisual}
                       visualPlacement={detachedDiceVisualPlacement}
                     />
                   </View>
@@ -1514,12 +1613,17 @@ export function GameRoom() {
         visible={showAudioSettings}
         musicEnabled={musicEnabled}
         sfxEnabled={sfxEnabled}
+        timerEnabled={botTimerEnabled}
+        showTimerToggle={isOffline}
         onClose={() => setShowAudioSettings(false)}
         onToggleMusic={(enabled) => {
           void handleToggleMusic(enabled);
         }}
         onToggleSfx={(enabled) => {
           void handleToggleSfx(enabled);
+        }}
+        onToggleTimer={(enabled) => {
+          void handleToggleBotTimer(enabled);
         }}
       />
       <HowToPlayModal visible={showHowToPlay} onClose={() => setShowHowToPlay(false)} />
@@ -1545,6 +1649,10 @@ const styles = StyleSheet.create({
   },
   ambientLayer: {
     zIndex: 0,
+  },
+  mobileWebDiceVisualOverlay: {
+    position: 'absolute',
+    zIndex: 4,
   },
   stageViewport: {
     flex: 1,
@@ -1717,6 +1825,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'stretch',
     flexShrink: 0,
+  },
+  webRollResultSlot: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  webRollResultValue: {
+    color: urTheme.colors.ivory,
+    minWidth: 0,
+    textAlign: 'center',
+  },
+  webRollResultValueMuted: {
+    opacity: 0.22,
   },
   webUnderTrayControl: {
     width: '100%',
