@@ -8,6 +8,7 @@ export type AuthContextValue = {
   loginWithGoogle: () => Promise<void>;
   loginAsGuest: () => Promise<void>;
   logout: () => Promise<void>;
+  linkGoogleAccount: () => Promise<void>;
 };
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);

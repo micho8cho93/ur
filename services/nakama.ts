@@ -58,6 +58,22 @@ export class NakamaService {
     return session;
   }
 
+  async authenticateGoogle(idToken: string, create = true, username?: string): Promise<Session> {
+    const session = await this.getClient().authenticateGoogle(idToken, create, username);
+    this.session = session;
+    await this.persistSession(session);
+    return session;
+  }
+
+  async linkGoogle(idToken: string): Promise<void> {
+    const session = await this.loadSession();
+    if (!session) {
+      throw new Error("No Nakama session available. Authenticate first.");
+    }
+
+    await this.getClient().linkGoogle(session, { token: idToken });
+  }
+
   async ensureAuthenticatedDevice(username?: string): Promise<Session> {
     const existing = await this.loadSession();
     if (existing) {
@@ -149,6 +165,15 @@ export class NakamaService {
 
   getSession(): Session | null {
     return this.session;
+  }
+
+  async getAccount() {
+    const session = await this.loadSession();
+    if (!session) {
+      throw new Error("No Nakama session available. Authenticate first.");
+    }
+
+    return this.getClient().getAccount(session);
   }
 
   disconnectSocket(fireDisconnectEvent = true): void {

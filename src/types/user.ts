@@ -7,4 +7,5 @@ export type User = {
   provider: UserProvider;
   avatarUrl: string | null;
   createdAt: string;
+  nakamaUserId?: string;
 };

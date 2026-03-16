@@ -47,16 +47,32 @@ describe('sessionStorage', () => {
   it('saves and loads sessions with SecureStore on native', async () => {
     const user = makeUser();
     setPlatform('ios');
-    mockedSecureStore.getItemAsync.mockResolvedValue(JSON.stringify({ version: 1, user }));
+    mockedSecureStore.getItemAsync.mockResolvedValue(
+      JSON.stringify({
+        version: 1,
+        user,
+        nakamaSessionToken: 'token-123',
+        nakamaRefreshToken: 'refresh-123',
+      })
+    );
 
-    await saveSession(user);
-    const restoredUser = await loadSession();
+    await saveSession(user, 'token-123', 'refresh-123');
+    const loaded = await loadSession();
 
     expect(mockedSecureStore.setItemAsync).toHaveBeenCalledWith(
       'auth.session.v1',
-      JSON.stringify({ version: 1, user })
+      JSON.stringify({
+        version: 1,
+        user,
+        nakamaSessionToken: 'token-123',
+        nakamaRefreshToken: 'refresh-123',
+      })
     );
-    expect(restoredUser).toEqual(user);
+    expect(loaded).toEqual({
+      user,
+      nakamaSessionToken: 'token-123',
+      nakamaRefreshToken: 'refresh-123',
+    });
   });
 
   it('uses localStorage on web', async () => {
@@ -64,17 +80,36 @@ describe('sessionStorage', () => {
     const localStorage = createLocalStorageMock();
 
     setPlatform('web');
-    localStorage.getItem.mockReturnValue(JSON.stringify({ version: 1, user }));
+    localStorage.getItem.mockReturnValue(
+      JSON.stringify({
+        version: 1,
+        user,
+        nakamaSessionToken: 'web-token',
+        nakamaRefreshToken: 'web-refresh',
+      })
+    );
     (global as { window?: unknown }).window = {
       localStorage,
     };
 
-    await saveSession(user);
-    const restoredUser = await loadSession();
+    await saveSession(user, 'web-token', 'web-refresh');
+    const loaded = await loadSession();
     await clearSession();
 
-    expect(localStorage.setItem).toHaveBeenCalledWith('auth.session.v1', JSON.stringify({ version: 1, user }));
-    expect(restoredUser).toEqual(user);
+    expect(localStorage.setItem).toHaveBeenCalledWith(
+      'auth.session.v1',
+      JSON.stringify({
+        version: 1,
+        user,
+        nakamaSessionToken: 'web-token',
+        nakamaRefreshToken: 'web-refresh',
+      })
+    );
+    expect(loaded).toEqual({
+      user,
+      nakamaSessionToken: 'web-token',
+      nakamaRefreshToken: 'web-refresh',
+    });
     expect(localStorage.removeItem).toHaveBeenCalledWith('auth.session.v1');
   });
 

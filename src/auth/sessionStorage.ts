@@ -6,6 +6,8 @@ import { User } from '@/src/types/user';
 type StoredAuthSession = {
   version: 1;
   user: User;
+  nakamaSessionToken?: string;
+  nakamaRefreshToken?: string;
 };
 
 const AUTH_SESSION_KEY = 'auth.session.v1';
@@ -42,10 +44,16 @@ const removeStoredSession = async (): Promise<void> => {
   await SecureStore.deleteItemAsync(AUTH_SESSION_KEY);
 };
 
-export const saveSession = async (user: User): Promise<void> => {
+export const saveSession = async (
+  user: User,
+  nakamaSessionToken?: string,
+  nakamaRefreshToken?: string
+): Promise<void> => {
   const session: StoredAuthSession = {
     version: AUTH_SESSION_VERSION,
     user,
+    nakamaSessionToken,
+    nakamaRefreshToken,
   };
 
   const value = JSON.stringify(session);
@@ -58,7 +66,13 @@ export const saveSession = async (user: User): Promise<void> => {
   await SecureStore.setItemAsync(AUTH_SESSION_KEY, value);
 };
 
-export const loadSession = async (): Promise<User | null> => {
+export type LoadedSession = {
+  user: User;
+  nakamaSessionToken?: string;
+  nakamaRefreshToken?: string;
+};
+
+export const loadSession = async (): Promise<LoadedSession | null> => {
   const rawValue =
     Platform.OS === 'web'
       ? getWebStorage()?.getItem(AUTH_SESSION_KEY) ?? null
@@ -77,9 +91,13 @@ export const loadSession = async (): Promise<User | null> => {
     }
 
     return {
-      ...parsed.user,
-      email: parsed.user.email ?? null,
-      avatarUrl: parsed.user.avatarUrl ?? null,
+      user: {
+        ...parsed.user,
+        email: parsed.user.email ?? null,
+        avatarUrl: parsed.user.avatarUrl ?? null,
+      },
+      nakamaSessionToken: parsed.nakamaSessionToken,
+      nakamaRefreshToken: parsed.nakamaRefreshToken,
     };
   } catch {
     await removeStoredSession();

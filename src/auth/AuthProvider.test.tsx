@@ -8,9 +8,10 @@ import { AuthProvider } from './AuthProvider';
 const mockLoadSession = jest.fn();
 const mockSaveSession = jest.fn();
 const mockClearSession = jest.fn();
-const mockCreateGuestUser = jest.fn();
+const mockLoginAsGuest = jest.fn();
 const mockGoogleLogin = jest.fn();
 const mockNakamaClearSession = jest.fn();
+const mockNakamaGetClient = jest.fn();
 const mockReset = jest.fn();
 const mockUseGameStoreGetState = jest.fn();
 
@@ -20,8 +21,18 @@ jest.mock('./sessionStorage', () => ({
   saveSession: (...args: unknown[]) => mockSaveSession(...args),
 }));
 
+jest.mock('@heroiclabs/nakama-js', () => ({
+  Session: {
+    restore: jest.fn((token: string, refreshToken: string) => ({
+      token,
+      refresh_token: refreshToken,
+      isexpired: jest.fn(() => false),
+    })),
+  },
+}));
+
 jest.mock('./guestAuth', () => ({
-  createGuestUser: (...args: unknown[]) => mockCreateGuestUser(...args),
+  loginAsGuest: (...args: unknown[]) => mockLoginAsGuest(...args),
 }));
 
 jest.mock('./googleAuth', () => ({
@@ -35,6 +46,7 @@ jest.mock('./googleAuth', () => ({
 jest.mock('@/services/nakama', () => ({
   nakamaService: {
     clearSession: (...args: unknown[]) => mockNakamaClearSession(...args),
+    getClient: () => mockNakamaGetClient(),
   },
 }));
 
@@ -70,16 +82,23 @@ describe('AuthProvider', () => {
     mockNakamaClearSession.mockResolvedValue(undefined);
     mockSaveSession.mockResolvedValue(undefined);
     mockClearSession.mockResolvedValue(undefined);
+    mockNakamaGetClient.mockReturnValue({
+      sessionRefresh: jest.fn(),
+    });
   });
 
   it('restores a stored session on mount', async () => {
     mockLoadSession.mockResolvedValue({
-      id: 'user-1',
-      username: 'Stored User',
-      email: 'stored@example.com',
-      avatarUrl: null,
-      provider: 'google',
-      createdAt: '2026-03-15T09:00:00.000Z',
+      user: {
+        id: 'user-1',
+        username: 'Stored User',
+        email: 'stored@example.com',
+        avatarUrl: null,
+        provider: 'google',
+        createdAt: '2026-03-15T09:00:00.000Z',
+      },
+      nakamaSessionToken: 'stored-token',
+      nakamaRefreshToken: 'stored-refresh',
     });
 
     const view = render(
@@ -103,8 +122,13 @@ describe('AuthProvider', () => {
       createdAt: '2026-03-15T09:30:00.000Z',
     };
 
+    const mockSession = {
+      token: 'guest-token',
+      refresh_token: 'guest-refresh',
+    };
+
     mockLoadSession.mockResolvedValue(null);
-    mockCreateGuestUser.mockReturnValue(guestUser);
+    mockLoginAsGuest.mockResolvedValue({ user: guestUser, session: mockSession });
 
     const view = render(
       <AuthProvider>
@@ -119,7 +143,7 @@ describe('AuthProvider', () => {
     fireEvent.press(view.getByText('guest-login'));
 
     await waitFor(() => {
-      expect(mockSaveSession).toHaveBeenCalledWith(guestUser);
+      expect(mockSaveSession).toHaveBeenCalledWith(guestUser, 'guest-token', 'guest-refresh');
       expect(view.getByTestId('auth-state').props.children).toBe('Guest');
     });
   });
@@ -134,11 +158,17 @@ describe('AuthProvider', () => {
       createdAt: '2026-03-15T10:30:00.000Z',
     };
 
+    const mockNakamaSession = {
+      token: 'google-token',
+      refresh_token: 'google-refresh',
+    };
+
     mockLoadSession.mockResolvedValue(null);
     mockGoogleLogin.mockResolvedValue({
       user: googleUser,
       idToken: 'id-token',
       accessToken: 'access-token',
+      nakamaSession: mockNakamaSession,
     });
 
     const view = render(
@@ -155,19 +185,23 @@ describe('AuthProvider', () => {
 
     await waitFor(() => {
       expect(mockGoogleLogin).toHaveBeenCalledTimes(1);
-      expect(mockSaveSession).toHaveBeenCalledWith(googleUser);
+      expect(mockSaveSession).toHaveBeenCalledWith(googleUser, 'google-token', 'google-refresh');
       expect(view.getByTestId('auth-state').props.children).toBe('Google User');
     });
   });
 
   it('clears stored auth, Nakama session, and game state on logout', async () => {
     mockLoadSession.mockResolvedValue({
-      id: 'user-2',
-      username: 'Ready User',
-      email: 'ready@example.com',
-      avatarUrl: null,
-      provider: 'google',
-      createdAt: '2026-03-15T11:00:00.000Z',
+      user: {
+        id: 'user-2',
+        username: 'Ready User',
+        email: 'ready@example.com',
+        avatarUrl: null,
+        provider: 'google',
+        createdAt: '2026-03-15T11:00:00.000Z',
+      },
+      nakamaSessionToken: 'ready-token',
+      nakamaRefreshToken: 'ready-refresh',
     });
 
     const view = render(

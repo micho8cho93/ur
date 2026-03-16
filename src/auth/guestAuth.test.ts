@@ -1,30 +1,68 @@
 import * as Crypto from 'expo-crypto';
+import { Session } from '@heroiclabs/nakama-js';
 
-import { createGuestUser } from './guestAuth';
+import { nakamaService } from '@/services/nakama';
+
+import { loginAsGuest } from './guestAuth';
 
 jest.mock('expo-crypto', () => ({
   randomUUID: jest.fn(),
 }));
 
-const mockedCrypto = Crypto as jest.Mocked<typeof Crypto>;
+jest.mock('@/services/nakama', () => ({
+  nakamaService: {
+    authenticateDevice: jest.fn(),
+    getAccount: jest.fn(),
+  },
+}));
 
-describe('createGuestUser', () => {
+const mockedCrypto = Crypto as jest.Mocked<typeof Crypto>;
+const mockedNakamaService = nakamaService as jest.Mocked<typeof nakamaService>;
+
+describe('loginAsGuest', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('creates a guest identity with the expected shape', () => {
+  it('creates a guest identity with Nakama authentication', async () => {
     mockedCrypto.randomUUID.mockReturnValue('abc123');
 
-    const guestUser = createGuestUser();
+    const mockSession = {
+      token: 'mock-token',
+      refresh_token: 'mock-refresh-token',
+    } as Session;
 
-    expect(guestUser).toMatchObject({
-      id: 'guest_abc123',
+    const mockAccount = {
+      user: {
+        id: 'nakama-user-123',
+        username: 'Guest',
+        email: '',
+        avatar_url: '',
+      },
+    };
+
+    mockedNakamaService.authenticateDevice.mockResolvedValue(mockSession);
+    mockedNakamaService.getAccount.mockResolvedValue(mockAccount);
+
+    const result = await loginAsGuest();
+
+    expect(mockedNakamaService.authenticateDevice).toHaveBeenCalledWith('guest_abc123', true, 'Guest');
+    expect(result.user).toMatchObject({
+      id: 'guest_nakama-user-123',
       username: 'Guest',
       email: null,
       avatarUrl: null,
       provider: 'guest',
+      nakamaUserId: 'nakama-user-123',
     });
-    expect(Date.parse(guestUser.createdAt)).not.toBeNaN();
+    expect(result.session).toBe(mockSession);
+    expect(Date.parse(result.user.createdAt)).not.toBeNaN();
+  });
+
+  it('throws error when authentication fails', async () => {
+    mockedCrypto.randomUUID.mockReturnValue('abc123');
+    mockedNakamaService.authenticateDevice.mockRejectedValue(new Error('Network error'));
+
+    await expect(loginAsGuest()).rejects.toThrow('Guest login failed: Network error');
   });
 });

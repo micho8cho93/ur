@@ -14,9 +14,9 @@ type ExtraConfig = Record<string, string | number | boolean | undefined>;
 
 const extra = (Constants.expoConfig?.extra ?? {}) as ExtraConfig;
 
-const DEFAULT_NAKAMA_HOST = "207.154.229.39";
-const DEFAULT_NAKAMA_PORT = 7350;
-const DEFAULT_NAKAMA_USE_SSL = false;
+const DEFAULT_NAKAMA_HOST = "nakama.urgame.live";
+const DEFAULT_NAKAMA_PORT = 443;
+const DEFAULT_NAKAMA_USE_SSL = true;
 
 const serverKeyEnvKeys = [
   "EXPO_PUBLIC_NAKAMA_SOCKET_SERVER_KEY",

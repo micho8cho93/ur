@@ -1,9 +1,11 @@
 import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
+import { Session } from '@heroiclabs/nakama-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
+import { nakamaService } from '@/services/nakama';
 import { User } from '@/src/types/user';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -24,6 +26,7 @@ export type GoogleAuthResult = {
   user: User;
   idToken: string | null;
   accessToken: string;
+  nakamaSession: Session;
 };
 
 const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -53,13 +56,14 @@ const getGoogleAuthErrorMessage = (
 const getNativeGoogleAuthMessage = (): string =>
   'Google sign-in on native requires EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID or EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID and a development build.';
 
-const mapGoogleUser = (profile: GoogleUserInfo): User => ({
+const mapGoogleUser = (profile: GoogleUserInfo, nakamaUserId?: string): User => ({
   id: profile.sub,
   username: profile.name?.trim() || profile.email?.split('@')[0] || 'Google User',
   email: profile.email ?? null,
   avatarUrl: profile.picture ?? null,
   provider: 'google',
   createdAt: new Date().toISOString(),
+  nakamaUserId,
 });
 
 const fetchGoogleUserInfo = async (accessToken: string): Promise<GoogleUserInfo> => {
@@ -133,16 +137,31 @@ export const useGoogleAuth = () => {
           throw new Error('Google sign-in did not return an access token.');
         }
 
+        if (!idToken) {
+          throw new Error('Google sign-in did not return an ID token.');
+        }
+
         const profile = await fetchGoogleUserInfo(accessToken);
+        if (isCancelled) {
+          return;
+        }
+
+        const nakamaSession = await nakamaService.authenticateGoogle(idToken, true);
+        if (isCancelled) {
+          return;
+        }
+
+        const nakamaAccount = await nakamaService.getAccount();
         if (isCancelled) {
           return;
         }
 
         settlePendingLogin((pending) =>
           pending.resolve({
-            user: mapGoogleUser(profile),
+            user: mapGoogleUser(profile, nakamaAccount.user?.id),
             idToken,
             accessToken,
+            nakamaSession,
           })
         );
       } catch (error) {
