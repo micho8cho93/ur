@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
@@ -8,6 +9,7 @@ import React, { useEffect, useMemo } from 'react';
 import { Image, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 const multiplayerWideBackground = require('../../assets/images/multiplayer_bg.png');
+const multiplayerMobileBackground = require('../../assets/images/multiplayer_bg_mobile.png');
 
 export default function Lobby() {
   const { width } = useWindowDimensions();
@@ -16,6 +18,7 @@ export default function Lobby() {
   const router = useRouter();
   const { startMatch, status, errorMessage, onlineCount } = useMatchmaking(mode);
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
+  const showMobileBackground = useMobileBackground();
 
   useEffect(() => {
     if (mode === 'bot') {
@@ -59,6 +62,11 @@ export default function Lobby() {
       <WideScreenBackground
         source={multiplayerWideBackground}
         visible={showWideBackground}
+        overlayColor="rgba(7, 10, 16, 0.24)"
+      />
+      <MobileBackground
+        source={multiplayerMobileBackground}
+        visible={showMobileBackground}
         overlayColor="rgba(7, 10, 16, 0.24)"
       />
       <Image
