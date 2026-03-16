@@ -12,7 +12,7 @@ export type GuestAuthResult = {
 export const loginAsGuest = async (): Promise<GuestAuthResult> => {
   try {
     const deviceId = `guest_${Crypto.randomUUID()}`;
-    const session = await nakamaService.authenticateDevice(deviceId, true, 'Guest');
+    const session = await nakamaService.authenticateDevice(deviceId, true);
 
     const account = await nakamaService.getAccount();
 
