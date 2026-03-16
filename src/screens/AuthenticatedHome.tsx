@@ -7,7 +7,8 @@ import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { useAuth } from '@/src/auth/useAuth';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Image, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Image, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 const homeWideBackground = require('../../assets/images/home_bg.png');
 const homeMobileBackground = require('../../assets/images/home_bg_mobile.png');
@@ -53,12 +54,20 @@ export default function AuthenticatedHome() {
       <View style={styles.midGlow} />
       <View style={styles.bottomShade} />
 
-      <View style={styles.authBar}>
-        <View>
-          <Text style={styles.authLabel}>Signed in as</Text>
-          <Text style={styles.authValue}>Welcome {user?.username ?? 'Player'}</Text>
-        </View>
-        {user?.provider !== 'guest' ? (
+      {user?.provider === 'guest' ? (
+        <Pressable
+          onPress={() => router.replace('/(auth)/login')}
+          style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
+          accessibilityLabel="Back to login"
+        >
+          <MaterialIcons name="arrow-back" size={22} color="#F7E9D2" />
+        </Pressable>
+      ) : (
+        <View style={styles.authBar}>
+          <View>
+            <Text style={styles.authLabel}>Signed in as</Text>
+            <Text style={styles.authValue}>{user?.username ?? 'Player'}</Text>
+          </View>
           <Button
             title={isLoggingOut ? 'Logging out...' : 'Logout'}
             variant="outline"
@@ -67,8 +76,8 @@ export default function AuthenticatedHome() {
             onPress={handleLogout}
             style={styles.logoutButton}
           />
-        ) : null}
-      </View>
+        </View>
+      )}
 
       <View style={styles.hero}>
         <View style={styles.badge}>
@@ -150,6 +159,22 @@ const styles = StyleSheet.create({
     bottom: 0,
     height: '48%',
     backgroundColor: 'rgba(0, 0, 0, 0.22)',
+  },
+  backButton: {
+    position: 'absolute',
+    top: urTheme.spacing.lg,
+    left: urTheme.spacing.lg,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(13, 15, 18, 0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(217, 164, 65, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backButtonPressed: {
+    backgroundColor: 'rgba(217, 164, 65, 0.18)',
   },
   authBar: {
     position: 'absolute',

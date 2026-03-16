@@ -167,7 +167,6 @@ describe('AuthProvider', () => {
     mockLoadSession.mockResolvedValue(null);
     mockGoogleLogin.mockResolvedValue({
       user: googleUser,
-      idToken: 'id-token',
       accessToken: 'access-token',
       nakamaSession: mockNakamaSession,
     });

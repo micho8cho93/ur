@@ -58,20 +58,20 @@ export class NakamaService {
     return session;
   }
 
-  async authenticateGoogle(idToken: string, create = true, username?: string): Promise<Session> {
-    const session = await this.getClient().authenticateGoogle(idToken, create, username);
+  async authenticateGoogle(token: string, create = true, username?: string): Promise<Session> {
+    const session = await this.getClient().authenticateGoogle(token, create, username);
     this.session = session;
     await this.persistSession(session);
     return session;
   }
 
-  async linkGoogle(idToken: string): Promise<void> {
+  async linkGoogle(token: string): Promise<void> {
     const session = await this.loadSession();
     if (!session) {
       throw new Error("No Nakama session available. Authenticate first.");
     }
 
-    await this.getClient().linkGoogle(session, { token: idToken });
+    await this.getClient().linkGoogle(session, { token });
   }
 
   async ensureAuthenticatedDevice(username?: string): Promise<Session> {

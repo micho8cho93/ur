@@ -156,7 +156,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         return;
       }
 
-      await nakamaService.linkGoogle(result.idToken!);
+      await nakamaService.linkGoogle(result.accessToken);
 
       const updatedUser: User = {
         ...result.user,
