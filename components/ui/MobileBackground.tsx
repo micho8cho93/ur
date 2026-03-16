@@ -29,7 +29,7 @@ export function MobileBackground({
       <Image
         accessible={false}
         source={source}
-        resizeMode="cover"
+        resizeMode="contain"
         style={[styles.image, { opacity: imageOpacity }]}
       />
       <View style={[styles.overlay, { backgroundColor: overlayColor }]} />
