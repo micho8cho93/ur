@@ -26,6 +26,7 @@ interface DiceProps {
   rolling: boolean;
   onRoll: () => void;
   canRoll: boolean;
+  pressedIn?: boolean;
   mode?: 'panel' | 'stage';
   showNumericResult?: boolean;
   compact?: boolean;
@@ -179,6 +180,7 @@ export const Dice: React.FC<DiceProps> = ({
   rolling,
   onRoll,
   canRoll,
+  pressedIn = false,
   mode = 'panel',
   showNumericResult = true,
   compact = false,
@@ -224,9 +226,136 @@ export const Dice: React.FC<DiceProps> = ({
     readiness.value = withTiming(0, { duration: 180 });
   }, [canRoll, readiness, rolling]);
 
+  const sunkDepth = useSharedValue(pressedIn ? 1 : 0);
+  const popPulse = useSharedValue(0);
+  const impactPulse = useSharedValue(0);
+
+  useEffect(() => {
+    if (pressedIn) {
+      sunkDepth.value = withTiming(1, {
+        duration: 110,
+        easing: Easing.out(Easing.cubic),
+      });
+      popPulse.value = 0;
+      // As the button lands (near the end of its 110ms drop), spike the dark shadow outward then settle it quickly
+      impactPulse.value = withSequence(
+        withTiming(0, { duration: 80 }),
+        withTiming(1, { duration: 40, easing: Easing.out(Easing.quad) }),
+        withTiming(0, { duration: 160, easing: Easing.out(Easing.quad) }),
+      );
+    } else {
+      sunkDepth.value = withTiming(0, {
+        duration: 190,
+        easing: Easing.out(Easing.quad),
+      });
+      impactPulse.value = 0;
+      // Spike the golden pop pulse then decay — creates the springback burst
+      popPulse.value = withSequence(
+        withTiming(1, { duration: 80, easing: Easing.out(Easing.cubic) }),
+        withTiming(0, { duration: 420, easing: Easing.out(Easing.quad) }),
+      );
+    }
+  }, [pressedIn, sunkDepth, popPulse, impactPulse]);
+
   const readinessStyle = useAnimatedStyle(() => ({
     opacity: readiness.value,
     transform: [{ scale: 0.98 + readiness.value * 0.06 }],
+  }));
+
+  const sunkShellStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: sunkDepth.value * 16 },
+      { scaleX: 1 - sunkDepth.value * 0.04 },
+      { scaleY: 1 - sunkDepth.value * 0.05 },
+    ],
+  }));
+
+  const sunkOverlayStyle = useAnimatedStyle(() => ({
+    opacity: sunkDepth.value * 0.78,
+  }));
+
+  // Inset shadow that darkens the edges when the button is sunken/latched
+  const sunkShadowStyle = useAnimatedStyle(() => ({
+    boxShadow: [
+      {
+        // Deep top inset shadow — strong indication of cavity depth
+        color: `rgba(15, 5, 0, ${(sunkDepth.value * 0.98).toFixed(3)})`,
+        offsetX: 0,
+        offsetY: 18,
+        blurRadius: 24,
+        spreadDistance: 4,
+        inset: true,
+      },
+      {
+        // Overall darkening ambient vignette inside the hole (cavernous lack of light)
+        color: `rgba(0, 0, 0, ${(sunkDepth.value * 0.75).toFixed(3)})`,
+        offsetX: 0,
+        offsetY: 4,
+        blurRadius: 16,
+        spreadDistance: 8,
+        inset: true,
+      },
+      {
+        // Bottom inset — blocked light from below
+        color: `rgba(10, 3, 0, ${(sunkDepth.value * 0.85).toFixed(3)})`,
+        offsetX: 0,
+        offsetY: -6,
+        blurRadius: 14,
+        spreadDistance: 1,
+        inset: true,
+      },
+      {
+        // Left side deep inset — thick wall shadow
+        color: `rgba(5, 1, 0, ${(sunkDepth.value * 0.8).toFixed(3)})`,
+        offsetX: 12,
+        offsetY: 0,
+        blurRadius: 18,
+        spreadDistance: 2,
+        inset: true,
+      },
+      {
+        // Right side deep inset — thick wall shadow
+        color: `rgba(5, 1, 0, ${(sunkDepth.value * 0.8).toFixed(3)})`,
+        offsetX: -12,
+        offsetY: 0,
+        blurRadius: 18,
+        spreadDistance: 2,
+        inset: true,
+      },
+    ],
+  }));
+
+  // Outward shadows for both the deep sunk state and the golden pop burst
+  const outerShadowStyle = useAnimatedStyle(() => ({
+    boxShadow: [
+      {
+        // Dark external ambient glow pushing outward when button is sunken in, plus sharper, tighter impact spike
+        color: `rgba(10, 3, 0, ${Math.min(1, sunkDepth.value * 0.65 + impactPulse.value * 0.2).toFixed(3)})`,
+        offsetX: 0,
+        offsetY: 0,
+        blurRadius: 20 + impactPulse.value * 6,
+        spreadDistance: sunkDepth.value * 5 + impactPulse.value * 4,
+        inset: false,
+      },
+      {
+        // Warm golden pop burst on release
+        color: `rgba(210, 148, 40, ${(popPulse.value * 0.72).toFixed(3)})`,
+        offsetX: 0,
+        offsetY: 0,
+        blurRadius: 18,
+        spreadDistance: popPulse.value * 4,
+        inset: false,
+      },
+      {
+        // Soft outer lift shadow restore
+        color: `rgba(0, 0, 0, ${(popPulse.value * 0.32).toFixed(3)})`,
+        offsetX: 0,
+        offsetY: 6 + popPulse.value * 6,
+        blurRadius: 10 + popPulse.value * 8,
+        spreadDistance: 0,
+        inset: false,
+      },
+    ],
   }));
 
   const title = isSceneRolling ? 'Casting...' : resolvedValue !== null ? `Result: ${resolvedValue}` : 'Cast The Dice';
@@ -234,9 +363,9 @@ export const Dice: React.FC<DiceProps> = ({
     ? 'The astragali are in motion'
     : hasSettledResult
       ? 'Result ready'
-    : canRoll
-      ? 'Tap to roll'
-      : 'Wait for your turn';
+      : canRoll
+        ? 'Tap to roll'
+        : 'Wait for your turn';
 
   const isStage = mode === 'stage';
   const isCompactStage = compact && isStage;
@@ -248,6 +377,15 @@ export const Dice: React.FC<DiceProps> = ({
       ? Math.min(Math.max(Math.round(width * 0.24), 82), 108)
       : Math.min(Math.max(Math.round(width * (compact ? 0.14 : 0.12)), compact ? 110 : 122), compact ? 136 : 156)
   );
+  // The actual stone button occupies ~87.1% of the PNG file (which includes transparent padding)
+  const artBoundsScale = 0.89;
+  const opaqueSize = Math.round(rollButtonSize * artBoundsScale);
+  const imageOffset = Math.round((opaqueSize - rollButtonSize) / 2);
+
+  // Corner radius to match the PNG squircle shape (~24% of the opaque button size)
+  const rollButtonBorderRadius = Math.round(opaqueSize * 0.24);
+  // Card button outer shell radius — must match the card's own borderRadius
+  const cardShellBorderRadius = isStage ? urTheme.radii.pill : urTheme.radii.md;
   const sceneBaseSize = isCompactStage
     ? isMobileCompactStage
       ? isIOS
@@ -291,29 +429,48 @@ export const Dice: React.FC<DiceProps> = ({
             </View>
           ) : null}
 
-          <View
+          {/* Outer pop-glow shell: borderRadius makes the burst hug the squircle shape */}
+          <Animated.View
+            testID="dice-roll-button-shell"
             style={[
-              styles.mobileArtButtonWrap,
-              {
-                minWidth: rollButtonSize + 5,
-                minHeight: rollButtonSize + 5,
-              },
-              !canRoll && styles.mobileArtButtonWrapLocked,
+              styles.buttonVisualShell,
+              styles.mobileArtButtonShell,
+              sunkShellStyle,
+              outerShadowStyle,
+              { borderRadius: rollButtonBorderRadius },
             ]}
           >
-            <Image
-              testID="dice-roll-art"
-              source={ROLL_BUTTON_ART}
-              resizeMode="contain"
+            {/* Inner inset-shadow wrap: overflow hidden clips shadows to rounded shape */}
+            <Animated.View
               style={[
-                styles.mobileArtButtonImage,
+                styles.mobileArtButtonWrap,
                 {
-                  width: rollButtonSize,
-                  height: rollButtonSize,
+                  width: opaqueSize,
+                  height: opaqueSize,
+                  borderRadius: rollButtonBorderRadius,
+                  overflow: 'hidden',
                 },
+                !canRoll && styles.mobileArtButtonWrapLocked,
+                sunkShadowStyle,
               ]}
-            />
-          </View>
+            >
+              <Image
+                testID="dice-roll-art"
+                source={ROLL_BUTTON_ART}
+                resizeMode="contain"
+                style={[
+                  styles.mobileArtButtonImage,
+                  {
+                    position: 'absolute',
+                    top: imageOffset,
+                    left: imageOffset,
+                    width: rollButtonSize,
+                    height: rollButtonSize,
+                  },
+                ]}
+              />
+            </Animated.View>
+          </Animated.View>
         </View>
       </TouchableOpacity>
     );
@@ -327,97 +484,101 @@ export const Dice: React.FC<DiceProps> = ({
       testID="dice-roll-button"
       style={[styles.touchable, isStage && styles.stageTouchable, isMobileCompactStage && styles.mobileStageTouchable]}
     >
-      <View
-        style={[
-          styles.card,
-          compact && styles.compactCard,
-          isStage ? styles.stageCard : styles.panelCard,
-          compact && isStage && styles.compactStageCard,
-          canRoll ? styles.cardActive : styles.cardLocked,
-        ]}
-      >
-        <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
-        <View style={styles.cardTopGlow} />
-        <View style={styles.cardBorder} />
-        <Animated.View style={[styles.readyHalo, readinessStyle]} />
+      <Animated.View testID="dice-roll-button-shell" style={[styles.buttonVisualShell, styles.cardVisualShell, sunkShellStyle, outerShadowStyle, { borderRadius: cardShellBorderRadius }]}>
+        <Animated.View
+          style={[
+            styles.card,
+            compact && styles.compactCard,
+            isStage ? styles.stageCard : styles.panelCard,
+            compact && isStage && styles.compactStageCard,
+            canRoll ? styles.cardActive : styles.cardLocked,
+            sunkShadowStyle,
+          ]}
+        >
+          <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+          <View style={styles.cardTopGlow} />
+          <View style={styles.cardBorder} />
+          <Animated.View pointerEvents="none" style={[styles.sunkenOverlay, sunkOverlayStyle]} />
+          <Animated.View style={[styles.readyHalo, readinessStyle]} />
 
-        {isCompactStage ? (
-          <View style={[styles.compactStageContent, isMobileCompactStage && styles.mobileCompactStageContent]}>
-            {shouldRenderEmbeddedVisual ? (
-              <View style={[styles.diceRow, styles.compactDiceRow, styles.compactStageDiceRow]}>
-                {renderDiceVisual([
-                  styles.compactStageRollSceneViewport,
-                  isIOS && styles.iosCompactStageRollSceneViewport,
-                  isMobileCompactStage && styles.mobileCompactStageRollSceneViewport,
-                  isMobileCompactStage && isIOS && styles.iosMobileCompactStageRollSceneViewport,
-                ])}
-              </View>
-            ) : null}
-            <View
-              style={[
-                styles.compactStageTextWrap,
-                !shouldRenderEmbeddedVisual && styles.externalCompactStageTextWrap,
-                isMobileCompactStage && styles.mobileCompactStageTextWrap,
-              ]}
-            >
-              {showNumericResult && hasSettledResult ? (
-                <View style={[styles.compactStageResultBadge, isMobileCompactStage && styles.mobileCompactStageResultBadge]}>
-                  <Text style={[styles.compactStageResultLabel, isMobileCompactStage && styles.mobileCompactStageResultLabel]}>
-                    Roll
-                  </Text>
-                  <Text style={[styles.compactStageResultValue, isMobileCompactStage && styles.mobileCompactStageResultValue]}>
-                    {resolvedValue}
-                  </Text>
+          {isCompactStage ? (
+            <View style={[styles.compactStageContent, isMobileCompactStage && styles.mobileCompactStageContent]}>
+              {shouldRenderEmbeddedVisual ? (
+                <View style={[styles.diceRow, styles.compactDiceRow, styles.compactStageDiceRow]}>
+                  {renderDiceVisual([
+                    styles.compactStageRollSceneViewport,
+                    isIOS && styles.iosCompactStageRollSceneViewport,
+                    isMobileCompactStage && styles.mobileCompactStageRollSceneViewport,
+                    isMobileCompactStage && isIOS && styles.iosMobileCompactStageRollSceneViewport,
+                  ])}
                 </View>
-              ) : showNumericResult ? (
+              ) : null}
+              <View
+                style={[
+                  styles.compactStageTextWrap,
+                  !shouldRenderEmbeddedVisual && styles.externalCompactStageTextWrap,
+                  isMobileCompactStage && styles.mobileCompactStageTextWrap,
+                ]}
+              >
+                {showNumericResult && hasSettledResult ? (
+                  <View style={[styles.compactStageResultBadge, isMobileCompactStage && styles.mobileCompactStageResultBadge]}>
+                    <Text style={[styles.compactStageResultLabel, isMobileCompactStage && styles.mobileCompactStageResultLabel]}>
+                      Roll
+                    </Text>
+                    <Text style={[styles.compactStageResultValue, isMobileCompactStage && styles.mobileCompactStageResultValue]}>
+                      {resolvedValue}
+                    </Text>
+                  </View>
+                ) : showNumericResult ? (
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.title,
+                      styles.compactTitle,
+                      styles.compactStageTitle,
+                      isMobileCompactStage && styles.mobileCompactStageTitle,
+                    ]}
+                  >
+                    {compactStageTitle}
+                  </Text>
+                ) : null}
                 <Text
                   numberOfLines={1}
                   style={[
-                    styles.title,
-                    styles.compactTitle,
-                    styles.compactStageTitle,
-                    isMobileCompactStage && styles.mobileCompactStageTitle,
+                    styles.subtitle,
+                    styles.compactSubtitle,
+                    styles.compactStageSubtitle,
+                    isMobileCompactStage && styles.mobileCompactStageSubtitle,
                   ]}
                 >
-                  {compactStageTitle}
+                  {compactStageSubtitle}
                 </Text>
-              ) : null}
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.subtitle,
-                  styles.compactSubtitle,
-                  styles.compactStageSubtitle,
-                  isMobileCompactStage && styles.mobileCompactStageSubtitle,
-                ]}
-              >
-                {compactStageSubtitle}
-              </Text>
-            </View>
-          </View>
-        ) : (
-          <>
-            {shouldRenderEmbeddedVisual ? (
-              <View style={[styles.diceRow, compact && styles.compactDiceRow]}>
-                {renderDiceVisual(isStage ? styles.stageRollSceneViewport : compact ? styles.compactRollSceneViewport : undefined)}
               </View>
-            ) : null}
+            </View>
+          ) : (
+            <>
+              {shouldRenderEmbeddedVisual ? (
+                <View style={[styles.diceRow, compact && styles.compactDiceRow]}>
+                  {renderDiceVisual(isStage ? styles.stageRollSceneViewport : compact ? styles.compactRollSceneViewport : undefined)}
+                </View>
+              ) : null}
 
-            {showNumericResult && (
-              <Text
-                style={[
-                  styles.title,
-                  compact && styles.compactTitle,
-                  isLaptopUp && resolvedValue !== null && !isSceneRolling && styles.resultTitleLarge,
-                ]}
-              >
-                {title}
-              </Text>
-            )}
-            <Text style={[styles.subtitle, compact && styles.compactSubtitle, isStage && styles.stageSubtitle]}>{subtitle}</Text>
-          </>
-        )}
-      </View>
+              {showNumericResult && (
+                <Text
+                  style={[
+                    styles.title,
+                    compact && styles.compactTitle,
+                    isLaptopUp && resolvedValue !== null && !isSceneRolling && styles.resultTitleLarge,
+                  ]}
+                >
+                  {title}
+                </Text>
+              )}
+              <Text style={[styles.subtitle, compact && styles.compactSubtitle, isStage && styles.stageSubtitle]}>{subtitle}</Text>
+            </>
+          )}
+        </Animated.View>
+      </Animated.View>
     </TouchableOpacity>
   );
 };
@@ -437,6 +598,12 @@ const styles = StyleSheet.create({
   artStageTouchable: {
     width: 'auto',
     alignSelf: 'center',
+  },
+  buttonVisualShell: {
+    alignSelf: 'stretch',
+  },
+  cardVisualShell: {
+    width: '100%',
   },
   card: {
     borderRadius: urTheme.radii.md,
@@ -499,6 +666,11 @@ const styles = StyleSheet.create({
     borderRadius: urTheme.radii.sm,
     borderWidth: 1,
     borderColor: 'rgba(246, 219, 163, 0.36)',
+  },
+  sunkenOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(23, 10, 4, 0.22)',
+    opacity: 0,
   },
   readyHalo: {
     position: 'absolute',
@@ -683,6 +855,9 @@ const styles = StyleSheet.create({
   mobileArtButtonWrap: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  mobileArtButtonShell: {
+    alignSelf: 'center',
   },
   mobileArtButtonWrapLocked: {
     opacity: 0.62,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { Dice } from './Dice';
 
 const mockDiceRollScene = jest.fn(({ playbackId, variant }: { playbackId: number; variant: string }) => {
@@ -76,5 +76,31 @@ describe('Dice', () => {
     expect(screen.getByTestId('dice-roll-art')).toBeTruthy();
     expect(screen.queryByTestId('dice-roll-scene-host')).toBeNull();
     expect(mockDiceRollScene).not.toHaveBeenCalled();
+  });
+
+  it('renders the roll button in a sunk state when latched', () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+
+    render(
+      <Dice
+        value={null}
+        rolling={false}
+        onRoll={jest.fn()}
+        canRoll
+        pressedIn
+        mode="stage"
+        showVisual={false}
+      />,
+    );
+
+    const shellStyle = StyleSheet.flatten(screen.getByTestId('dice-roll-button-shell').props.style);
+    const translateY = shellStyle.transform.find(
+      (transform: { translateY?: number }) => typeof transform.translateY === 'number',
+    )?.translateY;
+
+    expect(translateY).toBeGreaterThan(0);
   });
 });

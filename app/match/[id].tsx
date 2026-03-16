@@ -66,6 +66,7 @@ const LOCAL_NO_MOVE_HISTORY_RE = /^(light|dark) rolled ([0-4]) but had no moves\
 const LOCAL_MOVE_HISTORY_RE = /^(light|dark) moved to \d+\. Rosette: (true|false)$/;
 
 type MatchMomentCueKind = 'play' | 'yourTurn' | 'zero' | 'stuck' | 'timeout' | 'rosette';
+type RollButtonLatchPhase = 'idle' | 'awaitingOutcome' | 'awaitingTurnReset';
 
 const MATCH_MOMENT_CUES: Record<MatchMomentCueKind, Omit<MatchMomentIndicatorCue, 'id'>> = {
   play: {
@@ -192,6 +193,7 @@ export function GameRoom() {
   const [showAudioSettings, setShowAudioSettings] = React.useState(false);
   const [showTopMenu, setShowTopMenu] = React.useState(false);
   const [rollingVisual, setRollingVisual] = React.useState(false);
+  const [rollButtonLatchPhase, setRollButtonLatchPhase] = React.useState<RollButtonLatchPhase>('idle');
   const [showLocalDiceVisual, setShowLocalDiceVisual] = React.useState(false);
   const [diceStagePlaybackId, setDiceStagePlaybackId] = React.useState(0);
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
@@ -212,6 +214,11 @@ export function GameRoom() {
   const boardMeasureRef = useRef<View | null>(null);
   const boardImageLayoutRef = useRef<BoardImageLayoutFrame | null>(null);
   const localRollVisualPendingRef = useRef(false);
+  const rollButtonRequestRef = useRef<{
+    serverRevision: number;
+    currentTurn: PlayerColor;
+    historyLength: number;
+  } | null>(null);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turnTimeoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -238,6 +245,7 @@ export function GameRoom() {
   const cueSystemReady = ancientCueFontLoaded || Boolean(ancientCueFontError);
   const cueFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : undefined;
   const rollResultFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : urTypography.title.fontFamily;
+  const isRollButtonPressedIn = rollButtonLatchPhase !== 'idle';
 
   const setLiveMatchCue = React.useCallback((cue: MatchMomentIndicatorCue | null) => {
     activeMatchCueRef.current = cue;
@@ -346,8 +354,10 @@ export function GameRoom() {
   useEffect(() => {
     boardImageLayoutRef.current = null;
     localRollVisualPendingRef.current = false;
+    rollButtonRequestRef.current = null;
     setBoardTargetFrame(null);
     setRollingVisual(false);
+    setRollButtonLatchPhase('idle');
     setShowLocalDiceVisual(false);
     setDiceStagePlaybackId(0);
     setShowBoardDropIntro(false);
@@ -362,6 +372,51 @@ export function GameRoom() {
     matchCueIdRef.current = 0;
     setLiveMatchCue(null);
   }, [matchId, setLiveMatchCue]);
+  useEffect(() => {
+    if (rollButtonLatchPhase === 'idle') {
+      rollButtonRequestRef.current = null;
+      return;
+    }
+
+    if (gameState.winner !== null || gameState.phase === 'ended') {
+      setRollButtonLatchPhase('idle');
+      return;
+    }
+
+    if (rollButtonLatchPhase === 'awaitingOutcome') {
+      if (gameState.phase === 'moving' && gameState.rollValue !== null) {
+        setRollButtonLatchPhase('awaitingTurnReset');
+        return;
+      }
+
+      const rollRequest = rollButtonRequestRef.current;
+      const stateAdvancedSinceRoll =
+        rollRequest !== null &&
+        (
+          serverRevision > rollRequest.serverRevision ||
+          gameState.currentTurn !== rollRequest.currentTurn ||
+          gameState.history.length > rollRequest.historyLength
+        );
+
+      if (stateAdvancedSinceRoll && gameState.phase === 'rolling' && gameState.rollValue === null) {
+        setRollButtonLatchPhase('idle');
+      }
+
+      return;
+    }
+
+    if (gameState.phase === 'rolling' && gameState.rollValue === null) {
+      setRollButtonLatchPhase('idle');
+    }
+  }, [
+    gameState.currentTurn,
+    gameState.history.length,
+    gameState.phase,
+    gameState.rollValue,
+    gameState.winner,
+    rollButtonLatchPhase,
+    serverRevision,
+  ]);
   useEffect(() => {
     if (!cueSystemReady || !matchId || !hasAssignedColor) {
       return;
@@ -828,6 +883,12 @@ export function GameRoom() {
   const handleRoll = () => {
     if (!canRoll || rollingVisual) return;
 
+    rollButtonRequestRef.current = {
+      serverRevision,
+      currentTurn: gameState.currentTurn,
+      historyLength: gameState.history.length,
+    };
+    setRollButtonLatchPhase('awaitingOutcome');
     localRollVisualPendingRef.current = true;
     setShowLocalDiceVisual(true);
     setDiceStagePlaybackId((current) => current + 1);
@@ -1430,6 +1491,7 @@ export function GameRoom() {
                         rolling={rollingVisual}
                         onRoll={handleRoll}
                         canRoll={canRoll}
+                        pressedIn={isRollButtonPressedIn}
                         mode="stage"
                         compact={compactSupportUi}
                         showNumericResult={false}
@@ -1445,6 +1507,7 @@ export function GameRoom() {
                     rolling={rollingVisual}
                     onRoll={handleRoll}
                     canRoll={canRoll}
+                    pressedIn={isRollButtonPressedIn}
                     mode="stage"
                     compact={compactSupportUi}
                     showVisual={showLocalDiceVisual}
@@ -1546,6 +1609,7 @@ export function GameRoom() {
                       rolling={rollingVisual}
                       onRoll={handleRoll}
                       canRoll={canRoll}
+                      pressedIn={isRollButtonPressedIn}
                       mode="stage"
                       compact={compactSupportUi}
                       showNumericResult={false}
