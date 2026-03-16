@@ -1,4 +1,5 @@
 import { FiveStepTutorialModal } from '@/components/FiveStepTutorialModal';
+import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { Button } from '@/components/ui/Button';
 import { boxShadow } from '@/constants/styleEffects';
@@ -9,6 +10,7 @@ import React from 'react';
 import { Image, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 const homeWideBackground = require('../../assets/images/home_bg.png');
+const homeMobileBackground = require('../../assets/images/home_bg_mobile.png');
 
 export default function AuthenticatedHome() {
   const { width } = useWindowDimensions();
@@ -17,6 +19,7 @@ export default function AuthenticatedHome() {
   const [showHowToPlay, setShowHowToPlay] = React.useState(false);
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
+  const showMobileBackground = useMobileBackground();
   const blackButtonLabel = styles.blackButtonLabel;
 
   const handleLogout = async () => {
@@ -34,6 +37,11 @@ export default function AuthenticatedHome() {
       <WideScreenBackground
         source={homeWideBackground}
         visible={showWideBackground}
+        overlayColor="rgba(7, 10, 15, 0.18)"
+      />
+      <MobileBackground
+        source={homeMobileBackground}
+        visible={showMobileBackground}
         overlayColor="rgba(7, 10, 15, 0.18)"
       />
       <Image
