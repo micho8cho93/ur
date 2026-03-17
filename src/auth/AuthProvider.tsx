@@ -2,6 +2,7 @@ import React, { PropsWithChildren, useCallback, useEffect, useMemo, useState } f
 import { Session } from '@heroiclabs/nakama-js';
 
 import { nakamaService } from '@/services/nakama';
+import { startAuthenticatedPresence, stopAuthenticatedPresence } from '@/services/presenceManager';
 import { useGameStore } from '@/store/useGameStore';
 import { User } from '@/src/types/user';
 
@@ -60,6 +61,9 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         setUser(restoredUser);
         setIsLoading(false);
         setHasInitialized(true);
+        if (restoredUser) {
+          startAuthenticatedPresence();
+        }
       }
     };
 
@@ -113,6 +117,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
       const { user, session } = await guestLogin();
       await saveSession(user, session.token, session.refresh_token);
       setUser(user);
+      startAuthenticatedPresence();
     } catch (error) {
       throw new Error(`Guest login failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -132,12 +137,14 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
       // This only runs if we get a direct result (non-redirect flow)
       await saveSession(result.user, result.nakamaSession.token, result.nakamaSession.refresh_token);
       setUser(result.user);
+      startAuthenticatedPresence();
     } catch (error) {
       throw new Error(`Google login failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }, [loginWithGoogleRequest]);
 
   const logout = useCallback(async () => {
+    stopAuthenticatedPresence();
     await clearSession();
     await nakamaService.clearSession();
     useGameStore.getState().reset();
