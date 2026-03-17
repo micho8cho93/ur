@@ -1,26 +1,42 @@
 import * as AuthSession from 'expo-auth-session';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
 import { Session } from '@heroiclabs/nakama-js';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
 import { nakamaService } from '@/services/nakama';
 import { User } from '@/src/types/user';
 import { saveSession } from './sessionStorage';
 
-WebBrowser.maybeCompleteAuthSession();
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-type GoogleUserInfo = {
+type GoogleJwtPayload = {
   sub: string;
   name?: string;
   email?: string;
   picture?: string;
 };
 
-type PendingGoogleLogin = {
-  resolve: (result: GoogleAuthResult | null) => void;
-  reject: (error: Error) => void;
+type GISCredentialResponse = {
+  credential: string;
+};
+
+type GISPromptNotification = {
+  isNotDisplayed: () => boolean;
+  isSkippedMoment: () => boolean;
+  isDismissedMoment: () => boolean;
+  getNotDisplayedReason: () => string;
+};
+
+type GISWindow = Window & {
+  google?: {
+    accounts: {
+      id: {
+        initialize: (config: object) => void;
+        prompt: (callback?: (n: GISPromptNotification) => void) => void;
+        cancel: () => void;
+      };
+    };
+  };
 };
 
 export type GoogleAuthResult = {
@@ -30,212 +46,159 @@ export type GoogleAuthResult = {
   nakamaSession: Session;
 };
 
-const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
 const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
 const GOOGLE_REDIRECT_URI = AuthSession.makeRedirectUri({ path: 'oauthredirect' });
 
-const resolveGoogleAuthError = (error: unknown): Error => {
-  if (error instanceof Error) {
-    return error;
-  }
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-  return new Error('Google sign-in failed. Please try again.');
-};
-
-const getGoogleAuthErrorMessage = (
-  response: AuthSession.AuthSessionResult
-): string => {
-  if (!('params' in response)) {
-    return 'Google sign-in failed.';
-  }
-
-  return response.error?.message ?? response.params.error_description ?? response.params.error ?? 'Google sign-in failed.';
-};
+const resolveGoogleAuthError = (error: unknown): Error =>
+  error instanceof Error ? error : new Error('Google sign-in failed. Please try again.');
 
 const getNativeGoogleAuthMessage = (): string =>
   'Google sign-in on native requires EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID or EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID and a development build.';
 
-const mapGoogleUser = (profile: GoogleUserInfo, nakamaUserId?: string): User => ({
-  id: profile.sub,
-  username: profile.name?.trim() || profile.email?.split('@')[0] || 'Google User',
-  email: profile.email ?? null,
-  avatarUrl: profile.picture ?? null,
+/**
+ * Decode the JWT payload. We do NOT verify the signature here —
+ * Nakama verifies it server-side when we call authenticateGoogle.
+ */
+const decodeJwtPayload = (jwt: string): GoogleJwtPayload => {
+  const parts = jwt.split('.');
+  if (parts.length !== 3) throw new Error('Invalid ID token format.');
+  const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+  const json = atob(base64);
+  const payload = JSON.parse(json) as Record<string, unknown>;
+  if (!payload.sub) throw new Error('Google did not return a valid user ID.');
+  return {
+    sub: String(payload.sub),
+    name: payload.name != null ? String(payload.name) : undefined,
+    email: payload.email != null ? String(payload.email) : undefined,
+    picture: payload.picture != null ? String(payload.picture) : undefined,
+  };
+};
+
+const mapGoogleUser = (payload: GoogleJwtPayload, nakamaUserId?: string): User => ({
+  id: payload.sub,
+  username: payload.name?.trim() || payload.email?.split('@')[0] || 'Google User',
+  email: payload.email ?? null,
+  avatarUrl: payload.picture ?? null,
   provider: 'google',
   createdAt: new Date().toISOString(),
   nakamaUserId,
 });
 
-const fetchGoogleUserInfo = async (accessToken: string): Promise<GoogleUserInfo> => {
-  const response = await fetch(GOOGLE_USERINFO_URL, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
+// ─── GIS script loader ────────────────────────────────────────────────────────
+
+/**
+ * Injects the Google Identity Services script once and resolves when ready.
+ * Safe to call multiple times — subsequent calls resolve immediately if already loaded.
+ */
+const loadGISScript = (): Promise<void> =>
+  new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') {
+      reject(new Error('Not a browser environment.'));
+      return;
+    }
+
+    const win = window as GISWindow;
+    if (win.google?.accounts?.id) {
+      resolve();
+      return;
+    }
+
+    const SCRIPT_ID = 'google-gis-script';
+    const existing = document.getElementById(SCRIPT_ID);
+    if (existing) {
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () =>
+        reject(new Error('Failed to load Google Identity Services.'))
+      );
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = SCRIPT_ID;
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () =>
+      reject(
+        new Error(
+          'Failed to load Google Identity Services. Check your internet connection.'
+        )
+      );
+    document.head.appendChild(script);
   });
 
-  if (!response.ok) {
-    throw new Error('Unable to load your Google profile.');
-  }
+// ─── GIS sign-in prompt ───────────────────────────────────────────────────────
 
-  const payload = (await response.json()) as GoogleUserInfo;
-  if (!payload.sub) {
-    throw new Error('Google did not return a valid profile.');
-  }
+/**
+ * Shows the Google One Tap / Sign In With Google prompt and resolves with
+ * the raw ID token (credential JWT) on success, or null on user cancellation.
+ *
+ * Why GIS instead of expo-auth-session OAuth flows:
+ *  - response_type=token   → Google blocked implicit flow for Web Application clients
+ *  - response_type=code    → requires client_secret for code exchange; can't be done in a browser SPA
+ *  - response_type=token id_token → also blocked (hybrid implicit flow)
+ *  GIS bypasses all of this: it returns the ID token directly via a secure popup,
+ *  with no code exchange and no client_secret required.
+ */
+const promptGISSignIn = (clientId: string): Promise<string | null> =>
+  new Promise((resolve, reject) => {
+    const win = window as GISWindow;
+    if (!win.google?.accounts?.id) {
+      reject(new Error('Google Identity Services failed to initialize.'));
+      return;
+    }
 
-  return payload;
-};
+    let settled = false;
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      fn();
+    };
 
-// Generates a one-time nonce for the id_token request.
-// Must be stable per hook mount (not regenerated on re-render) so the value
-// sent in the auth request matches what we read back from the response.
-const generateNonce = (): string =>
-  `${Date.now().toString(36)}-${Math.random().toString(36).substring(2)}`;
+    win.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: (response: GISCredentialResponse) => {
+        settle(() => {
+          if (!response?.credential) {
+            reject(new Error('Google sign-in did not return a credential.'));
+          } else {
+            console.debug('[GoogleAuth] GIS credential received — proceeding with Nakama auth.');
+            resolve(response.credential);
+          }
+        });
+      },
+      cancel_on_tap_outside: true,
+    });
+
+    win.google.accounts.id.prompt((notification: GISPromptNotification) => {
+      if (notification.isNotDisplayed()) {
+        settle(() =>
+          reject(
+            new Error(
+              `Google sign-in could not be displayed (${notification.getNotDisplayedReason()}). ` +
+                'Try enabling third-party cookies, or use a different browser.'
+            )
+          )
+        );
+      } else if (notification.isDismissedMoment() || notification.isSkippedMoment()) {
+        // User closed the prompt — treat as cancellation
+        settle(() => resolve(null));
+      }
+    });
+  });
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export const useGoogleAuth = () => {
-  // Stable per mount — regenerates only when the hook is remounted (i.e. new login attempt after unmount).
-  const nonce = useMemo(() => generateNonce(), []);
-
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    clientId: GOOGLE_WEB_CLIENT_ID ?? 'missing-google-client-id',
-    webClientId: GOOGLE_WEB_CLIENT_ID,
-    iosClientId: GOOGLE_IOS_CLIENT_ID,
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
-    redirectUri: GOOGLE_REDIRECT_URI,
-    // 'token id_token' is the OAuth hybrid implicit flow:
-    // returns both tokens directly in the redirect URL hash — no code exchange,
-    // no client_secret needed. Required for web SPA (Google "Web application" client
-    // type blocks server-side code exchange from a browser).
-    responseType: 'token id_token' as AuthSession.ResponseType,
-    scopes: ['openid', 'profile', 'email'],
-    extraParams: { nonce },
-  });
   const [isProcessing, setIsProcessing] = useState(false);
-  const pendingLoginRef = useRef<PendingGoogleLogin | null>(null);
-
-  const settlePendingLogin = useCallback((handler: (pending: PendingGoogleLogin) => void) => {
-    const pending = pendingLoginRef.current;
-    if (!pending) {
-      return;
-    }
-
-    pendingLoginRef.current = null;
-    setIsProcessing(false);
-    handler(pending);
-  }, []);
-
-  useEffect(() => {
-    if (!response) {
-      return;
-    }
-
-    // Handle cancellation
-    if (response.type === 'cancel' || response.type === 'dismiss') {
-      if (pendingLoginRef.current) {
-        settlePendingLogin((pending) => pending.resolve(null));
-      }
-      setIsProcessing(false);
-      return;
-    }
-
-    // Handle error
-    if (response.type !== 'success') {
-      const errorMessage = getGoogleAuthErrorMessage(response);
-      if (pendingLoginRef.current) {
-        settlePendingLogin((pending) => pending.reject(new Error(errorMessage)));
-      } else {
-        // On redirect return with error, surface to console
-        console.error('Google OAuth error:', errorMessage);
-      }
-      setIsProcessing(false);
-      return;
-    }
-
-    // Handle success - works both with and without pending ref
-    let isCancelled = false;
-
-    const finalizeGoogleLogin = async () => {
-      try {
-        const accessToken = response.authentication?.accessToken ?? response.params.access_token ?? null;
-        const idToken = response.authentication?.idToken ?? response.params.id_token ?? null;
-
-        if (!accessToken) {
-          throw new Error('Google sign-in did not return an access token.');
-        }
-
-        if (!idToken) {
-          throw new Error('Google sign-in did not return an ID token. Ensure the openid scope is requested and responseType is Code.');
-        }
-
-        console.debug('[GoogleAuth] Tokens received — using accessToken for userinfo, idToken for Nakama.');
-
-        const profile = await fetchGoogleUserInfo(accessToken);
-        if (isCancelled) {
-          return;
-        }
-
-        const nakamaSession = await nakamaService.authenticateGoogle(idToken, true);
-        if (isCancelled) {
-          return;
-        }
-
-        const nakamaAccount = await nakamaService.getAccount();
-        if (isCancelled) {
-          return;
-        }
-
-        const user = mapGoogleUser(profile, nakamaAccount.user?.id);
-        const authResult: GoogleAuthResult = {
-          user,
-          accessToken,
-          idToken,
-          nakamaSession,
-        };
-
-        // Save session for both scenarios
-        await saveSession(user, nakamaSession.token, nakamaSession.refresh_token);
-
-        // If we have a pending promise (normal flow), resolve it
-        if (pendingLoginRef.current) {
-          settlePendingLogin((pending) => pending.resolve(authResult));
-        } else {
-          // Redirect scenario - session is saved, AuthProvider will pick it up
-          setIsProcessing(false);
-        }
-      } catch (error) {
-        if (isCancelled) {
-          return;
-        }
-
-        const authError = resolveGoogleAuthError(error);
-        if (pendingLoginRef.current) {
-          settlePendingLogin((pending) => pending.reject(authError));
-        } else {
-          // On redirect return with error, surface to console and clear processing
-          console.error('Google authentication failed:', authError);
-          setIsProcessing(false);
-        }
-      }
-    };
-
-    void finalizeGoogleLogin();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [response, settlePendingLogin]);
-
-  useEffect(() => {
-    return () => {
-      const pending = pendingLoginRef.current;
-      if (!pending) {
-        return;
-      }
-
-      pendingLoginRef.current = null;
-      pending.reject(new Error('Google sign-in was interrupted.'));
-    };
-  }, []);
+  const abortedRef = useRef(false);
 
   const login = useCallback(async (): Promise<GoogleAuthResult | null> => {
     if (Platform.OS !== 'web') {
@@ -246,30 +209,54 @@ export const useGoogleAuth = () => {
       throw new Error('Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.');
     }
 
-    if (!request) {
-      throw new Error('Google sign-in is still initializing.');
-    }
-
-    if (pendingLoginRef.current || isProcessing) {
+    if (isProcessing) {
       throw new Error('Google sign-in is already in progress.');
     }
 
     setIsProcessing(true);
+    abortedRef.current = false;
 
-    return new Promise<GoogleAuthResult | null>((resolve, reject) => {
-      pendingLoginRef.current = { resolve, reject };
+    try {
+      await loadGISScript();
+      if (abortedRef.current) return null;
 
-      promptAsync().catch((error) => {
-        const pending = pendingLoginRef.current;
-        pendingLoginRef.current = null;
-        setIsProcessing(false);
-        pending?.reject(resolveGoogleAuthError(error));
-      });
-    });
-  }, [isProcessing, promptAsync, request]);
+      const idToken = await promptGISSignIn(GOOGLE_WEB_CLIENT_ID);
+      if (idToken === null || abortedRef.current) {
+        // User cancelled
+        return null;
+      }
+
+      const payload = decodeJwtPayload(idToken);
+      if (abortedRef.current) return null;
+
+      const nakamaSession = await nakamaService.authenticateGoogle(idToken, true);
+      if (abortedRef.current) return null;
+
+      const nakamaAccount = await nakamaService.getAccount();
+      if (abortedRef.current) return null;
+
+      const user = mapGoogleUser(payload, nakamaAccount.user?.id);
+
+      const authResult: GoogleAuthResult = {
+        user,
+        // GIS does not provide an access token — the ID token carries all identity
+        // claims needed. accessToken kept in type for API compatibility.
+        accessToken: '',
+        idToken,
+        nakamaSession,
+      };
+
+      await saveSession(user, nakamaSession.token, nakamaSession.refresh_token);
+      return authResult;
+    } catch (error) {
+      throw resolveGoogleAuthError(error);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [isProcessing]);
 
   return {
-    isReady: Platform.OS === 'web' ? Boolean(request && GOOGLE_WEB_CLIENT_ID) && !isProcessing : true,
+    isReady: Platform.OS === 'web' ? Boolean(GOOGLE_WEB_CLIENT_ID) && !isProcessing : true,
     isProcessing,
     login,
     redirectUri: GOOGLE_REDIRECT_URI,
