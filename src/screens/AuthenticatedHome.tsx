@@ -56,7 +56,10 @@ export default function AuthenticatedHome() {
 
       {user?.provider === 'guest' ? (
         <Pressable
-          onPress={() => router.replace('/(auth)/login')}
+          onPress={async () => {
+            await logout();
+            router.replace('/(auth)/login');
+          }}
           style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
           accessibilityLabel="Back to login"
         >

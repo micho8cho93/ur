@@ -26,6 +26,7 @@ type PendingGoogleLogin = {
 export type GoogleAuthResult = {
   user: User;
   accessToken: string;
+  idToken: string;
   nakamaSession: Session;
 };
 
@@ -92,7 +93,7 @@ export const useGoogleAuth = () => {
     iosClientId: GOOGLE_IOS_CLIENT_ID,
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
     redirectUri: GOOGLE_REDIRECT_URI,
-    responseType: AuthSession.ResponseType.Token,
+    responseType: AuthSession.ResponseType.Code,
     scopes: ['openid', 'profile', 'email'],
   });
   const [isProcessing, setIsProcessing] = useState(false);
@@ -142,17 +143,24 @@ export const useGoogleAuth = () => {
     const finalizeGoogleLogin = async () => {
       try {
         const accessToken = response.authentication?.accessToken ?? response.params.access_token ?? null;
+        const idToken = response.authentication?.idToken ?? response.params.id_token ?? null;
 
         if (!accessToken) {
           throw new Error('Google sign-in did not return an access token.');
         }
+
+        if (!idToken) {
+          throw new Error('Google sign-in did not return an ID token. Ensure the openid scope is requested and responseType is Code.');
+        }
+
+        console.debug('[GoogleAuth] Tokens received — using accessToken for userinfo, idToken for Nakama.');
 
         const profile = await fetchGoogleUserInfo(accessToken);
         if (isCancelled) {
           return;
         }
 
-        const nakamaSession = await nakamaService.authenticateGoogle(accessToken, true);
+        const nakamaSession = await nakamaService.authenticateGoogle(idToken, true);
         if (isCancelled) {
           return;
         }
@@ -166,6 +174,7 @@ export const useGoogleAuth = () => {
         const authResult: GoogleAuthResult = {
           user,
           accessToken,
+          idToken,
           nakamaSession,
         };
 
