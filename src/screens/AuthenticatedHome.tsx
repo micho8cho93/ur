@@ -188,8 +188,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: urTheme.spacing.md,
-    maxWidth: 720,
-    alignSelf: 'center',
   },
   authLabel: {
     ...urTypography.label,
