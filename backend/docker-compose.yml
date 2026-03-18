@@ -24,7 +24,7 @@ services:
       - ./nakama.yml:/nakama/data/nakama.yml:ro
       - ./modules:/nakama/data/modules:ro
     environment:
-      NAKAMA_DATABASE_ADDRESS: "nakama:${POSTGRES_PASSWORD:-nakama}@postgres:5432/nakama"
+      NAKAMA_DATABASE_ADDRESS: "nakama:${POSTGRES_PASSWORD:-nakama}@postgres:5432/nakama?sslmode=disable"
       NAKAMA_SOCKET_SERVER_KEY: ${NAKAMA_SOCKET_SERVER_KEY:-defaultkey}
       NAKAMA_HTTP_KEY: ${NAKAMA_HTTP_KEY:-changeme}
     ports:
