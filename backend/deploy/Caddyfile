@@ -2,3 +2,11 @@
   encode zstd gzip
   reverse_proxy nakama:7350
 }
+
+admin-nakama.urgame.live {
+  basicauth {
+    uradmin {$CADDY_ADMIN_HASH}
+  }
+
+  reverse_proxy nakama:7351
+}
