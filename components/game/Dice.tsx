@@ -22,6 +22,7 @@ const MOBILE_DICE_VIEWPORT_WIDTH_SCALE = 1.5;
 const ROLL_BUTTON_ART = require('../../assets/buttons/roll_button.png');
 
 interface DiceProps {
+  animationDurationMs?: number;
   value: number | null;
   rolling: boolean;
   onRoll: () => void;
@@ -37,6 +38,7 @@ interface DiceProps {
 }
 
 interface DiceStageVisualProps {
+  animationDurationMs?: number;
   value: number | null;
   rolling: boolean;
   canRoll: boolean;
@@ -135,6 +137,7 @@ const useDiceSceneState = ({
 };
 
 export const DiceStageVisual: React.FC<DiceStageVisualProps> = ({
+  animationDurationMs = DEFAULT_DICE_ROLL_DURATION_MS,
   value,
   rolling,
   canRoll,
@@ -166,7 +169,7 @@ export const DiceStageVisual: React.FC<DiceStageVisualProps> = ({
       >
         <DiceRollScene
           playbackId={renderedPlaybackId}
-          durationMs={DEFAULT_DICE_ROLL_DURATION_MS}
+          durationMs={animationDurationMs}
           size={sceneSize}
           variant={sceneVariant}
         />
@@ -176,6 +179,7 @@ export const DiceStageVisual: React.FC<DiceStageVisualProps> = ({
 };
 
 export const Dice: React.FC<DiceProps> = ({
+  animationDurationMs = DEFAULT_DICE_ROLL_DURATION_MS,
   value,
   rolling,
   onRoll,
@@ -401,12 +405,13 @@ export const Dice: React.FC<DiceProps> = ({
   const sceneSize = sceneBaseSize * (isStage ? STAGE_ROLL_SCENE_SCALE : 1) * (isMobileWidth ? mobileDiceScale : 1);
   const compactStageTitle = isSceneRolling ? 'Casting...' : hasSettledResult ? 'Roll Result' : 'Cast Dice';
   const compactStageSubtitle = isSceneRolling ? 'Rolling' : hasSettledResult ? 'Result ready' : canRoll ? 'Tap to roll' : 'Wait turn';
+  const isRollDisabled = !canRoll || rolling || pressedIn;
 
   const renderDiceVisual = (sceneStyle?: StyleProp<ViewStyle>) => (
     <View pointerEvents="none" testID="dice-roll-scene-host" style={[styles.rollSceneViewport, sceneStyle]}>
       <DiceRollScene
         playbackId={renderedPlaybackId}
-        durationMs={DEFAULT_DICE_ROLL_DURATION_MS}
+        durationMs={animationDurationMs}
         size={sceneSize}
         variant={sceneVariant}
       />
@@ -417,7 +422,7 @@ export const Dice: React.FC<DiceProps> = ({
     return (
       <TouchableOpacity
         onPress={onRoll}
-        disabled={!canRoll || rolling}
+        disabled={isRollDisabled}
         activeOpacity={0.9}
         testID="dice-roll-button"
         style={[styles.touchable, isMobileCompactStage && styles.mobileStageTouchable, styles.artStageTouchable]}
@@ -479,7 +484,7 @@ export const Dice: React.FC<DiceProps> = ({
   return (
     <TouchableOpacity
       onPress={onRoll}
-      disabled={!canRoll || rolling}
+      disabled={isRollDisabled}
       activeOpacity={0.9}
       testID="dice-roll-button"
       style={[styles.touchable, isStage && styles.stageTouchable, isMobileCompactStage && styles.mobileStageTouchable]}

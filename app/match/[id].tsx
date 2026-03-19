@@ -29,7 +29,12 @@ import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty } from '@/logic/bot/types';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import type { GameState, PlayerColor } from '@/logic/types';
 import { gameAudio } from '@/services/audio';
-import { getBotMatchPreferences, setBotTimerEnabled as persistBotTimerEnabled } from '@/services/botMatchPreferences';
+import {
+  DEFAULT_MATCH_PREFERENCES,
+  getMatchPreferences,
+  type DiceAnimationSpeed,
+  updateMatchPreferences,
+} from '@/services/matchPreferences';
 import { nakamaService } from '@/services/nakama';
 import { stripProgressionAwardEnvelope } from '@/services/progression';
 import { buildMatchChallengeRewardSummary, type MatchChallengeRewardSummary } from '@/src/challenges/challengeUi';
@@ -72,6 +77,7 @@ const MATCH_CUE_FONT_FAMILY = 'CinzelDecorativeBold';
 const HOURGLASS_HEIGHT_RATIO = 156 / 100;
 const LOCAL_NO_MOVE_HISTORY_RE = /^(light|dark) rolled ([0-4]) but had no moves\.$/;
 const LOCAL_MOVE_HISTORY_RE = /^(light|dark) moved to \d+\. Rosette: (true|false)$/;
+const AUTO_ROLL_DELAY_MS = 550;
 
 type MatchMomentCueKind = 'play' | 'yourTurn' | 'zero' | 'stuck' | 'timeout' | 'rosette';
 type RollButtonLatchPhase = 'idle' | 'awaitingOutcome' | 'awaitingTurnReset';
@@ -217,8 +223,16 @@ export function GameRoom() {
   const [diceStagePlaybackId, setDiceStagePlaybackId] = React.useState(0);
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
   const [musicEnabled, setMusicEnabled] = React.useState(true);
+  const [musicVolume, setMusicVolume] = React.useState(1);
   const [sfxEnabled, setSfxEnabled] = React.useState(true);
-  const [botTimerEnabled, setBotTimerEnabled] = React.useState(true);
+  const [sfxVolume, setSfxVolume] = React.useState(1);
+  const [botTimerEnabled, setBotTimerEnabled] = React.useState(DEFAULT_MATCH_PREFERENCES.timerEnabled);
+  const [diceAnimationEnabled, setDiceAnimationEnabled] = React.useState(DEFAULT_MATCH_PREFERENCES.diceAnimationEnabled);
+  const [diceAnimationSpeed, setDiceAnimationSpeed] = React.useState<DiceAnimationSpeed>(
+    DEFAULT_MATCH_PREFERENCES.diceAnimationSpeed,
+  );
+  const [bugAnimationEnabled, setBugAnimationEnabled] = React.useState(DEFAULT_MATCH_PREFERENCES.bugAnimationEnabled);
+  const [autoRollEnabled, setAutoRollEnabled] = React.useState(DEFAULT_MATCH_PREFERENCES.autoRollEnabled);
   const [boardSlotSize, setBoardSlotSize] = React.useState({ width: 0, height: 0 });
   const [boardTargetFrame, setBoardTargetFrame] = React.useState<BoardTargetFrame | null>(null);
   const [lightReserveSlots, setLightReserveSlots] = React.useState<ReserveSlotMeasurement[]>([]);
@@ -233,12 +247,14 @@ export function GameRoom() {
   const boardMeasureRef = useRef<View | null>(null);
   const boardImageLayoutRef = useRef<BoardImageLayoutFrame | null>(null);
   const localRollVisualPendingRef = useRef(false);
+  const localRollAudioPendingRef = useRef(false);
   const rollButtonRequestRef = useRef<{
     serverRevision: number;
     currentTurn: PlayerColor;
     historyLength: number;
   } | null>(null);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoRollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turnTimeoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const forceMoveAfterRollRef = useRef(false);
@@ -265,6 +281,60 @@ export function GameRoom() {
   const cueFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : undefined;
   const rollResultFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : urTypography.title.fontFamily;
   const isRollButtonPressedIn = rollButtonLatchPhase !== 'idle';
+  const diceAnimationDurationMs = useMemo(
+    () => Math.max(400, Math.round(DEFAULT_DICE_ROLL_DURATION_MS / diceAnimationSpeed)),
+    [diceAnimationSpeed],
+  );
+
+  const clearRollTimer = React.useCallback(() => {
+    if (rollTimerRef.current) {
+      clearTimeout(rollTimerRef.current);
+      rollTimerRef.current = null;
+    }
+  }, []);
+
+  const triggerLocalRoll = React.useCallback(() => {
+    if (!canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
+      return;
+    }
+
+    rollButtonRequestRef.current = {
+      serverRevision,
+      currentTurn: gameState.currentTurn,
+      historyLength: gameState.history.length,
+    };
+    setRollButtonLatchPhase('awaitingOutcome');
+    localRollAudioPendingRef.current = true;
+    localRollVisualPendingRef.current = diceAnimationEnabled;
+    setShowLocalDiceVisual(diceAnimationEnabled);
+
+    if (diceAnimationEnabled) {
+      setDiceStagePlaybackId((current) => current + 1);
+      setRollingVisual(true);
+      clearRollTimer();
+      rollTimerRef.current = setTimeout(() => {
+        setRollingVisual(false);
+        rollTimerRef.current = null;
+      }, diceAnimationDurationMs);
+    } else {
+      clearRollTimer();
+      setRollingVisual(false);
+    }
+
+    void gameAudio.play('roll');
+    roll();
+  }, [
+    canRoll,
+    clearRollTimer,
+    diceAnimationDurationMs,
+    diceAnimationEnabled,
+    gameState.currentTurn,
+    gameState.history.length,
+    roll,
+    rollButtonLatchPhase,
+    rollingVisual,
+    serverRevision,
+  ]);
 
   const setLiveMatchCue = React.useCallback((cue: MatchMomentIndicatorCue | null) => {
     activeMatchCueRef.current = cue;
@@ -439,7 +509,13 @@ export function GameRoom() {
   useEffect(() => {
     boardImageLayoutRef.current = null;
     localRollVisualPendingRef.current = false;
+    localRollAudioPendingRef.current = false;
     rollButtonRequestRef.current = null;
+    clearRollTimer();
+    if (autoRollTimerRef.current) {
+      clearTimeout(autoRollTimerRef.current);
+      autoRollTimerRef.current = null;
+    }
     setBoardTargetFrame(null);
     setRollingVisual(false);
     setRollButtonLatchPhase('idle');
@@ -456,10 +532,12 @@ export function GameRoom() {
     hasShownOpeningCueRef.current = null;
     matchCueIdRef.current = 0;
     setLiveMatchCue(null);
-  }, [matchId, setLiveMatchCue]);
+  }, [clearRollTimer, matchId, setLiveMatchCue]);
   useEffect(() => {
     if (rollButtonLatchPhase === 'idle') {
       rollButtonRequestRef.current = null;
+      localRollVisualPendingRef.current = false;
+      localRollAudioPendingRef.current = false;
       return;
     }
 
@@ -502,6 +580,16 @@ export function GameRoom() {
     rollButtonLatchPhase,
     serverRevision,
   ]);
+  useEffect(() => {
+    if (diceAnimationEnabled) {
+      return;
+    }
+
+    localRollVisualPendingRef.current = false;
+    clearRollTimer();
+    setShowLocalDiceVisual(false);
+    setRollingVisual(false);
+  }, [clearRollTimer, diceAnimationEnabled]);
   useEffect(() => {
     if (!cueSystemReady || !matchId || !hasAssignedColor) {
       return;
@@ -567,7 +655,7 @@ export function GameRoom() {
 
       if (liveState.phase === 'rolling') {
         forceMoveAfterRollRef.current = true;
-        useGameStore.getState().roll();
+        triggerLocalRoll();
         return;
       }
 
@@ -583,7 +671,48 @@ export function GameRoom() {
         turnTimeoutTimerRef.current = null;
       }
     };
-  }, [botTimerEnabled, enqueueMatchCue, gameState.phase, gameState.winner, isMyTurn, isOffline, turnTimerCycleId]);
+  }, [botTimerEnabled, enqueueMatchCue, gameState.phase, gameState.winner, isMyTurn, isOffline, triggerLocalRoll, turnTimerCycleId]);
+  useEffect(() => {
+    if (autoRollTimerRef.current) {
+      clearTimeout(autoRollTimerRef.current);
+      autoRollTimerRef.current = null;
+    }
+
+    if (
+      !autoRollEnabled ||
+      !canRoll ||
+      rollingVisual ||
+      rollButtonLatchPhase !== 'idle' ||
+      showAudioSettings ||
+      showHowToPlay ||
+      showTopMenu ||
+      showWinModal
+    ) {
+      return;
+    }
+
+    autoRollTimerRef.current = setTimeout(() => {
+      autoRollTimerRef.current = null;
+      triggerLocalRoll();
+    }, AUTO_ROLL_DELAY_MS);
+
+    return () => {
+      if (autoRollTimerRef.current) {
+        clearTimeout(autoRollTimerRef.current);
+        autoRollTimerRef.current = null;
+      }
+    };
+  }, [
+    autoRollEnabled,
+    canRoll,
+    rollButtonLatchPhase,
+    rollingVisual,
+    showAudioSettings,
+    showHowToPlay,
+    showTopMenu,
+    showWinModal,
+    triggerLocalRoll,
+  ]);
   useEffect(() => {
     if (!forceMoveAfterRollRef.current) {
       return;
@@ -810,14 +939,16 @@ export function GameRoom() {
   }, [isOffline, matchId, serverRevision, setMoveCommandSender, setRollCommandSender]);
   useEffect(() => {
     return () => {
-      if (rollTimerRef.current) {
-        clearTimeout(rollTimerRef.current);
+      clearRollTimer();
+      if (autoRollTimerRef.current) {
+        clearTimeout(autoRollTimerRef.current);
+        autoRollTimerRef.current = null;
       }
       if (scoreBannerTimerRef.current) {
         clearTimeout(scoreBannerTimerRef.current);
       }
     };
-  }, []);
+  }, [clearRollTimer]);
   useEffect(() => {
     void gameAudio.start();
 
@@ -828,47 +959,33 @@ export function GameRoom() {
   useEffect(() => {
     let isMounted = true;
 
-    const loadAudioPreferences = async () => {
-      const preferences = await gameAudio.getPreferences();
+    const loadPreferences = async () => {
+      const [audioPreferences, matchPreferences] = await Promise.all([
+        gameAudio.getPreferences(),
+        getMatchPreferences(),
+      ]);
+
       if (!isMounted) {
         return;
       }
 
-      setMusicEnabled(preferences.musicEnabled);
-      setSfxEnabled(preferences.sfxEnabled);
+      setMusicEnabled(audioPreferences.musicEnabled);
+      setMusicVolume(audioPreferences.musicVolume);
+      setSfxEnabled(audioPreferences.sfxEnabled);
+      setSfxVolume(audioPreferences.sfxVolume);
+      setBotTimerEnabled(matchPreferences.timerEnabled);
+      setDiceAnimationEnabled(matchPreferences.diceAnimationEnabled);
+      setDiceAnimationSpeed(matchPreferences.diceAnimationSpeed);
+      setBugAnimationEnabled(matchPreferences.bugAnimationEnabled);
+      setAutoRollEnabled(matchPreferences.autoRollEnabled);
     };
 
-    void loadAudioPreferences();
+    void loadPreferences();
 
     return () => {
       isMounted = false;
     };
   }, []);
-  useEffect(() => {
-    let isMounted = true;
-
-    if (!isOffline) {
-      setBotTimerEnabled(true);
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    const loadBotMatchPreferences = async () => {
-      const preferences = await getBotMatchPreferences();
-      if (!isMounted) {
-        return;
-      }
-
-      setBotTimerEnabled(preferences.timerEnabled);
-    };
-
-    void loadBotMatchPreferences();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [isOffline]);
 
   useEffect(() => {
     const previousSnapshot = previousStateRef.current;
@@ -880,6 +997,7 @@ export function GameRoom() {
     const previous = previousSnapshot.state;
     const isBotRoll = isOffline && gameState.currentTurn === 'dark';
     const rollValueChanged = previous.rollValue !== gameState.rollValue;
+    let shouldSkipResolvedRollAudio = false;
     const justEnteredNoMoveState =
       hasAssignedColor &&
       playerColor !== null &&
@@ -890,12 +1008,14 @@ export function GameRoom() {
       (previous.phase !== gameState.phase || previous.rollValue !== gameState.rollValue);
 
     if (rollValueChanged && gameState.rollValue !== null) {
-      const shouldKeepLocalDiceVisual = localRollVisualPendingRef.current;
+      const shouldKeepLocalDiceVisual = localRollVisualPendingRef.current && diceAnimationEnabled;
+      shouldSkipResolvedRollAudio = localRollAudioPendingRef.current;
       setShowLocalDiceVisual(shouldKeepLocalDiceVisual);
       localRollVisualPendingRef.current = false;
+      localRollAudioPendingRef.current = false;
     }
 
-    if (rollValueChanged && gameState.rollValue !== null && !rollingVisual && !isBotRoll) {
+    if (rollValueChanged && gameState.rollValue !== null && !shouldSkipResolvedRollAudio && !rollingVisual && !isBotRoll) {
       void gameAudio.play('roll');
     }
 
@@ -974,6 +1094,7 @@ export function GameRoom() {
   }, [
     didPlayerWin,
     enqueueMatchCue,
+    diceAnimationEnabled,
     gameState,
     hasAssignedColor,
     isOffline,
@@ -983,38 +1104,48 @@ export function GameRoom() {
     validMoves.length,
   ]);
 
-  const handleRoll = () => {
-    if (!canRoll || rollingVisual) return;
-
-    rollButtonRequestRef.current = {
-      serverRevision,
-      currentTurn: gameState.currentTurn,
-      historyLength: gameState.history.length,
-    };
-    setRollButtonLatchPhase('awaitingOutcome');
-    localRollVisualPendingRef.current = true;
-    setShowLocalDiceVisual(true);
-    setDiceStagePlaybackId((current) => current + 1);
-    setRollingVisual(true);
-    void gameAudio.play('roll');
-    roll();
-    if (rollTimerRef.current) {
-      clearTimeout(rollTimerRef.current);
-    }
-    rollTimerRef.current = setTimeout(() => {
-      setRollingVisual(false);
-      rollTimerRef.current = null;
-    }, DEFAULT_DICE_ROLL_DURATION_MS);
-  };
+  const handleRoll = React.useCallback(() => {
+    triggerLocalRoll();
+  }, [triggerLocalRoll]);
 
   const handleToggleMusic = async (enabled: boolean) => {
     setMusicEnabled(enabled);
     await gameAudio.setMusicEnabled(enabled);
   };
 
+  const handleSetMusicVolume = async (volume: number) => {
+    setMusicVolume(volume);
+    await gameAudio.setMusicVolume(volume);
+  };
+
   const handleToggleSfx = async (enabled: boolean) => {
     setSfxEnabled(enabled);
     await gameAudio.setSfxEnabled(enabled);
+  };
+
+  const handleSetSfxVolume = async (volume: number) => {
+    setSfxVolume(volume);
+    await gameAudio.setSfxVolume(volume);
+  };
+
+  const handleToggleDiceAnimation = async (enabled: boolean) => {
+    setDiceAnimationEnabled(enabled);
+    await updateMatchPreferences({ diceAnimationEnabled: enabled });
+  };
+
+  const handleSetDiceAnimationSpeed = async (speed: DiceAnimationSpeed) => {
+    setDiceAnimationSpeed(speed);
+    await updateMatchPreferences({ diceAnimationSpeed: speed });
+  };
+
+  const handleToggleBugAnimation = async (enabled: boolean) => {
+    setBugAnimationEnabled(enabled);
+    await updateMatchPreferences({ bugAnimationEnabled: enabled });
+  };
+
+  const handleToggleAutoRoll = async (enabled: boolean) => {
+    setAutoRollEnabled(enabled);
+    await updateMatchPreferences({ autoRollEnabled: enabled });
   };
 
   const handleToggleBotTimer = async (enabled: boolean) => {
@@ -1025,7 +1156,7 @@ export function GameRoom() {
       setTurnTimerCycleId((current) => current + 1);
     }
 
-    await persistBotTimerEnabled(enabled);
+    await updateMatchPreferences({ timerEnabled: enabled });
   };
 
   const handleExit = () => {
@@ -1212,7 +1343,11 @@ export function GameRoom() {
   const isVisualTurnTimerRunning = isTurnTimerEnabled && gameState.phase !== 'ended' && gameState.winner === null;
   const showDestinationHighlights = !rollingVisual && gameState.rollValue !== null;
   const displayedValidMoves = showDestinationHighlights ? validMoves : [];
-  const showMobileRollResult = isMobileLayout && !rollingVisual && gameState.rollValue !== null && gameState.rollValue !== 0;
+  const showMobileRollResult =
+    isMobileLayout &&
+    !rollingVisual &&
+    gameState.rollValue !== null &&
+    (!diceAnimationEnabled || gameState.rollValue !== 0);
   const showWebRollResult = showWebSideDiceVisual && !rollingVisual && gameState.rollValue !== null;
   useEffect(() => {
     if (hasPlayedBoardDropIntro || showBoardDropIntro) return;
@@ -1286,7 +1421,7 @@ export function GameRoom() {
         width={width}
         height={height}
         centerSafeZone={boardTargetFrame}
-        bugEnabled={MATCH_AMBIENT_EFFECTS.bugEnabled}
+        bugEnabled={bugAnimationEnabled}
         dustEnabled={MATCH_AMBIENT_EFFECTS.dustEnabled}
         leafEnabled={MATCH_AMBIENT_EFFECTS.leafEnabled}
         maxVisibleBugs={MATCH_AMBIENT_EFFECTS.maxVisibleBugs}
@@ -1294,10 +1429,11 @@ export function GameRoom() {
         style={styles.ambientLayer}
       />
 
-      {isMatchStageExternal ? (
+      {isMatchStageExternal && diceAnimationEnabled ? (
         <MatchDiceRollStage
           boardFrame={boardTargetFrame}
           compact={compactSupportUi}
+          durationMs={diceAnimationDurationMs}
           playbackId={diceStagePlaybackId}
           rollValue={gameState.rollValue}
           viewportHeight={height}
@@ -1319,11 +1455,12 @@ export function GameRoom() {
           ]}
         >
           <DiceStageVisual
+            animationDurationMs={diceAnimationDurationMs}
             value={gameState.rollValue}
             rolling={rollingVisual}
             canRoll={canRoll}
             compact
-            visible={showLocalDiceVisual}
+            visible={showLocalDiceVisual && diceAnimationEnabled}
           />
         </View>
       ) : null}
@@ -1568,11 +1705,12 @@ export function GameRoom() {
                 {showWebSideDiceVisual ? (
                   <View pointerEvents="none" style={[styles.webDiceVisualSlot, { height: webDiceVisualSlotHeight }]}>
                     <DiceStageVisual
+                      animationDurationMs={diceAnimationDurationMs}
                       value={gameState.rollValue}
                       rolling={rollingVisual}
                       canRoll={canRoll}
                       compact={compactSupportUi || webDiceVisualSlotHeight < 140}
-                      visible={showLocalDiceVisual}
+                      visible={showLocalDiceVisual && diceAnimationEnabled}
                     />
                   </View>
                 ) : null}
@@ -1590,6 +1728,7 @@ export function GameRoom() {
                   <View style={[styles.webUnderTrayControl, { minHeight: webRollButtonSize }]}>
                     <View style={styles.webUnderTrayButtonWrap}>
                       <Dice
+                        animationDurationMs={diceAnimationDurationMs}
                         value={gameState.rollValue}
                         rolling={rollingVisual}
                         onRoll={handleRoll}
@@ -1606,6 +1745,7 @@ export function GameRoom() {
                   </View>
                 ) : (
                   <Dice
+                    animationDurationMs={diceAnimationDurationMs}
                     value={gameState.rollValue}
                     rolling={rollingVisual}
                     onRoll={handleRoll}
@@ -1708,6 +1848,7 @@ export function GameRoom() {
                 <View style={styles.mobileDiceRow}>
                   <View style={[styles.mobileDiceWrap, { width: mobileDiceDockWidth }]}>
                     <Dice
+                      animationDurationMs={diceAnimationDurationMs}
                       value={gameState.rollValue}
                       rolling={rollingVisual}
                       onRoll={handleRoll}
@@ -1804,15 +1945,39 @@ export function GameRoom() {
       <AudioSettingsModal
         visible={showAudioSettings}
         musicEnabled={musicEnabled}
+        musicVolume={musicVolume}
         sfxEnabled={sfxEnabled}
+        sfxVolume={sfxVolume}
+        diceAnimationEnabled={diceAnimationEnabled}
+        diceAnimationSpeed={diceAnimationSpeed}
+        bugAnimationEnabled={bugAnimationEnabled}
+        autoRollEnabled={autoRollEnabled}
         timerEnabled={botTimerEnabled}
         showTimerToggle={isOffline}
         onClose={() => setShowAudioSettings(false)}
         onToggleMusic={(enabled) => {
           void handleToggleMusic(enabled);
         }}
+        onSetMusicVolume={(volume) => {
+          void handleSetMusicVolume(volume);
+        }}
         onToggleSfx={(enabled) => {
           void handleToggleSfx(enabled);
+        }}
+        onSetSfxVolume={(volume) => {
+          void handleSetSfxVolume(volume);
+        }}
+        onToggleDiceAnimation={(enabled) => {
+          void handleToggleDiceAnimation(enabled);
+        }}
+        onSetDiceAnimationSpeed={(speed) => {
+          void handleSetDiceAnimationSpeed(speed);
+        }}
+        onToggleBugAnimation={(enabled) => {
+          void handleToggleBugAnimation(enabled);
+        }}
+        onToggleAutoRoll={(enabled) => {
+          void handleToggleAutoRoll(enabled);
         }}
         onToggleTimer={(enabled) => {
           void handleToggleBotTimer(enabled);

@@ -26,6 +26,8 @@ const mockUpdateMatchPresences = jest.fn();
 const mockSetSocketState = jest.fn();
 const mockSetRollCommandSender = jest.fn();
 const mockSetMoveCommandSender = jest.fn();
+const mockGetMatchPreferences = jest.fn();
+const mockUpdateMatchPreferences = jest.fn();
 
 const baseGameState: GameState = {
   ...createInitialState(),
@@ -169,18 +171,50 @@ jest.mock('@/hooks/useGameLoop', () => ({
   useGameLoop: jest.fn(),
 }));
 
+jest.mock('@/src/progression/useProgression', () => ({
+  useProgression: () => ({
+    progression: null,
+    refresh: jest.fn(),
+    errorMessage: null,
+  }),
+}));
+
+jest.mock('@/src/challenges/useChallenges', () => ({
+  useChallenges: () => ({
+    definitions: [],
+    progress: [],
+    refresh: jest.fn(),
+  }),
+}));
+
 jest.mock('@/services/audio', () => ({
   gameAudio: {
     getPreferences: jest.fn().mockResolvedValue({
       musicEnabled: true,
+      musicVolume: 1,
       sfxEnabled: true,
+      sfxVolume: 1,
     }),
     play: jest.fn(),
     start: jest.fn().mockResolvedValue(undefined),
     setMusicEnabled: jest.fn().mockResolvedValue(undefined),
+    setMusicVolume: jest.fn().mockResolvedValue(undefined),
     setSfxEnabled: jest.fn().mockResolvedValue(undefined),
+    setSfxVolume: jest.fn().mockResolvedValue(undefined),
     stopAll: jest.fn().mockResolvedValue(undefined),
   },
+}));
+
+jest.mock('@/services/matchPreferences', () => ({
+  DEFAULT_MATCH_PREFERENCES: {
+    autoRollEnabled: false,
+    bugAnimationEnabled: true,
+    diceAnimationEnabled: true,
+    diceAnimationSpeed: 1,
+    timerEnabled: true,
+  },
+  getMatchPreferences: (...args: unknown[]) => mockGetMatchPreferences(...args),
+  updateMatchPreferences: (...args: unknown[]) => mockUpdateMatchPreferences(...args),
 }));
 
 jest.mock('@/services/nakama', () => ({
@@ -234,6 +268,20 @@ describe('GameRoom match dice stage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    mockGetMatchPreferences.mockResolvedValue({
+      autoRollEnabled: false,
+      bugAnimationEnabled: true,
+      diceAnimationEnabled: true,
+      diceAnimationSpeed: 1,
+      timerEnabled: true,
+    });
+    mockUpdateMatchPreferences.mockResolvedValue({
+      autoRollEnabled: false,
+      bugAnimationEnabled: true,
+      diceAnimationEnabled: true,
+      diceAnimationSpeed: 1,
+      timerEnabled: true,
+    });
     mockStoreState.gameState = {
       ...baseGameState,
     };
@@ -311,5 +359,34 @@ describe('GameRoom match dice stage', () => {
     });
 
     expect(screen.queryByTestId('dice-roll-scene-host')).toBeNull();
+  });
+
+  it('auto-rolls after the configured delay when automatic rolling is enabled', async () => {
+    mockGetMatchPreferences.mockResolvedValue({
+      autoRollEnabled: true,
+      bugAnimationEnabled: true,
+      diceAnimationEnabled: true,
+      diceAnimationSpeed: 1,
+      timerEnabled: true,
+    });
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(549);
+    });
+
+    expect(mockRoll).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+
+    expect(mockRoll).toHaveBeenCalledTimes(1);
   });
 });

@@ -32,6 +32,7 @@ import {
 interface MatchDiceRollStageProps {
   boardFrame: BoardFrame | null;
   compact: boolean;
+  durationMs?: number;
   playbackId: number;
   rollValue: number | null;
   viewportHeight: number;
@@ -151,6 +152,7 @@ const EmergencyPlaceholderStage: React.FC<{
 export const MatchDiceRollStage: React.FC<MatchDiceRollStageProps> = ({
   boardFrame,
   compact,
+  durationMs = DEFAULT_DICE_ROLL_DURATION_MS,
   playbackId,
   rollValue,
   viewportHeight,
@@ -279,11 +281,11 @@ export const MatchDiceRollStage: React.FC<MatchDiceRollStageProps> = ({
       easing: Easing.out(Easing.cubic),
     });
     motionProgress.value = withTiming(1, {
-      duration: DEFAULT_DICE_ROLL_DURATION_MS,
+      duration: durationMs,
       easing: Easing.linear,
     });
     overlayOpacity.value = withDelay(
-      DEFAULT_DICE_ROLL_DURATION_MS + MATCH_DICE_STAGE_HOLD_MS,
+      durationMs + MATCH_DICE_STAGE_HOLD_MS,
       withTiming(
         0,
         {
@@ -309,6 +311,7 @@ export const MatchDiceRollStage: React.FC<MatchDiceRollStageProps> = ({
     landingZone,
     motionProgress,
     overlayOpacity,
+    durationMs,
     playbackId,
     rendererOpacity,
     rollValue,
@@ -344,7 +347,7 @@ export const MatchDiceRollStage: React.FC<MatchDiceRollStageProps> = ({
             <Animated.View pointerEvents="none" style={[styles.rendererLayer, rendererLayerStyle]}>
               <MatchDiceRollStageThree
                 key={resetKey}
-                durationMs={DEFAULT_DICE_ROLL_DURATION_MS}
+                durationMs={durationMs}
                 onError={handleRendererError}
                 onReady={handleRendererReady}
                 playbackId={activePlaybackId}

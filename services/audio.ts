@@ -9,12 +9,24 @@ type SoundEffectEvent = Exclude<AudioEvent, 'bgm' | 'roll'>;
 type AudioPreferences = {
   musicEnabled: boolean;
   sfxEnabled: boolean;
+  musicVolume: number;
+  sfxVolume: number;
 };
 
 const AUDIO_PREFERENCES_KEY = 'ur.audio.preferences';
 const DEFAULT_AUDIO_PREFERENCES: AudioPreferences = {
   musicEnabled: true,
   sfxEnabled: true,
+  musicVolume: 1,
+  sfxVolume: 1,
+};
+
+const clampAudioPreferenceVolume = (value: unknown, fallback = 1) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.min(1, value));
 };
 
 const selectSfxSource = (oggSource: number, iosSource: number) => (Platform.OS === 'ios' ? iosSource : oggSource);
@@ -126,6 +138,8 @@ class GameAudio {
       this.preferences = {
         musicEnabled: parsed.musicEnabled ?? DEFAULT_AUDIO_PREFERENCES.musicEnabled,
         sfxEnabled: parsed.sfxEnabled ?? DEFAULT_AUDIO_PREFERENCES.sfxEnabled,
+        musicVolume: clampAudioPreferenceVolume(parsed.musicVolume, DEFAULT_AUDIO_PREFERENCES.musicVolume),
+        sfxVolume: clampAudioPreferenceVolume(parsed.sfxVolume, DEFAULT_AUDIO_PREFERENCES.sfxVolume),
       };
     } catch (error) {
       this.preferences = DEFAULT_AUDIO_PREFERENCES;
@@ -154,6 +168,26 @@ class GameAudio {
     } catch (error) {
       this.warnOnce(warningId, message, error);
     }
+  }
+
+  private getPreferenceVolume(eventKey: AudioEvent) {
+    return eventKey === 'bgm' ? this.preferences.musicVolume : this.preferences.sfxVolume;
+  }
+
+  private getEffectiveVolume(eventKey: AudioEvent) {
+    return AUDIO_VOLUMES[eventKey] * this.getPreferenceVolume(eventKey);
+  }
+
+  private applyVolumeToEvent(eventKey: AudioEvent) {
+    const nextVolume = this.getEffectiveVolume(eventKey);
+    const soundGroup = this.sounds[eventKey];
+    if (!soundGroup || soundGroup.length === 0) {
+      return;
+    }
+
+    soundGroup.forEach((player) => {
+      player.volume = nextVolume;
+    });
   }
 
   private refillBgmQueue(trackCount: number) {
@@ -284,7 +318,7 @@ class GameAudio {
     try {
       player = createAudioPlayer(source, { downloadFirst: true, updateInterval: 120 });
       player.loop = false;
-      player.volume = AUDIO_VOLUMES[eventKey];
+      player.volume = this.getEffectiveVolume(eventKey);
 
       const isLoaded = await this.waitForLoad(player);
       if (isLoaded) {
@@ -534,6 +568,34 @@ class GameAudio {
     await this.ensurePreferences();
     this.preferences = { ...this.preferences, sfxEnabled: enabled };
     await this.persistPreferences();
+  }
+
+  async setMusicVolume(volume: number) {
+    await this.ensurePreferences();
+    this.preferences = { ...this.preferences, musicVolume: clampAudioPreferenceVolume(volume) };
+    await this.persistPreferences();
+
+    if (!this.initialized) {
+      return;
+    }
+
+    this.applyVolumeToEvent('bgm');
+  }
+
+  async setSfxVolume(volume: number) {
+    await this.ensurePreferences();
+    this.preferences = { ...this.preferences, sfxVolume: clampAudioPreferenceVolume(volume) };
+    await this.persistPreferences();
+
+    if (!this.initialized) {
+      return;
+    }
+
+    (Object.keys(AUDIO_VOLUMES) as AudioEvent[])
+      .filter((eventKey) => eventKey !== 'bgm')
+      .forEach((eventKey) => {
+        this.applyVolumeToEvent(eventKey);
+      });
   }
 
   async stopAll() {
