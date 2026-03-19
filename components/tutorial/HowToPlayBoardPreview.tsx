@@ -78,6 +78,7 @@ export const HowToPlayBoardPreview: React.FC<HowToPlayBoardPreviewProps> = ({ pr
       <View style={styles.boardWrap} pointerEvents="none">
         <Board
           allowInteraction
+          autoMoveHintEnabled
           boardScale={boardScale}
           gameStateOverride={currentFrame.gameState}
           highlightMode="theatrical"

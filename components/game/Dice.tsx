@@ -30,6 +30,7 @@ interface DiceProps {
   pressedIn?: boolean;
   mode?: 'panel' | 'stage';
   showNumericResult?: boolean;
+  showStatusCopy?: boolean;
   compact?: boolean;
   onResultShown?: () => void;
   showVisual?: boolean;
@@ -187,6 +188,7 @@ export const Dice: React.FC<DiceProps> = ({
   pressedIn = false,
   mode = 'panel',
   showNumericResult = true,
+  showStatusCopy = true,
   compact = false,
   onResultShown,
   showVisual = true,
@@ -525,7 +527,7 @@ export const Dice: React.FC<DiceProps> = ({
                   isMobileCompactStage && styles.mobileCompactStageTextWrap,
                 ]}
               >
-                {showNumericResult && hasSettledResult ? (
+                {showStatusCopy && showNumericResult && hasSettledResult ? (
                   <View style={[styles.compactStageResultBadge, isMobileCompactStage && styles.mobileCompactStageResultBadge]}>
                     <Text style={[styles.compactStageResultLabel, isMobileCompactStage && styles.mobileCompactStageResultLabel]}>
                       Roll
@@ -534,7 +536,7 @@ export const Dice: React.FC<DiceProps> = ({
                       {resolvedValue}
                     </Text>
                   </View>
-                ) : showNumericResult ? (
+                ) : showStatusCopy && showNumericResult ? (
                   <Text
                     numberOfLines={1}
                     style={[
@@ -547,17 +549,19 @@ export const Dice: React.FC<DiceProps> = ({
                     {compactStageTitle}
                   </Text>
                 ) : null}
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.subtitle,
-                    styles.compactSubtitle,
-                    styles.compactStageSubtitle,
-                    isMobileCompactStage && styles.mobileCompactStageSubtitle,
-                  ]}
-                >
-                  {compactStageSubtitle}
-                </Text>
+                {showStatusCopy ? (
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.subtitle,
+                      styles.compactSubtitle,
+                      styles.compactStageSubtitle,
+                      isMobileCompactStage && styles.mobileCompactStageSubtitle,
+                    ]}
+                  >
+                    {compactStageSubtitle}
+                  </Text>
+                ) : null}
               </View>
             </View>
           ) : (
@@ -568,7 +572,7 @@ export const Dice: React.FC<DiceProps> = ({
                 </View>
               ) : null}
 
-              {showNumericResult && (
+              {showStatusCopy && showNumericResult && (
                 <Text
                   style={[
                     styles.title,
@@ -579,7 +583,9 @@ export const Dice: React.FC<DiceProps> = ({
                   {title}
                 </Text>
               )}
-              <Text style={[styles.subtitle, compact && styles.compactSubtitle, isStage && styles.stageSubtitle]}>{subtitle}</Text>
+              {showStatusCopy ? (
+                <Text style={[styles.subtitle, compact && styles.compactSubtitle, isStage && styles.stageSubtitle]}>{subtitle}</Text>
+              ) : null}
             </>
           )}
         </Animated.View>

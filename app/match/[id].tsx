@@ -279,6 +279,7 @@ export function GameRoom() {
   );
   const [bugAnimationEnabled, setBugAnimationEnabled] = React.useState(DEFAULT_MATCH_PREFERENCES.bugAnimationEnabled);
   const [autoRollEnabled, setAutoRollEnabled] = React.useState(DEFAULT_MATCH_PREFERENCES.autoRollEnabled);
+  const [moveHintEnabled, setMoveHintEnabled] = React.useState(DEFAULT_MATCH_PREFERENCES.moveHintEnabled);
   const [boardSlotSize, setBoardSlotSize] = React.useState({ width: 0, height: 0 });
   const [boardTargetFrame, setBoardTargetFrame] = React.useState<BoardTargetFrame | null>(null);
   const [lightReserveSlots, setLightReserveSlots] = React.useState<ReserveSlotMeasurement[]>([]);
@@ -287,6 +288,7 @@ export function GameRoom() {
   const [hasPlayedBoardDropIntro, setHasPlayedBoardDropIntro] = React.useState(false);
   const [showReserveCascadeIntro, setShowReserveCascadeIntro] = React.useState(false);
   const [hasPlayedReserveCascadeIntro, setHasPlayedReserveCascadeIntro] = React.useState(false);
+  const introsComplete = hasPlayedBoardDropIntro && hasPlayedReserveCascadeIntro;
   const [turnTimerCycleId, setTurnTimerCycleId] = React.useState(0);
   const [activeMatchCue, setActiveMatchCue] = React.useState<MatchMomentIndicatorCue | null>(null);
   const [mobileScoreRowHeight, setMobileScoreRowHeight] = React.useState(0);
@@ -392,7 +394,7 @@ export function GameRoom() {
 
   const triggerTutorialRoll = React.useCallback(
     (value: 0 | 1 | 2 | 3 | 4) => {
-      if (!canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
+      if (!introsComplete || !canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
         return;
       }
 
@@ -438,6 +440,7 @@ export function GameRoom() {
       rollingVisual,
       serverRevision,
       setGameStateFromServer,
+      introsComplete,
     ],
   );
 
@@ -476,7 +479,7 @@ export function GameRoom() {
   }, [applyTutorialSnapshot, tutorialCoachPhase, tutorialSegmentIndex]);
 
   const triggerLocalRoll = React.useCallback(() => {
-    if (!canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
+    if (!introsComplete || !canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
       return;
     }
 
@@ -516,6 +519,7 @@ export function GameRoom() {
     rollButtonLatchPhase,
     rollingVisual,
     serverRevision,
+    introsComplete,
   ]);
 
   const setLiveMatchCue = React.useCallback((cue: MatchMomentIndicatorCue | null) => {
@@ -525,7 +529,7 @@ export function GameRoom() {
 
   const enqueueMatchCue = React.useCallback(
     (kind: MatchMomentCueKind) => {
-      if (!announcementCuesEnabled) {
+      if (!announcementCuesEnabled || !introsComplete) {
         return;
       }
 
@@ -560,7 +564,7 @@ export function GameRoom() {
 
       queuedMatchCuesRef.current.push(cue);
     },
-    [announcementCuesEnabled, matchId, setLiveMatchCue],
+    [announcementCuesEnabled, introsComplete, matchId, setLiveMatchCue],
   );
 
   const handleMatchCueHidden = React.useCallback(
@@ -576,14 +580,14 @@ export function GameRoom() {
   );
 
   useEffect(() => {
-    if (announcementCuesEnabled) {
+    if (announcementCuesEnabled && introsComplete) {
       return;
     }
 
     queuedMatchCuesRef.current = [];
     lastQueuedMatchCueRef.current = null;
     setLiveMatchCue(null);
-  }, [announcementCuesEnabled, setLiveMatchCue]);
+  }, [announcementCuesEnabled, introsComplete, setLiveMatchCue]);
 
   const syncBoardTargetFrame = React.useCallback(() => {
     const boardImageLayout = boardImageLayoutRef.current;
@@ -910,7 +914,7 @@ export function GameRoom() {
     setRollingVisual(false);
   }, [clearRollTimer, diceAnimationEnabled]);
   useEffect(() => {
-    if (!cueSystemReady || !matchId || !hasAssignedColor) {
+    if (!cueSystemReady || !matchId || !hasAssignedColor || !introsComplete) {
       return;
     }
 
@@ -924,7 +928,7 @@ export function GameRoom() {
 
     hasShownOpeningCueRef.current = matchId;
     enqueueMatchCue('play');
-  }, [cueSystemReady, enqueueMatchCue, gameState.history.length, gameState.phase, gameState.winner, hasAssignedColor, matchId]);
+  }, [cueSystemReady, enqueueMatchCue, gameState.history.length, gameState.phase, gameState.winner, hasAssignedColor, introsComplete, matchId]);
   useEffect(() => {
     const previous = previousTurnTimerStateRef.current;
     const nextSnapshot = {
@@ -953,6 +957,7 @@ export function GameRoom() {
     }
 
     if (
+      !introsComplete ||
       isScriptedTutorialPhase ||
       (isOffline && !botTimerEnabled) ||
       !isMyTurn ||
@@ -1004,6 +1009,7 @@ export function GameRoom() {
     isMyTurn,
     isOffline,
     isScriptedTutorialPhase,
+    introsComplete,
     triggerLocalRoll,
     turnTimerCycleId,
     visualTurnTimerDurationMs,
@@ -1015,6 +1021,7 @@ export function GameRoom() {
     }
 
     if (
+      !introsComplete ||
       !autoRollEnabled ||
       isScriptedTutorialPhase ||
       !canRoll ||
@@ -1042,6 +1049,7 @@ export function GameRoom() {
   }, [
     autoRollEnabled,
     canRoll,
+    introsComplete,
     isScriptedTutorialPhase,
     rollButtonLatchPhase,
     rollingVisual,
@@ -1328,6 +1336,7 @@ export function GameRoom() {
       setDiceAnimationSpeed(matchPreferences.diceAnimationSpeed);
       setBugAnimationEnabled(matchPreferences.bugAnimationEnabled);
       setAutoRollEnabled(matchPreferences.autoRollEnabled);
+      setMoveHintEnabled(matchPreferences.moveHintEnabled);
     };
 
     void loadPreferences();
@@ -1536,6 +1545,11 @@ export function GameRoom() {
     await updateMatchPreferences({ autoRollEnabled: enabled });
   };
 
+  const handleToggleMoveHint = async (enabled: boolean) => {
+    setMoveHintEnabled(enabled);
+    await updateMatchPreferences({ moveHintEnabled: enabled });
+  };
+
   const handleToggleBotTimer = async (enabled: boolean) => {
     forceMoveAfterRollRef.current = false;
     setBotTimerEnabled(enabled);
@@ -1734,16 +1748,17 @@ export function GameRoom() {
   }, [boardScale, mobileBoardVisualOffset, mobileScoreRowHeight, syncBoardTargetFrame]);
 
   const shouldHideReservePieces = !hasPlayedReserveCascadeIntro;
-  const isTurnTimerEnabled = !isScriptedTutorialPhase && (!isOffline || botTimerEnabled);
+  const isTurnTimerEnabled = introsComplete && !isScriptedTutorialPhase && (!isOffline || botTimerEnabled);
   const isVisualTurnTimerRunning = isTurnTimerEnabled && gameState.phase !== 'ended' && gameState.winner === null;
-  const showDestinationHighlights = !rollingVisual && gameState.rollValue !== null;
+  const showDestinationHighlights = introsComplete && !rollingVisual && gameState.rollValue !== null;
   const displayedValidMoves = showDestinationHighlights ? validMoves : [];
   const showMobileRollResult =
+    introsComplete &&
     isMobileLayout &&
     !rollingVisual &&
     gameState.rollValue !== null &&
     (!diceAnimationEnabled || gameState.rollValue !== 0);
-  const showWebRollResult = showWebSideDiceVisual && !rollingVisual && gameState.rollValue !== null;
+  const showWebRollResult = introsComplete && showWebSideDiceVisual && !rollingVisual && gameState.rollValue !== null;
   useEffect(() => {
     if (hasPlayedBoardDropIntro || showBoardDropIntro) return;
     if (!isBoardTargetFrameReady) return;
@@ -1781,6 +1796,7 @@ export function GameRoom() {
     >
       <View style={[styles.liveBoardWrap, !hasPlayedBoardDropIntro && styles.liveBoardHidden]}>
         <Board
+          autoMoveHintEnabled={moveHintEnabled}
           showRailHints
           highlightMode="theatrical"
           validMovesOverride={displayedValidMoves}
@@ -1825,7 +1841,7 @@ export function GameRoom() {
         style={styles.ambientLayer}
       />
 
-      {isMatchStageExternal && diceAnimationEnabled ? (
+      {introsComplete && isMatchStageExternal && diceAnimationEnabled ? (
         <MatchDiceRollStage
           boardFrame={boardTargetFrame}
           compact={compactSupportUi}
@@ -1837,7 +1853,7 @@ export function GameRoom() {
           visible
         />
       ) : null}
-      {showMobileWebDetachedDiceVisual && mobileWebDiceVisualFrame ? (
+      {introsComplete && showMobileWebDetachedDiceVisual && mobileWebDiceVisualFrame ? (
         <View
           pointerEvents="none"
           style={[
@@ -1854,9 +1870,9 @@ export function GameRoom() {
             animationDurationMs={diceAnimationDurationMs}
             value={gameState.rollValue}
             rolling={rollingVisual}
-            canRoll={canRoll}
+            canRoll={introsComplete && canRoll}
             compact
-            visible={showLocalDiceVisual && diceAnimationEnabled}
+            visible={introsComplete && showLocalDiceVisual && diceAnimationEnabled}
           />
         </View>
       ) : null}
@@ -1975,7 +1991,7 @@ export function GameRoom() {
             <EdgeScore
               label="Light Score"
               value={`${gameState.light.finishedCount}/7`}
-              active={isMyTurn}
+              active={introsComplete && isMyTurn}
             />
             {isMobileLayout && isTurnTimerEnabled ? (
               <View style={styles.scoreTimerSlot}>
@@ -1996,7 +2012,7 @@ export function GameRoom() {
             <EdgeScore
               label="Dark Score"
               value={`${gameState.dark.finishedCount}/7`}
-              active={!isMyTurn}
+              active={introsComplete && !isMyTurn}
               align="right"
               style={isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined}
             />
@@ -2038,7 +2054,7 @@ export function GameRoom() {
                   tokenVariant="light"
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={lightReserve}
-                  active={isMyTurn}
+                  active={introsComplete && isMyTurn}
                   hideReservePieces={shouldHideReservePieces}
                   onReserveSlotsLayout={setLightReserveSlots}
                 />
@@ -2109,9 +2125,9 @@ export function GameRoom() {
                       animationDurationMs={diceAnimationDurationMs}
                       value={gameState.rollValue}
                       rolling={rollingVisual}
-                      canRoll={canRoll}
+                      canRoll={introsComplete && canRoll}
                       compact={compactSupportUi || webDiceVisualSlotHeight < 140}
-                      visible={showLocalDiceVisual && diceAnimationEnabled}
+                      visible={introsComplete && showLocalDiceVisual && diceAnimationEnabled}
                     />
                   </View>
                 ) : null}
@@ -2121,7 +2137,7 @@ export function GameRoom() {
                   tokenVariant="dark"
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={darkReserve}
-                  active={!isMyTurn}
+                  active={introsComplete && !isMyTurn}
                   hideReservePieces={shouldHideReservePieces}
                   onReserveSlotsLayout={setDarkReserveSlots}
                 />
@@ -2133,11 +2149,12 @@ export function GameRoom() {
                         value={gameState.rollValue}
                         rolling={rollingVisual}
                         onRoll={handleRoll}
-                        canRoll={canRoll}
-                        pressedIn={isRollButtonPressedIn}
+                        canRoll={introsComplete && canRoll}
+                        pressedIn={introsComplete ? isRollButtonPressedIn : false}
                         mode="stage"
                         compact={compactSupportUi}
                         showNumericResult={false}
+                        showStatusCopy={introsComplete}
                         showVisual={false}
                         visualPlacement={detachedDiceVisualPlacement}
                         artSize={webRollButtonSize}
@@ -2150,11 +2167,12 @@ export function GameRoom() {
                     value={gameState.rollValue}
                     rolling={rollingVisual}
                     onRoll={handleRoll}
-                    canRoll={canRoll}
-                    pressedIn={isRollButtonPressedIn}
+                    canRoll={introsComplete && canRoll}
+                    pressedIn={introsComplete ? isRollButtonPressedIn : false}
                     mode="stage"
                     compact={compactSupportUi}
-                    showVisual={showLocalDiceVisual}
+                    showStatusCopy={introsComplete}
+                    showVisual={introsComplete && showLocalDiceVisual}
                     visualPlacement={detachedDiceVisualPlacement}
                   />
                 )}
@@ -2216,7 +2234,7 @@ export function GameRoom() {
                       tokenVariant="light"
                       piecePixelSize={scaledReservePiecePixelSize}
                       reserveCount={lightReserve}
-                      active={isMyTurn}
+                      active={introsComplete && isMyTurn}
                       hideReservePieces={shouldHideReservePieces}
                       onReserveSlotsLayout={setLightReserveSlots}
                     />
@@ -2229,7 +2247,7 @@ export function GameRoom() {
                       tokenVariant="dark"
                       piecePixelSize={scaledReservePiecePixelSize}
                       reserveCount={darkReserve}
-                      active={!isMyTurn}
+                      active={introsComplete && !isMyTurn}
                       hideReservePieces={shouldHideReservePieces}
                       onReserveSlotsLayout={setDarkReserveSlots}
                     />
@@ -2253,12 +2271,13 @@ export function GameRoom() {
                       value={gameState.rollValue}
                       rolling={rollingVisual}
                       onRoll={handleRoll}
-                      canRoll={canRoll}
-                      pressedIn={isRollButtonPressedIn}
+                      canRoll={introsComplete && canRoll}
+                      pressedIn={introsComplete ? isRollButtonPressedIn : false}
                       mode="stage"
                       compact={compactSupportUi}
                       showNumericResult={false}
-                      showVisual={showLocalDiceVisual && !showMobileWebDetachedDiceVisual}
+                      showStatusCopy={introsComplete}
+                      showVisual={introsComplete && showLocalDiceVisual && !showMobileWebDetachedDiceVisual}
                       visualPlacement={detachedDiceVisualPlacement}
                     />
                   </View>
@@ -2296,7 +2315,7 @@ export function GameRoom() {
         }}
       />
 
-      {showScoreBanner && (
+      {introsComplete && showScoreBanner && (
         <View pointerEvents="none" style={styles.scoreBannerWrap}>
           <View style={styles.scoreBanner}>
             <Text style={styles.scoreBannerText}>You scored another point!</Text>
@@ -2304,11 +2323,13 @@ export function GameRoom() {
         </View>
       )}
 
-      <MatchMomentIndicator
-        cue={activeMatchCue}
-        fontFamily={cueFontFamily}
-        onHidden={handleMatchCueHidden}
-      />
+      {introsComplete ? (
+        <MatchMomentIndicator
+          cue={activeMatchCue}
+          fontFamily={cueFontFamily}
+          onHidden={handleMatchCueHidden}
+        />
+      ) : null}
 
       <Modal
         visible={showWinModal}
@@ -2356,6 +2377,7 @@ export function GameRoom() {
         diceAnimationSpeed={diceAnimationSpeed}
         bugAnimationEnabled={bugAnimationEnabled}
         autoRollEnabled={autoRollEnabled}
+        moveHintEnabled={moveHintEnabled}
         timerEnabled={botTimerEnabled}
         timerDurationSeconds={turnTimerSeconds}
         showTimerToggle={isOffline}
@@ -2386,6 +2408,9 @@ export function GameRoom() {
         }}
         onToggleAutoRoll={(enabled) => {
           void handleToggleAutoRoll(enabled);
+        }}
+        onToggleMoveHint={(enabled) => {
+          void handleToggleMoveHint(enabled);
         }}
         onSetTimerDuration={(seconds) => {
           void handleSetTurnTimerDuration(seconds);

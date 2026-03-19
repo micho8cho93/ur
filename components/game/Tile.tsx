@@ -345,8 +345,8 @@ export const Tile: React.FC<TileProps> = ({
           <Piece
             color={piece.color}
             pixelSize={piecePixelSize}
-            highlight={isValidTarget}
-            state={isValidTarget ? 'active' : 'idle'}
+            highlight={isValidTarget || isSelectedPiece}
+            state={isValidTarget || isSelectedPiece ? 'active' : 'idle'}
           />
         </View>
       )}

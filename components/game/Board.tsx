@@ -36,6 +36,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 interface BoardProps {
   showRailHints?: boolean;
+  autoMoveHintEnabled?: boolean;
   highlightMode?: 'subtle' | 'theatrical';
   boardScale?: number;
   orientation?: BoardOrientation;
@@ -132,8 +133,19 @@ const BOARD_ART_ALIGNMENT: BoardArtAlignmentConfig = {
   insetLeft: 0.36,
 };
 
+const areMovesEqual = (
+  first: MoveAction | null | undefined,
+  second: MoveAction | null | undefined,
+) =>
+  !!first &&
+  !!second &&
+  first.pieceId === second.pieceId &&
+  first.fromIndex === second.fromIndex &&
+  first.toIndex === second.toIndex;
+
 export const Board: React.FC<BoardProps> = ({
   showRailHints = false,
+  autoMoveHintEnabled = false,
   highlightMode = 'theatrical',
   boardScale = 1,
   orientation = 'horizontal',
@@ -332,6 +344,30 @@ export const Board: React.FC<BoardProps> = ({
     [validMoves],
   );
   const scoringMoves = useMemo(() => validMoves.filter((move) => move.toIndex === PATH_LENGTH), [validMoves]);
+  const suggestedMove = useMemo(() => {
+    if (!autoMoveHintEnabled || !isInteractiveTurn || gameState.phase !== 'moving' || validMoves.length === 0) {
+      return null;
+    }
+
+    return [...validMoves].sort((left, right) => {
+      const leftUsesBoardPiece = left.fromIndex >= 0 ? 1 : 0;
+      const rightUsesBoardPiece = right.fromIndex >= 0 ? 1 : 0;
+
+      if (leftUsesBoardPiece !== rightUsesBoardPiece) {
+        return rightUsesBoardPiece - leftUsesBoardPiece;
+      }
+
+      if (left.toIndex !== right.toIndex) {
+        return right.toIndex - left.toIndex;
+      }
+
+      if (left.fromIndex !== right.fromIndex) {
+        return right.fromIndex - left.fromIndex;
+      }
+
+      return left.pieceId.localeCompare(right.pieceId);
+    })[0] ?? null;
+  }, [autoMoveHintEnabled, gameState.phase, isInteractiveTurn, validMoves]);
 
   const spawnCueColor: 'light' | 'dark' = gameState.currentTurn;
   const hasScoringMove = scoringMoves.length > 0;
@@ -360,9 +396,10 @@ export const Board: React.FC<BoardProps> = ({
       })()
       : null;
 
-  const previewMove = selectedMove ?? hoveredMove;
+  const hintedMove = !selectedMove && !hoveredMove ? suggestedMove : null;
+  const previewMove = selectedMove ?? hoveredMove ?? hintedMove;
 
-  const previewPoints = (() => {
+  const previewPoints = useMemo(() => {
     if (!previewMove) return [] as Point[];
 
     const color: 'light' | 'dark' = previewMove.pieceId.startsWith('dark') ? 'dark' : 'light';
@@ -404,7 +441,7 @@ export const Board: React.FC<BoardProps> = ({
     }
 
     return points;
-  })();
+  }, [previewMove]);
 
   const previewSegments = useMemo(() => {
     const segments: { x: number; y: number; width: number; angle: number }[] = [];
@@ -426,6 +463,7 @@ export const Board: React.FC<BoardProps> = ({
 
     return segments;
   }, [previewPoints]);
+  const previewDestinationPoint = previewPoints[previewPoints.length - 1] ?? null;
 
   const boardArtLayout = useMemo<BoardArtImageLayout>(() => {
     // Fit artwork from gameplay grid measurements so visuals follow interaction geometry.
@@ -781,16 +819,19 @@ export const Board: React.FC<BoardProps> = ({
             (move) => move.toIndex !== PATH_LENGTH && mapAssignedIndexToCoord(move.toIndex, r, c),
           );
 
-        const isSelectedDestination =
-          !!selectedMove &&
-          selectedMove.toIndex !== PATH_LENGTH &&
-          mapAssignedIndexToCoord(selectedMove.toIndex, r, c);
+        const isPreviewDestination =
+          !!previewMove &&
+          previewMove.toIndex !== PATH_LENGTH &&
+          mapAssignedIndexToCoord(previewMove.toIndex, r, c);
 
         const isSelectedPiece =
           !!selectedMove && selectedMove.fromIndex >= 0 && mapAssignedIndexToCoord(selectedMove.fromIndex, r, c);
+        const isHintedPiece =
+          !!hintedMove && hintedMove.fromIndex >= 0 && mapAssignedIndexToCoord(hintedMove.fromIndex, r, c);
+        const isFocusedPiece = isSelectedPiece || isHintedPiece;
 
-        const isValidTarget = isSelectedDestination || isDestination;
-        const isInteractable = isInteractiveTurn && (isValidTarget || !!moveFromTile || isSelectedPiece);
+        const isValidTarget = isPreviewDestination;
+        const isInteractable = isInteractiveTurn && (isDestination || !!moveFromTile || isFocusedPiece);
 
         rowCells.push(
           <View
@@ -811,7 +852,7 @@ export const Board: React.FC<BoardProps> = ({
               piecePixelSize={boardPiecePixelSize}
               piece={piece}
               isValidTarget={isValidTarget}
-              isSelectedPiece={isSelectedPiece}
+              isSelectedPiece={isFocusedPiece}
               isInteractive={isInteractable}
               highlightMode={highlightMode}
               skin="transparent"
@@ -836,9 +877,9 @@ export const Board: React.FC<BoardProps> = ({
   const spawnCueSelected =
     !!spawnMove &&
     !!selectedMove &&
-    spawnMove.pieceId === selectedMove.pieceId &&
-    spawnMove.fromIndex === selectedMove.fromIndex &&
-    spawnMove.toIndex === selectedMove.toIndex;
+    areMovesEqual(spawnMove, selectedMove);
+  const spawnCueHinted = !!spawnMove && areMovesEqual(spawnMove, hintedMove);
+  const spawnCueActive = spawnCueSelected || spawnCueHinted;
   const scoreCueSelected = !!selectedMove && selectedMove.toIndex === PATH_LENGTH;
 
   const handleBoardImageLayout = (event: LayoutChangeEvent) => {
@@ -924,7 +965,7 @@ export const Board: React.FC<BoardProps> = ({
         </View>
       </View>
 
-      {previewSegments.length > 0 && (
+      {(previewSegments.length > 0 || previewDestinationPoint) && (
         <View pointerEvents="none" style={styles.previewLayer}>
           {previewSegments.map((segment, index) => (
             <Animated.View
@@ -941,19 +982,19 @@ export const Board: React.FC<BoardProps> = ({
               ]}
             />
           ))}
-          {previewPoints.map((point, index) => (
+          {previewDestinationPoint ? (
             <Animated.View
-              key={`point-${index}`}
+              key="destination-point"
               style={[
                 styles.previewPoint,
                 {
-                  left: point.x - 7,
-                  top: point.y - 7,
+                  left: previewDestinationPoint.x - 7,
+                  top: previewDestinationPoint.y - 7,
                 },
                 previewPulseStyle,
               ]}
             />
-          ))}
+          ) : null}
         </View>
       )}
 
@@ -1015,7 +1056,7 @@ export const Board: React.FC<BoardProps> = ({
           <Animated.View
             style={[
               styles.spawnCue,
-              spawnCueSelected && styles.spawnCueSelected,
+              spawnCueActive && styles.spawnCueSelected,
               !isInteractiveTurn && styles.spawnCueReadonly,
               { borderRadius: spawnCueSize / 2 },
               cueAnimatedStyle,
@@ -1025,8 +1066,8 @@ export const Board: React.FC<BoardProps> = ({
               color={spawnCueColor}
               pixelSize={boardPiecePixelSize}
               variant={spawnCueColor}
-              highlight={spawnCueSelected}
-              state={spawnCueSelected ? 'active' : 'idle'}
+              highlight={spawnCueActive}
+              state={spawnCueActive ? 'active' : 'idle'}
             />
           </Animated.View>
         </Pressable>

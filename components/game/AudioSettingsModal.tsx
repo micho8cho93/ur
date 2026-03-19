@@ -41,6 +41,7 @@ interface AudioSettingsModalProps {
   diceAnimationSpeed: DiceAnimationSpeed;
   bugAnimationEnabled: boolean;
   autoRollEnabled: boolean;
+  moveHintEnabled: boolean;
   timerEnabled?: boolean;
   timerDurationSeconds: TurnTimerSeconds;
   showTimerToggle?: boolean;
@@ -54,6 +55,7 @@ interface AudioSettingsModalProps {
   onSetDiceAnimationSpeed: (speed: DiceAnimationSpeed) => void;
   onToggleBugAnimation: (enabled: boolean) => void;
   onToggleAutoRoll: (enabled: boolean) => void;
+  onToggleMoveHint: (enabled: boolean) => void;
   onSetTimerDuration: (seconds: TurnTimerSeconds) => void;
   onToggleTimer?: (enabled: boolean) => void;
 }
@@ -156,6 +158,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   diceAnimationSpeed,
   bugAnimationEnabled,
   autoRollEnabled,
+  moveHintEnabled,
   timerEnabled = true,
   timerDurationSeconds = DEFAULT_MATCH_PREFERENCES.timerDurationSeconds,
   showTimerToggle = false,
@@ -169,6 +172,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   onSetDiceAnimationSpeed,
   onToggleBugAnimation,
   onToggleAutoRoll,
+  onToggleMoveHint,
   onSetTimerDuration,
   onToggleTimer,
 }) => (
@@ -251,6 +255,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             hint="Trigger your roll shortly after your turn begins"
             value={autoRollEnabled}
             onValueChange={onToggleAutoRoll}
+          />
+
+          <ToggleSettingRow
+            title="Available Move Hint"
+            hint="Highlight one legal piece or reserve entry and preview its route by default"
+            value={moveHintEnabled}
+            onValueChange={onToggleMoveHint}
           />
 
           {showTimerToggle ? (

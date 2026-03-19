@@ -12,6 +12,7 @@ export type MatchPreferences = {
   bugAnimationEnabled: boolean;
   diceAnimationEnabled: boolean;
   diceAnimationSpeed: DiceAnimationSpeed;
+  moveHintEnabled: boolean;
   timerDurationSeconds: TurnTimerSeconds;
   timerEnabled: boolean;
 };
@@ -25,6 +26,7 @@ export const DEFAULT_MATCH_PREFERENCES: MatchPreferences = {
   bugAnimationEnabled: true,
   diceAnimationEnabled: true,
   diceAnimationSpeed: 1,
+  moveHintEnabled: true,
   timerDurationSeconds: 20,
   timerEnabled: true,
 };
@@ -62,6 +64,7 @@ const normalizeMatchPreferences = (
   bugAnimationEnabled: preferences?.bugAnimationEnabled ?? DEFAULT_MATCH_PREFERENCES.bugAnimationEnabled,
   diceAnimationEnabled: preferences?.diceAnimationEnabled ?? DEFAULT_MATCH_PREFERENCES.diceAnimationEnabled,
   diceAnimationSpeed: normalizeDiceAnimationSpeed(preferences?.diceAnimationSpeed),
+  moveHintEnabled: preferences?.moveHintEnabled ?? DEFAULT_MATCH_PREFERENCES.moveHintEnabled,
   timerDurationSeconds: normalizeTurnTimerSeconds(preferences?.timerDurationSeconds),
   timerEnabled: preferences?.timerEnabled ?? legacyTimerEnabled,
 });
