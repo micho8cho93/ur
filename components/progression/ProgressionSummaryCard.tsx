@@ -13,7 +13,7 @@ interface ProgressionSummaryCardProps {
 }
 
 export const ProgressionSummaryCard: React.FC<ProgressionSummaryCardProps> = ({ style }) => {
-  const { progression, errorMessage, unsupportedMessage, isLoading, isRefreshing, refresh } = useProgression();
+  const { progression, errorMessage, isLoading, isRefreshing, refresh } = useProgression();
   const [showModal, setShowModal] = React.useState(false);
 
   return (
@@ -36,11 +36,6 @@ export const ProgressionSummaryCard: React.FC<ProgressionSummaryCardProps> = ({ 
           <View style={styles.stateBlock}>
             <Text style={styles.stateTitle}>Inscribing your record...</Text>
             <Text style={styles.stateText}>Fetching your latest XP and rank from the royal archive.</Text>
-          </View>
-        ) : unsupportedMessage ? (
-          <View style={styles.stateBlock}>
-            <Text style={styles.stateTitle}>XP tracking unavailable</Text>
-            <Text style={styles.stateText}>{unsupportedMessage}</Text>
           </View>
         ) : errorMessage ? (
           <View style={styles.stateBlock}>
