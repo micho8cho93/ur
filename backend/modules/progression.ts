@@ -21,7 +21,7 @@ export type RuntimeStorageObject = RuntimeRecord & {
   version?: string;
 };
 
-export type XpRewardSource = "pvp_win" | "challenge_completion";
+export type XpRewardSource = "pvp_win" | "bot_win" | "challenge_completion";
 
 export type StoredXpRewardRecord = {
   userId: string;
@@ -193,7 +193,7 @@ export const normalizeStoredXpRewardRecord = (rawValue: unknown): StoredXpReward
     !ledgerKey ||
     !sourceId ||
     !awardedAt ||
-    (source !== "pvp_win" && source !== "challenge_completion") ||
+    (source !== "pvp_win" && source !== "bot_win" && source !== "challenge_completion") ||
     typeof progression !== "object" ||
     progression === null
   ) {
@@ -532,7 +532,9 @@ export const awardXp = (
   throw new Error(`Unable to persist progression award for user ${userId} on ledger ${ledgerKey}.`);
 };
 
-const buildMatchWinAwardResponse = (result: XpRewardResult): ProgressionAwardResponse => ({
+const buildMatchWinAwardResponse = (
+  result: XpRewardResult & { source: XpSource }
+): ProgressionAwardResponse => ({
   matchId: result.matchId ?? result.sourceId,
   source: result.source,
   duplicate: result.duplicate,
@@ -564,7 +566,7 @@ export const awardXpForMatchWin = (
       sourceId: params.matchId,
       matchId: params.matchId,
       awardedXp: getXpAwardAmount(source),
-    })
+    }) as XpRewardResult & { source: XpSource }
   );
 };
 

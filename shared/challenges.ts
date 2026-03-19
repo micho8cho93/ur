@@ -80,6 +80,14 @@ export type ChallengeDefinitionsRpcResponse = {
 
 export type UserChallengeProgressRpcResponse = UserChallengeProgressSnapshot;
 
+export type CompletedBotMatchRewardMode = "standard" | "base_win_only";
+
+export type SubmitCompletedBotMatchRpcRequest = {
+  summary: CompletedMatchSummary;
+  tutorialId?: string | null;
+  rewardMode?: CompletedBotMatchRewardMode;
+};
+
 export type SubmitCompletedBotMatchRpcResponse = {
   progressionAward: ProgressionAwardResponse | null;
 };
@@ -274,6 +282,24 @@ export const isCompletedMatchSummary = (value: unknown): value is CompletedMatch
       (reason) => reason === "progress_deficit" || reason === "borne_off_deficit"
     ) &&
     typeof summary.timestamp === "string"
+  );
+};
+
+export const isCompletedBotMatchRewardMode = (value: unknown): value is CompletedBotMatchRewardMode =>
+  value === "standard" || value === "base_win_only";
+
+export const isSubmitCompletedBotMatchRpcRequest = (
+  value: unknown
+): value is SubmitCompletedBotMatchRpcRequest => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const payload = value as SubmitCompletedBotMatchRpcRequest;
+  return (
+    isCompletedMatchSummary(payload.summary) &&
+    (typeof payload.tutorialId === "string" || payload.tutorialId === null || typeof payload.tutorialId === "undefined") &&
+    (typeof payload.rewardMode === "undefined" || isCompletedBotMatchRewardMode(payload.rewardMode))
   );
 };
 

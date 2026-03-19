@@ -1,4 +1,5 @@
 import {
+  CompletedBotMatchRewardMode,
   CompletedMatchSummary,
   SubmitCompletedBotMatchRpcResponse,
   isSubmitCompletedBotMatchRpcResponse,
@@ -20,7 +21,11 @@ const normalizeRpcPayload = (payload: unknown): unknown => {
 };
 
 export const submitCompletedBotMatchResult = async (
-  summary: CompletedMatchSummary
+  params: {
+    summary: CompletedMatchSummary;
+    tutorialId?: string | null;
+    rewardMode?: CompletedBotMatchRewardMode;
+  }
 ): Promise<SubmitCompletedBotMatchRpcResponse> => {
   const session = await nakamaService.loadSession();
   if (!session) {
@@ -29,7 +34,7 @@ export const submitCompletedBotMatchResult = async (
 
   const response = await nakamaService
     .getClient()
-    .rpc(session, RPC_SUBMIT_COMPLETED_BOT_MATCH, JSON.stringify({ summary }));
+    .rpc(session, RPC_SUBMIT_COMPLETED_BOT_MATCH, params as unknown as object);
   const payload = normalizeRpcPayload(response.payload);
 
   if (!isSubmitCompletedBotMatchRpcResponse(payload)) {

@@ -16,10 +16,11 @@ import { GameStageHUD } from '@/components/game/GameStageHUD';
 import { MatchDiceRollStage } from '@/components/game/MatchDiceRollStage';
 import { MatchMomentIndicator } from '@/components/game/MatchMomentIndicator';
 import type { MatchMomentIndicatorCue } from '@/components/game/MatchMomentIndicator';
-import { FiveStepTutorialModal } from '@/components/FiveStepTutorialModal';
+import { HowToPlayModal } from '@/components/HowToPlayModal';
 import { PieceRail, ReserveSlotMeasurement } from '@/components/game/PieceRail';
 import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
 import { ProgressionAwardSummary } from '@/components/progression/ProgressionAwardSummary';
+import { PlayTutorialCoachModal } from '@/components/tutorial/PlayTutorialCoachModal';
 import { Modal } from '@/components/ui/Modal';
 import { boxShadow, textShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
@@ -27,7 +28,8 @@ import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
 import { useGameLoop } from '@/hooks/useGameLoop';
 import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty } from '@/logic/bot/types';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
-import type { GameState, PlayerColor } from '@/logic/types';
+import { applyMove as applyEngineMove } from '@/logic/engine';
+import type { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { gameAudio } from '@/services/audio';
 import { submitCompletedBotMatchResult } from '@/services/botMatchRewards';
 import {
@@ -50,6 +52,13 @@ import {
 } from '@/src/offlineMatch/offlineMatchRewards';
 import { useProgression } from '@/src/progression/useProgression';
 import { useGameStore } from '@/store/useGameStore';
+import {
+  PLAYTHROUGH_TUTORIAL_ID,
+  PLAYTHROUGH_TUTORIAL_LESSON_COUNT,
+  PLAYTHROUGH_TUTORIAL_SEGMENTS,
+  isPlaythroughTutorialId,
+} from '@/tutorials/playthroughTutorial';
+import type { CompletedBotMatchRewardMode } from '@/shared/challenges';
 import { isProgressionAwardNotificationPayload } from '@/shared/progression';
 import {
   MatchOpCode,
@@ -90,6 +99,12 @@ const AUTO_ROLL_DELAY_MS = 550;
 
 type MatchMomentCueKind = 'play' | 'yourTurn' | 'zero' | 'stuck' | 'timeout' | 'rosette';
 type RollButtonLatchPhase = 'idle' | 'awaitingOutcome' | 'awaitingTurnReset';
+type TutorialCoachPhase =
+  | 'idle'
+  | 'lesson_intro'
+  | 'lesson_play'
+  | 'lesson_result'
+  | 'freeplay';
 
 const MATCH_MOMENT_CUES: Record<MatchMomentCueKind, Omit<MatchMomentIndicatorCue, 'id'>> = {
   play: {
@@ -149,11 +164,15 @@ interface BoardTargetFrame {
   height: number;
 }
 
+const isMoveMatch = (left: MoveAction, right: MoveAction) =>
+  left.pieceId === right.pieceId && left.fromIndex === right.fromIndex && left.toIndex === right.toIndex;
+
 export function GameRoom() {
-  const { id, offline, botDifficulty } = useLocalSearchParams<{
+  const { id, offline, botDifficulty, tutorial } = useLocalSearchParams<{
     id?: string | string[];
     offline?: string | string[];
     botDifficulty?: string | string[];
+    tutorial?: string | string[];
   }>();
   const router = useRouter();
   const { width, height } = useWindowDimensions();
@@ -170,9 +189,14 @@ export function GameRoom() {
     () => (Array.isArray(botDifficulty) ? botDifficulty[0] : botDifficulty),
     [botDifficulty],
   );
+  const tutorialParam = useMemo(() => (Array.isArray(tutorial) ? tutorial[0] : tutorial), [tutorial]);
   const resolvedBotDifficulty = useMemo(
     () => (isBotDifficulty(botDifficultyParam) ? botDifficultyParam : DEFAULT_BOT_DIFFICULTY),
     [botDifficultyParam],
+  );
+  const tutorialId = useMemo(
+    () => (isPlaythroughTutorialId(tutorialParam) ? tutorialParam : null),
+    [tutorialParam],
   );
   const isOffline = useMemo(
     () =>
@@ -197,6 +221,7 @@ export function GameRoom() {
   const matchToken = useGameStore((state) => state.matchToken);
   const serverRevision = useGameStore((state) => state.serverRevision);
   const applyServerSnapshot = useGameStore((state) => state.applyServerSnapshot);
+  const setGameStateFromServer = useGameStore((state) => state.setGameStateFromServer);
   const setPlayerColor = useGameStore((state) => state.setPlayerColor);
   const setOnlineMode = useGameStore((state) => state.setOnlineMode);
   const updateMatchPresences = useGameStore((state) => state.updateMatchPresences);
@@ -210,6 +235,10 @@ export function GameRoom() {
     progress: challengeProgress,
     refresh: refreshChallenges,
   } = useChallenges();
+  const isPlaythroughTutorialMatch = tutorialId === PLAYTHROUGH_TUTORIAL_ID;
+  const tutorialRewardMode: CompletedBotMatchRewardMode | undefined = isPlaythroughTutorialMatch
+    ? 'base_win_only'
+    : undefined;
 
   const hasAssignedColor = playerColor === 'light' || playerColor === 'dark';
   const canSyncOfflineBotRewards = isOffline && isNakamaEnabled() && hasNakamaConfig() && Boolean(user);
@@ -256,6 +285,12 @@ export function GameRoom() {
   const [turnTimerCycleId, setTurnTimerCycleId] = React.useState(0);
   const [activeMatchCue, setActiveMatchCue] = React.useState<MatchMomentIndicatorCue | null>(null);
   const [mobileScoreRowHeight, setMobileScoreRowHeight] = React.useState(0);
+  const [tutorialCoachPhase, setTutorialCoachPhase] = React.useState<TutorialCoachPhase>('idle');
+  const [tutorialSegmentIndex, setTutorialSegmentIndex] = React.useState(0);
+  const isScriptedTutorialPhase =
+    isPlaythroughTutorialMatch &&
+    tutorialCoachPhase !== 'idle' &&
+    tutorialCoachPhase !== 'freeplay';
   const boardMeasureRef = useRef<View | null>(null);
   const boardImageLayoutRef = useRef<BoardImageLayoutFrame | null>(null);
   const localRollVisualPendingRef = useRef(false);
@@ -285,11 +320,45 @@ export function GameRoom() {
     matchId: matchId ?? null,
     state: gameState,
   });
+  const tutorialHydratingStateRef = useRef(false);
   const previousTurnTimerStateRef = useRef<{
     matchId: string | null;
     currentTurn: PlayerColor;
     phase: typeof gameState.phase;
   } | null>(null);
+
+  const tutorialSegment =
+    tutorialSegmentIndex < PLAYTHROUGH_TUTORIAL_SEGMENTS.length
+      ? PLAYTHROUGH_TUTORIAL_SEGMENTS[tutorialSegmentIndex]
+      : null;
+  const tutorialCoachVisible =
+    tutorialCoachPhase === 'lesson_intro' || tutorialCoachPhase === 'lesson_result';
+  const tutorialCoachEyebrow =
+    tutorialCoachPhase === 'lesson_intro' && tutorialSegment
+      ? `Lesson ${tutorialSegment.lessonNumber} of ${PLAYTHROUGH_TUTORIAL_LESSON_COUNT}`
+      : tutorialCoachPhase === 'lesson_result'
+        ? 'What this means'
+        : undefined;
+  const tutorialCoachTitle =
+    tutorialCoachPhase === 'lesson_intro' && tutorialSegment
+      ? tutorialSegment.title
+      : tutorialCoachPhase === 'lesson_result' && tutorialSegment
+        ? tutorialSegment.title
+        : '';
+  const tutorialCoachBody =
+    tutorialCoachPhase === 'lesson_intro' && tutorialSegment
+      ? tutorialSegment.objective
+      : tutorialCoachPhase === 'lesson_result' && tutorialSegment
+        ? tutorialSegment.implication
+        : '';
+  const tutorialCoachActionLabel =
+    tutorialCoachPhase === 'lesson_result' && tutorialSegmentIndex === PLAYTHROUGH_TUTORIAL_SEGMENTS.length - 1
+      ? 'Play On'
+      : 'Continue';
+  const tutorialObjectiveBanner =
+    tutorialCoachPhase === 'lesson_play' && tutorialSegment
+      ? `Lesson ${tutorialSegment.lessonNumber}/${PLAYTHROUGH_TUTORIAL_LESSON_COUNT}: ${tutorialSegment.objective}`
+      : null;
 
   const cueSystemReady = ancientCueFontLoaded || Boolean(ancientCueFontError);
   const cueFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : undefined;
@@ -306,6 +375,99 @@ export function GameRoom() {
       rollTimerRef.current = null;
     }
   }, []);
+
+  const applyTutorialSnapshot = React.useCallback(
+    (nextState: GameState) => {
+      tutorialHydratingStateRef.current = true;
+      setGameStateFromServer(nextState);
+    },
+    [setGameStateFromServer],
+  );
+
+  const triggerTutorialRoll = React.useCallback(
+    (value: 0 | 1 | 2 | 3 | 4) => {
+      if (!canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
+        return;
+      }
+
+      rollButtonRequestRef.current = {
+        serverRevision,
+        currentTurn: gameState.currentTurn,
+        historyLength: gameState.history.length,
+      };
+      setRollButtonLatchPhase('awaitingOutcome');
+      localRollAudioPendingRef.current = true;
+      localRollVisualPendingRef.current = diceAnimationEnabled;
+      setShowLocalDiceVisual(diceAnimationEnabled);
+
+      if (diceAnimationEnabled) {
+        setDiceStagePlaybackId((current) => current + 1);
+        setRollingVisual(true);
+        clearRollTimer();
+        rollTimerRef.current = setTimeout(() => {
+          setRollingVisual(false);
+          rollTimerRef.current = null;
+        }, diceAnimationDurationMs);
+      } else {
+        clearRollTimer();
+        setRollingVisual(false);
+      }
+
+      const rolledState: GameState = {
+        ...gameState,
+        phase: 'moving',
+        rollValue: value,
+      };
+
+      void gameAudio.play('roll');
+      setGameStateFromServer(rolledState);
+    },
+    [
+      canRoll,
+      clearRollTimer,
+      diceAnimationDurationMs,
+      diceAnimationEnabled,
+      gameState,
+      rollButtonLatchPhase,
+      rollingVisual,
+      serverRevision,
+      setGameStateFromServer,
+    ],
+  );
+
+  const handleTutorialMove = React.useCallback(
+    (move: MoveAction) => {
+      if (tutorialCoachPhase === 'lesson_play' && tutorialSegment) {
+        if (!isMoveMatch(move, tutorialSegment.expectedMove)) {
+          return;
+        }
+
+        setGameStateFromServer(applyEngineMove(gameState, move));
+        setTutorialCoachPhase('lesson_result');
+      }
+    },
+    [gameState, setGameStateFromServer, tutorialCoachPhase, tutorialSegment],
+  );
+
+  const handleContinueTutorialCoach = React.useCallback(() => {
+    if (tutorialCoachPhase === 'lesson_intro') {
+      setTutorialCoachPhase('lesson_play');
+      return;
+    }
+
+    if (tutorialCoachPhase === 'lesson_result') {
+      const nextIndex = tutorialSegmentIndex + 1;
+
+      if (nextIndex < PLAYTHROUGH_TUTORIAL_SEGMENTS.length) {
+        setTutorialSegmentIndex(nextIndex);
+        applyTutorialSnapshot(PLAYTHROUGH_TUTORIAL_SEGMENTS[nextIndex].snapshot);
+        setTutorialCoachPhase('lesson_intro');
+        return;
+      }
+
+      setTutorialCoachPhase('freeplay');
+    }
+  }, [applyTutorialSnapshot, tutorialCoachPhase, tutorialSegmentIndex]);
 
   const triggerLocalRoll = React.useCallback(() => {
     if (!canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
@@ -441,7 +603,7 @@ export function GameRoom() {
     [syncBoardTargetFrame],
   );
 
-  useGameLoop(isOffline);
+  useGameLoop(isOffline && !isScriptedTutorialPhase);
   useEffect(() => {
     if (gameState.winner) {
       setShowWinModal(true);
@@ -480,7 +642,11 @@ export function GameRoom() {
           telemetry: offlineMatchTelemetryRef.current,
           playerUserId: user?.nakamaUserId ?? user?.id ?? '',
         });
-        const submission = await submitCompletedBotMatchResult(summary);
+        const submission = await submitCompletedBotMatchResult({
+          summary,
+          tutorialId,
+          rewardMode: tutorialRewardMode,
+        });
 
         if (!isMounted) {
           return;
@@ -488,6 +654,22 @@ export function GameRoom() {
 
         if (submission.progressionAward) {
           setLastProgressionAward(submission.progressionAward);
+        }
+
+        if (isPlaythroughTutorialMatch) {
+          const progressionResult = await refreshProgression({ silent: true });
+
+          if (!isMounted) {
+            return;
+          }
+
+          setMatchChallengeSummary(null);
+
+          if (!progressionResult && progressionError) {
+            setMatchRewardsErrorMessage(progressionError);
+          }
+
+          return;
         }
 
         const [progressionResult, challengesResult] = await Promise.all([
@@ -542,7 +724,10 @@ export function GameRoom() {
     resolvedBotDifficulty,
     setLastProgressionAward,
     showWinModal,
+    tutorialId,
+    tutorialRewardMode,
     user,
+    isPlaythroughTutorialMatch,
   ]);
 
   useEffect(() => {
@@ -611,14 +796,15 @@ export function GameRoom() {
     showWinModal,
   ]);
   useEffect(() => {
-    if (!showHowToPlay && !showAudioSettings && !showWinModal) {
+    if (!showHowToPlay && !showAudioSettings && !showWinModal && !tutorialCoachVisible) {
       return;
     }
 
     setShowTopMenu(false);
-  }, [showAudioSettings, showHowToPlay, showWinModal]);
+  }, [showAudioSettings, showHowToPlay, showWinModal, tutorialCoachVisible]);
   useEffect(() => {
     boardImageLayoutRef.current = null;
+    tutorialHydratingStateRef.current = false;
     localRollVisualPendingRef.current = false;
     localRollAudioPendingRef.current = false;
     rollButtonRequestRef.current = null;
@@ -642,6 +828,8 @@ export function GameRoom() {
     lastQueuedMatchCueRef.current = null;
     hasShownOpeningCueRef.current = null;
     matchCueIdRef.current = 0;
+    setTutorialSegmentIndex(0);
+    setTutorialCoachPhase('idle');
     setLiveMatchCue(null);
   }, [clearRollTimer, matchId, setLiveMatchCue]);
   useEffect(() => {
@@ -744,7 +932,13 @@ export function GameRoom() {
       turnTimeoutTimerRef.current = null;
     }
 
-    if ((isOffline && !botTimerEnabled) || !isMyTurn || gameState.winner !== null || gameState.phase === 'ended') {
+    if (
+      isScriptedTutorialPhase ||
+      (isOffline && !botTimerEnabled) ||
+      !isMyTurn ||
+      gameState.winner !== null ||
+      gameState.phase === 'ended'
+    ) {
       forceMoveAfterRollRef.current = false;
       return;
     }
@@ -782,7 +976,17 @@ export function GameRoom() {
         turnTimeoutTimerRef.current = null;
       }
     };
-  }, [botTimerEnabled, enqueueMatchCue, gameState.phase, gameState.winner, isMyTurn, isOffline, triggerLocalRoll, turnTimerCycleId]);
+  }, [
+    botTimerEnabled,
+    enqueueMatchCue,
+    gameState.phase,
+    gameState.winner,
+    isMyTurn,
+    isOffline,
+    isScriptedTutorialPhase,
+    triggerLocalRoll,
+    turnTimerCycleId,
+  ]);
   useEffect(() => {
     if (autoRollTimerRef.current) {
       clearTimeout(autoRollTimerRef.current);
@@ -791,6 +995,7 @@ export function GameRoom() {
 
     if (
       !autoRollEnabled ||
+      isScriptedTutorialPhase ||
       !canRoll ||
       rollingVisual ||
       rollButtonLatchPhase !== 'idle' ||
@@ -816,6 +1021,7 @@ export function GameRoom() {
   }, [
     autoRollEnabled,
     canRoll,
+    isScriptedTutorialPhase,
     rollButtonLatchPhase,
     rollingVisual,
     showAudioSettings,
@@ -843,11 +1049,21 @@ export function GameRoom() {
   }, [gameState.phase, gameState.winner, isMyTurn, makeMove, validMoves]);
   useEffect(() => {
     if (!matchId) return;
-    if (isOffline || storedMatchId !== matchId) {
+    if (storedMatchId !== matchId) {
       initGame(matchId, { botDifficulty: resolvedBotDifficulty });
     }
     setMatchId(matchId);
-  }, [initGame, isOffline, matchId, resolvedBotDifficulty, setMatchId, storedMatchId]);
+  }, [initGame, matchId, resolvedBotDifficulty, setMatchId, storedMatchId]);
+
+  useEffect(() => {
+    if (!isPlaythroughTutorialMatch || !matchId) {
+      return;
+    }
+
+    setTutorialSegmentIndex(0);
+    applyTutorialSnapshot(PLAYTHROUGH_TUTORIAL_SEGMENTS[0].snapshot);
+    setTutorialCoachPhase('lesson_intro');
+  }, [applyTutorialSnapshot, isPlaythroughTutorialMatch, matchId]);
 
   const socketRef = useRef<Socket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1106,6 +1322,12 @@ export function GameRoom() {
       return;
     }
 
+    if (tutorialHydratingStateRef.current) {
+      tutorialHydratingStateRef.current = false;
+      previousStateRef.current = { matchId: matchId ?? null, state: gameState };
+      return;
+    }
+
     const previous = previousSnapshot.state;
     const isBotRoll = isOffline && gameState.currentTurn === 'dark';
     const rollValueChanged = previous.rollValue !== gameState.rollValue;
@@ -1236,8 +1458,15 @@ export function GameRoom() {
   ]);
 
   const handleRoll = React.useCallback(() => {
+    if (isScriptedTutorialPhase) {
+      if (tutorialCoachPhase === 'lesson_play' && tutorialSegment) {
+        triggerTutorialRoll(tutorialSegment.forcedRoll);
+      }
+      return;
+    }
+
     triggerLocalRoll();
-  }, [triggerLocalRoll]);
+  }, [isScriptedTutorialPhase, triggerLocalRoll, triggerTutorialRoll, tutorialCoachPhase, tutorialSegment]);
 
   const handleToggleMusic = async (enabled: boolean) => {
     setMusicEnabled(enabled);
@@ -1303,7 +1532,7 @@ export function GameRoom() {
 
   const lightReserve = gameState.light.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
   const darkReserve = gameState.dark.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
-  const matchTitle = `Game #${matchId ?? 'local'}`;
+  const matchTitle = isPlaythroughTutorialMatch ? 'Play Tutorial' : `Game #${matchId ?? 'local'}`;
 
   const viewportHorizontalPadding = 0;
   const stageContentWidth = Math.min(Math.max(width - viewportHorizontalPadding * 2, 0), urTheme.layout.stage.maxWidth);
@@ -1470,7 +1699,7 @@ export function GameRoom() {
   }, [boardScale, mobileBoardVisualOffset, mobileScoreRowHeight, syncBoardTargetFrame]);
 
   const shouldHideReservePieces = !hasPlayedReserveCascadeIntro;
-  const isTurnTimerEnabled = !isOffline || botTimerEnabled;
+  const isTurnTimerEnabled = !isScriptedTutorialPhase && (!isOffline || botTimerEnabled);
   const isVisualTurnTimerRunning = isTurnTimerEnabled && gameState.phase !== 'ended' && gameState.winner === null;
   const showDestinationHighlights = !rollingVisual && gameState.rollValue !== null;
   const displayedValidMoves = showDestinationHighlights ? validMoves : [];
@@ -1520,6 +1749,7 @@ export function GameRoom() {
           showRailHints
           highlightMode="theatrical"
           validMovesOverride={displayedValidMoves}
+          onMakeMoveOverride={isScriptedTutorialPhase ? handleTutorialMove : undefined}
           boardScale={boardScale}
           orientation="vertical"
           onBoardImageLayout={handleLiveBoardImageLayout}
@@ -1687,6 +1917,11 @@ export function GameRoom() {
         ]}
       >
         <View style={[styles.stageWrap, { gap: stageGap }]}>
+          {tutorialObjectiveBanner ? (
+            <View pointerEvents="none" style={styles.tutorialObjectiveBanner}>
+              <Text style={styles.tutorialObjectiveText}>{tutorialObjectiveBanner}</Text>
+            </View>
+          ) : null}
           <View
             pointerEvents="none"
             style={[
@@ -2064,11 +2299,13 @@ export function GameRoom() {
                 pending={!lastProgressionAward}
               />
             ) : null}
-            <MatchChallengeRewardsPanel
-              summary={matchChallengeSummary}
-              loading={isRefreshingMatchRewards && !matchChallengeSummary}
-              errorMessage={matchRewardsErrorMessage}
-            />
+            {!isPlaythroughTutorialMatch ? (
+              <MatchChallengeRewardsPanel
+                summary={matchChallengeSummary}
+                loading={isRefreshingMatchRewards && !matchChallengeSummary}
+                errorMessage={matchRewardsErrorMessage}
+              />
+            ) : null}
           </>
         ) : null}
       </Modal>
@@ -2114,7 +2351,15 @@ export function GameRoom() {
           void handleToggleBotTimer(enabled);
         }}
       />
-      <FiveStepTutorialModal visible={showHowToPlay} onClose={() => setShowHowToPlay(false)} />
+      <HowToPlayModal visible={showHowToPlay} onClose={() => setShowHowToPlay(false)} />
+      <PlayTutorialCoachModal
+        visible={tutorialCoachVisible}
+        eyebrow={tutorialCoachEyebrow}
+        title={tutorialCoachTitle}
+        body={tutorialCoachBody}
+        actionLabel={tutorialCoachActionLabel}
+        onContinue={handleContinueTutorialCoach}
+      />
     </View>
   );
 }
@@ -2157,6 +2402,25 @@ const styles = StyleSheet.create({
     maxWidth: urTheme.layout.stage.maxWidth,
     flex: 1,
     minHeight: 0,
+  },
+  tutorialObjectiveBanner: {
+    alignSelf: 'center',
+    maxWidth: 620,
+    marginTop: 4,
+    marginBottom: urTheme.spacing.xs,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.xs,
+    borderRadius: urTheme.radii.pill,
+    backgroundColor: 'rgba(44, 25, 14, 0.84)',
+    borderWidth: 1,
+    borderColor: 'rgba(246, 214, 151, 0.42)',
+    zIndex: 6,
+  },
+  tutorialObjectiveText: {
+    color: '#F7E9CD',
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
   },
   topChrome: {
     position: 'absolute',

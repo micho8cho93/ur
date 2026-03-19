@@ -14,6 +14,10 @@ const mockDiceRollScene = jest.fn(() => {
 });
 
 const mockRouterReplace = jest.fn();
+const mockSearchParams = {
+  id: 'local-1',
+  offline: '1',
+} as Record<string, string>;
 const mockRoll = jest.fn();
 const mockMakeMove = jest.fn();
 const mockReset = jest.fn();
@@ -138,11 +142,20 @@ jest.mock('@/components/game/AudioSettingsModal', () => {
   };
 });
 
-jest.mock('@/components/FiveStepTutorialModal', () => {
+jest.mock('@/components/HowToPlayModal', () => {
   const React = require('react');
   const { View } = require('react-native');
   return {
-    FiveStepTutorialModal: () => <View testID="mock-how-to-play" />,
+    HowToPlayModal: () => <View testID="mock-how-to-play" />,
+  };
+});
+
+jest.mock('@/components/tutorial/PlayTutorialCoachModal', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    PlayTutorialCoachModal: ({ visible }: { visible: boolean }) =>
+      visible ? <View testID="mock-play-tutorial-coach" /> : null,
   };
 });
 
@@ -248,10 +261,7 @@ jest.mock('expo-router', () => ({
   Stack: {
     Screen: () => null,
   },
-  useLocalSearchParams: () => ({
-    id: 'local-1',
-    offline: '1',
-  }),
+  useLocalSearchParams: () => mockSearchParams,
   useRouter: () => ({
     replace: mockRouterReplace,
   }),
@@ -279,6 +289,10 @@ describe('GameRoom match dice stage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    mockSearchParams.id = 'local-1';
+    mockSearchParams.offline = '1';
+    delete mockSearchParams.tutorial;
+    delete mockSearchParams.botDifficulty;
     mockGetMatchPreferences.mockResolvedValue({
       autoRollEnabled: false,
       bugAnimationEnabled: true,
@@ -399,5 +413,19 @@ describe('GameRoom match dice stage', () => {
     });
 
     expect(mockRoll).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the guided tutorial title when launched in tutorial mode', async () => {
+    mockSearchParams.tutorial = 'playthrough';
+    mockSearchParams.botDifficulty = 'easy';
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Play Tutorial')).toBeTruthy();
+    expect(screen.getByTestId('mock-play-tutorial-coach')).toBeTruthy();
   });
 });

@@ -393,7 +393,7 @@ var normalizeStoredXpRewardRecord = (rawValue) => {
   const previousTotalXp = sanitizeTotalXp((_b = readNumberField(record, ["previousTotalXp", "previous_total_xp"])) != null ? _b : 0);
   const newTotalXp = sanitizeTotalXp((_c = readNumberField(record, ["newTotalXp", "new_total_xp"])) != null ? _c : 0);
   const progression = record.progression;
-  if (!userId || !ledgerKey || !sourceId || !awardedAt || source !== "pvp_win" && source !== "challenge_completion" || typeof progression !== "object" || progression === null) {
+  if (!userId || !ledgerKey || !sourceId || !awardedAt || source !== "pvp_win" && source !== "bot_win" && source !== "challenge_completion" || typeof progression !== "object" || progression === null) {
     return null;
   }
   return {
@@ -857,6 +857,14 @@ var isCompletedMatchSummary = (value) => {
   return typeof summary.matchId === "string" && typeof summary.playerUserId === "string" && isOpponentType(summary.opponentType) && typeof summary.didWin === "boolean" && typeof summary.totalMoves === "number" && typeof summary.playerMoveCount === "number" && typeof summary.piecesLost === "number" && typeof summary.maxRollCount === "number" && typeof summary.capturesMade === "number" && typeof summary.capturesSuffered === "number" && typeof summary.contestedTilesLandedCount === "number" && typeof summary.borneOffCount === "number" && typeof summary.opponentBorneOffCount === "number" && typeof summary.wasBehindDuringMatch === "boolean" && typeof summary.behindCheckpointCount === "number" && Array.isArray(summary.behindReasons) && summary.behindReasons.every(
     (reason) => reason === "progress_deficit" || reason === "borne_off_deficit"
   ) && typeof summary.timestamp === "string";
+};
+var isCompletedBotMatchRewardMode = (value) => value === "standard" || value === "base_win_only";
+var isSubmitCompletedBotMatchRpcRequest = (value) => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const payload = value;
+  return isCompletedMatchSummary(payload.summary) && (typeof payload.tutorialId === "string" || payload.tutorialId === null || typeof payload.tutorialId === "undefined") && (typeof payload.rewardMode === "undefined" || isCompletedBotMatchRewardMode(payload.rewardMode));
 };
 var getPieceProgressScore = (position) => {
   if (position < 0) {
@@ -1362,17 +1370,18 @@ var rpcSubmitCompletedBotMatch = (ctx, logger, nk, payload) => {
     throw new Error("Authentication required.");
   }
   const parsed = payload ? JSON.parse(payload) : {};
-  const rawSummary = typeof parsed === "object" && parsed !== null && "summary" in parsed ? parsed.summary : parsed;
-  if (!isCompletedMatchSummary(rawSummary)) {
+  const requestPayload = isSubmitCompletedBotMatchRpcRequest(parsed) ? parsed : isCompletedMatchSummary(parsed) ? { summary: parsed } : null;
+  if (!requestPayload) {
     throw new Error("Completed bot match summary payload is invalid.");
   }
-  if (!rawSummary.matchId.startsWith("local-")) {
+  if (!requestPayload.summary.matchId.startsWith("local-")) {
     throw new Error("Completed bot match summary must use a local match ID.");
   }
-  if (!isBotOpponentType(rawSummary.opponentType)) {
+  if (!isBotOpponentType(requestPayload.summary.opponentType)) {
     throw new Error("Completed bot match summary must reference a bot opponent.");
   }
-  const summary = __spreadProps(__spreadValues({}, rawSummary), {
+  const rewardMode = isCompletedBotMatchRewardMode(requestPayload.rewardMode) ? requestPayload.rewardMode : "standard";
+  const summary = __spreadProps(__spreadValues({}, requestPayload.summary), {
     playerUserId: ctx.userId
   });
   const progressionAward = summary.didWin ? awardXpForMatchWin(nk, logger, {
@@ -1380,7 +1389,9 @@ var rpcSubmitCompletedBotMatch = (ctx, logger, nk, payload) => {
     matchId: summary.matchId,
     source: "bot_win"
   }) : null;
-  processCompletedMatch(nk, logger, summary);
+  if (rewardMode !== "base_win_only") {
+    processCompletedMatch(nk, logger, summary);
+  }
   return JSON.stringify({ progressionAward });
 };
 var rpcGetUserChallengeProgress = (ctx, logger, nk, _payload) => {

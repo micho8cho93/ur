@@ -1,4 +1,3 @@
-import { FiveStepTutorialModal } from '@/components/FiveStepTutorialModal';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { Button } from '@/components/ui/Button';
@@ -19,7 +18,6 @@ export default function AuthenticatedHome() {
   const { width } = useWindowDimensions();
   const router = useRouter();
   const { user, logout } = useAuth();
-  const [showHowToPlay, setShowHowToPlay] = React.useState(false);
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
@@ -114,17 +112,14 @@ export default function AuthenticatedHome() {
             labelStyle={blackButtonLabel}
           />
           <Button
-            title="Watch Extended Tutorial"
+            title="Play Tutorial"
             variant="outline"
-            onPress={() => router.push('/tutorial/watch' as never)}
+            onPress={() => router.push(`/match/local-${Date.now()}?offline=1&tutorial=playthrough&botDifficulty=easy` as never)}
             style={styles.extendedTutorialButton}
             labelStyle={blackButtonLabel}
           />
-          <Button title="5 Step Tutorial" variant="secondary" onPress={() => setShowHowToPlay(true)} />
         </View>
       </View>
-
-      <FiveStepTutorialModal visible={showHowToPlay} onClose={() => setShowHowToPlay(false)} />
     </View>
   );
 }

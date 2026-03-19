@@ -1,4 +1,5 @@
 import {
+  CompletedBotMatchRewardMode,
   ChallengeCompletionRecord,
   ChallengeDefinition,
   ChallengeDefinitionsRpcResponse,
@@ -9,7 +10,9 @@ import {
   createDefaultUserChallengeProgressSnapshot,
   getChallengeDefinition,
   isChallengeDefinition,
+  isCompletedBotMatchRewardMode,
   isCompletedMatchSummary,
+  isSubmitCompletedBotMatchRpcRequest,
   UserChallengeProgressRpcResponse,
   UserChallengeProgressSnapshot,
 } from "../../shared/challenges";
@@ -670,25 +673,30 @@ export const rpcSubmitCompletedBotMatch = (
   }
 
   const parsed = payload ? JSON.parse(payload) : {};
-  const rawSummary =
-    typeof parsed === "object" && parsed !== null && "summary" in parsed
-      ? (parsed as Record<string, unknown>).summary
-      : parsed;
+  const requestPayload = isSubmitCompletedBotMatchRpcRequest(parsed)
+    ? parsed
+    : isCompletedMatchSummary(parsed)
+      ? { summary: parsed }
+      : null;
 
-  if (!isCompletedMatchSummary(rawSummary)) {
+  if (!requestPayload) {
     throw new Error("Completed bot match summary payload is invalid.");
   }
 
-  if (!rawSummary.matchId.startsWith("local-")) {
+  if (!requestPayload.summary.matchId.startsWith("local-")) {
     throw new Error("Completed bot match summary must use a local match ID.");
   }
 
-  if (!isBotOpponentType(rawSummary.opponentType)) {
+  if (!isBotOpponentType(requestPayload.summary.opponentType)) {
     throw new Error("Completed bot match summary must reference a bot opponent.");
   }
 
+  const rewardMode: CompletedBotMatchRewardMode = isCompletedBotMatchRewardMode(requestPayload.rewardMode)
+    ? requestPayload.rewardMode
+    : "standard";
+
   const summary: CompletedMatchSummary = {
-    ...rawSummary,
+    ...requestPayload.summary,
     playerUserId: ctx.userId,
   };
 
@@ -700,7 +708,9 @@ export const rpcSubmitCompletedBotMatch = (
       })
     : null;
 
-  processCompletedMatch(nk, logger, summary);
+  if (rewardMode !== "base_win_only") {
+    processCompletedMatch(nk, logger, summary);
+  }
 
   return JSON.stringify({ progressionAward });
 };

@@ -24,10 +24,6 @@ jest.mock('@expo/vector-icons/MaterialIcons', () => {
   };
 });
 
-jest.mock('@/components/FiveStepTutorialModal', () => ({
-  FiveStepTutorialModal: () => null,
-}));
-
 jest.mock('@/components/progression/ProgressionSummaryCard', () => ({
   ProgressionSummaryCard: () => null,
 }));
@@ -87,5 +83,25 @@ describe('AuthenticatedHome', () => {
     const view = render(<AuthenticatedHome />);
 
     expect(view.getByText('Logout')).toBeTruthy();
+  });
+
+  it('shows the new single play tutorial entry point', () => {
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: 'guest_1',
+        username: 'Guest',
+        email: null,
+        avatarUrl: null,
+        provider: 'guest',
+        createdAt: '2026-03-15T12:00:00.000Z',
+      },
+      logout: jest.fn(),
+    });
+
+    const view = render(<AuthenticatedHome />);
+
+    expect(view.getByText('Play Tutorial')).toBeTruthy();
+    expect(view.queryByText('Watch Extended Tutorial')).toBeNull();
+    expect(view.queryByText('5 Step Tutorial')).toBeNull();
   });
 });
