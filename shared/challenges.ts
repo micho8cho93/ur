@@ -1,5 +1,6 @@
 import { PATH_LENGTH } from "../logic/constants";
 import { GameState, Player, PlayerColor } from "../logic/types";
+import { ProgressionAwardResponse, isProgressionAwardResponse } from "./progression";
 
 export const CHALLENGE_IDS = {
   FIRST_VICTORY: "first_victory",
@@ -78,6 +79,10 @@ export type ChallengeDefinitionsRpcResponse = {
 };
 
 export type UserChallengeProgressRpcResponse = UserChallengeProgressSnapshot;
+
+export type SubmitCompletedBotMatchRpcResponse = {
+  progressionAward: ProgressionAwardResponse | null;
+};
 
 export const CHALLENGE_DEFINITIONS: readonly ChallengeDefinition[] = [
   {
@@ -229,6 +234,17 @@ export const isChallengeDefinition = (value: unknown): value is ChallengeDefinit
     (definition.type === "milestone" || definition.type === "bot" || definition.type === "match") &&
     typeof definition.rewardXp === "number"
   );
+};
+
+export const isSubmitCompletedBotMatchRpcResponse = (
+  value: unknown
+): value is SubmitCompletedBotMatchRpcResponse => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const response = value as SubmitCompletedBotMatchRpcResponse;
+  return response.progressionAward === null || isProgressionAwardResponse(response.progressionAward);
 };
 
 export const isCompletedMatchSummary = (value: unknown): value is CompletedMatchSummary => {

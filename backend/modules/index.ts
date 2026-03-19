@@ -18,9 +18,11 @@ import {
   ensureChallengeDefinitions,
   processCompletedMatch,
   rpcGetChallengeDefinitions,
+  rpcSubmitCompletedBotMatch,
   rpcGetUserChallengeProgress,
   RPC_GET_CHALLENGE_DEFINITIONS,
   RPC_GET_USER_CHALLENGE_PROGRESS,
+  RPC_SUBMIT_COMPLETED_BOT_MATCH,
 } from "./challenges";
 import {
   MatchOpCode,
@@ -82,6 +84,7 @@ const RPC_GET_PROGRESSION_NAME = RPC_GET_PROGRESSION;
 const RPC_GET_USER_XP_PROGRESS_NAME = RPC_GET_USER_XP_PROGRESS;
 const RPC_GET_CHALLENGE_DEFINITIONS_NAME = RPC_GET_CHALLENGE_DEFINITIONS;
 const RPC_GET_USER_CHALLENGE_PROGRESS_NAME = RPC_GET_USER_CHALLENGE_PROGRESS;
+const RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME = RPC_SUBMIT_COMPLETED_BOT_MATCH;
 const RPC_MATCHMAKER_ADD = "matchmaker_add";
 const RPC_PRESENCE_HEARTBEAT = "presence_heartbeat";
 const RPC_PRESENCE_COUNT = "presence_count";
@@ -308,6 +311,7 @@ function InitModule(
   initializer.registerRpc(RPC_GET_USER_XP_PROGRESS_NAME, rpcGetUserXpProgress);
   initializer.registerRpc(RPC_GET_CHALLENGE_DEFINITIONS_NAME, rpcGetChallengeDefinitions);
   initializer.registerRpc(RPC_GET_USER_CHALLENGE_PROGRESS_NAME, rpcGetUserChallengeProgress);
+  initializer.registerRpc(RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME, rpcSubmitCompletedBotMatch);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
   initializer.registerRpc(RPC_PRESENCE_HEARTBEAT, rpcPresenceHeartbeat);
   initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);

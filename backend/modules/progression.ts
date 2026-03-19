@@ -532,9 +532,9 @@ export const awardXp = (
   throw new Error(`Unable to persist progression award for user ${userId} on ledger ${ledgerKey}.`);
 };
 
-const buildPvpWinAwardResponse = (result: XpRewardResult): ProgressionAwardResponse => ({
+const buildMatchWinAwardResponse = (result: XpRewardResult): ProgressionAwardResponse => ({
   matchId: result.matchId ?? result.sourceId,
-  source: "pvp_win",
+  source: result.source,
   duplicate: result.duplicate,
   awardedXp: result.awardedXp,
   previousTotalXp: result.previousTotalXp,
@@ -556,11 +556,11 @@ export const awardXpForMatchWin = (
 ): ProgressionAwardResponse => {
   const source = params.source ?? "pvp_win";
 
-  return buildPvpWinAwardResponse(
+  return buildMatchWinAwardResponse(
     awardXp(nk, logger, {
       userId: params.userId,
       ledgerKey: `${source}:${params.matchId}`,
-      source: "pvp_win",
+      source,
       sourceId: params.matchId,
       matchId: params.matchId,
       awardedXp: getXpAwardAmount(source),

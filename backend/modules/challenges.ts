@@ -21,6 +21,7 @@ import {
   RuntimeStorageObject,
   STORAGE_PERMISSION_NONE,
   XP_REWARD_LEDGER_COLLECTION,
+  awardXpForMatchWin,
   buildXpRewardLedgerRecord,
   ensureProgressionProfile,
   findStorageObject,
@@ -62,6 +63,7 @@ const PROCESSED_MATCH_RESULTS_COLLECTION = "processed_match_results";
 
 export const RPC_GET_CHALLENGE_DEFINITIONS = "get_challenge_definitions";
 export const RPC_GET_USER_CHALLENGE_PROGRESS = "get_user_challenge_progress";
+export const RPC_SUBMIT_COMPLETED_BOT_MATCH = "submit_completed_bot_match";
 
 const CHALLENGE_EVALUATORS: Readonly<Record<ChallengeId, (summary: CompletedMatchSummary) => boolean>> = {
   [CHALLENGE_IDS.FIRST_VICTORY]: (summary) => summary.didWin,
@@ -82,6 +84,11 @@ const CHALLENGE_EVALUATORS: Readonly<Record<ChallengeId, (summary: CompletedMatc
 
 const buildChallengeRewardLedgerKey = (challengeId: ChallengeId): string => `challenge:${challengeId}`;
 const buildProcessedMatchResultKey = (matchId: string): string => matchId;
+const isBotOpponentType = (opponentType: CompletedMatchSummary["opponentType"]): boolean =>
+  opponentType === "easy_bot" ||
+  opponentType === "medium_bot" ||
+  opponentType === "hard_bot" ||
+  opponentType === "perfect_bot";
 
 const readStringField = (value: unknown, keys: string[]): string | null => {
   if (typeof value !== "object" || value === null) {
@@ -636,6 +643,52 @@ export const rpcGetChallengeDefinitions = (
   }
 
   return JSON.stringify(getChallengeDefinitionsResponse());
+};
+
+export const rpcSubmitCompletedBotMatch = (
+  ctx: RuntimeContext,
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  payload: string
+): string => {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+
+  const parsed = payload ? JSON.parse(payload) : {};
+  const rawSummary =
+    typeof parsed === "object" && parsed !== null && "summary" in parsed
+      ? (parsed as Record<string, unknown>).summary
+      : parsed;
+
+  if (!isCompletedMatchSummary(rawSummary)) {
+    throw new Error("Completed bot match summary payload is invalid.");
+  }
+
+  if (!rawSummary.matchId.startsWith("local-")) {
+    throw new Error("Completed bot match summary must use a local match ID.");
+  }
+
+  if (!isBotOpponentType(rawSummary.opponentType)) {
+    throw new Error("Completed bot match summary must reference a bot opponent.");
+  }
+
+  const summary: CompletedMatchSummary = {
+    ...rawSummary,
+    playerUserId: ctx.userId,
+  };
+
+  const progressionAward = summary.didWin
+    ? awardXpForMatchWin(nk, logger, {
+        userId: ctx.userId,
+        matchId: summary.matchId,
+        source: "bot_win",
+      })
+    : null;
+
+  processCompletedMatch(nk, logger, summary);
+
+  return JSON.stringify({ progressionAward });
 };
 
 export const rpcGetUserChallengeProgress = (

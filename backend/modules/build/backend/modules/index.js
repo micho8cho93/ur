@@ -209,6 +209,10 @@ var XP_SOURCE_CONFIG = {
   pvp_win: {
     amount: 100,
     description: "Authoritative PvP win reward."
+  },
+  bot_win: {
+    amount: 100,
+    description: "Authenticated bot win reward."
   }
 };
 var MAX_RANK = PROGRESSION_RANKS[PROGRESSION_RANKS.length - 1];
@@ -290,28 +294,15 @@ var buildProgressionSnapshot = (totalXp) => {
     progressPercent: nextRank ? progressPercent : 100
   };
 };
-var isProgressionSnapshot = (value) => {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const snapshot = value;
-  return typeof snapshot.totalXp === "number" && typeof snapshot.currentRank === "string" && typeof snapshot.currentRankThreshold === "number" && (typeof snapshot.nextRank === "string" || snapshot.nextRank === null) && (typeof snapshot.nextRankThreshold === "number" || snapshot.nextRankThreshold === null) && typeof snapshot.xpIntoCurrentRank === "number" && typeof snapshot.xpNeededForNextRank === "number" && typeof snapshot.progressPercent === "number";
-};
-var isProgressionAwardResponse = (value) => {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const award = value;
-  return typeof award.matchId === "string" && typeof award.source === "string" && typeof award.duplicate === "boolean" && typeof award.awardedXp === "number" && typeof award.previousTotalXp === "number" && typeof award.newTotalXp === "number" && typeof award.previousRank === "string" && typeof award.newRank === "string" && typeof award.rankChanged === "boolean" && isProgressionSnapshot(award.progression);
-};
 
 // backend/modules/progression.ts
 var PROGRESSION_COLLECTION = "progression";
 var PROGRESSION_PROFILE_KEY = "profile";
-var PROGRESSION_AWARD_COLLECTION = "progression_awards";
+var XP_REWARD_LEDGER_COLLECTION = "xp_reward_ledger";
 var STORAGE_PERMISSION_NONE = 0;
 var MAX_WRITE_ATTEMPTS = 4;
 var RPC_GET_PROGRESSION = "get_progression";
+var RPC_GET_USER_XP_PROGRESS = "get_user_xp_progress";
 var asRecord = (value) => typeof value === "object" && value !== null ? value : null;
 var readStringField = (value, keys) => {
   const record = asRecord(value);
@@ -351,7 +342,21 @@ var getStorageObjectValue = (object) => {
 };
 var getStorageObjectVersion = (object) => readStringField(object, ["version"]);
 var getErrorMessage = (error) => error instanceof Error ? error.message : String(error);
-var buildAwardRecordKey = (matchId, source) => `${source}:${matchId}`;
+var findStorageObject = (objects, collection, key, userId) => {
+  var _a;
+  return (_a = objects.find((object) => {
+    const collectionName = readStringField(object, ["collection"]);
+    const objectKey = readStringField(object, ["key"]);
+    const objectUserId = readStringField(object, ["userId", "user_id"]);
+    if (collectionName !== collection || objectKey !== key) {
+      return false;
+    }
+    if (typeof userId === "string") {
+      return objectUserId === userId;
+    }
+    return !objectUserId;
+  })) != null ? _a : null;
+};
 var normalizeProgressionProfile = (rawValue, fallbackUpdatedAt = (/* @__PURE__ */ new Date()).toISOString()) => {
   var _a, _b;
   const totalXp = sanitizeTotalXp((_a = readNumberField(rawValue, ["totalXp", "total_xp"])) != null ? _a : 0);
@@ -372,32 +377,37 @@ var profileNeedsRepair = (rawValue, normalized) => {
   const rawLastUpdatedAt = readStringField(rawRecord, ["lastUpdatedAt", "last_updated_at"]);
   return rawTotalXp !== normalized.totalXp || rawRankTitle !== normalized.currentRankTitle || rawLastUpdatedAt !== normalized.lastUpdatedAt;
 };
-var normalizeStoredAwardRecord = (rawValue) => {
-  var _a;
+var normalizeStoredXpRewardRecord = (rawValue) => {
+  var _a, _b, _c;
   const record = asRecord(rawValue);
   if (!record) {
     return null;
   }
   const userId = readStringField(record, ["userId", "user_id"]);
+  const ledgerKey = readStringField(record, ["ledgerKey", "ledger_key"]);
+  const source = readStringField(record, ["source"]);
+  const sourceId = readStringField(record, ["sourceId", "source_id"]);
   const awardedAt = readStringField(record, ["awardedAt", "awarded_at"]);
-  const response = (_a = record.response) != null ? _a : null;
-  if (!userId || !awardedAt || !isProgressionAwardResponse(response)) {
+  const matchId = readStringField(record, ["matchId", "match_id"]);
+  const awardedXp = sanitizeTotalXp((_a = readNumberField(record, ["awardedXp", "awarded_xp"])) != null ? _a : 0);
+  const previousTotalXp = sanitizeTotalXp((_b = readNumberField(record, ["previousTotalXp", "previous_total_xp"])) != null ? _b : 0);
+  const newTotalXp = sanitizeTotalXp((_c = readNumberField(record, ["newTotalXp", "new_total_xp"])) != null ? _c : 0);
+  const progression = record.progression;
+  if (!userId || !ledgerKey || !sourceId || !awardedAt || source !== "pvp_win" && source !== "challenge_completion" || typeof progression !== "object" || progression === null) {
     return null;
   }
   return {
     userId,
+    ledgerKey,
+    source,
+    sourceId,
+    matchId: matchId != null ? matchId : null,
     awardedAt,
-    response
+    awardedXp,
+    previousTotalXp,
+    newTotalXp,
+    progression
   };
-};
-var findStorageObject = (objects, collection, key, userId) => {
-  var _a;
-  return (_a = objects.find((object) => {
-    const collectionName = readStringField(object, ["collection"]);
-    const objectKey = readStringField(object, ["key"]);
-    const objectUserId = readStringField(object, ["userId", "user_id"]);
-    return collectionName === collection && objectKey === key && objectUserId === userId;
-  })) != null ? _a : null;
 };
 var readProgressionProfileObject = (nk, userId) => {
   const objects = nk.storageRead([
@@ -409,8 +419,7 @@ var readProgressionProfileObject = (nk, userId) => {
   ]);
   return findStorageObject(objects, PROGRESSION_COLLECTION, PROGRESSION_PROFILE_KEY, userId);
 };
-var readProgressionProfileAndAward = (nk, userId, matchId, source) => {
-  const awardKey = buildAwardRecordKey(matchId, source);
+var readProgressionProfileAndLedger = (nk, userId, ledgerKey) => {
   const objects = nk.storageRead([
     {
       collection: PROGRESSION_COLLECTION,
@@ -418,14 +427,14 @@ var readProgressionProfileAndAward = (nk, userId, matchId, source) => {
       userId
     },
     {
-      collection: PROGRESSION_AWARD_COLLECTION,
-      key: awardKey,
+      collection: XP_REWARD_LEDGER_COLLECTION,
+      key: ledgerKey,
       userId
     }
   ]);
   return {
     profileObject: findStorageObject(objects, PROGRESSION_COLLECTION, PROGRESSION_PROFILE_KEY, userId),
-    awardObject: findStorageObject(objects, PROGRESSION_AWARD_COLLECTION, awardKey, userId)
+    ledgerObject: findStorageObject(objects, XP_REWARD_LEDGER_COLLECTION, ledgerKey, userId)
   };
 };
 var writeProgressionProfile = (nk, userId, profile, version) => {
@@ -441,16 +450,31 @@ var writeProgressionProfile = (nk, userId, profile, version) => {
     }
   ]);
 };
-var buildDuplicateAwardResponse = (storedAwardObject, fallbackProgression, matchId, source) => {
-  const normalizedRecord = normalizeStoredAwardRecord(getStorageObjectValue(storedAwardObject));
+var buildDuplicateRewardResult = (ledgerObject, fallbackProgression, fallback) => {
+  const normalizedRecord = normalizeStoredXpRewardRecord(getStorageObjectValue(ledgerObject));
   if (normalizedRecord) {
-    return __spreadProps(__spreadValues({}, normalizedRecord.response), {
-      duplicate: true
-    });
+    const previousRank = getRankForXp(normalizedRecord.previousTotalXp).title;
+    const newRank = getRankForXp(normalizedRecord.newTotalXp).title;
+    return {
+      ledgerKey: normalizedRecord.ledgerKey,
+      source: normalizedRecord.source,
+      sourceId: normalizedRecord.sourceId,
+      matchId: normalizedRecord.matchId,
+      duplicate: true,
+      awardedXp: normalizedRecord.awardedXp,
+      previousTotalXp: normalizedRecord.previousTotalXp,
+      newTotalXp: normalizedRecord.newTotalXp,
+      previousRank,
+      newRank,
+      rankChanged: previousRank !== newRank,
+      progression: normalizedRecord.progression
+    };
   }
   return {
-    matchId,
-    source,
+    ledgerKey: fallback.ledgerKey,
+    source: fallback.source,
+    sourceId: fallback.sourceId,
+    matchId: fallback.matchId,
     duplicate: true,
     awardedXp: 0,
     previousTotalXp: fallbackProgression.totalXp,
@@ -459,6 +483,21 @@ var buildDuplicateAwardResponse = (storedAwardObject, fallbackProgression, match
     newRank: fallbackProgression.currentRank,
     rankChanged: false,
     progression: fallbackProgression
+  };
+};
+var buildXpRewardLedgerRecord = (userId, reward, previousTotalXp, newTotalXp, awardedAt) => {
+  var _a;
+  return {
+    userId,
+    ledgerKey: reward.ledgerKey,
+    source: reward.source,
+    sourceId: reward.sourceId,
+    matchId: (_a = reward.matchId) != null ? _a : null,
+    awardedAt,
+    awardedXp: sanitizeTotalXp(reward.awardedXp),
+    previousTotalXp,
+    newTotalXp,
+    progression: buildProgressionSnapshot(newTotalXp)
   };
 };
 var ensureProgressionProfile = (nk, logger, userId) => {
@@ -501,36 +540,46 @@ var ensureProgressionProfile = (nk, logger, userId) => {
   throw new Error(`Unable to initialize progression for user ${userId}.`);
 };
 var getProgressionForUser = (nk, logger, userId) => buildProgressionSnapshot(ensureProgressionProfile(nk, logger, userId).totalXp);
-var awardXpForMatchWin = (nk, logger, params) => {
-  var _a, _b, _c, _d;
+var awardXp = (nk, logger, params) => {
+  var _a, _b, _c, _d, _e, _f, _g, _h;
   const userId = (_a = params.userId) == null ? void 0 : _a.trim();
-  const matchId = (_b = params.matchId) == null ? void 0 : _b.trim();
-  const source = (_c = params.source) != null ? _c : "pvp_win";
+  const ledgerKey = (_b = params.ledgerKey) == null ? void 0 : _b.trim();
+  const sourceId = (_c = params.sourceId) == null ? void 0 : _c.trim();
   if (!userId) {
     throw new Error("Cannot award progression without a user ID.");
   }
-  if (!matchId) {
-    throw new Error("Cannot award progression without a match ID.");
+  if (!ledgerKey) {
+    throw new Error("Cannot award progression without an XP ledger key.");
   }
-  const awardedXp = sanitizeTotalXp(getXpAwardAmount(source));
+  if (!sourceId) {
+    throw new Error("Cannot award progression without a source ID.");
+  }
+  const awardedXp = sanitizeTotalXp(params.awardedXp);
   if (awardedXp <= 0) {
-    throw new Error(`Configured XP award for source "${source}" must be positive.`);
+    throw new Error(`Configured XP award for ledger key "${ledgerKey}" must be positive.`);
   }
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    const { profileObject, awardObject } = readProgressionProfileAndAward(nk, userId, matchId, source);
+    const { profileObject, ledgerObject } = readProgressionProfileAndLedger(nk, userId, ledgerKey);
     const currentProfile = profileObject ? normalizeProgressionProfile(getStorageObjectValue(profileObject), now) : createDefaultProgressionProfile(0, now);
     const currentSnapshot = buildProgressionSnapshot(currentProfile.totalXp);
-    if (awardObject) {
-      return buildDuplicateAwardResponse(awardObject, currentSnapshot, matchId, source);
+    if (ledgerObject) {
+      return buildDuplicateRewardResult(ledgerObject, currentSnapshot, {
+        ledgerKey,
+        source: params.source,
+        sourceId,
+        matchId: (_d = params.matchId) != null ? _d : null
+      });
     }
     const previousTotalXp = currentProfile.totalXp;
     const newTotalXp = sanitizeTotalXp(previousTotalXp + awardedXp);
     const previousRank = getRankForXp(previousTotalXp).title;
     const newRank = getRankForXp(newTotalXp).title;
     const response = {
-      matchId,
-      source,
+      ledgerKey,
+      source: params.source,
+      sourceId,
+      matchId: (_e = params.matchId) != null ? _e : null,
       duplicate: false,
       awardedXp,
       previousTotalXp,
@@ -545,11 +594,19 @@ var awardXpForMatchWin = (nk, logger, params) => {
       currentRankTitle: newRank,
       lastUpdatedAt: now
     };
-    const awardRecord = {
+    const rewardRecord = buildXpRewardLedgerRecord(
       userId,
-      awardedAt: now,
-      response
-    };
+      {
+        ledgerKey,
+        source: params.source,
+        sourceId,
+        matchId: (_f = params.matchId) != null ? _f : null,
+        awardedXp
+      },
+      previousTotalXp,
+      newTotalXp,
+      now
+    );
     try {
       nk.storageWrite([
         {
@@ -557,43 +614,720 @@ var awardXpForMatchWin = (nk, logger, params) => {
           key: PROGRESSION_PROFILE_KEY,
           userId,
           value: nextProfile,
-          version: profileObject ? (_d = getStorageObjectVersion(profileObject)) != null ? _d : "" : "*",
+          version: profileObject ? (_g = getStorageObjectVersion(profileObject)) != null ? _g : "" : "*",
           permissionRead: STORAGE_PERMISSION_NONE,
           permissionWrite: STORAGE_PERMISSION_NONE
         },
         {
-          collection: PROGRESSION_AWARD_COLLECTION,
-          key: buildAwardRecordKey(matchId, source),
+          collection: XP_REWARD_LEDGER_COLLECTION,
+          key: ledgerKey,
           userId,
-          value: awardRecord,
+          value: rewardRecord,
           version: "*",
           permissionRead: STORAGE_PERMISSION_NONE,
           permissionWrite: STORAGE_PERMISSION_NONE
         }
       ]);
       logger.info(
-        "Awarded %d XP to user %s for %s on match %s (total=%d).",
+        "Awarded %d XP to user %s for %s (%s). total=%d",
         awardedXp,
         userId,
-        source,
-        matchId,
+        params.source,
+        sourceId,
         newTotalXp
       );
       return response;
     } catch (error) {
-      const refreshed = readProgressionProfileAndAward(nk, userId, matchId, source);
-      if (refreshed.awardObject) {
-        return buildDuplicateAwardResponse(
-          refreshed.awardObject,
+      const refreshed = readProgressionProfileAndLedger(nk, userId, ledgerKey);
+      if (refreshed.ledgerObject) {
+        return buildDuplicateRewardResult(
+          refreshed.ledgerObject,
           buildProgressionSnapshot(
             normalizeProgressionProfile(getStorageObjectValue(refreshed.profileObject), now).totalXp
           ),
-          matchId,
-          source
+          {
+            ledgerKey,
+            source: params.source,
+            sourceId,
+            matchId: (_h = params.matchId) != null ? _h : null
+          }
         );
       }
       logger.warn(
-        "Award write attempt %d/%d failed for user %s on match %s: %s",
+        "XP award write attempt %d/%d failed for user %s (%s/%s): %s",
+        attempt,
+        MAX_WRITE_ATTEMPTS,
+        userId,
+        params.source,
+        sourceId,
+        getErrorMessage(error)
+      );
+    }
+  }
+  throw new Error(`Unable to persist progression award for user ${userId} on ledger ${ledgerKey}.`);
+};
+var buildMatchWinAwardResponse = (result) => {
+  var _a;
+  return {
+    matchId: (_a = result.matchId) != null ? _a : result.sourceId,
+    source: result.source,
+    duplicate: result.duplicate,
+    awardedXp: result.awardedXp,
+    previousTotalXp: result.previousTotalXp,
+    newTotalXp: result.newTotalXp,
+    previousRank: result.previousRank,
+    newRank: result.newRank,
+    rankChanged: result.rankChanged,
+    progression: result.progression
+  };
+};
+var awardXpForMatchWin = (nk, logger, params) => {
+  var _a;
+  const source = (_a = params.source) != null ? _a : "pvp_win";
+  return buildMatchWinAwardResponse(
+    awardXp(nk, logger, {
+      userId: params.userId,
+      ledgerKey: `${source}:${params.matchId}`,
+      source,
+      sourceId: params.matchId,
+      matchId: params.matchId,
+      awardedXp: getXpAwardAmount(source)
+    })
+  );
+};
+var createProgressionAwardNotification = (response) => __spreadValues({
+  type: "progression_award"
+}, response);
+var rpcGetXpProgress = (ctx, logger, nk, _payload) => {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  return JSON.stringify(getProgressionForUser(nk, logger, ctx.userId));
+};
+var rpcGetProgression = rpcGetXpProgress;
+var rpcGetUserXpProgress = rpcGetXpProgress;
+
+// shared/challenges.ts
+var CHALLENGE_IDS = {
+  FIRST_VICTORY: "first_victory",
+  BEAT_EASY_BOT: "beat_easy_bot",
+  FAST_FINISH: "fast_finish",
+  SAFE_PLAY: "safe_play",
+  LUCKY_ROLL: "lucky_roll",
+  HOME_STRETCH: "home_stretch",
+  CAPTURE_MASTER: "capture_master",
+  COMEBACK_WIN: "comeback_win",
+  RISK_TAKER: "risk_taker",
+  BEAT_MEDIUM_BOT: "beat_medium_bot",
+  BEAT_HARD_BOT: "beat_hard_bot",
+  BEAT_PERFECT_BOT: "beat_perfect_bot"
+};
+var CHALLENGE_DEFINITIONS = [
+  {
+    id: CHALLENGE_IDS.FIRST_VICTORY,
+    name: "First Victory",
+    description: "Win your first completed game against any opponent.",
+    type: "milestone",
+    rewardXp: 150
+  },
+  {
+    id: CHALLENGE_IDS.BEAT_EASY_BOT,
+    name: "Beat the Easy Bot",
+    description: "Win a completed game against the easy AI opponent.",
+    type: "bot",
+    rewardXp: 100
+  },
+  {
+    id: CHALLENGE_IDS.FAST_FINISH,
+    name: "Fast Finish",
+    description: "Win a completed game in fewer than 100 total applied moves.",
+    type: "match",
+    rewardXp: 175
+  },
+  {
+    id: CHALLENGE_IDS.SAFE_PLAY,
+    name: "Safe Play",
+    description: "Win a completed game without losing any pieces to captures.",
+    type: "match",
+    rewardXp: 200
+  },
+  {
+    id: CHALLENGE_IDS.LUCKY_ROLL,
+    name: "Lucky Roll",
+    description: "Win a completed game after rolling the maximum value at least 3 times.",
+    type: "match",
+    rewardXp: 175
+  },
+  {
+    id: CHALLENGE_IDS.HOME_STRETCH,
+    name: "Home Stretch",
+    description: "Win a completed game while making zero captures across the entire match.",
+    type: "match",
+    rewardXp: 225
+  },
+  {
+    id: CHALLENGE_IDS.CAPTURE_MASTER,
+    name: "Capture Master",
+    description: "Capture at least 3 opponent pieces in a single completed game. Victory is not required.",
+    type: "match",
+    rewardXp: 200
+  },
+  {
+    id: CHALLENGE_IDS.COMEBACK_WIN,
+    name: "Comeback Win",
+    description: "Win a completed game after trailing at one or more deterministic progress checkpoints during the match.",
+    type: "match",
+    rewardXp: 250
+  },
+  {
+    id: CHALLENGE_IDS.RISK_TAKER,
+    name: "Risk Taker",
+    description: "Win a completed game after landing on shared contestable tiles at least 3 times.",
+    type: "match",
+    rewardXp: 200
+  },
+  {
+    id: CHALLENGE_IDS.BEAT_MEDIUM_BOT,
+    name: "Beat the Medium Bot",
+    description: "Win a completed game against the medium AI opponent.",
+    type: "bot",
+    rewardXp: 150
+  },
+  {
+    id: CHALLENGE_IDS.BEAT_HARD_BOT,
+    name: "Beat the Hard Bot",
+    description: "Win a completed game against the hard AI opponent.",
+    type: "bot",
+    rewardXp: 225
+  },
+  {
+    id: CHALLENGE_IDS.BEAT_PERFECT_BOT,
+    name: "Beat the Perfect Bot",
+    description: "Win a completed game against the perfect AI opponent.",
+    type: "bot",
+    rewardXp: 350
+  }
+];
+var CHALLENGE_DEFINITION_BY_ID = CHALLENGE_DEFINITIONS.reduce(
+  (definitions, definition) => {
+    definitions[definition.id] = definition;
+    return definitions;
+  },
+  {}
+);
+var getChallengeDefinition = (challengeId) => {
+  const definition = CHALLENGE_DEFINITION_BY_ID[challengeId];
+  if (!definition) {
+    throw new Error(`Unknown challenge definition: ${challengeId}`);
+  }
+  return definition;
+};
+var createDefaultUserChallengeProgressSnapshot = (updatedAt = (/* @__PURE__ */ new Date()).toISOString()) => ({
+  totalCompleted: 0,
+  totalRewardedXp: 0,
+  updatedAt,
+  challenges: CHALLENGE_DEFINITIONS.reduce(
+    (states, definition) => {
+      states[definition.id] = {
+        challengeId: definition.id,
+        completed: false,
+        completedAt: null,
+        completedMatchId: null,
+        rewardXp: definition.rewardXp
+      };
+      return states;
+    },
+    {}
+  )
+});
+var isChallengeId = (value) => typeof value === "string" && value in CHALLENGE_DEFINITION_BY_ID;
+var isOpponentType = (value) => value === "human" || value === "easy_bot" || value === "medium_bot" || value === "hard_bot" || value === "perfect_bot";
+var isChallengeDefinition = (value) => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const definition = value;
+  return isChallengeId(definition.id) && typeof definition.name === "string" && typeof definition.description === "string" && (definition.type === "milestone" || definition.type === "bot" || definition.type === "match") && typeof definition.rewardXp === "number";
+};
+var isCompletedMatchSummary = (value) => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const summary = value;
+  return typeof summary.matchId === "string" && typeof summary.playerUserId === "string" && isOpponentType(summary.opponentType) && typeof summary.didWin === "boolean" && typeof summary.totalMoves === "number" && typeof summary.playerMoveCount === "number" && typeof summary.piecesLost === "number" && typeof summary.maxRollCount === "number" && typeof summary.capturesMade === "number" && typeof summary.capturesSuffered === "number" && typeof summary.contestedTilesLandedCount === "number" && typeof summary.borneOffCount === "number" && typeof summary.opponentBorneOffCount === "number" && typeof summary.wasBehindDuringMatch === "boolean" && typeof summary.behindCheckpointCount === "number" && Array.isArray(summary.behindReasons) && summary.behindReasons.every(
+    (reason) => reason === "progress_deficit" || reason === "borne_off_deficit"
+  ) && typeof summary.timestamp === "string";
+};
+var getPieceProgressScore = (position) => {
+  if (position < 0) {
+    return 0;
+  }
+  if (position >= PATH_LENGTH) {
+    return PATH_LENGTH + 1;
+  }
+  return position + 1;
+};
+var calculateBoardProgressScore = (player) => player.pieces.reduce((total, piece) => total + getPieceProgressScore(piece.position), 0);
+var calculateComebackCheckpoint = (state, playerColor) => {
+  const opponentColor = playerColor === "light" ? "dark" : "light";
+  const player = state[playerColor];
+  const opponent = state[opponentColor];
+  const reasons = [];
+  const playerProgress = calculateBoardProgressScore(player);
+  const opponentProgress = calculateBoardProgressScore(opponent);
+  if (opponent.finishedCount > player.finishedCount) {
+    reasons.push("borne_off_deficit");
+  }
+  if (opponentProgress - playerProgress >= 4) {
+    reasons.push("progress_deficit");
+  }
+  return {
+    wasBehind: reasons.length > 0,
+    reasons
+  };
+};
+
+// backend/modules/challenges.ts
+var CHALLENGE_DEFINITIONS_COLLECTION = "challenge_definitions";
+var USER_CHALLENGE_PROGRESS_COLLECTION = "user_challenge_progress";
+var USER_CHALLENGE_PROGRESS_KEY = "progress";
+var PROCESSED_MATCH_RESULTS_COLLECTION = "processed_match_results";
+var RPC_GET_CHALLENGE_DEFINITIONS = "get_challenge_definitions";
+var RPC_GET_USER_CHALLENGE_PROGRESS = "get_user_challenge_progress";
+var RPC_SUBMIT_COMPLETED_BOT_MATCH = "submit_completed_bot_match";
+var CHALLENGE_EVALUATORS = {
+  [CHALLENGE_IDS.FIRST_VICTORY]: (summary) => summary.didWin,
+  [CHALLENGE_IDS.BEAT_EASY_BOT]: (summary) => summary.didWin && summary.opponentType === "easy_bot",
+  [CHALLENGE_IDS.FAST_FINISH]: (summary) => summary.didWin && summary.totalMoves < 100,
+  [CHALLENGE_IDS.SAFE_PLAY]: (summary) => summary.didWin && summary.piecesLost === 0,
+  [CHALLENGE_IDS.LUCKY_ROLL]: (summary) => summary.didWin && summary.maxRollCount >= 3,
+  [CHALLENGE_IDS.HOME_STRETCH]: (summary) => summary.didWin && summary.capturesMade === 0,
+  // Intentional design decision: the challenge description does not require a win,
+  // so any completed match with 3+ captures counts.
+  [CHALLENGE_IDS.CAPTURE_MASTER]: (summary) => summary.capturesMade >= 3,
+  [CHALLENGE_IDS.COMEBACK_WIN]: (summary) => summary.didWin && summary.wasBehindDuringMatch,
+  [CHALLENGE_IDS.RISK_TAKER]: (summary) => summary.didWin && summary.contestedTilesLandedCount >= 3,
+  [CHALLENGE_IDS.BEAT_MEDIUM_BOT]: (summary) => summary.didWin && summary.opponentType === "medium_bot",
+  [CHALLENGE_IDS.BEAT_HARD_BOT]: (summary) => summary.didWin && summary.opponentType === "hard_bot",
+  [CHALLENGE_IDS.BEAT_PERFECT_BOT]: (summary) => summary.didWin && summary.opponentType === "perfect_bot"
+};
+var buildChallengeRewardLedgerKey = (challengeId) => `challenge:${challengeId}`;
+var buildProcessedMatchResultKey = (matchId) => matchId;
+var isBotOpponentType = (opponentType) => opponentType === "easy_bot" || opponentType === "medium_bot" || opponentType === "hard_bot" || opponentType === "perfect_bot";
+var readStringField2 = (value, keys) => {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const record = value;
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "string" && field.length > 0) {
+      return field;
+    }
+  }
+  return null;
+};
+var normalizeChallengeProgress = (rawValue, fallbackUpdatedAt = (/* @__PURE__ */ new Date()).toISOString()) => {
+  var _a;
+  const rawRecord = typeof rawValue === "object" && rawValue !== null ? rawValue : null;
+  const rawChallenges = rawRecord && typeof rawRecord.challenges === "object" && rawRecord.challenges !== null ? rawRecord.challenges : null;
+  const normalizedChallenges = CHALLENGE_DEFINITIONS.reduce(
+    (states, definition) => {
+      var _a2;
+      const rawState = rawChallenges == null ? void 0 : rawChallenges[definition.id];
+      const completed = (rawState == null ? void 0 : rawState.completed) === true;
+      const completedAt = completed ? (_a2 = readStringField2(rawState, ["completedAt", "completed_at"])) != null ? _a2 : fallbackUpdatedAt : null;
+      const completedMatchId = completed ? readStringField2(rawState, ["completedMatchId", "completed_match_id"]) : null;
+      states[definition.id] = {
+        challengeId: definition.id,
+        completed,
+        completedAt,
+        completedMatchId: completedMatchId != null ? completedMatchId : null,
+        rewardXp: definition.rewardXp
+      };
+      return states;
+    },
+    {}
+  );
+  const totalCompleted = Object.values(normalizedChallenges).filter((challenge) => challenge.completed).length;
+  const totalRewardedXp = Object.values(normalizedChallenges).filter((challenge) => challenge.completed).reduce((total, challenge) => total + challenge.rewardXp, 0);
+  return {
+    totalCompleted,
+    totalRewardedXp,
+    updatedAt: (_a = readStringField2(rawRecord, ["updatedAt", "updated_at"])) != null ? _a : fallbackUpdatedAt,
+    challenges: normalizedChallenges
+  };
+};
+var challengeProgressNeedsRepair = (rawValue, normalized) => {
+  const rawRecord = typeof rawValue === "object" && rawValue !== null ? rawValue : null;
+  if (!rawRecord) {
+    return true;
+  }
+  if (rawRecord.totalCompleted !== normalized.totalCompleted) {
+    return true;
+  }
+  if (rawRecord.totalRewardedXp !== normalized.totalRewardedXp) {
+    return true;
+  }
+  const rawChallenges = rawRecord.challenges;
+  return CHALLENGE_DEFINITIONS.some((definition) => {
+    const rawState = rawChallenges == null ? void 0 : rawChallenges[definition.id];
+    const normalizedState = normalized.challenges[definition.id];
+    return !rawState || rawState.completed !== normalizedState.completed || rawState.completedAt !== normalizedState.completedAt || rawState.completedMatchId !== normalizedState.completedMatchId || rawState.rewardXp !== normalizedState.rewardXp;
+  });
+};
+var readChallengeProgressObject = (nk, userId) => {
+  const objects = nk.storageRead([
+    {
+      collection: USER_CHALLENGE_PROGRESS_COLLECTION,
+      key: USER_CHALLENGE_PROGRESS_KEY,
+      userId
+    }
+  ]);
+  return findStorageObject(objects, USER_CHALLENGE_PROGRESS_COLLECTION, USER_CHALLENGE_PROGRESS_KEY, userId);
+};
+var writeChallengeProgressObject = (nk, userId, progress, version) => {
+  nk.storageWrite([
+    {
+      collection: USER_CHALLENGE_PROGRESS_COLLECTION,
+      key: USER_CHALLENGE_PROGRESS_KEY,
+      userId,
+      value: progress,
+      version,
+      permissionRead: STORAGE_PERMISSION_NONE,
+      permissionWrite: STORAGE_PERMISSION_NONE
+    }
+  ]);
+};
+var ensureChallengeDefinitions = (nk, logger) => {
+  const existingObjects = nk.storageRead(
+    CHALLENGE_DEFINITIONS.map((definition) => ({
+      collection: CHALLENGE_DEFINITIONS_COLLECTION,
+      key: definition.id
+    }))
+  );
+  const writes = CHALLENGE_DEFINITIONS.flatMap((definition) => {
+    var _a;
+    const existing = findStorageObject(existingObjects, CHALLENGE_DEFINITIONS_COLLECTION, definition.id);
+    const stored = getStorageObjectValue(existing);
+    if (stored && isChallengeDefinition(stored)) {
+      const storedDefinition = stored;
+      if (storedDefinition.name === definition.name && storedDefinition.description === definition.description && storedDefinition.type === definition.type && storedDefinition.rewardXp === definition.rewardXp) {
+        return [];
+      }
+    }
+    const value = __spreadProps(__spreadValues({}, definition), {
+      syncedAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    return [
+      {
+        collection: CHALLENGE_DEFINITIONS_COLLECTION,
+        key: definition.id,
+        value,
+        version: existing ? (_a = getStorageObjectVersion(existing)) != null ? _a : "" : "*",
+        permissionRead: STORAGE_PERMISSION_NONE,
+        permissionWrite: STORAGE_PERMISSION_NONE
+      }
+    ];
+  });
+  if (writes.length === 0) {
+    return;
+  }
+  nk.storageWrite(writes);
+  logger.info("Synchronized %d challenge definitions into Nakama storage.", writes.length);
+};
+var ensureUserChallengeProgress = (nk, logger, userId) => {
+  var _a;
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const existingObject = readChallengeProgressObject(nk, userId);
+    if (existingObject) {
+      const normalized = normalizeChallengeProgress(getStorageObjectValue(existingObject));
+      if (!challengeProgressNeedsRepair(getStorageObjectValue(existingObject), normalized)) {
+        return normalized;
+      }
+      try {
+        writeChallengeProgressObject(nk, userId, normalized, (_a = getStorageObjectVersion(existingObject)) != null ? _a : "");
+        return normalized;
+      } catch (error) {
+        logger.warn(
+          "Challenge progress repair attempt %d/%d failed for user %s: %s",
+          attempt,
+          MAX_WRITE_ATTEMPTS,
+          userId,
+          getErrorMessage(error)
+        );
+      }
+      continue;
+    }
+    const defaults = createDefaultUserChallengeProgressSnapshot();
+    try {
+      writeChallengeProgressObject(nk, userId, defaults, "*");
+      return defaults;
+    } catch (error) {
+      logger.warn(
+        "Challenge progress init attempt %d/%d failed for user %s: %s",
+        attempt,
+        MAX_WRITE_ATTEMPTS,
+        userId,
+        getErrorMessage(error)
+      );
+    }
+  }
+  throw new Error(`Unable to initialize challenge progress for user ${userId}.`);
+};
+var getChallengeDefinitionsResponse = () => ({
+  challenges: [...CHALLENGE_DEFINITIONS]
+});
+var getUserChallengeProgress = (nk, logger, userId) => ensureUserChallengeProgress(nk, logger, userId);
+var evaluateChallengesForMatchSummary = (summary) => CHALLENGE_DEFINITIONS.filter((definition) => CHALLENGE_EVALUATORS[definition.id](summary)).map(
+  (definition) => definition.id
+);
+var normalizeProcessedMatchResult = (rawValue) => {
+  if (typeof rawValue !== "object" || rawValue === null) {
+    return null;
+  }
+  const record = rawValue;
+  const matchId = readStringField2(record, ["matchId", "match_id"]);
+  const playerUserId = readStringField2(record, ["playerUserId", "player_user_id"]);
+  const processedAt = readStringField2(record, ["processedAt", "processed_at"]);
+  const summary = record.summary;
+  const completedChallengeIds = Array.isArray(record.completedChallengeIds) ? record.completedChallengeIds.filter((challengeId) => typeof challengeId === "string") : [];
+  const awardedXp = typeof record.awardedXp === "number" ? record.awardedXp : 0;
+  if (!matchId || !playerUserId || !processedAt || !isCompletedMatchSummary(summary)) {
+    return null;
+  }
+  return {
+    matchId,
+    playerUserId,
+    processedAt,
+    summary,
+    completedChallengeIds,
+    awardedXp
+  };
+};
+var readMatchProcessingObjects = (nk, userId, matchId, candidateChallengeIds) => {
+  const objectIds = [
+    {
+      collection: PROGRESSION_COLLECTION,
+      key: PROGRESSION_PROFILE_KEY,
+      userId
+    },
+    {
+      collection: USER_CHALLENGE_PROGRESS_COLLECTION,
+      key: USER_CHALLENGE_PROGRESS_KEY,
+      userId
+    },
+    {
+      collection: PROCESSED_MATCH_RESULTS_COLLECTION,
+      key: buildProcessedMatchResultKey(matchId),
+      userId
+    },
+    ...candidateChallengeIds.map((challengeId) => ({
+      collection: XP_REWARD_LEDGER_COLLECTION,
+      key: buildChallengeRewardLedgerKey(challengeId),
+      userId
+    }))
+  ];
+  const objects = nk.storageRead(objectIds);
+  const rewardLedgerObjectsByChallengeId = candidateChallengeIds.reduce(
+    (entries, challengeId) => {
+      const rewardObject = findStorageObject(
+        objects,
+        XP_REWARD_LEDGER_COLLECTION,
+        buildChallengeRewardLedgerKey(challengeId),
+        userId
+      );
+      if (rewardObject) {
+        entries[challengeId] = rewardObject;
+      }
+      return entries;
+    },
+    {}
+  );
+  return {
+    profileObject: findStorageObject(objects, PROGRESSION_COLLECTION, PROGRESSION_PROFILE_KEY, userId),
+    challengeProgressObject: findStorageObject(
+      objects,
+      USER_CHALLENGE_PROGRESS_COLLECTION,
+      USER_CHALLENGE_PROGRESS_KEY,
+      userId
+    ),
+    processedMatchObject: findStorageObject(
+      objects,
+      PROCESSED_MATCH_RESULTS_COLLECTION,
+      buildProcessedMatchResultKey(matchId),
+      userId
+    ),
+    rewardLedgerObjectsByChallengeId
+  };
+};
+var processCompletedMatch = (nk, logger, summary) => {
+  var _a, _b, _c;
+  if (!isCompletedMatchSummary(summary)) {
+    throw new Error("Completed match summary payload is invalid.");
+  }
+  const userId = summary.playerUserId.trim();
+  const matchId = summary.matchId.trim();
+  if (!userId || !matchId) {
+    throw new Error("Completed match summary must include non-empty match and user IDs.");
+  }
+  const satisfiedChallengeIds = evaluateChallengesForMatchSummary(summary);
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const {
+      profileObject,
+      challengeProgressObject,
+      processedMatchObject,
+      rewardLedgerObjectsByChallengeId
+    } = readMatchProcessingObjects(nk, userId, matchId, satisfiedChallengeIds);
+    const currentProfile = profileObject ? normalizeProgressionProfile(getStorageObjectValue(profileObject), now) : ensureProgressionProfile(nk, logger, userId);
+    const currentProgress = challengeProgressObject ? normalizeChallengeProgress(getStorageObjectValue(challengeProgressObject), now) : createDefaultUserChallengeProgressSnapshot(now);
+    const existingProcessedMatch = normalizeProcessedMatchResult(getStorageObjectValue(processedMatchObject));
+    if (existingProcessedMatch) {
+      return {
+        duplicate: true,
+        completedChallengeIds: existingProcessedMatch.completedChallengeIds,
+        awardedXp: existingProcessedMatch.awardedXp,
+        totalXp: currentProfile.totalXp,
+        progressionRank: getRankForXp(currentProfile.totalXp).title
+      };
+    }
+    const completedChallengeIds = [];
+    const completionWrites = [];
+    let totalAwardedXp = 0;
+    const nextProgress = __spreadProps(__spreadValues({}, currentProgress), {
+      updatedAt: now,
+      challenges: __spreadValues({}, currentProgress.challenges)
+    });
+    for (const challengeId of satisfiedChallengeIds) {
+      const definition = getChallengeDefinition(challengeId);
+      const existingState = nextProgress.challenges[challengeId];
+      if (existingState.completed) {
+        continue;
+      }
+      completedChallengeIds.push(challengeId);
+      nextProgress.challenges[challengeId] = {
+        challengeId,
+        completed: true,
+        completedAt: now,
+        completedMatchId: matchId,
+        rewardXp: definition.rewardXp
+      };
+      if (!rewardLedgerObjectsByChallengeId[challengeId]) {
+        totalAwardedXp += definition.rewardXp;
+        completionWrites.push({
+          challengeId,
+          completedAt: now,
+          completedMatchId: matchId,
+          rewardXp: definition.rewardXp,
+          rewardLedgerKey: buildChallengeRewardLedgerKey(challengeId)
+        });
+      }
+    }
+    nextProgress.totalCompleted = Object.values(nextProgress.challenges).filter((challenge) => challenge.completed).length;
+    nextProgress.totalRewardedXp = Object.values(nextProgress.challenges).filter((challenge) => challenge.completed).reduce((total, challenge) => total + challenge.rewardXp, 0);
+    const nextTotalXp = currentProfile.totalXp + totalAwardedXp;
+    const nextProfile = {
+      totalXp: nextTotalXp,
+      currentRankTitle: getRankForXp(nextTotalXp).title,
+      lastUpdatedAt: now
+    };
+    const processedRecord = {
+      matchId,
+      playerUserId: userId,
+      processedAt: now,
+      summary,
+      completedChallengeIds,
+      awardedXp: totalAwardedXp
+    };
+    let ledgerRunningTotal = currentProfile.totalXp;
+    const challengeRewardWrites = completionWrites.map((completion) => {
+      const previousTotal = ledgerRunningTotal;
+      const nextLedgerTotal = previousTotal + completion.rewardXp;
+      ledgerRunningTotal = nextLedgerTotal;
+      return {
+        collection: XP_REWARD_LEDGER_COLLECTION,
+        key: completion.rewardLedgerKey,
+        userId,
+        value: buildXpRewardLedgerRecord(
+          userId,
+          {
+            ledgerKey: completion.rewardLedgerKey,
+            source: "challenge_completion",
+            sourceId: completion.challengeId,
+            matchId,
+            awardedXp: completion.rewardXp
+          },
+          previousTotal,
+          nextLedgerTotal,
+          now
+        ),
+        version: "*",
+        permissionRead: STORAGE_PERMISSION_NONE,
+        permissionWrite: STORAGE_PERMISSION_NONE
+      };
+    });
+    const writes = [
+      {
+        collection: PROGRESSION_COLLECTION,
+        key: PROGRESSION_PROFILE_KEY,
+        userId,
+        value: nextProfile,
+        version: profileObject ? (_a = getStorageObjectVersion(profileObject)) != null ? _a : "" : "*",
+        permissionRead: STORAGE_PERMISSION_NONE,
+        permissionWrite: STORAGE_PERMISSION_NONE
+      },
+      {
+        collection: USER_CHALLENGE_PROGRESS_COLLECTION,
+        key: USER_CHALLENGE_PROGRESS_KEY,
+        userId,
+        value: nextProgress,
+        version: challengeProgressObject ? (_b = getStorageObjectVersion(challengeProgressObject)) != null ? _b : "" : "*",
+        permissionRead: STORAGE_PERMISSION_NONE,
+        permissionWrite: STORAGE_PERMISSION_NONE
+      },
+      {
+        collection: PROCESSED_MATCH_RESULTS_COLLECTION,
+        key: buildProcessedMatchResultKey(matchId),
+        userId,
+        value: processedRecord,
+        version: processedMatchObject ? (_c = getStorageObjectVersion(processedMatchObject)) != null ? _c : "" : "*",
+        permissionRead: STORAGE_PERMISSION_NONE,
+        permissionWrite: STORAGE_PERMISSION_NONE
+      },
+      ...challengeRewardWrites
+    ];
+    try {
+      nk.storageWrite(writes);
+      logger.info(
+        "Processed completed match %s for user %s: %d challenge completions, %d XP awarded.",
+        matchId,
+        userId,
+        completedChallengeIds.length,
+        totalAwardedXp
+      );
+      return {
+        duplicate: false,
+        completedChallengeIds,
+        awardedXp: totalAwardedXp,
+        totalXp: nextTotalXp,
+        progressionRank: nextProfile.currentRankTitle
+      };
+    } catch (error) {
+      const refreshed = readMatchProcessingObjects(nk, userId, matchId, satisfiedChallengeIds);
+      const refreshedProcessed = normalizeProcessedMatchResult(getStorageObjectValue(refreshed.processedMatchObject));
+      if (refreshedProcessed) {
+        const refreshedProfile = refreshed.profileObject ? normalizeProgressionProfile(getStorageObjectValue(refreshed.profileObject), now) : currentProfile;
+        return {
+          duplicate: true,
+          completedChallengeIds: refreshedProcessed.completedChallengeIds,
+          awardedXp: refreshedProcessed.awardedXp,
+          totalXp: refreshedProfile.totalXp,
+          progressionRank: getRankForXp(refreshedProfile.totalXp).title
+        };
+      }
+      logger.warn(
+        "Completed-match processing attempt %d/%d failed for user %s on match %s: %s",
         attempt,
         MAX_WRITE_ATTEMPTS,
         userId,
@@ -602,16 +1336,45 @@ var awardXpForMatchWin = (nk, logger, params) => {
       );
     }
   }
-  throw new Error(`Unable to persist progression award for user ${userId} on match ${matchId}.`);
+  throw new Error(`Unable to process completed match ${matchId} for user ${userId}.`);
 };
-var createProgressionAwardNotification = (response) => __spreadValues({
-  type: "progression_award"
-}, response);
-var rpcGetProgression = (ctx, logger, nk, _payload) => {
+var rpcGetChallengeDefinitions = (ctx, _logger, _nk, _payload) => {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
-  return JSON.stringify(getProgressionForUser(nk, logger, ctx.userId));
+  return JSON.stringify(getChallengeDefinitionsResponse());
+};
+var rpcSubmitCompletedBotMatch = (ctx, logger, nk, payload) => {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  const parsed = payload ? JSON.parse(payload) : {};
+  const rawSummary = typeof parsed === "object" && parsed !== null && "summary" in parsed ? parsed.summary : parsed;
+  if (!isCompletedMatchSummary(rawSummary)) {
+    throw new Error("Completed bot match summary payload is invalid.");
+  }
+  if (!rawSummary.matchId.startsWith("local-")) {
+    throw new Error("Completed bot match summary must use a local match ID.");
+  }
+  if (!isBotOpponentType(rawSummary.opponentType)) {
+    throw new Error("Completed bot match summary must reference a bot opponent.");
+  }
+  const summary = __spreadProps(__spreadValues({}, rawSummary), {
+    playerUserId: ctx.userId
+  });
+  const progressionAward = summary.didWin ? awardXpForMatchWin(nk, logger, {
+    userId: ctx.userId,
+    matchId: summary.matchId,
+    source: "bot_win"
+  }) : null;
+  processCompletedMatch(nk, logger, summary);
+  return JSON.stringify({ progressionAward });
+};
+var rpcGetUserChallengeProgress = (ctx, logger, nk, _payload) => {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  return JSON.stringify(getUserChallengeProgress(nk, logger, ctx.userId));
 };
 
 // shared/urMatchProtocol.ts
@@ -646,13 +1409,17 @@ var MAX_PLAYERS = 2;
 var ONLINE_TTL_MS = 3e4;
 var RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 var RPC_GET_PROGRESSION_NAME = RPC_GET_PROGRESSION;
+var RPC_GET_USER_XP_PROGRESS_NAME = RPC_GET_USER_XP_PROGRESS;
+var RPC_GET_CHALLENGE_DEFINITIONS_NAME = RPC_GET_CHALLENGE_DEFINITIONS;
+var RPC_GET_USER_CHALLENGE_PROGRESS_NAME = RPC_GET_USER_CHALLENGE_PROGRESS;
+var RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME = RPC_SUBMIT_COMPLETED_BOT_MATCH;
 var RPC_MATCHMAKER_ADD = "matchmaker_add";
 var RPC_PRESENCE_HEARTBEAT = "presence_heartbeat";
 var RPC_PRESENCE_COUNT = "presence_count";
 var MATCH_HANDLER = "authoritative_match";
 var onlinePresenceByDevice = /* @__PURE__ */ new Map();
 var asRecord2 = (value) => typeof value === "object" && value !== null ? value : null;
-var readStringField2 = (value, keys) => {
+var readStringField3 = (value, keys) => {
   const record = asRecord2(value);
   if (!record) {
     return null;
@@ -714,14 +1481,14 @@ var decodeMessageData = (data, nk) => {
   }
   return String(data != null ? data : "");
 };
-var getPresenceUserId = (presence) => readStringField2(presence, ["userId", "user_id"]);
-var getSenderUserId = (sender) => readStringField2(sender, ["userId", "user_id"]);
+var getPresenceUserId = (presence) => readStringField3(presence, ["userId", "user_id"]);
+var getSenderUserId = (sender) => readStringField3(sender, ["userId", "user_id"]);
 var getMatchId = (ctx) => {
   var _a;
-  return (_a = readStringField2(ctx, ["matchId", "match_id"])) != null ? _a : "";
+  return (_a = readStringField3(ctx, ["matchId", "match_id"])) != null ? _a : "";
 };
 var getMessageOpCode = (message) => readNumberField2(message, ["opCode", "op_code"]);
-var getContextUserId = (ctx) => readStringField2(ctx, ["userId", "user_id"]);
+var getContextUserId = (ctx) => readStringField3(ctx, ["userId", "user_id"]);
 var pruneOnlinePresence = (nowMs) => {
   onlinePresenceByDevice.forEach((lastSeenMs, deviceKey) => {
     if (nowMs - lastSeenMs > ONLINE_TTL_MS) {
@@ -734,6 +1501,80 @@ var encodeOnlinePresencePayload = (nowMs) => JSON.stringify({
   onlineTtlMs: ONLINE_TTL_MS,
   serverTimeMs: nowMs
 });
+var createPlayerTelemetry = () => ({
+  playerMoveCount: 0,
+  maxRollCount: 0,
+  capturesMade: 0,
+  capturesSuffered: 0,
+  contestedTilesLandedCount: 0,
+  wasBehindDuringMatch: false,
+  behindCheckpointCount: 0,
+  behindReasons: /* @__PURE__ */ new Set()
+});
+var createMatchTelemetry = () => ({
+  totalMoves: 0,
+  players: {
+    light: createPlayerTelemetry(),
+    dark: createPlayerTelemetry()
+  }
+});
+var getPathCoord2 = (color, index) => {
+  var _a, _b;
+  if (index < 0 || index >= PATH_LENGTH) {
+    return null;
+  }
+  return color === "light" ? (_a = PATH_LIGHT[index]) != null ? _a : null : (_b = PATH_DARK[index]) != null ? _b : null;
+};
+var detectCaptureOnMove = (state, move) => {
+  const moverColor = state.currentTurn;
+  const opponentColor = moverColor === "light" ? "dark" : "light";
+  const targetCoord = getPathCoord2(moverColor, move.toIndex);
+  if (!targetCoord) {
+    return false;
+  }
+  return state[opponentColor].pieces.some((piece) => {
+    if (piece.position < 0 || piece.isFinished) {
+      return false;
+    }
+    const pieceCoord = getPathCoord2(opponentColor, piece.position);
+    return Boolean(pieceCoord && pieceCoord.row === targetCoord.row && pieceCoord.col === targetCoord.col);
+  });
+};
+var updateComebackTelemetry = (state) => {
+  ["light", "dark"].forEach((playerColor) => {
+    const checkpoint = calculateComebackCheckpoint(state.gameState, playerColor);
+    if (!checkpoint.wasBehind) {
+      return;
+    }
+    const playerTelemetry = state.telemetry.players[playerColor];
+    playerTelemetry.wasBehindDuringMatch = true;
+    playerTelemetry.behindCheckpointCount += 1;
+    checkpoint.reasons.forEach((reason) => playerTelemetry.behindReasons.add(reason));
+  });
+};
+var buildPlayerMatchSummary = (state, matchId, playerUserId, playerColor) => {
+  const opponentColor = playerColor === "light" ? "dark" : "light";
+  const playerTelemetry = state.telemetry.players[playerColor];
+  return {
+    matchId,
+    playerUserId,
+    opponentType: state.opponentType,
+    didWin: state.gameState.winner === playerColor,
+    totalMoves: state.telemetry.totalMoves,
+    playerMoveCount: playerTelemetry.playerMoveCount,
+    piecesLost: playerTelemetry.capturesSuffered,
+    maxRollCount: playerTelemetry.maxRollCount,
+    capturesMade: playerTelemetry.capturesMade,
+    capturesSuffered: playerTelemetry.capturesSuffered,
+    contestedTilesLandedCount: playerTelemetry.contestedTilesLandedCount,
+    borneOffCount: state.gameState[playerColor].finishedCount,
+    opponentBorneOffCount: state.gameState[opponentColor].finishedCount,
+    wasBehindDuringMatch: playerTelemetry.wasBehindDuringMatch,
+    behindCheckpointCount: playerTelemetry.behindCheckpointCount,
+    behindReasons: Array.from(playerTelemetry.behindReasons),
+    timestamp: (/* @__PURE__ */ new Date()).toISOString()
+  };
+};
 var matchInitHandler = matchInit;
 var matchJoinAttemptHandler = matchJoinAttempt;
 var matchJoinHandler = matchJoin;
@@ -741,9 +1582,13 @@ var matchLeaveHandler = matchLeave;
 var matchLoopHandler = matchLoop;
 var matchTerminateHandler = matchTerminate;
 var matchSignalHandler = matchSignal;
-function InitModule(_ctx, logger, _nk, initializer) {
+function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_AUTH_LINK_CUSTOM, rpcAuthLinkCustom);
   initializer.registerRpc(RPC_GET_PROGRESSION_NAME, rpcGetProgression);
+  initializer.registerRpc(RPC_GET_USER_XP_PROGRESS_NAME, rpcGetUserXpProgress);
+  initializer.registerRpc(RPC_GET_CHALLENGE_DEFINITIONS_NAME, rpcGetChallengeDefinitions);
+  initializer.registerRpc(RPC_GET_USER_CHALLENGE_PROGRESS_NAME, rpcGetUserChallengeProgress);
+  initializer.registerRpc(RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME, rpcSubmitCompletedBotMatch);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
   initializer.registerRpc(RPC_PRESENCE_HEARTBEAT, rpcPresenceHeartbeat);
   initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
@@ -757,6 +1602,7 @@ function InitModule(_ctx, logger, _nk, initializer) {
     matchSignal: matchSignalHandler
   });
   initializer.registerMatchmakerMatched(matchmakerMatched);
+  ensureChallengeDefinitions(nk, logger);
   logger.info("Nakama runtime module loaded.");
 }
 function rpcPresenceHeartbeat(ctx, _logger, _nk, _payload) {
@@ -835,7 +1681,9 @@ function matchInit(_ctx, _logger, _nk, params) {
     presences: {},
     assignments,
     gameState: createInitialState(),
-    revision: 0
+    revision: 0,
+    opponentType: "human",
+    telemetry: createMatchTelemetry()
   };
   return { state, tickRate: TICK_RATE, label: MATCH_HANDLER };
 }
@@ -961,6 +1809,9 @@ function applyRollRequest(logger, dispatcher, state, userId, playerColor, _paylo
     return;
   }
   const rollValue = rollDice();
+  if (rollValue === 4) {
+    state.telemetry.players[playerColor].maxRollCount += 1;
+  }
   const rollingState = __spreadProps(__spreadValues({}, state.gameState), {
     rollValue,
     phase: "moving"
@@ -973,6 +1824,7 @@ function applyRollRequest(logger, dispatcher, state, userId, playerColor, _paylo
       rollValue: null,
       history: [...rollingState.history, `${rollingState.currentTurn} rolled ${rollValue} but had no moves.`]
     });
+    updateComebackTelemetry(state);
   } else {
     state.gameState = rollingState;
   }
@@ -1001,12 +1853,26 @@ function applyMoveRequest(logger, nk, dispatcher, state, userId, playerColor, pa
     sendError(dispatcher, state, userId, "INVALID_MOVE", "Move is not valid for current state.");
     return;
   }
+  const didCapture = detectCaptureOnMove(state.gameState, payload.move);
+  const targetCoord = getPathCoord2(playerColor, payload.move.toIndex);
   state.gameState = applyMove(state.gameState, payload.move);
+  state.telemetry.totalMoves += 1;
+  state.telemetry.players[playerColor].playerMoveCount += 1;
+  if (didCapture) {
+    const opponentColor = playerColor === "light" ? "dark" : "light";
+    state.telemetry.players[playerColor].capturesMade += 1;
+    state.telemetry.players[opponentColor].capturesSuffered += 1;
+  }
+  if (targetCoord && isWarZone(targetCoord.row, targetCoord.col)) {
+    state.telemetry.players[playerColor].contestedTilesLandedCount += 1;
+  }
+  updateComebackTelemetry(state);
   state.revision += 1;
   logger.debug("Applied move for %s (revision %d)", userId, state.revision);
   broadcastSnapshot(dispatcher, state, matchId);
   if (state.gameState.winner) {
     awardWinnerProgression(logger, nk, dispatcher, state, matchId);
+    processCompletedMatchSummaries(logger, nk, state, matchId);
   }
 }
 function awardWinnerProgression(logger, nk, dispatcher, state, matchId) {
@@ -1051,6 +1917,21 @@ function awardWinnerProgression(logger, nk, dispatcher, state, matchId) {
       error instanceof Error ? error.message : String(error)
     );
   }
+}
+function processCompletedMatchSummaries(logger, nk, state, matchId) {
+  Object.entries(state.assignments).forEach(([playerUserId, playerColor]) => {
+    try {
+      const summary = buildPlayerMatchSummary(state, matchId, playerUserId, playerColor);
+      processCompletedMatch(nk, logger, summary);
+    } catch (error) {
+      logger.error(
+        "Failed to process challenge summary for user %s on match %s: %s",
+        playerUserId,
+        matchId,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  });
 }
 function sendError(dispatcher, state, userId, code, message) {
   const target = state.presences[userId];

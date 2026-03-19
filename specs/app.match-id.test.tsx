@@ -187,6 +187,17 @@ jest.mock('@/src/challenges/useChallenges', () => ({
   }),
 }));
 
+jest.mock('@/src/auth/useAuth', () => ({
+  useAuth: () => ({
+    user: null,
+    isLoading: false,
+    loginWithGoogle: jest.fn(),
+    loginAsGuest: jest.fn(),
+    logout: jest.fn(),
+    linkGoogleAccount: jest.fn(),
+  }),
+}));
+
 jest.mock('@/services/audio', () => ({
   gameAudio: {
     getPreferences: jest.fn().mockResolvedValue({

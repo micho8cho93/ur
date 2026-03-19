@@ -29,6 +29,7 @@ import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty } from '@/logic/bot/types';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import type { GameState, PlayerColor } from '@/logic/types';
 import { gameAudio } from '@/services/audio';
+import { submitCompletedBotMatchResult } from '@/services/botMatchRewards';
 import {
   DEFAULT_MATCH_PREFERENCES,
   getMatchPreferences,
@@ -38,7 +39,15 @@ import {
 import { nakamaService } from '@/services/nakama';
 import { stripProgressionAwardEnvelope } from '@/services/progression';
 import { buildMatchChallengeRewardSummary, type MatchChallengeRewardSummary } from '@/src/challenges/challengeUi';
+import { useAuth } from '@/src/auth/useAuth';
 import { useChallenges } from '@/src/challenges/useChallenges';
+import {
+  buildOfflineCompletedMatchSummary,
+  createOfflineMatchTelemetry,
+  getBotOpponentType,
+  recordOfflineHistoryEntries,
+  recordOfflineRoll,
+} from '@/src/offlineMatch/offlineMatchRewards';
 import { useProgression } from '@/src/progression/useProgression';
 import { useGameStore } from '@/store/useGameStore';
 import { isProgressionAwardNotificationPayload } from '@/shared/progression';
@@ -153,6 +162,7 @@ export function GameRoom() {
   const [ancientCueFontLoaded, ancientCueFontError] = useFonts({
     [MATCH_CUE_FONT_FAMILY]: require('../../assets/fonts/CinzelDecorative-Bold.ttf'),
   });
+  const { user } = useAuth();
 
   const matchId = useMemo(() => (Array.isArray(id) ? id[0] : id), [id]);
   const offlineParam = useMemo(() => (Array.isArray(offline) ? offline[0] : offline), [offline]);
@@ -202,6 +212,8 @@ export function GameRoom() {
   } = useChallenges();
 
   const hasAssignedColor = playerColor === 'light' || playerColor === 'dark';
+  const canSyncOfflineBotRewards = isOffline && isNakamaEnabled() && hasNakamaConfig() && Boolean(user);
+  const shouldShowAccountRewards = !isOffline || canSyncOfflineBotRewards;
   const effectiveMatchToken = storedMatchId === matchId ? matchToken : null;
   const isMyTurn = hasAssignedColor && gameState.currentTurn === playerColor;
   const canRoll = isMyTurn && gameState.phase === 'rolling';
@@ -261,6 +273,8 @@ export function GameRoom() {
   const activeMatchCueRef = useRef<MatchMomentIndicatorCue | null>(null);
   const queuedMatchCuesRef = useRef<MatchMomentIndicatorCue[]>([]);
   const matchCueIdRef = useRef(0);
+  const offlineMatchTelemetryRef = useRef(createOfflineMatchTelemetry());
+  const submittedOfflineRewardMatchIdsRef = useRef(new Set<string>());
   const lastQueuedMatchCueRef = useRef<{
     kind: MatchMomentCueKind;
     matchId: string | null;
@@ -433,6 +447,103 @@ export function GameRoom() {
       setShowWinModal(true);
     }
   }, [gameState.winner]);
+
+  useEffect(() => {
+    if (
+      !showWinModal ||
+      !canSyncOfflineBotRewards ||
+      !matchId ||
+      !hasAssignedColor ||
+      !playerColor ||
+      gameState.winner === null
+    ) {
+      return;
+    }
+
+    if (submittedOfflineRewardMatchIdsRef.current.has(matchId)) {
+      return;
+    }
+
+    submittedOfflineRewardMatchIdsRef.current.add(matchId);
+    let isMounted = true;
+
+    const submitOfflineMatchRewards = async () => {
+      setIsRefreshingMatchRewards(true);
+      setMatchRewardsErrorMessage(null);
+
+      try {
+        const summary = buildOfflineCompletedMatchSummary({
+          matchId,
+          playerColor,
+          opponentType: getBotOpponentType(resolvedBotDifficulty),
+          finalState: gameState,
+          telemetry: offlineMatchTelemetryRef.current,
+          playerUserId: user?.nakamaUserId ?? user?.id ?? '',
+        });
+        const submission = await submitCompletedBotMatchResult(summary);
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (submission.progressionAward) {
+          setLastProgressionAward(submission.progressionAward);
+        }
+
+        const [progressionResult, challengesResult] = await Promise.all([
+          refreshProgression({ silent: true }),
+          refreshChallenges({ silent: true }),
+        ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        const nextDefinitions = challengesResult?.definitions ?? challengeDefinitions;
+        const nextProgress = challengesResult?.progress ?? challengeProgress;
+
+        setMatchChallengeSummary(buildMatchChallengeRewardSummary(matchId, nextDefinitions, nextProgress));
+
+        if (!progressionResult && progressionError) {
+          setMatchRewardsErrorMessage(progressionError);
+        }
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        submittedOfflineRewardMatchIdsRef.current.delete(matchId);
+        setMatchRewardsErrorMessage(
+          error instanceof Error ? error.message : 'Unable to submit bot match rewards.',
+        );
+      } finally {
+        if (isMounted) {
+          setIsRefreshingMatchRewards(false);
+        }
+      }
+    };
+
+    void submitOfflineMatchRewards();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    canSyncOfflineBotRewards,
+    challengeDefinitions,
+    challengeProgress,
+    gameState,
+    hasAssignedColor,
+    matchId,
+    playerColor,
+    progressionError,
+    refreshChallenges,
+    refreshProgression,
+    resolvedBotDifficulty,
+    setLastProgressionAward,
+    showWinModal,
+    user,
+  ]);
 
   useEffect(() => {
     if (!showWinModal) {
@@ -990,6 +1101,7 @@ export function GameRoom() {
   useEffect(() => {
     const previousSnapshot = previousStateRef.current;
     if (previousSnapshot.matchId !== (matchId ?? null)) {
+      offlineMatchTelemetryRef.current = createOfflineMatchTelemetry();
       previousStateRef.current = { matchId: matchId ?? null, state: gameState };
       return;
     }
@@ -1006,6 +1118,26 @@ export function GameRoom() {
       gameState.rollValue !== null &&
       validMoves.length === 0 &&
       (previous.phase !== gameState.phase || previous.rollValue !== gameState.rollValue);
+    const newHistoryEntries =
+      gameState.history.length > previous.history.length ? gameState.history.slice(previous.history.length) : [];
+
+    if (isOffline) {
+      if (rollValueChanged && gameState.rollValue !== null) {
+        offlineMatchTelemetryRef.current = recordOfflineRoll(
+          offlineMatchTelemetryRef.current,
+          previous.currentTurn,
+          gameState.rollValue,
+        );
+      }
+
+      if (newHistoryEntries.length > 0) {
+        offlineMatchTelemetryRef.current = recordOfflineHistoryEntries(
+          offlineMatchTelemetryRef.current,
+          gameState,
+          newHistoryEntries,
+        );
+      }
+    }
 
     if (rollValueChanged && gameState.rollValue !== null) {
       const shouldKeepLocalDiceVisual = localRollVisualPendingRef.current && diceAnimationEnabled;
@@ -1023,9 +1155,8 @@ export function GameRoom() {
       enqueueMatchCue(gameState.rollValue === 0 ? 'zero' : 'stuck');
     }
 
-    if (gameState.history.length > previous.history.length) {
-      const newEntries = gameState.history.slice(previous.history.length);
-      for (const entry of newEntries) {
+    if (newHistoryEntries.length > 0) {
+      for (const entry of newHistoryEntries) {
         if (entry.includes('captured')) {
           void gameAudio.play('capture');
         } else if (entry.includes('moved to')) {
@@ -1917,7 +2048,7 @@ export function GameRoom() {
         onAction={handleExit}
         maxWidth={520}
       >
-        {!isOffline ? (
+        {shouldShowAccountRewards ? (
           <>
             <XPDisplay
               progression={progression}

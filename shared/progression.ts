@@ -28,6 +28,10 @@ export const XP_SOURCE_CONFIG = {
     amount: 100,
     description: "Authoritative PvP win reward.",
   },
+  bot_win: {
+    amount: 100,
+    description: "Authenticated bot win reward.",
+  },
 } as const;
 
 export type XpSource = keyof typeof XP_SOURCE_CONFIG;
