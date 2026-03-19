@@ -325,7 +325,14 @@ function InitModule(
     matchSignal: matchSignalHandler,
   });
   initializer.registerMatchmakerMatched(matchmakerMatched);
-  ensureChallengeDefinitions(nk, logger);
+  try {
+    ensureChallengeDefinitions(nk, logger);
+  } catch (error) {
+    logger.warn(
+      "Skipping challenge definition sync on startup: %s",
+      error instanceof Error ? error.message : String(error)
+    );
+  }
 
   logger.info("Nakama runtime module loaded.");
 }
