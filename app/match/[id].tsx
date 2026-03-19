@@ -17,6 +17,7 @@ import type { MatchMomentIndicatorCue } from '@/components/game/MatchMomentIndic
 import { FiveStepTutorialModal } from '@/components/FiveStepTutorialModal';
 import { PieceRail, ReserveSlotMeasurement } from '@/components/game/PieceRail';
 import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
+import { ProgressionAwardSummary } from '@/components/progression/ProgressionAwardSummary';
 import { Modal } from '@/components/ui/Modal';
 import { boxShadow, textShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
@@ -28,7 +29,10 @@ import type { GameState, PlayerColor } from '@/logic/types';
 import { gameAudio } from '@/services/audio';
 import { getBotMatchPreferences, setBotTimerEnabled as persistBotTimerEnabled } from '@/services/botMatchPreferences';
 import { nakamaService } from '@/services/nakama';
+import { stripProgressionAwardEnvelope } from '@/services/progression';
+import { useProgression } from '@/src/progression/useProgression';
 import { useGameStore } from '@/store/useGameStore';
+import { isProgressionAwardNotificationPayload } from '@/shared/progression';
 import {
   MatchOpCode,
   MoveRequestPayload,
@@ -166,6 +170,7 @@ export function GameRoom() {
   const reset = useGameStore((state) => state.reset);
   const userId = useGameStore((state) => state.userId);
   const playerColor = useGameStore((state) => state.playerColor);
+  const lastProgressionAward = useGameStore((state) => state.lastProgressionAward);
   const initGame = useGameStore((state) => state.initGame);
   const setMatchId = useGameStore((state) => state.setMatchId);
   const storedMatchId = useGameStore((state) => state.matchId);
@@ -175,9 +180,11 @@ export function GameRoom() {
   const setPlayerColor = useGameStore((state) => state.setPlayerColor);
   const setOnlineMode = useGameStore((state) => state.setOnlineMode);
   const updateMatchPresences = useGameStore((state) => state.updateMatchPresences);
+  const setLastProgressionAward = useGameStore((state) => state.setLastProgressionAward);
   const setSocketState = useGameStore((state) => state.setSocketState);
   const setRollCommandSender = useGameStore((state) => state.setRollCommandSender);
   const setMoveCommandSender = useGameStore((state) => state.setMoveCommandSender);
+  const { progression } = useProgression();
 
   const hasAssignedColor = playerColor === 'light' || playerColor === 'dark';
   const effectiveMatchToken = storedMatchId === matchId ? matchToken : null;
@@ -588,6 +595,23 @@ export function GameRoom() {
             revision: payload.revision ?? null,
           });
         }
+        return;
+      }
+
+      if (matchData.op_code === MatchOpCode.PROGRESSION_AWARD) {
+        if (!isProgressionAwardNotificationPayload(payload)) {
+          return;
+        }
+
+        const award = stripProgressionAwardEnvelope(payload);
+        console.info('[Nakama][progression_award]', {
+          matchId: award.matchId,
+          awardedXp: award.awardedXp,
+          newTotalXp: award.newTotalXp,
+          newRank: award.newRank,
+          rankChanged: award.rankChanged,
+        });
+        setLastProgressionAward(award);
       }
     };
 
@@ -657,6 +681,7 @@ export function GameRoom() {
     matchId,
     effectiveMatchToken,
     setMatchId,
+    setLastProgressionAward,
     setOnlineMode,
     setPlayerColor,
     setSocketState,
@@ -1671,7 +1696,15 @@ export function GameRoom() {
         message={winModalMessage}
         actionLabel="Return to Menu"
         onAction={handleExit}
-      />
+      >
+        {!isOffline && didPlayerWin ? (
+          <ProgressionAwardSummary
+            progression={progression}
+            award={lastProgressionAward}
+            pending={!lastProgressionAward}
+          />
+        ) : null}
+      </Modal>
 
       <AudioSettingsModal
         visible={showAudioSettings}

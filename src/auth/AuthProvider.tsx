@@ -17,6 +17,15 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const [hasInitialized, setHasInitialized] = useState(false);
   const { login: loginWithGoogleRequest, isProcessing: isGoogleAuthProcessing } = useGoogleAuth();
 
+  const syncPresenceForSession = useCallback((session?: Pick<Session, 'token' | 'refresh_token'> | null) => {
+    if (session?.token && session.refresh_token) {
+      startAuthenticatedPresence();
+      return;
+    }
+
+    stopAuthenticatedPresence();
+  }, []);
+
   const hydrateSession = useCallback(async () => {
     try {
       const loaded = await loadSession();
@@ -32,6 +41,11 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
             if (restored.refresh_token) {
               const refreshed = await nakamaService.getClient().sessionRefresh(restored);
               await saveSession(loaded.user, refreshed.token, refreshed.refresh_token);
+              return {
+                user: loaded.user,
+                nakamaSessionToken: refreshed.token,
+                nakamaRefreshToken: refreshed.refresh_token,
+              };
             } else {
               await clearSession();
               return null;
@@ -44,7 +58,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         }
       }
 
-      return loaded.user;
+      return loaded;
     } catch (error) {
       console.error('Failed to hydrate session:', error);
       return null;
@@ -56,14 +70,19 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     let isMounted = true;
 
     const initialize = async () => {
-      const restoredUser = await hydrateSession();
+      const restoredSession = await hydrateSession();
       if (isMounted) {
-        setUser(restoredUser);
+        setUser(restoredSession?.user ?? null);
         setIsLoading(false);
         setHasInitialized(true);
-        if (restoredUser) {
-          startAuthenticatedPresence();
-        }
+        syncPresenceForSession(
+          restoredSession?.nakamaSessionToken && restoredSession?.nakamaRefreshToken
+            ? {
+                token: restoredSession.nakamaSessionToken,
+                refresh_token: restoredSession.nakamaRefreshToken,
+              }
+            : null
+        );
       }
     };
 
@@ -72,7 +91,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     return () => {
       isMounted = false;
     };
-  }, [hydrateSession]);
+  }, [hydrateSession, syncPresenceForSession]);
 
   // When Google auth finishes processing (after redirect), reload session
   // Only runs during initial load, not after manual logout
@@ -81,11 +100,19 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
       let isMounted = true;
 
       const checkForNewSession = async () => {
-        const restoredUser = await hydrateSession();
-        if (restoredUser && isMounted) {
-          setUser(restoredUser);
+        const restoredSession = await hydrateSession();
+        if (restoredSession?.user && isMounted) {
+          setUser(restoredSession.user);
         }
         if (isMounted) {
+          syncPresenceForSession(
+            restoredSession?.nakamaSessionToken && restoredSession?.nakamaRefreshToken
+              ? {
+                  token: restoredSession.nakamaSessionToken,
+                  refresh_token: restoredSession.nakamaRefreshToken,
+                }
+              : null
+          );
           setIsLoading(false);
         }
       };
@@ -96,7 +123,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         isMounted = false;
       };
     }
-  }, [hasInitialized, isGoogleAuthProcessing, user, isLoading, hydrateSession]);
+  }, [hasInitialized, isGoogleAuthProcessing, user, isLoading, hydrateSession, syncPresenceForSession]);
 
   // Safety timeout: ensure loading state clears after reasonable time
   useEffect(() => {
@@ -115,13 +142,13 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const loginAsGuest = useCallback(async () => {
     try {
       const { user, session } = await guestLogin();
-      await saveSession(user, session.token, session.refresh_token);
+      await saveSession(user, session?.token, session?.refresh_token);
       setUser(user);
-      startAuthenticatedPresence();
+      syncPresenceForSession(session);
     } catch (error) {
       throw new Error(`Guest login failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, []);
+  }, [syncPresenceForSession]);
 
   const loginWithGoogle = useCallback(async () => {
     try {
@@ -137,11 +164,11 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
       // This only runs if we get a direct result (non-redirect flow)
       await saveSession(result.user, result.nakamaSession.token, result.nakamaSession.refresh_token);
       setUser(result.user);
-      startAuthenticatedPresence();
+      syncPresenceForSession(result.nakamaSession);
     } catch (error) {
       throw new Error(`Google login failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [loginWithGoogleRequest]);
+  }, [loginWithGoogleRequest, syncPresenceForSession]);
 
   const logout = useCallback(async () => {
     stopAuthenticatedPresence();
@@ -172,10 +199,11 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
 
       await saveSession(updatedUser, result.nakamaSession.token, result.nakamaSession.refresh_token);
       setUser(updatedUser);
+      syncPresenceForSession(result.nakamaSession);
     } catch (error) {
       throw new Error(`Account linking failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [user, loginWithGoogleRequest]);
+  }, [user, loginWithGoogleRequest, syncPresenceForSession]);
 
   const value = useMemo(
     () => ({

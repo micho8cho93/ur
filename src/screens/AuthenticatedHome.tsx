@@ -2,6 +2,7 @@ import { FiveStepTutorialModal } from '@/components/FiveStepTutorialModal';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { Button } from '@/components/ui/Button';
+import { ProgressionSummaryCard } from '@/components/progression/ProgressionSummaryCard';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { useAuth } from '@/src/auth/useAuth';
@@ -93,6 +94,8 @@ export default function AuthenticatedHome() {
       <View style={styles.panel}>
         <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.panelTexture} />
         <View style={styles.panelBorder} />
+
+        <ProgressionSummaryCard style={styles.progressionCard} />
 
         <View style={styles.buttonStack}>
           <Button
@@ -266,6 +269,9 @@ const styles = StyleSheet.create({
   },
   buttonStack: {
     gap: urTheme.spacing.sm,
+  },
+  progressionCard: {
+    marginBottom: urTheme.spacing.md,
   },
   quickPlayButton: {
     backgroundColor: '#D9CCB1',

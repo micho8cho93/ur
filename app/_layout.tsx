@@ -2,6 +2,7 @@ import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
 import { urTheme } from '@/constants/urTheme';
 import { sendPresenceHeartbeat } from '@/services/presence';
 import { AuthProvider } from '@/src/auth/AuthProvider';
+import { ProgressionProvider } from '@/src/progression/ProgressionContext';
 import { useAuth } from '@/src/auth/useAuth';
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
@@ -74,7 +75,9 @@ export default function Layout() {
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <AuthProvider>
-        <RootNavigator />
+        <ProgressionProvider>
+          <RootNavigator />
+        </ProgressionProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

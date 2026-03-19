@@ -34,6 +34,27 @@ describe('useGameStore', () => {
       botDifficulty: 'hard',
       validMoves: [{ pieceId: 'light-0', fromIndex: -1, toIndex: 1 }],
       matchPresences: ['u-1'],
+      lastProgressionAward: {
+        matchId: 'old-match',
+        source: 'pvp_win',
+        duplicate: false,
+        awardedXp: 100,
+        previousTotalXp: 0,
+        newTotalXp: 100,
+        previousRank: 'Laborer',
+        newRank: 'Servant of the Temple',
+        rankChanged: true,
+        progression: {
+          totalXp: 100,
+          currentRank: 'Servant of the Temple',
+          currentRankThreshold: 100,
+          nextRank: 'Apprentice Scribe',
+          nextRankThreshold: 250,
+          xpIntoCurrentRank: 0,
+          xpNeededForNextRank: 150,
+          progressPercent: 0,
+        },
+      },
       socketState: 'connected',
       serverRevision: 12,
       playerColor: 'light',
@@ -49,6 +70,7 @@ describe('useGameStore', () => {
     expect(state.gameState).toEqual(engine.createInitialState());
     expect(state.validMoves).toEqual([]);
     expect(state.matchPresences).toEqual([]);
+    expect(state.lastProgressionAward).toBeNull();
     expect(state.socketState).toBe('idle');
     expect(state.serverRevision).toBe(0);
     expect(state.playerColor).toBeNull();
@@ -212,6 +234,27 @@ describe('useGameStore', () => {
       matchId: 'm-1',
       matchToken: 't-1',
       matchPresences: ['u-1'],
+      lastProgressionAward: {
+        matchId: 'm-1',
+        source: 'pvp_win',
+        duplicate: false,
+        awardedXp: 100,
+        previousTotalXp: 0,
+        newTotalXp: 100,
+        previousRank: 'Laborer',
+        newRank: 'Servant of the Temple',
+        rankChanged: true,
+        progression: {
+          totalXp: 100,
+          currentRank: 'Servant of the Temple',
+          currentRankThreshold: 100,
+          nextRank: 'Apprentice Scribe',
+          nextRankThreshold: 250,
+          xpIntoCurrentRank: 0,
+          xpNeededForNextRank: 150,
+          progressPercent: 0,
+        },
+      },
       socketState: 'connected',
       rollCommandSender: jest.fn(),
       moveCommandSender: jest.fn(),
@@ -231,6 +274,7 @@ describe('useGameStore', () => {
     expect(state.matchId).toBeNull();
     expect(state.matchToken).toBeNull();
     expect(state.matchPresences).toEqual([]);
+    expect(state.lastProgressionAward).toBeNull();
     expect(state.socketState).toBe('idle');
     expect(state.rollCommandSender).toBeNull();
     expect(state.moveCommandSender).toBeNull();

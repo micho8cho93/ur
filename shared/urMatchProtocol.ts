@@ -1,10 +1,15 @@
 import { GameState, MoveAction, PlayerColor } from "../logic/types";
+import {
+  isProgressionAwardNotificationPayload,
+  ProgressionAwardNotificationPayload,
+} from "./progression";
 
 export const MatchOpCode = {
   ROLL_REQUEST: 1,
   MOVE_REQUEST: 2,
   STATE_SNAPSHOT: 100,
   SERVER_ERROR: 101,
+  PROGRESSION_AWARD: 102,
 } as const;
 
 export type MatchOpCodeValue = (typeof MatchOpCode)[keyof typeof MatchOpCode];
@@ -45,6 +50,8 @@ export type ServerErrorPayload = {
 };
 
 export type ServerMatchPayload = StateSnapshotPayload | ServerErrorPayload;
+export type MatchProgressionPayload = ProgressionAwardNotificationPayload;
+export type ExtendedServerMatchPayload = ServerMatchPayload | MatchProgressionPayload;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -89,7 +96,10 @@ export const isServerErrorPayload = (value: unknown): value is ServerErrorPayloa
 export const isServerMatchPayload = (value: unknown): value is ServerMatchPayload =>
   isStateSnapshotPayload(value) || isServerErrorPayload(value);
 
-export const encodePayload = (payload: ClientMatchPayload | ServerMatchPayload): string =>
+export const isExtendedServerMatchPayload = (value: unknown): value is ExtendedServerMatchPayload =>
+  isServerMatchPayload(value) || isProgressionAwardNotificationPayload(value);
+
+export const encodePayload = (payload: ClientMatchPayload | ExtendedServerMatchPayload): string =>
   JSON.stringify(payload);
 
 export const decodePayload = (raw: string): unknown => {

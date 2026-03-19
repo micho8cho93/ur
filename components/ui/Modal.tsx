@@ -7,14 +7,22 @@ import { Button } from './Button';
 interface ModalProps {
   visible: boolean;
   title: string;
-  message: string;
+  message?: string;
   actionLabel: string;
   onAction: () => void;
+  children?: React.ReactNode;
 }
 
-export const Modal: React.FC<ModalProps> = ({ visible, title, message, actionLabel, onAction }) => {
+export const Modal: React.FC<ModalProps> = ({
+  visible,
+  title,
+  message,
+  actionLabel,
+  onAction,
+  children,
+}) => {
   return (
-    <RNModal transparent visible={visible} animationType="fade">
+    <RNModal transparent visible={visible} animationType="fade" onRequestClose={onAction}>
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
           <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
@@ -23,7 +31,8 @@ export const Modal: React.FC<ModalProps> = ({ visible, title, message, actionLab
           <View style={styles.border} />
 
           <Text style={styles.title}>{title}</Text>
-          <Text style={styles.message}>{message}</Text>
+          {message ? <Text style={styles.message}>{message}</Text> : null}
+          {children}
 
           <View style={styles.buttonWrap}>
             <Button title={actionLabel} onPress={onAction} />

@@ -187,12 +187,440 @@ var applyMove = (state, move) => {
   return newState;
 };
 
+// shared/progression.ts
+var PROGRESSION_RANKS = [
+  { index: 1, title: "Laborer", threshold: 0 },
+  { index: 2, title: "Servant of the Temple", threshold: 100 },
+  { index: 3, title: "Apprentice Scribe", threshold: 250 },
+  { index: 4, title: "Scribe", threshold: 475 },
+  { index: 5, title: "Merchant", threshold: 800 },
+  { index: 6, title: "Artisan", threshold: 1275 },
+  { index: 7, title: "Priest", threshold: 1975 },
+  { index: 8, title: "Diviner", threshold: 2975 },
+  { index: 9, title: "Royal Guard", threshold: 4375 },
+  { index: 10, title: "Noble of the Court", threshold: 6375 },
+  { index: 11, title: "Governor", threshold: 9175 },
+  { index: 12, title: "Royalty", threshold: 13175 },
+  { index: 13, title: "High Priest", threshold: 19175 },
+  { index: 14, title: "Emperor of Sumer & Akkad", threshold: 28175 },
+  { index: 15, title: "Immortal", threshold: 4e4 }
+];
+var XP_SOURCE_CONFIG = {
+  pvp_win: {
+    amount: 100,
+    description: "Authoritative PvP win reward."
+  }
+};
+var MAX_RANK = PROGRESSION_RANKS[PROGRESSION_RANKS.length - 1];
+var roundProgressPercent = (value) => Math.round(value * 100) / 100;
+var sanitizeTotalXp = (value) => {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(value));
+};
+var getXpAwardAmount = (source) => XP_SOURCE_CONFIG[source].amount;
+var createDefaultProgressionProfile = (totalXp = 0, lastUpdatedAt = (/* @__PURE__ */ new Date()).toISOString()) => {
+  const sanitizedXp = sanitizeTotalXp(totalXp);
+  const currentRank = getRankForXp(sanitizedXp);
+  return {
+    totalXp: sanitizedXp,
+    currentRankTitle: currentRank.title,
+    lastUpdatedAt
+  };
+};
+var getRankForXp = (totalXp) => {
+  const sanitizedXp = sanitizeTotalXp(totalXp);
+  for (let index = PROGRESSION_RANKS.length - 1; index >= 0; index -= 1) {
+    const rank = PROGRESSION_RANKS[index];
+    if (sanitizedXp >= rank.threshold) {
+      return rank;
+    }
+  }
+  return PROGRESSION_RANKS[0];
+};
+var getNextRankForXp = (totalXp) => {
+  var _a;
+  const currentRank = getRankForXp(totalXp);
+  const nextRankIndex = currentRank.index;
+  return (_a = PROGRESSION_RANKS[nextRankIndex]) != null ? _a : null;
+};
+var getProgressWithinCurrentRank = (totalXp) => {
+  const sanitizedXp = sanitizeTotalXp(totalXp);
+  const currentRank = getRankForXp(sanitizedXp);
+  const nextRank = getNextRankForXp(sanitizedXp);
+  if (!nextRank) {
+    return {
+      currentRank,
+      nextRank: null,
+      xpIntoCurrentRank: Math.max(0, sanitizedXp - currentRank.threshold),
+      progressPercent: 100
+    };
+  }
+  const xpIntoCurrentRank = Math.max(0, sanitizedXp - currentRank.threshold);
+  const rankSpan = Math.max(1, nextRank.threshold - currentRank.threshold);
+  const progressPercent = roundProgressPercent(Math.min(100, xpIntoCurrentRank / rankSpan * 100));
+  return {
+    currentRank,
+    nextRank,
+    xpIntoCurrentRank,
+    progressPercent
+  };
+};
+var getXpRequiredForNextRank = (totalXp) => {
+  const sanitizedXp = sanitizeTotalXp(totalXp);
+  const nextRank = getNextRankForXp(sanitizedXp);
+  if (!nextRank) {
+    return 0;
+  }
+  return Math.max(0, nextRank.threshold - sanitizedXp);
+};
+var buildProgressionSnapshot = (totalXp) => {
+  var _a, _b;
+  const sanitizedXp = sanitizeTotalXp(totalXp);
+  const { currentRank, nextRank, xpIntoCurrentRank, progressPercent } = getProgressWithinCurrentRank(sanitizedXp);
+  return {
+    totalXp: sanitizedXp,
+    currentRank: currentRank.title,
+    currentRankThreshold: currentRank.threshold,
+    nextRank: (_a = nextRank == null ? void 0 : nextRank.title) != null ? _a : null,
+    nextRankThreshold: (_b = nextRank == null ? void 0 : nextRank.threshold) != null ? _b : null,
+    xpIntoCurrentRank,
+    xpNeededForNextRank: getXpRequiredForNextRank(sanitizedXp),
+    progressPercent: nextRank ? progressPercent : 100
+  };
+};
+var isProgressionSnapshot = (value) => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const snapshot = value;
+  return typeof snapshot.totalXp === "number" && typeof snapshot.currentRank === "string" && typeof snapshot.currentRankThreshold === "number" && (typeof snapshot.nextRank === "string" || snapshot.nextRank === null) && (typeof snapshot.nextRankThreshold === "number" || snapshot.nextRankThreshold === null) && typeof snapshot.xpIntoCurrentRank === "number" && typeof snapshot.xpNeededForNextRank === "number" && typeof snapshot.progressPercent === "number";
+};
+var isProgressionAwardResponse = (value) => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const award = value;
+  return typeof award.matchId === "string" && typeof award.source === "string" && typeof award.duplicate === "boolean" && typeof award.awardedXp === "number" && typeof award.previousTotalXp === "number" && typeof award.newTotalXp === "number" && typeof award.previousRank === "string" && typeof award.newRank === "string" && typeof award.rankChanged === "boolean" && isProgressionSnapshot(award.progression);
+};
+
+// backend/modules/progression.ts
+var PROGRESSION_COLLECTION = "progression";
+var PROGRESSION_PROFILE_KEY = "profile";
+var PROGRESSION_AWARD_COLLECTION = "progression_awards";
+var STORAGE_PERMISSION_NONE = 0;
+var MAX_WRITE_ATTEMPTS = 4;
+var RPC_GET_PROGRESSION = "get_progression";
+var asRecord = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField = (value, keys) => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "string" && field.length > 0) {
+      return field;
+    }
+  }
+  return null;
+};
+var readNumberField = (value, keys) => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "number" && Number.isFinite(field)) {
+      return field;
+    }
+    if (typeof field === "string" && field.trim().length > 0) {
+      const parsed = Number(field);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+};
+var getStorageObjectValue = (object) => {
+  var _a;
+  return (_a = object == null ? void 0 : object.value) != null ? _a : null;
+};
+var getStorageObjectVersion = (object) => readStringField(object, ["version"]);
+var getErrorMessage = (error) => error instanceof Error ? error.message : String(error);
+var buildAwardRecordKey = (matchId, source) => `${source}:${matchId}`;
+var normalizeProgressionProfile = (rawValue, fallbackUpdatedAt = (/* @__PURE__ */ new Date()).toISOString()) => {
+  var _a, _b;
+  const totalXp = sanitizeTotalXp((_a = readNumberField(rawValue, ["totalXp", "total_xp"])) != null ? _a : 0);
+  const lastUpdatedAt = (_b = readStringField(rawValue, ["lastUpdatedAt", "last_updated_at"])) != null ? _b : fallbackUpdatedAt;
+  return {
+    totalXp,
+    currentRankTitle: getRankForXp(totalXp).title,
+    lastUpdatedAt
+  };
+};
+var profileNeedsRepair = (rawValue, normalized) => {
+  const rawRecord = asRecord(rawValue);
+  if (!rawRecord) {
+    return true;
+  }
+  const rawTotalXp = readNumberField(rawRecord, ["totalXp", "total_xp"]);
+  const rawRankTitle = readStringField(rawRecord, ["currentRankTitle", "current_rank_title"]);
+  const rawLastUpdatedAt = readStringField(rawRecord, ["lastUpdatedAt", "last_updated_at"]);
+  return rawTotalXp !== normalized.totalXp || rawRankTitle !== normalized.currentRankTitle || rawLastUpdatedAt !== normalized.lastUpdatedAt;
+};
+var normalizeStoredAwardRecord = (rawValue) => {
+  var _a;
+  const record = asRecord(rawValue);
+  if (!record) {
+    return null;
+  }
+  const userId = readStringField(record, ["userId", "user_id"]);
+  const awardedAt = readStringField(record, ["awardedAt", "awarded_at"]);
+  const response = (_a = record.response) != null ? _a : null;
+  if (!userId || !awardedAt || !isProgressionAwardResponse(response)) {
+    return null;
+  }
+  return {
+    userId,
+    awardedAt,
+    response
+  };
+};
+var findStorageObject = (objects, collection, key, userId) => {
+  var _a;
+  return (_a = objects.find((object) => {
+    const collectionName = readStringField(object, ["collection"]);
+    const objectKey = readStringField(object, ["key"]);
+    const objectUserId = readStringField(object, ["userId", "user_id"]);
+    return collectionName === collection && objectKey === key && objectUserId === userId;
+  })) != null ? _a : null;
+};
+var readProgressionProfileObject = (nk, userId) => {
+  const objects = nk.storageRead([
+    {
+      collection: PROGRESSION_COLLECTION,
+      key: PROGRESSION_PROFILE_KEY,
+      userId
+    }
+  ]);
+  return findStorageObject(objects, PROGRESSION_COLLECTION, PROGRESSION_PROFILE_KEY, userId);
+};
+var readProgressionProfileAndAward = (nk, userId, matchId, source) => {
+  const awardKey = buildAwardRecordKey(matchId, source);
+  const objects = nk.storageRead([
+    {
+      collection: PROGRESSION_COLLECTION,
+      key: PROGRESSION_PROFILE_KEY,
+      userId
+    },
+    {
+      collection: PROGRESSION_AWARD_COLLECTION,
+      key: awardKey,
+      userId
+    }
+  ]);
+  return {
+    profileObject: findStorageObject(objects, PROGRESSION_COLLECTION, PROGRESSION_PROFILE_KEY, userId),
+    awardObject: findStorageObject(objects, PROGRESSION_AWARD_COLLECTION, awardKey, userId)
+  };
+};
+var writeProgressionProfile = (nk, userId, profile, version) => {
+  nk.storageWrite([
+    {
+      collection: PROGRESSION_COLLECTION,
+      key: PROGRESSION_PROFILE_KEY,
+      userId,
+      value: profile,
+      version,
+      permissionRead: STORAGE_PERMISSION_NONE,
+      permissionWrite: STORAGE_PERMISSION_NONE
+    }
+  ]);
+};
+var buildDuplicateAwardResponse = (storedAwardObject, fallbackProgression, matchId, source) => {
+  const normalizedRecord = normalizeStoredAwardRecord(getStorageObjectValue(storedAwardObject));
+  if (normalizedRecord) {
+    return __spreadProps(__spreadValues({}, normalizedRecord.response), {
+      duplicate: true
+    });
+  }
+  return {
+    matchId,
+    source,
+    duplicate: true,
+    awardedXp: 0,
+    previousTotalXp: fallbackProgression.totalXp,
+    newTotalXp: fallbackProgression.totalXp,
+    previousRank: fallbackProgression.currentRank,
+    newRank: fallbackProgression.currentRank,
+    rankChanged: false,
+    progression: fallbackProgression
+  };
+};
+var ensureProgressionProfile = (nk, logger, userId) => {
+  var _a;
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const existingObject = readProgressionProfileObject(nk, userId);
+    if (existingObject) {
+      const normalizedProfile = normalizeProgressionProfile(getStorageObjectValue(existingObject));
+      if (!profileNeedsRepair(getStorageObjectValue(existingObject), normalizedProfile)) {
+        return normalizedProfile;
+      }
+      try {
+        writeProgressionProfile(nk, userId, normalizedProfile, (_a = getStorageObjectVersion(existingObject)) != null ? _a : "");
+        return normalizedProfile;
+      } catch (error) {
+        logger.warn(
+          "Progression profile repair attempt %d/%d failed for user %s: %s",
+          attempt,
+          MAX_WRITE_ATTEMPTS,
+          userId,
+          getErrorMessage(error)
+        );
+      }
+      continue;
+    }
+    const defaultProfile = createDefaultProgressionProfile(0);
+    try {
+      writeProgressionProfile(nk, userId, defaultProfile, "*");
+      return defaultProfile;
+    } catch (error) {
+      logger.warn(
+        "Progression profile init attempt %d/%d failed for user %s: %s",
+        attempt,
+        MAX_WRITE_ATTEMPTS,
+        userId,
+        getErrorMessage(error)
+      );
+    }
+  }
+  throw new Error(`Unable to initialize progression for user ${userId}.`);
+};
+var getProgressionForUser = (nk, logger, userId) => buildProgressionSnapshot(ensureProgressionProfile(nk, logger, userId).totalXp);
+var awardXpForMatchWin = (nk, logger, params) => {
+  var _a, _b, _c, _d;
+  const userId = (_a = params.userId) == null ? void 0 : _a.trim();
+  const matchId = (_b = params.matchId) == null ? void 0 : _b.trim();
+  const source = (_c = params.source) != null ? _c : "pvp_win";
+  if (!userId) {
+    throw new Error("Cannot award progression without a user ID.");
+  }
+  if (!matchId) {
+    throw new Error("Cannot award progression without a match ID.");
+  }
+  const awardedXp = sanitizeTotalXp(getXpAwardAmount(source));
+  if (awardedXp <= 0) {
+    throw new Error(`Configured XP award for source "${source}" must be positive.`);
+  }
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const { profileObject, awardObject } = readProgressionProfileAndAward(nk, userId, matchId, source);
+    const currentProfile = profileObject ? normalizeProgressionProfile(getStorageObjectValue(profileObject), now) : createDefaultProgressionProfile(0, now);
+    const currentSnapshot = buildProgressionSnapshot(currentProfile.totalXp);
+    if (awardObject) {
+      return buildDuplicateAwardResponse(awardObject, currentSnapshot, matchId, source);
+    }
+    const previousTotalXp = currentProfile.totalXp;
+    const newTotalXp = sanitizeTotalXp(previousTotalXp + awardedXp);
+    const previousRank = getRankForXp(previousTotalXp).title;
+    const newRank = getRankForXp(newTotalXp).title;
+    const response = {
+      matchId,
+      source,
+      duplicate: false,
+      awardedXp,
+      previousTotalXp,
+      newTotalXp,
+      previousRank,
+      newRank,
+      rankChanged: previousRank !== newRank,
+      progression: buildProgressionSnapshot(newTotalXp)
+    };
+    const nextProfile = {
+      totalXp: newTotalXp,
+      currentRankTitle: newRank,
+      lastUpdatedAt: now
+    };
+    const awardRecord = {
+      userId,
+      awardedAt: now,
+      response
+    };
+    try {
+      nk.storageWrite([
+        {
+          collection: PROGRESSION_COLLECTION,
+          key: PROGRESSION_PROFILE_KEY,
+          userId,
+          value: nextProfile,
+          version: profileObject ? (_d = getStorageObjectVersion(profileObject)) != null ? _d : "" : "*",
+          permissionRead: STORAGE_PERMISSION_NONE,
+          permissionWrite: STORAGE_PERMISSION_NONE
+        },
+        {
+          collection: PROGRESSION_AWARD_COLLECTION,
+          key: buildAwardRecordKey(matchId, source),
+          userId,
+          value: awardRecord,
+          version: "*",
+          permissionRead: STORAGE_PERMISSION_NONE,
+          permissionWrite: STORAGE_PERMISSION_NONE
+        }
+      ]);
+      logger.info(
+        "Awarded %d XP to user %s for %s on match %s (total=%d).",
+        awardedXp,
+        userId,
+        source,
+        matchId,
+        newTotalXp
+      );
+      return response;
+    } catch (error) {
+      const refreshed = readProgressionProfileAndAward(nk, userId, matchId, source);
+      if (refreshed.awardObject) {
+        return buildDuplicateAwardResponse(
+          refreshed.awardObject,
+          buildProgressionSnapshot(
+            normalizeProgressionProfile(getStorageObjectValue(refreshed.profileObject), now).totalXp
+          ),
+          matchId,
+          source
+        );
+      }
+      logger.warn(
+        "Award write attempt %d/%d failed for user %s on match %s: %s",
+        attempt,
+        MAX_WRITE_ATTEMPTS,
+        userId,
+        matchId,
+        getErrorMessage(error)
+      );
+    }
+  }
+  throw new Error(`Unable to persist progression award for user ${userId} on match ${matchId}.`);
+};
+var createProgressionAwardNotification = (response) => __spreadValues({
+  type: "progression_award"
+}, response);
+var rpcGetProgression = (ctx, logger, nk, _payload) => {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  return JSON.stringify(getProgressionForUser(nk, logger, ctx.userId));
+};
+
 // shared/urMatchProtocol.ts
 var MatchOpCode = {
   ROLL_REQUEST: 1,
   MOVE_REQUEST: 2,
   STATE_SNAPSHOT: 100,
-  SERVER_ERROR: 101
+  SERVER_ERROR: 101,
+  PROGRESSION_AWARD: 102
 };
 var isRecord = (value) => typeof value === "object" && value !== null;
 var isMoveAction = (value) => {
@@ -217,14 +645,15 @@ var TICK_RATE = 10;
 var MAX_PLAYERS = 2;
 var ONLINE_TTL_MS = 3e4;
 var RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
+var RPC_GET_PROGRESSION_NAME = RPC_GET_PROGRESSION;
 var RPC_MATCHMAKER_ADD = "matchmaker_add";
 var RPC_PRESENCE_HEARTBEAT = "presence_heartbeat";
 var RPC_PRESENCE_COUNT = "presence_count";
 var MATCH_HANDLER = "authoritative_match";
 var onlinePresenceByDevice = /* @__PURE__ */ new Map();
-var asRecord = (value) => typeof value === "object" && value !== null ? value : null;
-var readStringField = (value, keys) => {
-  const record = asRecord(value);
+var asRecord2 = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField2 = (value, keys) => {
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
@@ -236,8 +665,8 @@ var readStringField = (value, keys) => {
   }
   return null;
 };
-var readNumberField = (value, keys) => {
-  const record = asRecord(value);
+var readNumberField2 = (value, keys) => {
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
@@ -267,7 +696,7 @@ var decodeMessageData = (data, nk) => {
   if (typeof data === "string") {
     return data;
   }
-  const binaryToString = (_a = asRecord(nk)) == null ? void 0 : _a.binaryToString;
+  const binaryToString = (_a = asRecord2(nk)) == null ? void 0 : _a.binaryToString;
   if (typeof binaryToString === "function") {
     try {
       return String(binaryToString(data));
@@ -285,14 +714,14 @@ var decodeMessageData = (data, nk) => {
   }
   return String(data != null ? data : "");
 };
-var getPresenceUserId = (presence) => readStringField(presence, ["userId", "user_id"]);
-var getSenderUserId = (sender) => readStringField(sender, ["userId", "user_id"]);
+var getPresenceUserId = (presence) => readStringField2(presence, ["userId", "user_id"]);
+var getSenderUserId = (sender) => readStringField2(sender, ["userId", "user_id"]);
 var getMatchId = (ctx) => {
   var _a;
-  return (_a = readStringField(ctx, ["matchId", "match_id"])) != null ? _a : "";
+  return (_a = readStringField2(ctx, ["matchId", "match_id"])) != null ? _a : "";
 };
-var getMessageOpCode = (message) => readNumberField(message, ["opCode", "op_code"]);
-var getContextUserId = (ctx) => readStringField(ctx, ["userId", "user_id"]);
+var getMessageOpCode = (message) => readNumberField2(message, ["opCode", "op_code"]);
+var getContextUserId = (ctx) => readStringField2(ctx, ["userId", "user_id"]);
 var pruneOnlinePresence = (nowMs) => {
   onlinePresenceByDevice.forEach((lastSeenMs, deviceKey) => {
     if (nowMs - lastSeenMs > ONLINE_TTL_MS) {
@@ -314,6 +743,7 @@ var matchTerminateHandler = matchTerminate;
 var matchSignalHandler = matchSignal;
 function InitModule(_ctx, logger, _nk, initializer) {
   initializer.registerRpc(RPC_AUTH_LINK_CUSTOM, rpcAuthLinkCustom);
+  initializer.registerRpc(RPC_GET_PROGRESSION_NAME, rpcGetProgression);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
   initializer.registerRpc(RPC_PRESENCE_HEARTBEAT, rpcPresenceHeartbeat);
   initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
@@ -488,7 +918,7 @@ function matchLoop(ctx, logger, nk, dispatcher, _tick, state, messages) {
         sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Move payload is invalid.");
         return;
       }
-      applyMoveRequest(logger, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
+      applyMoveRequest(logger, nk, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
       return;
     }
     sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", `Unsupported opcode ${opCode}.`);
@@ -550,7 +980,7 @@ function applyRollRequest(logger, dispatcher, state, userId, playerColor, _paylo
   logger.debug("Applied roll for %s (revision %d)", userId, state.revision);
   broadcastSnapshot(dispatcher, state, matchId);
 }
-function applyMoveRequest(logger, dispatcher, state, userId, playerColor, payload, matchId) {
+function applyMoveRequest(logger, nk, dispatcher, state, userId, playerColor, payload, matchId) {
   if (state.gameState.winner) {
     sendError(dispatcher, state, userId, "INVALID_PHASE", "The match has already ended.");
     return;
@@ -575,6 +1005,52 @@ function applyMoveRequest(logger, dispatcher, state, userId, playerColor, payloa
   state.revision += 1;
   logger.debug("Applied move for %s (revision %d)", userId, state.revision);
   broadcastSnapshot(dispatcher, state, matchId);
+  if (state.gameState.winner) {
+    awardWinnerProgression(logger, nk, dispatcher, state, matchId);
+  }
+}
+function awardWinnerProgression(logger, nk, dispatcher, state, matchId) {
+  const winnerColor = state.gameState.winner;
+  if (!winnerColor) {
+    return;
+  }
+  const winnerEntry = Object.entries(state.assignments).find(([, color]) => color === winnerColor);
+  if (!winnerEntry) {
+    logger.warn("Match %s ended with winner color %s but no assigned user was found.", matchId, winnerColor);
+    return;
+  }
+  const [winnerUserId] = winnerEntry;
+  try {
+    const awardResponse = awardXpForMatchWin(nk, logger, {
+      userId: winnerUserId,
+      matchId,
+      source: "pvp_win"
+    });
+    if (awardResponse.duplicate) {
+      return;
+    }
+    const winnerPresence = state.presences[winnerUserId];
+    if (!winnerPresence) {
+      logger.info(
+        "Progression updated for winner %s on match %s, but no live presence was available for notification.",
+        winnerUserId,
+        matchId
+      );
+      return;
+    }
+    dispatcher.broadcastMessage(
+      MatchOpCode.PROGRESSION_AWARD,
+      encodePayload(createProgressionAwardNotification(awardResponse)),
+      [winnerPresence]
+    );
+  } catch (error) {
+    logger.error(
+      "Failed to award progression for winner %s on match %s: %s",
+      winnerUserId,
+      matchId,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
 }
 function sendError(dispatcher, state, userId, code, message) {
   const target = state.presences[userId];

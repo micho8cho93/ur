@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { BotDifficulty, DEFAULT_BOT_DIFFICULTY } from '@/logic/bot/types';
 import { GameState, MoveAction, PlayerColor } from '@/logic/types';
+import { ProgressionAwardResponse } from '@/shared/progression';
 import { createInitialState, getValidMoves, applyMove, rollDice } from '@/logic/engine';
 import { MatchPresenceEvent, Session } from '@heroiclabs/nakama-js';
 
@@ -22,6 +23,7 @@ interface GameStore {
   matchToken: string | null;
   validMoves: MoveAction[];
   matchPresences: string[];
+  lastProgressionAward: ProgressionAwardResponse | null;
   socketState: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
   rollCommandSender: RollCommandSender;
   moveCommandSender: MoveCommandSender;
@@ -38,6 +40,7 @@ interface GameStore {
   setGameStateFromServer: (state: GameState) => void;
   applyServerSnapshot: (state: GameState, revision: number, matchId?: string) => void;
   updateMatchPresences: (event: MatchPresenceEvent) => void;
+  setLastProgressionAward: (award: ProgressionAwardResponse | null) => void;
   setSocketState: (status: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error') => void;
   setRollCommandSender: (sender: RollCommandSender) => void;
   setMoveCommandSender: (sender: MoveCommandSender) => void;
@@ -59,6 +62,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   matchToken: null,
   validMoves: [],
   matchPresences: [],
+  lastProgressionAward: null,
   socketState: 'idle',
   rollCommandSender: null,
   moveCommandSender: null,
@@ -69,6 +73,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       gameState: createInitialState(),
       validMoves: [],
       matchPresences: [],
+      lastProgressionAward: null,
       socketState: 'idle',
       serverRevision: 0,
       playerColor: null,
@@ -145,6 +150,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
 
+  setLastProgressionAward: (award) => {
+    set({ lastProgressionAward: award });
+  },
+
   setSocketState: (status) => {
     set({ socketState: status });
   },
@@ -164,6 +173,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       gameState: createInitialState(),
       validMoves: [],
       matchPresences: [],
+      lastProgressionAward: null,
       socketState: 'idle',
       rollCommandSender: null,
       moveCommandSender: null,

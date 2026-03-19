@@ -69,3 +69,70 @@ Core op codes:
 - `SERVER_ERROR`
 
 The match handler applies game rules authoritatively and broadcasts canonical snapshots.
+
+## Progression system
+
+Progression storage and helpers live in:
+
+- `/Users/Michel/Desktop/ur/backend/modules/progression.ts`
+- `/Users/Michel/Desktop/ur/shared/progression.ts`
+
+### Where XP is stored
+
+- Per-user progression profile:
+  collection `progression`, key `profile`, owner `<nakama user id>`
+- Processed win records for idempotency:
+  collection `progression_awards`, key `pvp_win:<matchId>`, owner `<nakama user id>`
+
+The progression profile stores:
+
+- `totalXp`
+- `currentRankTitle` (derived cache)
+- `lastUpdatedAt`
+
+Both objects are server-write-only (`permissionRead=0`, `permissionWrite=0`). The frontend reads progression through RPC instead of touching storage directly.
+
+### Where XP is awarded
+
+XP is awarded in the authoritative match runtime after a winning move is applied:
+
+- `/Users/Michel/Desktop/ur/backend/modules/index.ts`
+
+Flow:
+
+1. The server applies a verified move.
+2. If that move produces `gameState.winner`, the runtime resolves the winning Nakama user ID from match assignments.
+3. The runtime calls `awardXpForMatchWin(...)`.
+4. Nakama writes the updated progression profile and the processed match award record in one storage transaction.
+5. The winner receives a `PROGRESSION_AWARD` socket payload with the award result.
+
+This keeps the client from directly setting XP and prevents duplicate awards for the same match ID.
+
+### Frontend API
+
+Fetch current progression with RPC `get_progression`.
+
+Client helper:
+
+- `/Users/Michel/Desktop/ur/services/progression.ts`
+
+Use `getUserProgression()` after authentication to retrieve:
+
+- `totalXp`
+- `currentRank`
+- `currentRankThreshold`
+- `nextRank`
+- `nextRankThreshold`
+- `xpIntoCurrentRank`
+- `xpNeededForNextRank`
+- `progressPercent`
+
+During an online match, the winning client can also listen for `MatchOpCode.PROGRESSION_AWARD` on the match socket to animate the immediate XP/rank change.
+
+### Adding future XP sources
+
+To add a new authoritative XP source later:
+
+1. Add the source and award amount to `/Users/Michel/Desktop/ur/shared/progression.ts` in `XP_SOURCE_CONFIG`.
+2. Reuse `awardXpForMatchWin(...)` as the model for a new award entry point, or generalize it to call the same storage transaction with a different `source`.
+3. Use a unique idempotency key per source event (for example `daily_login:<date>` or `challenge:<challengeId>`), so each reward source stays independently replay-safe.

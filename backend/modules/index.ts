@@ -6,6 +6,12 @@
 import { applyMove, createInitialState, getValidMoves, rollDice } from "../../logic/engine";
 import { GameState, PlayerColor } from "../../logic/types";
 import {
+  awardXpForMatchWin,
+  createProgressionAwardNotification,
+  rpcGetProgression,
+  RPC_GET_PROGRESSION,
+} from "./progression";
+import {
   MatchOpCode,
   MoveRequestPayload,
   RollRequestPayload,
@@ -42,6 +48,7 @@ const MAX_PLAYERS = 2;
 const ONLINE_TTL_MS = 30_000;
 
 const RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
+const RPC_GET_PROGRESSION_NAME = RPC_GET_PROGRESSION;
 const RPC_MATCHMAKER_ADD = "matchmaker_add";
 const RPC_PRESENCE_HEARTBEAT = "presence_heartbeat";
 const RPC_PRESENCE_COUNT = "presence_count";
@@ -175,6 +182,7 @@ function InitModule(
   initializer: nkruntime.Initializer
 ) {
   initializer.registerRpc(RPC_AUTH_LINK_CUSTOM, rpcAuthLinkCustom);
+  initializer.registerRpc(RPC_GET_PROGRESSION_NAME, rpcGetProgression);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
   initializer.registerRpc(RPC_PRESENCE_HEARTBEAT, rpcPresenceHeartbeat);
   initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
@@ -454,7 +462,7 @@ function matchLoop(
         return;
       }
 
-      applyMoveRequest(logger, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
+      applyMoveRequest(logger, nk, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
       return;
     }
 
@@ -559,6 +567,7 @@ function applyRollRequest(
 
 function applyMoveRequest(
   logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
   dispatcher: nkruntime.MatchDispatcher,
   state: MatchState,
   userId: string,
@@ -598,6 +607,66 @@ function applyMoveRequest(
   state.revision += 1;
   logger.debug("Applied move for %s (revision %d)", userId, state.revision);
   broadcastSnapshot(dispatcher, state, matchId);
+
+  if (state.gameState.winner) {
+    awardWinnerProgression(logger, nk, dispatcher, state, matchId);
+  }
+}
+
+function awardWinnerProgression(
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  dispatcher: nkruntime.MatchDispatcher,
+  state: MatchState,
+  matchId: string
+): void {
+  const winnerColor = state.gameState.winner;
+  if (!winnerColor) {
+    return;
+  }
+
+  const winnerEntry = Object.entries(state.assignments).find(([, color]) => color === winnerColor);
+  if (!winnerEntry) {
+    logger.warn("Match %s ended with winner color %s but no assigned user was found.", matchId, winnerColor);
+    return;
+  }
+
+  const [winnerUserId] = winnerEntry;
+
+  try {
+    const awardResponse = awardXpForMatchWin(nk, logger, {
+      userId: winnerUserId,
+      matchId,
+      source: "pvp_win",
+    });
+
+    if (awardResponse.duplicate) {
+      return;
+    }
+
+    const winnerPresence = state.presences[winnerUserId];
+    if (!winnerPresence) {
+      logger.info(
+        "Progression updated for winner %s on match %s, but no live presence was available for notification.",
+        winnerUserId,
+        matchId
+      );
+      return;
+    }
+
+    dispatcher.broadcastMessage(
+      MatchOpCode.PROGRESSION_AWARD,
+      encodePayload(createProgressionAwardNotification(awardResponse)),
+      [winnerPresence]
+    );
+  } catch (error) {
+    logger.error(
+      "Failed to award progression for winner %s on match %s: %s",
+      winnerUserId,
+      matchId,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
 }
 
 function sendError(

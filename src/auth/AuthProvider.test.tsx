@@ -14,6 +14,8 @@ const mockNakamaClearSession = jest.fn();
 const mockNakamaGetClient = jest.fn();
 const mockReset = jest.fn();
 const mockUseGameStoreGetState = jest.fn();
+const mockStartAuthenticatedPresence = jest.fn();
+const mockStopAuthenticatedPresence = jest.fn();
 
 jest.mock('./sessionStorage', () => ({
   clearSession: (...args: unknown[]) => mockClearSession(...args),
@@ -42,6 +44,11 @@ jest.mock('./googleAuth', () => ({
     login: mockGoogleLogin,
     redirectUri: 'https://example.com/oauthredirect',
   }),
+}));
+
+jest.mock('@/services/presenceManager', () => ({
+  startAuthenticatedPresence: (...args: unknown[]) => mockStartAuthenticatedPresence(...args),
+  stopAuthenticatedPresence: (...args: unknown[]) => mockStopAuthenticatedPresence(...args),
 }));
 
 jest.mock('@/services/nakama', () => ({
@@ -145,6 +152,39 @@ describe('AuthProvider', () => {
 
     await waitFor(() => {
       expect(mockSaveSession).toHaveBeenCalledWith(guestUser, 'guest-token', 'guest-refresh');
+      expect(mockStartAuthenticatedPresence).toHaveBeenCalledTimes(1);
+      expect(view.getByTestId('auth-state').props.children).toBe('Guest');
+    });
+  });
+
+  it('persists localhost guest login without Nakama tokens', async () => {
+    const guestUser = {
+      id: 'guest_local_abc123',
+      username: 'Guest',
+      email: null,
+      avatarUrl: null,
+      provider: 'guest' as const,
+      createdAt: '2026-03-19T09:30:00.000Z',
+    };
+
+    mockLoadSession.mockResolvedValue(null);
+    mockLoginAsGuest.mockResolvedValue({ user: guestUser, session: null });
+
+    const view = render(
+      <AuthProvider>
+        <AuthHarness />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(view.getByTestId('auth-state').props.children).toBe('none');
+    });
+
+    fireEvent.press(view.getByText('guest-login'));
+
+    await waitFor(() => {
+      expect(mockSaveSession).toHaveBeenCalledWith(guestUser, undefined, undefined);
+      expect(mockStopAuthenticatedPresence).toHaveBeenCalled();
       expect(view.getByTestId('auth-state').props.children).toBe('Guest');
     });
   });
@@ -186,6 +226,7 @@ describe('AuthProvider', () => {
     await waitFor(() => {
       expect(mockGoogleLogin).toHaveBeenCalledTimes(1);
       expect(mockSaveSession).toHaveBeenCalledWith(googleUser, 'google-token', 'google-refresh');
+      expect(mockStartAuthenticatedPresence).toHaveBeenCalledTimes(1);
       expect(view.getByTestId('auth-state').props.children).toBe('Google User');
     });
   });

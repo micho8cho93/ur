@@ -15,8 +15,21 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
+jest.mock('@expo/vector-icons/MaterialIcons', () => {
+  const React = jest.requireActual('react');
+  const { Text } = jest.requireActual('react-native');
+
+  return function MockMaterialIcons(props: { name: string }) {
+    return <Text>{props.name}</Text>;
+  };
+});
+
 jest.mock('@/components/FiveStepTutorialModal', () => ({
   FiveStepTutorialModal: () => null,
+}));
+
+jest.mock('@/components/progression/ProgressionSummaryCard', () => ({
+  ProgressionSummaryCard: () => null,
 }));
 
 jest.mock('@/components/ui/Button', () => ({
