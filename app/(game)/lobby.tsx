@@ -6,7 +6,7 @@ import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { LobbyMode, useMatchmaking } from '@/hooks/useMatchmaking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo } from 'react';
-import { Image, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 const multiplayerWideBackground = require('../../assets/images/multiplayer_bg.png');
 const multiplayerMobileBackground = require('../../assets/images/multiplayer_bg_mobile.png');
@@ -77,36 +77,43 @@ export default function Lobby() {
       <View style={styles.pageGlow} />
       <View style={styles.pageShade} />
 
-      <View style={styles.card}>
-        <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
-        <View style={styles.cardBorder} />
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <View style={styles.card}>
+          <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+          <View style={styles.cardBorder} />
 
-        <Text style={styles.title}>
-          {mode === 'online' ? 'Online Match' : 'Bot Match'}
-        </Text>
-        <Text style={styles.subtitle}>
-          {mode === 'online'
-            ? 'Challenge a real opponent from across the world.'
-            : 'Challenge the ancient strategy engine in a crafted arena.'}
-        </Text>
+          <Text style={styles.title}>
+            {mode === 'online' ? 'Online Match' : 'Bot Match'}
+          </Text>
+          <Text style={styles.subtitle}>
+            {mode === 'online'
+              ? 'Challenge a real opponent from across the world.'
+              : 'Challenge the ancient strategy engine in a crafted arena.'}
+          </Text>
 
-        {mode === 'online' && (
-          <View style={styles.onlineCountRow}>
-            <View style={[styles.onlineDot, onlineCount && onlineCount > 0 ? styles.onlineDotActive : null]} />
-            <Text style={styles.onlineCountText}>
-              {onlineCount !== null
-                ? `${onlineCount} player${onlineCount !== 1 ? 's' : ''} online`
-                : 'Checking...'}
-            </Text>
-          </View>
-        )}
+          {mode === 'online' && (
+            <View style={styles.onlineCountRow}>
+              <View style={[styles.onlineDot, onlineCount && onlineCount > 0 ? styles.onlineDotActive : null]} />
+              <Text style={styles.onlineCountText}>
+                {onlineCount !== null
+                  ? `${onlineCount} player${onlineCount !== 1 ? 's' : ''} online`
+                  : 'Checking...'}
+              </Text>
+            </View>
+          )}
 
-        <Text style={[styles.statusText, status === 'error' && styles.statusError]}>
-          {errorMessage ?? statusLabel}
-        </Text>
+          <Text style={[styles.statusText, status === 'error' && styles.statusError]}>
+            {errorMessage ?? statusLabel}
+          </Text>
 
-        <Button title={buttonTitle} loading={isBusy} onPress={handleStart} />
-      </View>
+          <Button title={buttonTitle} loading={isBusy} onPress={handleStart} />
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -114,10 +121,18 @@ export default function Lobby() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    backgroundColor: urTheme.colors.night,
+  },
+  scrollView: {
+    width: '100%',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: urTheme.spacing.md,
-    backgroundColor: urTheme.colors.night,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.xl,
   },
   pageTexture: {
     ...StyleSheet.absoluteFillObject,

@@ -9,7 +9,7 @@ import { useAuth } from '@/src/auth/useAuth';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { Image, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 const homeWideBackground = require('../../assets/images/home_bg.png');
 const homeMobileBackground = require('../../assets/images/home_bg_mobile.png');
@@ -36,7 +36,7 @@ export default function AuthenticatedHome() {
   };
 
   return (
-    <View style={[styles.screen, isCompactLayout && styles.screenCompact]}>
+    <View style={styles.screen}>
       <WideScreenBackground
         source={homeWideBackground}
         visible={showWideBackground}
@@ -56,97 +56,104 @@ export default function AuthenticatedHome() {
       <View style={styles.midGlow} />
       <View style={styles.bottomShade} />
 
-      {user?.provider === 'guest' && !showInlineGuestBackButton ? (
-        <Pressable
-          onPress={async () => {
-            await logout();
-            router.replace('/(auth)/login');
-          }}
-          style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
-          accessibilityLabel="Back to login"
-        >
-          <MaterialIcons name="arrow-back" size={22} color="#F7E9D2" />
-        </Pressable>
-      ) : user?.provider !== 'guest' ? (
-        <View style={[styles.authBar, isCompactLayout && styles.authBarCompact]}>
-          <View>
-            <Text style={styles.authLabel}>Signed in as</Text>
-            <Text style={[styles.authValue, isCompactLayout && styles.authValueCompact]}>
-              {user?.username ?? 'Player'}
-            </Text>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, isCompactLayout && styles.scrollContentCompact]}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        {user?.provider === 'guest' && !showInlineGuestBackButton ? (
+          <Pressable
+            onPress={async () => {
+              await logout();
+              router.replace('/(auth)/login');
+            }}
+            style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
+            accessibilityLabel="Back to login"
+          >
+            <MaterialIcons name="arrow-back" size={22} color="#F7E9D2" />
+          </Pressable>
+        ) : user?.provider !== 'guest' ? (
+          <View style={[styles.authBar, isCompactLayout && styles.authBarCompact]}>
+            <View>
+              <Text style={styles.authLabel}>Signed in as</Text>
+              <Text style={[styles.authValue, isCompactLayout && styles.authValueCompact]}>
+                {user?.username ?? 'Player'}
+              </Text>
+            </View>
+            <Button
+              title={isLoggingOut ? 'Logging out...' : 'Logout'}
+              variant="outline"
+              loading={isLoggingOut}
+              disabled={isLoggingOut}
+              onPress={handleLogout}
+              style={[styles.logoutButton, isCompactLayout && styles.logoutButtonCompact]}
+            />
           </View>
-          <Button
-            title={isLoggingOut ? 'Logging out...' : 'Logout'}
-            variant="outline"
-            loading={isLoggingOut}
-            disabled={isLoggingOut}
-            onPress={handleLogout}
-            style={[styles.logoutButton, isCompactLayout && styles.logoutButtonCompact]}
-          />
-        </View>
-      ) : null}
+        ) : null}
 
-      <View style={[styles.hero, isCompactLayout && styles.heroCompact]}>
-        <View style={[styles.heroBadgeRow, isCompactLayout && styles.heroBadgeRowCompact]}>
-          {showInlineGuestBackButton ? (
-            <Pressable
-              onPress={async () => {
-                await logout();
-                router.replace('/(auth)/login');
-              }}
-              style={({ pressed }) => [styles.backButton, styles.heroBackButton, pressed && styles.backButtonPressed]}
-              accessibilityLabel="Back to login"
-            >
-              <MaterialIcons name="arrow-back" size={22} color="#F7E9D2" />
-            </Pressable>
-          ) : null}
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>Royal Archive</Text>
+        <View style={[styles.hero, isCompactLayout && styles.heroCompact]}>
+          <View style={[styles.heroBadgeRow, isCompactLayout && styles.heroBadgeRowCompact]}>
+            {showInlineGuestBackButton ? (
+              <Pressable
+                onPress={async () => {
+                  await logout();
+                  router.replace('/(auth)/login');
+                }}
+                style={({ pressed }) => [styles.backButton, styles.heroBackButton, pressed && styles.backButtonPressed]}
+                accessibilityLabel="Back to login"
+              >
+                <MaterialIcons name="arrow-back" size={22} color="#F7E9D2" />
+              </Pressable>
+            ) : null}
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>Royal Archive</Text>
+            </View>
+          </View>
+          <Text style={[styles.title, isCompactLayout && styles.titleCompact]}>Royal Game of Ur</Text>
+          <Text style={[styles.subtitle, isCompactLayout && styles.subtitleCompact]}>
+            An ancient race across carved lanes, sacred rosettes, and dramatic turns.
+          </Text>
+        </View>
+
+        <View style={[styles.panel, isCompactLayout && styles.panelCompact]}>
+          <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.panelTexture} />
+          <View style={styles.panelBorder} />
+
+          <ProgressionSummaryCard style={[styles.progressionCard, isCompactLayout && styles.summaryCardCompact]} />
+          <ChallengeSummaryCard style={[styles.challengeCard, isCompactLayout && styles.summaryCardCompact]} />
+
+          <View style={[styles.buttonStack, isCompactLayout && styles.buttonStackCompact]}>
+            <Button
+              title="Quick Play"
+              onPress={() => router.push('/(game)/bot')}
+              style={styles.quickPlayButton}
+              labelStyle={blackButtonLabel}
+            />
+            <Button
+              title="Game Modes"
+              variant="outline"
+              onPress={() => router.push('/(game)/game-modes')}
+              style={styles.gameModesButton}
+              labelStyle={blackButtonLabel}
+            />
+            <Button
+              title="Play Online"
+              variant="outline"
+              onPress={() => router.push('/(game)/lobby?mode=online')}
+              style={styles.playOnlineButton}
+              labelStyle={blackButtonLabel}
+            />
+            <Button
+              title="Play Tutorial"
+              variant="outline"
+              onPress={() => router.push(`/match/local-${Date.now()}?offline=1&tutorial=playthrough&botDifficulty=easy` as never)}
+              style={styles.extendedTutorialButton}
+              labelStyle={blackButtonLabel}
+            />
           </View>
         </View>
-        <Text style={[styles.title, isCompactLayout && styles.titleCompact]}>Royal Game of Ur</Text>
-        <Text style={[styles.subtitle, isCompactLayout && styles.subtitleCompact]}>
-          An ancient race across carved lanes, sacred rosettes, and dramatic turns.
-        </Text>
-      </View>
-
-      <View style={[styles.panel, isCompactLayout && styles.panelCompact]}>
-        <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.panelTexture} />
-        <View style={styles.panelBorder} />
-
-        <ProgressionSummaryCard style={[styles.progressionCard, isCompactLayout && styles.summaryCardCompact]} />
-        <ChallengeSummaryCard style={[styles.challengeCard, isCompactLayout && styles.summaryCardCompact]} />
-
-        <View style={[styles.buttonStack, isCompactLayout && styles.buttonStackCompact]}>
-          <Button
-            title="Quick Play"
-            onPress={() => router.push('/(game)/bot')}
-            style={styles.quickPlayButton}
-            labelStyle={blackButtonLabel}
-          />
-          <Button
-            title="Game Modes"
-            variant="outline"
-            onPress={() => router.push('/(game)/game-modes')}
-            style={styles.gameModesButton}
-            labelStyle={blackButtonLabel}
-          />
-          <Button
-            title="Play Online"
-            variant="outline"
-            onPress={() => router.push('/(game)/lobby?mode=online')}
-            style={styles.playOnlineButton}
-            labelStyle={blackButtonLabel}
-          />
-          <Button
-            title="Play Tutorial"
-            variant="outline"
-            onPress={() => router.push(`/match/local-${Date.now()}?offline=1&tutorial=playthrough&botDifficulty=easy` as never)}
-            style={styles.extendedTutorialButton}
-            labelStyle={blackButtonLabel}
-          />
-        </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -154,16 +161,25 @@ export default function AuthenticatedHome() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: urTheme.spacing.lg,
     backgroundColor: urTheme.colors.night,
     overflow: 'hidden',
   },
-  screenCompact: {
+  scrollView: {
+    width: '100%',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: urTheme.spacing.lg,
+    paddingVertical: urTheme.spacing.xl + urTheme.spacing.md,
+  },
+  scrollContentCompact: {
     paddingHorizontal: urTheme.spacing.md,
-    paddingTop: urTheme.spacing.xl + urTheme.spacing.sm,
-    paddingBottom: urTheme.spacing.md,
+    paddingTop: urTheme.spacing.xl + urTheme.spacing.lg,
+    paddingBottom: urTheme.spacing.lg,
   },
   texture: {
     ...StyleSheet.absoluteFillObject,
