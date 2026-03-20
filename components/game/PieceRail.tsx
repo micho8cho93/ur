@@ -91,6 +91,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   const isMobileWeb = Platform.OS === 'web' && isMobile;
   const isVertical = orientation === 'vertical';
   const isCompactVerticalRail = isVertical && isMobile;
+  const isLargeWebHorizontalRail = Platform.OS === 'web' && width >= 1200 && !isVertical;
   const isTabletPortrait = width >= 760 && width <= 1024 && height > width;
   const railScale = isMobile ? MOBILE_RAIL_SCALE : isTabletPortrait ? 0.9 : 1;
   const railMinHeight = Math.round(RAIL_MIN_HEIGHT * railScale);
@@ -139,8 +140,8 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   const reportedRailFrameKeyRef = useRef<string>('');
 
   const resolveStackLayout = useCallback((slotCount: number) => {
-    const minOverlapRatio = isMobile ? 0.5 : 0.22;
-    const preferredOverlapRatio = isMobile ? 0.58 : 0.3;
+    const minOverlapRatio = isMobile ? 0.5 : isLargeWebHorizontalRail ? 0.25 : 0.22;
+    const preferredOverlapRatio = isMobile ? 0.58 : isLargeWebHorizontalRail ? 0.25 : 0.3;
     const minOverlap = Math.max(1, Math.round(reservePieceSize * minOverlapRatio));
     const preferredOverlap = Math.max(minOverlap, Math.round(reservePieceSize * preferredOverlapRatio));
     const preferredInset = isCompactVerticalRail
@@ -179,7 +180,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
       overlap,
       inset,
     };
-  }, [isCompactVerticalRail, isMobile, railMainAxisSize, reservePieceSize]);
+  }, [isCompactVerticalRail, isLargeWebHorizontalRail, isMobile, railMainAxisSize, reservePieceSize]);
   const pieceLayout = useMemo(() => resolveStackLayout(shownCount), [resolveStackLayout, shownCount]);
   const traySlotCount = Math.max(1, totalCount);
   const trayArtLayout = useMemo(() => resolveStackLayout(traySlotCount), [resolveStackLayout, traySlotCount]);

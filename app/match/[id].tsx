@@ -1787,13 +1787,20 @@ export function GameRoom() {
   const stageGap = viewportHeight < 760 ? urTheme.spacing.xs : urTheme.spacing.sm;
   const viewportTopPadding = 0;
   const viewportBottomPadding = Math.max(insets.bottom, urTheme.spacing.xs);
+  const topChromeHeight = 36;
+  const webTopChromeTopInset = Math.max(insets.top, urTheme.spacing.xs);
   const mobileTopChromeOffset = isMobileLayout
     ? Math.max(urTheme.spacing.sm, Math.round(viewportHeight * 0.012))
     : 0;
-  const topChromeTop = insets.top + mobileTopChromeOffset;
-  const topChromeHeight = 36;
+  const topChromeTop = isWebLayout && boardTargetFrame
+    ? Math.round(
+      webTopChromeTopInset +
+      Math.max(0, boardTargetFrame.y - webTopChromeTopInset - topChromeHeight) / 2,
+    )
+    : insets.top + mobileTopChromeOffset;
   const topChromeBottom = topChromeTop + topChromeHeight;
   const scoreOverlayTop = topChromeBottom + urTheme.spacing.xs;
+  const useInlineTopChromeLayout = isMobileLayout || isWebLayout;
   const backdropOverscan = Math.ceil(Math.max(viewportWidth, viewportHeight) * 0.025);
   const canvasTopEdgeLift = Math.max(24, Math.min(96, Math.round(viewportHeight * 0.07)));
   const supportColumnBottomInset = Math.max(viewportBottomPadding + Math.round(viewportHeight * 0.02), urTheme.spacing.sm);
@@ -2324,8 +2331,8 @@ export function GameRoom() {
         </View>
       ) : null}
 
-      <View style={[styles.topChrome, isMobileLayout && styles.topChromeMobile, { top: topChromeTop }]}>
-        <View style={[styles.topChromeLeft, isMobileLayout && styles.topChromeLeftMobile]}>
+      <View style={[styles.topChrome, useInlineTopChromeLayout && styles.topChromeMobile, { top: topChromeTop }]}>
+        <View style={[styles.topChromeLeft, useInlineTopChromeLayout && styles.topChromeLeftMobile]}>
           <Pressable
             onPress={handleExit}
             accessibilityRole="button"
@@ -2343,13 +2350,13 @@ export function GameRoom() {
               color={isMobileLayout || isWebLayout ? urTheme.colors.ivory : TOP_CHROME_ACCENT}
             />
           </Pressable>
-          <View style={[styles.topChromeTitleStack, isMobileLayout && styles.topChromeTitleStackMobile]}>
+          <View style={[styles.topChromeTitleStack, useInlineTopChromeLayout && styles.topChromeTitleStackMobile]}>
             <Text
               numberOfLines={1}
               style={[
                 styles.topChromeTitle,
                 (isMobileLayout || isWebLayout) && styles.topChromeTitleMobile,
-                isMobileLayout && styles.topChromeTitleInlineMobile,
+                useInlineTopChromeLayout && styles.topChromeTitleInlineMobile,
               ]}
             >
               {matchTitle}
