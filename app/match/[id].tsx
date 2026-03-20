@@ -2295,8 +2295,9 @@ export function GameRoom() {
           ]}
         >
           <EdgeScore
-            label="Dark Score"
-            value={`${gameState.dark.finishedCount}/${pieceCountPerSide}`}
+            side="dark"
+            score={gameState.dark.finishedCount}
+            maxScore={pieceCountPerSide}
             active={introsComplete && !isMyTurn}
             align="right"
           />
@@ -2451,8 +2452,9 @@ export function GameRoom() {
             }}
           >
             <EdgeScore
-              label="Light Score"
-              value={`${gameState.light.finishedCount}/${pieceCountPerSide}`}
+              side="light"
+              score={gameState.light.finishedCount}
+              maxScore={pieceCountPerSide}
               active={introsComplete && isMyTurn}
             />
             {isMobileLayout && isTurnTimerEnabled ? (
@@ -2473,8 +2475,9 @@ export function GameRoom() {
             ) : null}
             {showMobileWebDetachedDarkScore ? (
               <EdgeScore
-                label="Dark Score"
-                value={`${gameState.dark.finishedCount}/${pieceCountPerSide}`}
+                side="dark"
+                score={gameState.dark.finishedCount}
+                maxScore={pieceCountPerSide}
                 active={introsComplete && !isMyTurn}
                 align="right"
                 style={[
@@ -2484,8 +2487,9 @@ export function GameRoom() {
               />
             ) : (
               <EdgeScore
-                label="Dark Score"
-                value={`${gameState.dark.finishedCount}/${pieceCountPerSide}`}
+                side="dark"
+                score={gameState.dark.finishedCount}
+                maxScore={pieceCountPerSide}
                 active={introsComplete && !isMyTurn}
                 align="right"
                 style={isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined}
