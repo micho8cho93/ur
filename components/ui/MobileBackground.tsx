@@ -23,7 +23,7 @@ export function MobileBackground({
   const { width, height } = useWindowDimensions();
   const opacity = React.useRef(new Animated.Value(0)).current;
   const overscan = Platform.OS === 'web' ? Math.max(48, Math.round(Math.max(width, height) * 0.08)) : 0;
-  const overscannedBounds =
+  const baseBounds =
     overscan > 0
       ? {
           top: -overscan,
@@ -31,7 +31,13 @@ export function MobileBackground({
           width: width + overscan * 2,
           height: height + overscan * 2,
         }
-      : null;
+      : {};
+  const imageBounds = (Platform.OS === 'web'
+    ? {
+        position: 'fixed',
+        ...baseBounds,
+      }
+    : baseBounds) as any;
 
   const handleLoad = React.useCallback(() => {
     Animated.timing(opacity, {
@@ -52,9 +58,9 @@ export function MobileBackground({
         source={source}
         resizeMode="cover"
         onLoad={handleLoad}
-        style={[styles.image, overscannedBounds, { opacity }]}
+        style={[styles.image, imageBounds, { opacity }]}
       />
-      <View style={[styles.overlay, overscannedBounds, { backgroundColor: overlayColor }]} />
+      <View style={[styles.overlay, imageBounds, { backgroundColor: overlayColor }]} />
     </View>
   );
 }
@@ -63,6 +69,7 @@ const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgb(6, 9, 14)',
+    overflow: 'hidden',
   },
   image: {
     position: 'absolute',

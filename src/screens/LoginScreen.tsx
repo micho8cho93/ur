@@ -3,7 +3,7 @@ import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { useAuth } from '@/src/auth/useAuth';
 import React from 'react';
-import { Image, Platform, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 type PendingAction = 'guest' | 'google' | null;
 
@@ -52,40 +52,47 @@ export default function LoginScreen() {
       <View style={styles.topGlow} />
       <View style={styles.bottomShade} />
 
-      <View style={styles.card}>
-        <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
-        <View style={styles.cardBorder} />
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <View style={styles.card}>
+          <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+          <View style={styles.cardBorder} />
 
-        <Text style={styles.eyebrow}>Authentication</Text>
-        <Text style={styles.title}>Enter The Royal Court</Text>
-        <Text style={styles.subtitle}>
-          Continue as a guest for instant play, or sign in with Google so your identity is ready for future online account linking.
-        </Text>
+          <Text style={styles.eyebrow}>Authentication</Text>
+          <Text style={styles.title}>Enter The Royal Court</Text>
+          <Text style={styles.subtitle}>
+            Continue as a guest for instant play, or sign in with Google so your identity is ready for future online account linking.
+          </Text>
 
-        <View style={styles.buttonStack}>
-          <Button
-            title="Continue as Guest"
-            variant="secondary"
-            loading={pendingAction === 'guest'}
-            disabled={pendingAction !== null}
-            onPress={handleGuestLogin}
-          />
-          <Button
-            title="Sign in with Google"
-            loading={pendingAction === 'google'}
-            disabled={pendingAction !== null}
-            onPress={handleGoogleLogin}
-          />
+          <View style={styles.buttonStack}>
+            <Button
+              title="Continue as Guest"
+              variant="secondary"
+              loading={pendingAction === 'guest'}
+              disabled={pendingAction !== null}
+              onPress={handleGuestLogin}
+            />
+            <Button
+              title="Sign in with Google"
+              loading={pendingAction === 'google'}
+              disabled={pendingAction !== null}
+              onPress={handleGoogleLogin}
+            />
+          </View>
+
+          <Text style={styles.helperText}>
+            {Platform.OS === 'web'
+              ? 'Google sign-in is available on web today.'
+              : 'Google sign-in will be enabled on native once platform client IDs and a development build are configured.'}
+          </Text>
+
+          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
         </View>
-
-        <Text style={styles.helperText}>
-          {Platform.OS === 'web'
-            ? 'Google sign-in is available on web today.'
-            : 'Google sign-in will be enabled on native once platform client IDs and a development build are configured.'}
-        </Text>
-
-        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -93,10 +100,17 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    backgroundColor: urTheme.colors.night,
+  },
+  scrollView: {
+    width: '100%',
+  },
+  scrollContent: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: urTheme.spacing.lg,
-    backgroundColor: urTheme.colors.night,
+    paddingVertical: urTheme.spacing.xl,
   },
   texture: {
     ...StyleSheet.absoluteFillObject,
