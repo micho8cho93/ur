@@ -40,6 +40,7 @@ interface GameStore {
   setServerRevision: (revision: number) => void;
   setGameStateFromServer: (state: GameState) => void;
   applyServerSnapshot: (state: GameState, revision: number, matchId?: string) => void;
+  setMatchPresences: (presences: string[]) => void;
   updateMatchPresences: (event: MatchPresenceEvent) => void;
   setLastProgressionAward: (award: ProgressionAwardResponse | null) => void;
   setSocketState: (status: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error') => void;
@@ -142,6 +143,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         ...(matchId ? { matchId } : {}),
       };
     });
+  },
+
+  setMatchPresences: (matchPresences) => {
+    set({ matchPresences: Array.from(new Set(matchPresences)) });
   },
 
   updateMatchPresences: (event) => {

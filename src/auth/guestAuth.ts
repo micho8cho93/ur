@@ -47,8 +47,7 @@ export const loginAsGuest = async (): Promise<GuestAuthResult> => {
       return createLocalGuestResult(guestIdSuffix);
     }
 
-    const deviceId = `guest_${guestIdSuffix}`;
-    const session = await nakamaService.authenticateDevice(deviceId, true, 'Guest');
+    const session = await nakamaService.authenticateStoredDevice();
     const account = await nakamaService.getAccount();
 
     return {

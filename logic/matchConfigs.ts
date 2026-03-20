@@ -25,6 +25,12 @@ export type MatchConfig = {
   selectionSubtitle?: string;
 };
 
+export type PrivateMatchOption = {
+  modeId: MatchModeId;
+  label: string;
+  description: string;
+};
+
 const STANDARD_MATCH_CONFIG: MatchConfig = {
   modeId: 'standard',
   displayName: 'Quick Play',
@@ -113,6 +119,33 @@ export const MATCH_CONFIGS: Readonly<Record<MatchModeId, MatchConfig>> = {
 
 export const DEFAULT_MATCH_CONFIG = STANDARD_MATCH_CONFIG;
 export const GAME_MODE_CONFIGS = GAME_MODE_MATCH_CONFIGS;
+export const PRIVATE_MATCH_OPTIONS: readonly PrivateMatchOption[] = [
+  {
+    modeId: 'gameMode_1_piece',
+    label: '1 Piece',
+    description: 'One piece per side for a fast duel.',
+  },
+  {
+    modeId: 'gameMode_3_pieces',
+    label: '3 Pieces',
+    description: 'Three pieces per side for a brisk match.',
+  },
+  {
+    modeId: 'gameMode_5_pieces',
+    label: '5 Pieces',
+    description: 'Five pieces per side for a shorter board battle.',
+  },
+  {
+    modeId: 'standard',
+    label: '7 Pieces',
+    description: 'Standard private match rules.',
+  },
+  {
+    modeId: 'gameMode_full_path',
+    label: 'Extended Play',
+    description: 'Seven pieces with the extended-path rules.',
+  },
+] as const;
 export const PRACTICE_MODE_REWARD_LABEL = 'Practice Mode: No XP Rewards';
 export const GAME_MODE_SCREEN_NOTE = 'Game Modes are offline bot matches only. No XP or online play.';
 
@@ -127,3 +160,9 @@ export const getMatchConfig = (modeId?: string | null): MatchConfig =>
 
 export const getPracticeModeBadgeLabel = (config: MatchConfig): string =>
   config.isPracticeMode ? `Practice Mode · ${config.displayName}` : config.displayName;
+
+export const getPrivateMatchOption = (modeId: MatchModeId): PrivateMatchOption =>
+  PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === modeId) ??
+  PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === 'standard')!;
+
+export const getPrivateMatchLabel = (modeId: MatchModeId): string => getPrivateMatchOption(modeId).label;

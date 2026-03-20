@@ -18,6 +18,101 @@ var __spreadValues = (a, b) => {
 };
 var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 
+// logic/pathVariants.ts
+var DEFAULT_PATH_LIGHT = [
+  { row: 2, col: 3 },
+  { row: 2, col: 2 },
+  { row: 2, col: 1 },
+  { row: 2, col: 0 },
+  { row: 1, col: 0 },
+  { row: 1, col: 1 },
+  { row: 1, col: 2 },
+  { row: 1, col: 3 },
+  { row: 1, col: 4 },
+  { row: 1, col: 5 },
+  { row: 1, col: 6 },
+  { row: 1, col: 7 },
+  { row: 2, col: 7 },
+  { row: 2, col: 6 }
+];
+var DEFAULT_PATH_DARK = [
+  { row: 0, col: 3 },
+  { row: 0, col: 2 },
+  { row: 0, col: 1 },
+  { row: 0, col: 0 },
+  { row: 1, col: 0 },
+  { row: 1, col: 1 },
+  { row: 1, col: 2 },
+  { row: 1, col: 3 },
+  { row: 1, col: 4 },
+  { row: 1, col: 5 },
+  { row: 1, col: 6 },
+  { row: 1, col: 7 },
+  { row: 0, col: 7 },
+  { row: 0, col: 6 }
+];
+var FULL_PATH_LIGHT = [
+  { row: 2, col: 3 },
+  { row: 2, col: 2 },
+  { row: 2, col: 1 },
+  { row: 2, col: 0 },
+  { row: 1, col: 0 },
+  { row: 1, col: 1 },
+  { row: 1, col: 2 },
+  { row: 1, col: 3 },
+  { row: 1, col: 4 },
+  { row: 1, col: 5 },
+  { row: 1, col: 6 },
+  { row: 0, col: 6 },
+  { row: 0, col: 7 },
+  { row: 1, col: 7 },
+  { row: 2, col: 7 },
+  { row: 2, col: 6 }
+];
+var FULL_PATH_DARK = [
+  { row: 0, col: 3 },
+  { row: 0, col: 2 },
+  { row: 0, col: 1 },
+  { row: 0, col: 0 },
+  { row: 1, col: 0 },
+  { row: 1, col: 1 },
+  { row: 1, col: 2 },
+  { row: 1, col: 3 },
+  { row: 1, col: 4 },
+  { row: 1, col: 5 },
+  { row: 1, col: 6 },
+  { row: 2, col: 6 },
+  { row: 2, col: 7 },
+  { row: 1, col: 7 },
+  { row: 0, col: 7 },
+  { row: 0, col: 6 }
+];
+var DEFAULT_PATH_VARIANT = "default";
+var PATH_VARIANT_DEFINITIONS = {
+  default: {
+    id: "default",
+    light: DEFAULT_PATH_LIGHT,
+    dark: DEFAULT_PATH_DARK,
+    pathLength: DEFAULT_PATH_LIGHT.length
+  },
+  "full-path": {
+    id: "full-path",
+    light: FULL_PATH_LIGHT,
+    dark: FULL_PATH_DARK,
+    pathLength: FULL_PATH_LIGHT.length
+  }
+};
+var getPathVariantDefinition = (variant = DEFAULT_PATH_VARIANT) => PATH_VARIANT_DEFINITIONS[variant];
+var getPathForColor = (variant = DEFAULT_PATH_VARIANT, color) => color === "light" ? PATH_VARIANT_DEFINITIONS[variant].light : PATH_VARIANT_DEFINITIONS[variant].dark;
+var getPathLength = (variant = DEFAULT_PATH_VARIANT) => PATH_VARIANT_DEFINITIONS[variant].pathLength;
+var getPathCoord = (variant = DEFAULT_PATH_VARIANT, color, index) => {
+  var _a;
+  if (index < 0 || index >= getPathLength(variant)) {
+    return null;
+  }
+  return (_a = getPathForColor(variant, color)[index]) != null ? _a : null;
+};
+
 // logic/constants.ts
 var ROSETTES = [
   { row: 0, col: 0 },
@@ -27,57 +122,107 @@ var ROSETTES = [
   { row: 0, col: 6 },
   { row: 2, col: 6 }
 ];
-var PATH_LIGHT = [
-  { row: 2, col: 3 },
-  { row: 2, col: 2 },
-  { row: 2, col: 1 },
-  { row: 2, col: 0 },
-  // 0-3
-  { row: 1, col: 0 },
-  { row: 1, col: 1 },
-  { row: 1, col: 2 },
-  { row: 1, col: 3 },
-  // 4-7
-  { row: 1, col: 4 },
-  { row: 1, col: 5 },
-  { row: 1, col: 6 },
-  { row: 1, col: 7 },
-  // 8-11
-  { row: 2, col: 7 },
-  { row: 2, col: 6 }
-  // 12-13
-  // 14 is "off board" finish
-];
-var PATH_DARK = [
-  { row: 0, col: 3 },
-  { row: 0, col: 2 },
-  { row: 0, col: 1 },
-  { row: 0, col: 0 },
-  // 0-3
-  { row: 1, col: 0 },
-  { row: 1, col: 1 },
-  { row: 1, col: 2 },
-  { row: 1, col: 3 },
-  // 4-7
-  { row: 1, col: 4 },
-  { row: 1, col: 5 },
-  { row: 1, col: 6 },
-  { row: 1, col: 7 },
-  // 8-11
-  { row: 0, col: 7 },
-  { row: 0, col: 6 }
-  // 12-13
-];
-var PATH_LENGTH = 14;
+var DEFAULT_PATH_DEFINITION = getPathVariantDefinition(DEFAULT_PATH_VARIANT);
+var PATH_LIGHT = DEFAULT_PATH_DEFINITION.light;
+var PATH_DARK = DEFAULT_PATH_DEFINITION.dark;
+var PATH_LENGTH = DEFAULT_PATH_DEFINITION.pathLength;
 var isRosette = (r, c) => ROSETTES.some((coord) => coord.row === r && coord.col === c);
 var isWarZone = (r, c) => r === 1;
 
+// logic/matchConfigs.ts
+var STANDARD_MATCH_CONFIG = {
+  modeId: "standard",
+  displayName: "Quick Play",
+  pieceCountPerSide: 7,
+  rulesVariant: "standard",
+  allowsXp: true,
+  allowsOnline: true,
+  allowsChallenges: true,
+  allowsCoins: true,
+  allowsRankedStats: true,
+  opponentType: "bot",
+  pathVariant: "default",
+  isPracticeMode: false
+};
+var GAME_MODE_MATCH_CONFIGS = [
+  {
+    modeId: "gameMode_1_piece",
+    displayName: "1 Piece",
+    pieceCountPerSide: 1,
+    rulesVariant: "standard",
+    allowsXp: false,
+    allowsOnline: false,
+    allowsChallenges: false,
+    allowsCoins: false,
+    allowsRankedStats: false,
+    opponentType: "bot",
+    pathVariant: "default",
+    isPracticeMode: true,
+    selectionSubtitle: "Bot match with 1 piece each"
+  },
+  {
+    modeId: "gameMode_3_pieces",
+    displayName: "3 Pieces",
+    pieceCountPerSide: 3,
+    rulesVariant: "standard",
+    allowsXp: false,
+    allowsOnline: false,
+    allowsChallenges: false,
+    allowsCoins: false,
+    allowsRankedStats: false,
+    opponentType: "bot",
+    pathVariant: "default",
+    isPracticeMode: true,
+    selectionSubtitle: "Bot match with 3 pieces each"
+  },
+  {
+    modeId: "gameMode_5_pieces",
+    displayName: "5 Pieces",
+    pieceCountPerSide: 5,
+    rulesVariant: "standard",
+    allowsXp: false,
+    allowsOnline: false,
+    allowsChallenges: false,
+    allowsCoins: false,
+    allowsRankedStats: false,
+    opponentType: "bot",
+    pathVariant: "default",
+    isPracticeMode: true,
+    selectionSubtitle: "Bot match with 5 pieces each"
+  },
+  {
+    modeId: "gameMode_full_path",
+    displayName: "Extended Path",
+    pieceCountPerSide: 7,
+    rulesVariant: "standard",
+    allowsXp: false,
+    allowsOnline: false,
+    allowsChallenges: false,
+    allowsCoins: false,
+    allowsRankedStats: false,
+    opponentType: "bot",
+    pathVariant: "full-path",
+    isPracticeMode: true,
+    selectionSubtitle: "Bot match with 7 pieces each using the extended-path rules"
+  }
+];
+var MATCH_CONFIGS = {
+  standard: STANDARD_MATCH_CONFIG,
+  gameMode_1_piece: GAME_MODE_MATCH_CONFIGS[0],
+  gameMode_3_pieces: GAME_MODE_MATCH_CONFIGS[1],
+  gameMode_5_pieces: GAME_MODE_MATCH_CONFIGS[2],
+  gameMode_full_path: GAME_MODE_MATCH_CONFIGS[3]
+};
+var DEFAULT_MATCH_CONFIG = STANDARD_MATCH_CONFIG;
+var isMatchModeId = (value) => typeof value === "string" && value in MATCH_CONFIGS;
+var getMatchConfig = (modeId) => modeId && isMatchModeId(modeId) ? MATCH_CONFIGS[modeId] : DEFAULT_MATCH_CONFIG;
+
 // logic/engine.ts
-var INITIAL_PIECE_COUNT = 7;
-var createPlayer = (color) => ({
+var INITIAL_PIECE_COUNT = DEFAULT_MATCH_CONFIG.pieceCountPerSide;
+var createPlayer = (color, pieceCountPerSide) => ({
   id: color,
   color,
-  pieces: Array.from({ length: INITIAL_PIECE_COUNT }).map((_, i) => ({
+  pieces: Array.from({ length: pieceCountPerSide }).map((_, i) => ({
     id: `${color}-${i}`,
     owner: color,
     position: -1,
@@ -86,25 +231,22 @@ var createPlayer = (color) => ({
   capturedCount: 0,
   finishedCount: 0
 });
-var createInitialState = () => ({
+var createInitialState = (matchConfig = DEFAULT_MATCH_CONFIG) => ({
   currentTurn: "light",
   rollValue: null,
   phase: "rolling",
-  light: createPlayer("light"),
-  dark: createPlayer("dark"),
+  matchConfig,
+  light: createPlayer("light", matchConfig.pieceCountPerSide),
+  dark: createPlayer("dark", matchConfig.pieceCountPerSide),
   winner: null,
   history: []
 });
 var rollDice = () => {
   let sum = 0;
   for (let i = 0; i < 4; i++) {
-    if (Math.random() > 0.5) sum++;
+    if (Math.random() >= 0.5) sum++;
   }
   return sum;
-};
-var getPathCoord = (color, index) => {
-  const path = color === "light" ? PATH_LIGHT : PATH_DARK;
-  return path[index];
 };
 var getValidMoves = (state, roll) => {
   if (roll === 0) return [];
@@ -112,23 +254,26 @@ var getValidMoves = (state, roll) => {
   const opponent = state[state.currentTurn === "light" ? "dark" : "light"];
   const moves = [];
   const processedPositions = /* @__PURE__ */ new Set();
+  const pathLength = getPathLength(state.matchConfig.pathVariant);
   for (const piece of player.pieces) {
     if (piece.isFinished) continue;
     if (piece.position === -1 && processedPositions.has(-1)) continue;
     if (piece.position === -1) processedPositions.add(-1);
     const targetIndex = piece.position + roll;
-    if (targetIndex > PATH_LENGTH) continue;
-    if (targetIndex === PATH_LENGTH) {
+    if (targetIndex > pathLength) continue;
+    if (targetIndex === pathLength) {
       moves.push({ pieceId: piece.id, fromIndex: piece.position, toIndex: targetIndex });
       continue;
     }
     const myPieceAtTarget = player.pieces.find((p) => p.position === targetIndex && !p.isFinished);
     if (myPieceAtTarget) continue;
-    const targetCoord = getPathCoord(player.color, targetIndex);
+    const targetCoord = getPathCoord(state.matchConfig.pathVariant, player.color, targetIndex);
+    if (!targetCoord) continue;
     const isShared = isWarZone(targetCoord.row, targetCoord.col);
     const opponentPiece = opponent.pieces.find((p) => {
       if (p.isFinished || p.position === -1) return false;
-      const opCoord = getPathCoord(opponent.color, p.position);
+      const opCoord = getPathCoord(state.matchConfig.pathVariant, opponent.color, p.position);
+      if (!opCoord) return false;
       return opCoord.row === targetCoord.row && opCoord.col === targetCoord.col;
     });
     if (opponentPiece) {
@@ -145,17 +290,22 @@ var applyMove = (state, move) => {
   const newState = JSON.parse(JSON.stringify(state));
   const player = newState[newState.currentTurn];
   const opponent = newState[newState.currentTurn === "light" ? "dark" : "light"];
+  const pathLength = getPathLength(newState.matchConfig.pathVariant);
   const piece = player.pieces.find((p) => p.id === move.pieceId);
   piece.position = move.toIndex;
-  if (move.toIndex === PATH_LENGTH) {
+  if (move.toIndex === pathLength) {
     piece.isFinished = true;
     player.finishedCount++;
   }
-  if (move.toIndex < PATH_LENGTH) {
-    const targetCoord = getPathCoord(player.color, move.toIndex);
+  if (move.toIndex < pathLength) {
+    const targetCoord = getPathCoord(newState.matchConfig.pathVariant, player.color, move.toIndex);
+    if (!targetCoord) {
+      throw new Error(`Missing path coordinate for ${player.color} at index ${move.toIndex}.`);
+    }
     const opponentPiece = opponent.pieces.find((p) => {
       if (p.isFinished || p.position === -1) return false;
-      const opCoord = getPathCoord(opponent.color, p.position);
+      const opCoord = getPathCoord(newState.matchConfig.pathVariant, opponent.color, p.position);
+      if (!opCoord) return false;
       return opCoord.row === targetCoord.row && opCoord.col === targetCoord.col;
     });
     if (opponentPiece) {
@@ -165,9 +315,9 @@ var applyMove = (state, move) => {
     }
   }
   let isRosetteLanding = false;
-  if (move.toIndex < PATH_LENGTH) {
-    const coord = getPathCoord(player.color, move.toIndex);
-    if (isRosette(coord.row, coord.col)) {
+  if (move.toIndex < pathLength) {
+    const coord = getPathCoord(newState.matchConfig.pathVariant, player.color, move.toIndex);
+    if (coord && isRosette(coord.row, coord.col)) {
       isRosetteLanding = true;
     }
   }
@@ -180,7 +330,7 @@ var applyMove = (state, move) => {
     newState.phase = "rolling";
     newState.rollValue = null;
   }
-  if (player.finishedCount >= INITIAL_PIECE_COUNT) {
+  if (player.finishedCount >= newState.matchConfig.pieceCountPerSide) {
     newState.winner = player.color;
     newState.phase = "ended";
   }
@@ -209,6 +359,10 @@ var XP_SOURCE_CONFIG = {
   pvp_win: {
     amount: 100,
     description: "Authoritative PvP win reward."
+  },
+  private_pvp_win: {
+    amount: 25,
+    description: "Private PvP win reward."
   },
   bot_win: {
     amount: 100,
@@ -393,7 +547,7 @@ var normalizeStoredXpRewardRecord = (rawValue) => {
   const previousTotalXp = sanitizeTotalXp((_b = readNumberField(record, ["previousTotalXp", "previous_total_xp"])) != null ? _b : 0);
   const newTotalXp = sanitizeTotalXp((_c = readNumberField(record, ["newTotalXp", "new_total_xp"])) != null ? _c : 0);
   const progression = record.progression;
-  if (!userId || !ledgerKey || !sourceId || !awardedAt || source !== "pvp_win" && source !== "bot_win" && source !== "challenge_completion" || typeof progression !== "object" || progression === null) {
+  if (!userId || !ledgerKey || !sourceId || !awardedAt || source !== "pvp_win" && source !== "private_pvp_win" && source !== "bot_win" && source !== "challenge_completion" || typeof progression !== "object" || progression === null) {
     return null;
   }
   return {
@@ -866,23 +1020,24 @@ var isSubmitCompletedBotMatchRpcRequest = (value) => {
   const payload = value;
   return isCompletedMatchSummary(payload.summary) && (typeof payload.tutorialId === "string" || payload.tutorialId === null || typeof payload.tutorialId === "undefined") && (typeof payload.rewardMode === "undefined" || isCompletedBotMatchRewardMode(payload.rewardMode));
 };
-var getPieceProgressScore = (position) => {
+var getPieceProgressScore = (position, pathLength) => {
   if (position < 0) {
     return 0;
   }
-  if (position >= PATH_LENGTH) {
-    return PATH_LENGTH + 1;
+  if (position >= pathLength) {
+    return pathLength + 1;
   }
   return position + 1;
 };
-var calculateBoardProgressScore = (player) => player.pieces.reduce((total, piece) => total + getPieceProgressScore(piece.position), 0);
+var calculateBoardProgressScore = (player, pathLength) => player.pieces.reduce((total, piece) => total + getPieceProgressScore(piece.position, pathLength), 0);
 var calculateComebackCheckpoint = (state, playerColor) => {
   const opponentColor = playerColor === "light" ? "dark" : "light";
   const player = state[playerColor];
   const opponent = state[opponentColor];
   const reasons = [];
-  const playerProgress = calculateBoardProgressScore(player);
-  const opponentProgress = calculateBoardProgressScore(opponent);
+  const pathLength = getPathLength(state.matchConfig.pathVariant);
+  const playerProgress = calculateBoardProgressScore(player, pathLength);
+  const opponentProgress = calculateBoardProgressScore(opponent, pathLength);
   if (opponent.finishedCount > player.finishedCount) {
     reasons.push("borne_off_deficit");
   }
@@ -1438,10 +1593,11 @@ var RPC_GET_CHALLENGE_DEFINITIONS_NAME = RPC_GET_CHALLENGE_DEFINITIONS;
 var RPC_GET_USER_CHALLENGE_PROGRESS_NAME = RPC_GET_USER_CHALLENGE_PROGRESS;
 var RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME = RPC_SUBMIT_COMPLETED_BOT_MATCH;
 var RPC_MATCHMAKER_ADD = "matchmaker_add";
+var RPC_CREATE_PRIVATE_MATCH = "create_private_match";
 var RPC_PRESENCE_HEARTBEAT = "presence_heartbeat";
 var RPC_PRESENCE_COUNT = "presence_count";
 var MATCH_HANDLER = "authoritative_match";
-var onlinePresenceByDevice = /* @__PURE__ */ new Map();
+var onlinePresenceByUser = /* @__PURE__ */ new Map();
 var asRecord2 = (value) => typeof value === "object" && value !== null ? value : null;
 var readStringField3 = (value, keys) => {
   const record = asRecord2(value);
@@ -1513,15 +1669,16 @@ var getMatchId = (ctx) => {
 };
 var getMessageOpCode = (message) => readNumberField2(message, ["opCode", "op_code"]);
 var getContextUserId = (ctx) => readStringField3(ctx, ["userId", "user_id"]);
+var resolveMatchModeId = (value) => isMatchModeId(value) ? value : "standard";
 var pruneOnlinePresence = (nowMs) => {
-  onlinePresenceByDevice.forEach((lastSeenMs, deviceKey) => {
+  onlinePresenceByUser.forEach((lastSeenMs, userId) => {
     if (nowMs - lastSeenMs > ONLINE_TTL_MS) {
-      onlinePresenceByDevice.delete(deviceKey);
+      onlinePresenceByUser.delete(userId);
     }
   });
 };
 var encodeOnlinePresencePayload = (nowMs) => JSON.stringify({
-  onlineCount: onlinePresenceByDevice.size,
+  onlineCount: onlinePresenceByUser.size,
   onlineTtlMs: ONLINE_TTL_MS,
   serverTimeMs: nowMs
 });
@@ -1614,6 +1771,7 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_GET_USER_CHALLENGE_PROGRESS_NAME, rpcGetUserChallengeProgress);
   initializer.registerRpc(RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME, rpcSubmitCompletedBotMatch);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
+  initializer.registerRpc(RPC_CREATE_PRIVATE_MATCH, rpcCreatePrivateMatch);
   initializer.registerRpc(RPC_PRESENCE_HEARTBEAT, rpcPresenceHeartbeat);
   initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
   initializer.registerMatch(MATCH_HANDLER, {
@@ -1642,7 +1800,7 @@ function rpcPresenceHeartbeat(ctx, _logger, _nk, _payload) {
     throw new Error("Authentication required.");
   }
   const nowMs = Date.now();
-  onlinePresenceByDevice.set(userId, nowMs);
+  onlinePresenceByUser.set(userId, nowMs);
   pruneOnlinePresence(nowMs);
   return encodeOnlinePresencePayload(nowMs);
 }
@@ -1693,14 +1851,42 @@ function rpcMatchmakerAdd(ctx, _logger, nk, payload) {
   );
   return JSON.stringify({ ticket });
 }
+function rpcCreatePrivateMatch(ctx, _logger, nk, payload) {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  const data = payload ? JSON.parse(payload) : {};
+  const modeId = resolveMatchModeId(data.modeId);
+  const matchId = nk.matchCreate(MATCH_HANDLER, {
+    playerIds: [ctx.userId],
+    modeId,
+    privateMatch: true,
+    winRewardSource: "private_pvp_win",
+    allowsChallengeRewards: false
+  });
+  return JSON.stringify({
+    matchId,
+    modeId
+  });
+}
 function matchmakerMatched(_ctx, logger, nk, matched) {
   const users = Array.isArray(matched.users) ? matched.users : [];
   const playerIds = users.map((user) => getPresenceUserId(user == null ? void 0 : user.presence)).filter((userId) => Boolean(userId)).slice(0, MAX_PLAYERS);
   logger.info("Matchmaker matched %s players", playerIds.length);
-  return nk.matchCreate(MATCH_HANDLER, { playerIds });
+  return nk.matchCreate(MATCH_HANDLER, {
+    playerIds,
+    modeId: "standard",
+    privateMatch: false,
+    winRewardSource: "pvp_win",
+    allowsChallengeRewards: true
+  });
 }
 function matchInit(_ctx, _logger, _nk, params) {
   const playerIds = Array.isArray(params.playerIds) ? params.playerIds : [];
+  const modeId = resolveMatchModeId(params.modeId);
+  const privateMatch = params.privateMatch === true;
+  const winRewardSource = params.winRewardSource === "private_pvp_win" ? "private_pvp_win" : "pvp_win";
+  const allowsChallengeRewards = params.allowsChallengeRewards !== false;
   const assignments = {};
   if (playerIds[0]) {
     assignments[playerIds[0]] = "light";
@@ -1711,9 +1897,13 @@ function matchInit(_ctx, _logger, _nk, params) {
   const state = {
     presences: {},
     assignments,
-    gameState: createInitialState(),
+    gameState: createInitialState(getMatchConfig(modeId)),
     revision: 0,
     opponentType: "human",
+    modeId,
+    privateMatch,
+    winRewardSource,
+    allowsChallengeRewards,
     telemetry: createMatchTelemetry()
   };
   return { state, tickRate: TICK_RATE, label: MATCH_HANDLER };
@@ -1921,7 +2111,7 @@ function awardWinnerProgression(logger, nk, dispatcher, state, matchId) {
     const awardResponse = awardXpForMatchWin(nk, logger, {
       userId: winnerUserId,
       matchId,
-      source: "pvp_win"
+      source: state.winRewardSource
     });
     if (awardResponse.duplicate) {
       return;
@@ -1950,6 +2140,9 @@ function awardWinnerProgression(logger, nk, dispatcher, state, matchId) {
   }
 }
 function processCompletedMatchSummaries(logger, nk, state, matchId) {
+  if (!state.allowsChallengeRewards) {
+    return;
+  }
   Object.entries(state.assignments).forEach(([playerUserId, playerColor]) => {
     try {
       const summary = buildPlayerMatchSummary(state, matchId, playerUserId, playerColor);
@@ -1994,6 +2187,7 @@ var runtimeGlobals = {
   InitModule,
   rpcAuthLinkCustom,
   rpcMatchmakerAdd,
+  rpcCreatePrivateMatch,
   rpcPresenceHeartbeat,
   rpcPresenceCount,
   matchmakerMatched,

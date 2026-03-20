@@ -26,6 +26,20 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     stopAuthenticatedPresence();
   }, []);
 
+  const getSessionRestoreStatus = (error: unknown): number | null => {
+    if (typeof error !== 'object' || error === null) {
+      return null;
+    }
+
+    const candidate = error as { status?: unknown };
+    return typeof candidate.status === 'number' ? candidate.status : null;
+  };
+
+  const clearStoredAuth = useCallback(async () => {
+    await clearSession();
+    await nakamaService.clearSession();
+  }, []);
+
   const hydrateSession = useCallback(async () => {
     try {
       const loaded = await loadSession();
@@ -47,13 +61,17 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
                 nakamaRefreshToken: refreshed.refresh_token,
               };
             } else {
-              await clearSession();
+              await clearStoredAuth();
               return null;
             }
           }
         } catch (error) {
-          console.error('Failed to restore Nakama session:', error);
-          await clearSession();
+          if (getSessionRestoreStatus(error) === 401) {
+            console.warn('Stored Nakama session expired; clearing cached auth.');
+          } else {
+            console.error('Failed to restore Nakama session:', error);
+          }
+          await clearStoredAuth();
           return null;
         }
       }
@@ -63,7 +81,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
       console.error('Failed to hydrate session:', error);
       return null;
     }
-  }, []);
+  }, [clearStoredAuth]);
 
   // Initial session hydration on mount
   useEffect(() => {
@@ -172,11 +190,10 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
 
   const logout = useCallback(async () => {
     stopAuthenticatedPresence();
-    await clearSession();
-    await nakamaService.clearSession();
+    await clearStoredAuth();
     useGameStore.getState().reset();
     setUser(null);
-  }, []);
+  }, [clearStoredAuth]);
 
   const linkGoogleAccount = useCallback(async () => {
     if (!user || user.provider !== 'guest') {

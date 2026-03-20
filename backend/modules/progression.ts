@@ -21,7 +21,7 @@ export type RuntimeStorageObject = RuntimeRecord & {
   version?: string;
 };
 
-export type XpRewardSource = "pvp_win" | "bot_win" | "challenge_completion";
+export type XpRewardSource = "pvp_win" | "private_pvp_win" | "bot_win" | "challenge_completion";
 
 export type StoredXpRewardRecord = {
   userId: string;
@@ -193,7 +193,10 @@ export const normalizeStoredXpRewardRecord = (rawValue: unknown): StoredXpReward
     !ledgerKey ||
     !sourceId ||
     !awardedAt ||
-    (source !== "pvp_win" && source !== "bot_win" && source !== "challenge_completion") ||
+    (source !== "pvp_win" &&
+      source !== "private_pvp_win" &&
+      source !== "bot_win" &&
+      source !== "challenge_completion") ||
     typeof progression !== "object" ||
     progression === null
   ) {

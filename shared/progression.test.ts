@@ -1,6 +1,7 @@
 import {
   buildProgressionSnapshot,
   createDefaultProgressionProfile,
+  getXpAwardAmount,
   getNextRankForXp,
   getProgressWithinCurrentRank,
   getRankForXp,
@@ -69,5 +70,10 @@ describe("progression helpers", () => {
       currentRankTitle: "Scribe",
       lastUpdatedAt: "2026-03-19T12:00:00.000Z",
     });
+  });
+
+  it("keeps private-match wins as the smallest win reward", () => {
+    expect(getXpAwardAmount("private_pvp_win")).toBe(25);
+    expect(getXpAwardAmount("private_pvp_win")).toBeLessThan(getXpAwardAmount("pvp_win"));
   });
 });

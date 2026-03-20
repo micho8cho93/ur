@@ -1,9 +1,11 @@
 import { MatchData, Session, Socket } from "@heroiclabs/nakama-js";
 
+import { MatchModeId, isMatchModeId } from "@/logic/matchConfigs";
 import { PlayerColor } from "@/logic/types";
 import { MatchOpCode, decodePayload, isStateSnapshotPayload } from "@/shared/urMatchProtocol";
 import { nakamaService } from "./nakama";
 
+const RPC_CREATE_PRIVATE_MATCH = "create_private_match";
 const CONNECT_TIMEOUT_MS = 10_000;
 const START_MATCHMAKING_TIMEOUT_MS = 10_000;
 const WAIT_FOR_MATCH_TIMEOUT_MS = 20_000;
@@ -137,8 +139,35 @@ export type MatchResult = {
   matchToken: string | null;
 };
 
+export type PrivateMatchResult = {
+  matchId: string;
+  modeId: MatchModeId;
+  session: Session;
+  userId: string;
+};
+
 export type MatchmakingHandlers = {
   onSearching?: () => void;
+};
+
+type CreatePrivateMatchRpcPayload = {
+  matchId?: unknown;
+  modeId?: unknown;
+};
+
+const parseCreatePrivateMatchPayload = (payload: unknown): { matchId: string; modeId: MatchModeId } => {
+  const rpcPayload = payload as CreatePrivateMatchRpcPayload | undefined;
+  const matchId = typeof rpcPayload?.matchId === "string" ? rpcPayload.matchId : null;
+  const modeId = rpcPayload?.modeId;
+
+  if (!matchId || !isMatchModeId(modeId)) {
+    throw new Error("Private match creation returned an invalid payload.");
+  }
+
+  return {
+    matchId,
+    modeId,
+  };
 };
 
 export const cancelMatchmaking = async (): Promise<void> => {
@@ -208,6 +237,29 @@ export const findMatch = async (handlers?: MatchmakingHandlers): Promise<MatchRe
   } catch (error) {
     await cancelMatchmaking();
     nakamaService.disconnectSocket(false);
+    throw normalizeMatchmakingError(error);
+  }
+};
+
+export const createPrivateMatch = async (modeId: MatchModeId = "standard"): Promise<PrivateMatchResult> => {
+  const session = await ensureAuthenticated();
+  const client = nakamaService.getClient();
+
+  try {
+    const response = await client.rpc(session, RPC_CREATE_PRIVATE_MATCH, { modeId });
+    const payload = parseCreatePrivateMatchPayload(response.payload);
+
+    if (!session.user_id) {
+      throw new Error("Authenticated session is missing user ID.");
+    }
+
+    return {
+      matchId: payload.matchId,
+      modeId: payload.modeId,
+      session,
+      userId: session.user_id,
+    };
+  } catch (error) {
     throw normalizeMatchmakingError(error);
   }
 };

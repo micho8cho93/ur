@@ -5,6 +5,7 @@
 
 import { applyMove, createInitialState, getValidMoves, rollDice } from "../../logic/engine";
 import { PATH_DARK, PATH_LENGTH, PATH_LIGHT, isWarZone } from "../../logic/constants";
+import { MatchModeId, getMatchConfig, isMatchModeId } from "../../logic/matchConfigs";
 import { GameState, PlayerColor } from "../../logic/types";
 import {
   awardXpForMatchWin,
@@ -36,6 +37,7 @@ import {
   isRollRequestPayload,
 } from "../../shared/urMatchProtocol";
 import { CompletedMatchSummary, OpponentType, calculateComebackCheckpoint } from "../../shared/challenges";
+import type { XpSource } from "../../shared/progression";
 
 declare namespace nkruntime {
   type Context = any;
@@ -54,6 +56,10 @@ type MatchState = {
   gameState: GameState;
   revision: number;
   opponentType: OpponentType;
+  modeId: MatchModeId;
+  privateMatch: boolean;
+  winRewardSource: XpSource;
+  allowsChallengeRewards: boolean;
   telemetry: MatchTelemetry;
 };
 
@@ -86,10 +92,11 @@ const RPC_GET_CHALLENGE_DEFINITIONS_NAME = RPC_GET_CHALLENGE_DEFINITIONS;
 const RPC_GET_USER_CHALLENGE_PROGRESS_NAME = RPC_GET_USER_CHALLENGE_PROGRESS;
 const RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME = RPC_SUBMIT_COMPLETED_BOT_MATCH;
 const RPC_MATCHMAKER_ADD = "matchmaker_add";
+const RPC_CREATE_PRIVATE_MATCH = "create_private_match";
 const RPC_PRESENCE_HEARTBEAT = "presence_heartbeat";
 const RPC_PRESENCE_COUNT = "presence_count";
 const MATCH_HANDLER = "authoritative_match";
-const onlinePresenceByDevice = new Map<string, number>();
+const onlinePresenceByUser = new Map<string, number>();
 
 const asRecord = (value: unknown): RuntimeRecord | null =>
   typeof value === "object" && value !== null ? (value as RuntimeRecord) : null;
@@ -186,17 +193,20 @@ const getMessageOpCode = (message: nkruntime.MatchMessage): number | null =>
 const getContextUserId = (ctx: nkruntime.Context): string | null =>
   readStringField(ctx, ["userId", "user_id"]);
 
+const resolveMatchModeId = (value: unknown): MatchModeId =>
+  isMatchModeId(value) ? value : "standard";
+
 const pruneOnlinePresence = (nowMs: number): void => {
-  onlinePresenceByDevice.forEach((lastSeenMs, deviceKey) => {
+  onlinePresenceByUser.forEach((lastSeenMs, userId) => {
     if (nowMs - lastSeenMs > ONLINE_TTL_MS) {
-      onlinePresenceByDevice.delete(deviceKey);
+      onlinePresenceByUser.delete(userId);
     }
   });
 };
 
 const encodeOnlinePresencePayload = (nowMs: number): string =>
   JSON.stringify({
-    onlineCount: onlinePresenceByDevice.size,
+    onlineCount: onlinePresenceByUser.size,
     onlineTtlMs: ONLINE_TTL_MS,
     serverTimeMs: nowMs,
   });
@@ -313,6 +323,7 @@ function InitModule(
   initializer.registerRpc(RPC_GET_USER_CHALLENGE_PROGRESS_NAME, rpcGetUserChallengeProgress);
   initializer.registerRpc(RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME, rpcSubmitCompletedBotMatch);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
+  initializer.registerRpc(RPC_CREATE_PRIVATE_MATCH, rpcCreatePrivateMatch);
   initializer.registerRpc(RPC_PRESENCE_HEARTBEAT, rpcPresenceHeartbeat);
   initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
   initializer.registerMatch(MATCH_HANDLER, {
@@ -349,7 +360,7 @@ function rpcPresenceHeartbeat(
   }
 
   const nowMs = Date.now();
-  onlinePresenceByDevice.set(userId, nowMs);
+  onlinePresenceByUser.set(userId, nowMs);
   pruneOnlinePresence(nowMs);
   return encodeOnlinePresencePayload(nowMs);
 }
@@ -427,6 +438,32 @@ function rpcMatchmakerAdd(
   return JSON.stringify({ ticket });
 }
 
+function rpcCreatePrivateMatch(
+  ctx: nkruntime.Context,
+  _logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+
+  const data = payload ? JSON.parse(payload) : {};
+  const modeId = resolveMatchModeId(data.modeId);
+  const matchId = nk.matchCreate(MATCH_HANDLER, {
+    playerIds: [ctx.userId],
+    modeId,
+    privateMatch: true,
+    winRewardSource: "private_pvp_win",
+    allowsChallengeRewards: false,
+  });
+
+  return JSON.stringify({
+    matchId,
+    modeId,
+  });
+}
+
 function matchmakerMatched(
   _ctx: nkruntime.Context,
   logger: nkruntime.Logger,
@@ -440,7 +477,13 @@ function matchmakerMatched(
     .slice(0, MAX_PLAYERS);
   logger.info("Matchmaker matched %s players", playerIds.length);
 
-  return nk.matchCreate(MATCH_HANDLER, { playerIds });
+  return nk.matchCreate(MATCH_HANDLER, {
+    playerIds,
+    modeId: "standard",
+    privateMatch: false,
+    winRewardSource: "pvp_win",
+    allowsChallengeRewards: true,
+  });
 }
 
 function matchInit(
@@ -450,6 +493,10 @@ function matchInit(
   params: Record<string, unknown>
 ): { state: MatchState; tickRate: number; label: string } {
   const playerIds = Array.isArray(params.playerIds) ? (params.playerIds as string[]) : [];
+  const modeId = resolveMatchModeId(params.modeId);
+  const privateMatch = params.privateMatch === true;
+  const winRewardSource = params.winRewardSource === "private_pvp_win" ? "private_pvp_win" : "pvp_win";
+  const allowsChallengeRewards = params.allowsChallengeRewards !== false;
 
   const assignments: Record<string, PlayerColor> = {};
   if (playerIds[0]) {
@@ -462,9 +509,13 @@ function matchInit(
   const state: MatchState = {
     presences: {},
     assignments,
-    gameState: createInitialState(),
+    gameState: createInitialState(getMatchConfig(modeId)),
     revision: 0,
     opponentType: "human",
+    modeId,
+    privateMatch,
+    winRewardSource,
+    allowsChallengeRewards,
     telemetry: createMatchTelemetry(),
   };
 
@@ -798,7 +849,7 @@ function awardWinnerProgression(
     const awardResponse = awardXpForMatchWin(nk, logger, {
       userId: winnerUserId,
       matchId,
-      source: "pvp_win",
+      source: state.winRewardSource,
     });
 
     if (awardResponse.duplicate) {
@@ -836,6 +887,10 @@ function processCompletedMatchSummaries(
   state: MatchState,
   matchId: string
 ): void {
+  if (!state.allowsChallengeRewards) {
+    return;
+  }
+
   Object.entries(state.assignments).forEach(([playerUserId, playerColor]) => {
     try {
       const summary = buildPlayerMatchSummary(state, matchId, playerUserId, playerColor);
@@ -891,6 +946,7 @@ type RuntimeGlobalBindings = {
   InitModule: typeof InitModule;
   rpcAuthLinkCustom: typeof rpcAuthLinkCustom;
   rpcMatchmakerAdd: typeof rpcMatchmakerAdd;
+  rpcCreatePrivateMatch: typeof rpcCreatePrivateMatch;
   rpcPresenceHeartbeat: typeof rpcPresenceHeartbeat;
   rpcPresenceCount: typeof rpcPresenceCount;
   matchmakerMatched: typeof matchmakerMatched;
@@ -907,6 +963,7 @@ const runtimeGlobals: RuntimeGlobalBindings = {
   InitModule,
   rpcAuthLinkCustom,
   rpcMatchmakerAdd,
+  rpcCreatePrivateMatch,
   rpcPresenceHeartbeat,
   rpcPresenceCount,
   matchmakerMatched,

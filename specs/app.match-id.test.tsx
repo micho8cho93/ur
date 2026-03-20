@@ -66,6 +66,7 @@ const mockStoreState = {
   setBotDifficulty: jest.fn(),
   setGameStateFromServer: jest.fn(),
   setMatchId: mockSetMatchId,
+  setMatchPresences: jest.fn(),
   setMatchToken: jest.fn(),
   setMoveCommandSender: mockSetMoveCommandSender,
   setNakamaSession: jest.fn(),

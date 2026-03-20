@@ -32,10 +32,10 @@ export const sendPresenceHeartbeat = async (): Promise<number> => {
 };
 
 /**
- * Online count query: uses ensureAuthenticatedDevice so anonymous/pre-auth
- * clients can still read the counter (e.g. landing screens).
+ * Site-wide player count query: uses ensureAuthenticatedDevice so anonymous or
+ * pre-auth clients can still read the counter (e.g. landing screens).
  */
-export const getOnlineDeviceCount = async (): Promise<number> => {
+export const getSitePlayerCount = async (): Promise<number> => {
   const session = await nakamaService.ensureAuthenticatedDevice();
   const client = nakamaService.getClient();
   const response = await client.rpc(session, RPC_PRESENCE_COUNT, {});

@@ -58,6 +58,11 @@ export class NakamaService {
     return session;
   }
 
+  async authenticateStoredDevice(username?: string): Promise<Session> {
+    const deviceId = await this.getOrCreateDeviceId();
+    return this.authenticateDevice(deviceId, true, username);
+  }
+
   async authenticateGoogle(token: string, create = true, username?: string): Promise<Session> {
     const session = await this.getClient().authenticateGoogle(token, create, username);
     this.session = session;
@@ -80,8 +85,7 @@ export class NakamaService {
       return existing;
     }
 
-    const deviceId = await this.getOrCreateDeviceId();
-    return this.authenticateDevice(deviceId, true, username);
+    return this.authenticateStoredDevice(username);
   }
 
   async loadSession(): Promise<Session | null> {

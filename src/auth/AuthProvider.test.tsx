@@ -1,4 +1,5 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { Session } from '@heroiclabs/nakama-js';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 
@@ -118,6 +119,45 @@ describe('AuthProvider', () => {
     await waitFor(() => {
       expect(view.getByTestId('auth-state').props.children).toBe('Stored User');
     });
+  });
+
+  it('clears both stored auth layers when Nakama session refresh fails', async () => {
+    const mockedSessionRestore = Session.restore as jest.MockedFunction<typeof Session.restore>;
+    mockedSessionRestore.mockReturnValueOnce({
+      token: 'expired-token',
+      refresh_token: 'expired-refresh',
+      isexpired: jest.fn(() => true),
+    } as never);
+
+    const sessionRefresh = jest.fn().mockRejectedValue(Object.assign(new Error('401'), { status: 401 }));
+    mockNakamaGetClient.mockReturnValueOnce({
+      sessionRefresh,
+    });
+    mockLoadSession.mockResolvedValue({
+      user: {
+        id: 'user-1',
+        username: 'Stored User',
+        email: 'stored@example.com',
+        avatarUrl: null,
+        provider: 'guest',
+        createdAt: '2026-03-20T09:00:00.000Z',
+      },
+      nakamaSessionToken: 'expired-token',
+      nakamaRefreshToken: 'expired-refresh',
+    });
+
+    const view = render(
+      <AuthProvider>
+        <AuthHarness />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(view.getByTestId('auth-state').props.children).toBe('none');
+    });
+
+    expect(mockClearSession).toHaveBeenCalledTimes(1);
+    expect(mockNakamaClearSession).toHaveBeenCalledTimes(1);
   });
 
   it('persists guest login', async () => {

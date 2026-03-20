@@ -16,7 +16,7 @@ jest.mock('@/config/nakama', () => ({
 
 jest.mock('@/services/nakama', () => ({
   nakamaService: {
-    authenticateDevice: jest.fn(),
+    authenticateStoredDevice: jest.fn(),
     clearSession: jest.fn(),
     getAccount: jest.fn(),
   },
@@ -55,12 +55,12 @@ describe('loginAsGuest', () => {
       },
     };
 
-    mockedNakamaService.authenticateDevice.mockResolvedValue(mockSession);
+    mockedNakamaService.authenticateStoredDevice.mockResolvedValue(mockSession);
     mockedNakamaService.getAccount.mockResolvedValue(mockAccount);
 
     const result = await loginAsGuest();
 
-    expect(mockedNakamaService.authenticateDevice).toHaveBeenCalledWith('guest_abc123', true, 'Guest');
+    expect(mockedNakamaService.authenticateStoredDevice).toHaveBeenCalledWith();
     expect(result.user).toMatchObject({
       id: 'guest_nakama-user-123',
       username: 'Guest',
@@ -82,7 +82,7 @@ describe('loginAsGuest', () => {
     const result = await loginAsGuest();
 
     expect(mockedNakamaService.clearSession).toHaveBeenCalledTimes(1);
-    expect(mockedNakamaService.authenticateDevice).not.toHaveBeenCalled();
+    expect(mockedNakamaService.authenticateStoredDevice).not.toHaveBeenCalled();
     expect(mockedNakamaService.getAccount).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       user: {
@@ -99,7 +99,7 @@ describe('loginAsGuest', () => {
 
   it('throws error when authentication fails', async () => {
     mockedCrypto.randomUUID.mockReturnValue('abc123');
-    mockedNakamaService.authenticateDevice.mockRejectedValue(new Error('Network error'));
+    mockedNakamaService.authenticateStoredDevice.mockRejectedValue(new Error('Network error'));
 
     await expect(loginAsGuest()).rejects.toThrow('Guest login failed: Network error');
   });

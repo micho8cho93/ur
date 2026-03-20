@@ -4,6 +4,7 @@ import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/component
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { LobbyMode, useMatchmaking } from '@/hooks/useMatchmaking';
+import { PRIVATE_MATCH_OPTIONS } from '@/logic/matchConfigs';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo } from 'react';
 import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -16,7 +17,15 @@ export default function Lobby() {
   const { mode: rawMode } = useLocalSearchParams<{ mode?: string }>();
   const mode: LobbyMode = useMemo(() => (rawMode === 'online' ? 'online' : 'bot'), [rawMode]);
   const router = useRouter();
-  const { startMatch, status, errorMessage, onlineCount } = useMatchmaking(mode);
+  const {
+    startMatch,
+    startPrivateMatch,
+    status,
+    errorMessage,
+    onlineCount,
+    activeAction,
+    pendingPrivateMode,
+  } = useMatchmaking(mode);
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
 
@@ -35,26 +44,36 @@ export default function Lobby() {
   };
 
   const isBusy = status === 'connecting' || status === 'searching';
+  const isFindingOpponent = isBusy && activeAction === 'find_opponent';
+  const isCreatingPrivateGame = isBusy && activeAction === 'create_private';
+  const pendingPrivateOption = PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === pendingPrivateMode) ?? null;
 
   const buttonTitle = (() => {
-    if (status === 'error') return 'Retry Matchmaking';
-    if (isBusy) return 'Searching...';
+    if (status === 'error' && activeAction !== 'create_private') return 'Retry Matchmaking';
+    if (isFindingOpponent) return 'Searching...';
     return 'Find Opponent';
   })();
 
   const statusLabel = (() => {
-    switch (status) {
-      case 'connecting':
-        return 'Connecting to server...';
-      case 'searching':
-        return 'Searching for an opponent...';
-      case 'matched':
-        return 'Opponent found! Entering match...';
-      case 'error':
-        return 'Could not find an opponent. Try again?';
-      default:
-        return 'Ready to find an opponent.';
+    if (status === 'connecting' && activeAction === 'find_opponent') {
+      return 'Connecting to the royal court...';
     }
+
+    if (status === 'searching' && activeAction === 'find_opponent') {
+      return 'Searching for an opponent...';
+    }
+
+    return 'Quick-match into a live public game.';
+  })();
+
+  const privateStatusLabel = (() => {
+    if (isCreatingPrivateGame) {
+      return pendingPrivateOption
+        ? `Preparing a ${pendingPrivateOption.label.toLowerCase()} private table...`
+        : 'Preparing your private table...';
+    }
+
+    return 'Choose a ruleset, create a room, and invite a friend.';
   })();
 
   return (
@@ -83,35 +102,72 @@ export default function Lobby() {
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        <View style={styles.card}>
-          <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
-          <View style={styles.cardBorder} />
-
-          <Text style={styles.title}>
-            {mode === 'online' ? 'Online Match' : 'Bot Match'}
-          </Text>
-          <Text style={styles.subtitle}>
-            {mode === 'online'
-              ? 'Challenge a real opponent from across the world.'
-              : 'Challenge the ancient strategy engine in a crafted arena.'}
+        <View style={styles.hero}>
+          <Text style={styles.pageTitle}>Online Play</Text>
+          <Text style={styles.pageSubtitle}>
+            Find a live opponent or open a private board for a friend.
           </Text>
 
-          {mode === 'online' && (
-            <View style={styles.onlineCountRow}>
-              <View style={[styles.onlineDot, onlineCount && onlineCount > 0 ? styles.onlineDotActive : null]} />
-              <Text style={styles.onlineCountText}>
-                {onlineCount !== null
-                  ? `${onlineCount} player${onlineCount !== 1 ? 's' : ''} online`
-                  : 'Checking...'}
-              </Text>
+          <View style={styles.onlineCountRow}>
+            <View style={[styles.onlineDot, onlineCount && onlineCount > 0 ? styles.onlineDotActive : null]} />
+            <Text style={styles.onlineCountText}>
+              {onlineCount !== null
+                ? `${onlineCount} player${onlineCount !== 1 ? 's' : ''} on site`
+                : 'Checking who is on site...'}
+            </Text>
+          </View>
+
+          {errorMessage ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorBannerText}>{errorMessage}</Text>
             </View>
-          )}
+          ) : null}
+        </View>
 
-          <Text style={[styles.statusText, status === 'error' && styles.statusError]}>
-            {errorMessage ?? statusLabel}
-          </Text>
+        <View style={styles.cardGrid}>
+          <View style={styles.card}>
+            <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+            <View style={styles.cardBorder} />
 
-          <Button title={buttonTitle} loading={isBusy} onPress={handleStart} />
+            <Text style={styles.title}>Find Opponent</Text>
+            <Text style={styles.subtitle}>
+              Jump into public matchmaking and get paired with the next available player.
+            </Text>
+
+            <Text style={[styles.statusText, status === 'error' && activeAction !== 'create_private' && styles.statusError]}>
+              {statusLabel}
+            </Text>
+
+            <Button title={buttonTitle} loading={isFindingOpponent} disabled={isCreatingPrivateGame} onPress={handleStart} />
+          </View>
+
+          <View style={styles.card}>
+            <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+            <View style={styles.cardBorder} />
+
+            <Text style={styles.title}>Create Private Game</Text>
+            <Text style={styles.subtitle}>
+              Invite a friend with a private link. Private wins award reduced XP and challenge rewards stay off.
+            </Text>
+
+            <Text style={styles.statusText}>{privateStatusLabel}</Text>
+
+            <View style={styles.optionGrid}>
+              {PRIVATE_MATCH_OPTIONS.map((option) => (
+                <View key={option.modeId} style={styles.optionCell}>
+                  <Button
+                    title={option.label}
+                    variant="outline"
+                    loading={isCreatingPrivateGame && pendingPrivateMode === option.modeId}
+                    disabled={isBusy && pendingPrivateMode !== option.modeId}
+                    onPress={() => {
+                      void startPrivateMatch(option.modeId);
+                    }}
+                  />
+                </View>
+              ))}
+            </View>
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -133,6 +189,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.xl,
+  },
+  hero: {
+    width: '100%',
+    maxWidth: 920,
+    alignItems: 'center',
+    marginBottom: urTheme.spacing.lg,
+  },
+  pageTitle: {
+    ...urTypography.title,
+    color: urTheme.colors.parchment,
+    fontSize: 38,
+    lineHeight: 42,
+    textAlign: 'center',
+  },
+  pageSubtitle: {
+    color: 'rgba(238, 223, 197, 0.86)',
+    textAlign: 'center',
+    lineHeight: 22,
+    maxWidth: 560,
+    marginTop: urTheme.spacing.xs,
+    marginBottom: urTheme.spacing.md,
   },
   pageTexture: {
     ...StyleSheet.absoluteFillObject,
@@ -157,9 +234,19 @@ const styles = StyleSheet.create({
     height: '45%',
     backgroundColor: 'rgba(7, 11, 16, 0.24)',
   },
+  cardGrid: {
+    width: '100%',
+    maxWidth: 920,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: urTheme.spacing.md,
+  },
   card: {
     width: '100%',
     maxWidth: 440,
+    minWidth: 280,
+    flexGrow: 1,
     borderRadius: urTheme.radii.lg,
     borderWidth: 1.4,
     borderColor: 'rgba(217, 164, 65, 0.74)',
@@ -225,6 +312,23 @@ const styles = StyleSheet.create({
     color: 'rgba(216, 232, 251, 0.9)',
     fontSize: 13,
   },
+  errorBanner: {
+    width: '100%',
+    maxWidth: 620,
+    marginTop: urTheme.spacing.sm,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.sm,
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(246, 170, 162, 0.4)',
+    backgroundColor: 'rgba(80, 22, 18, 0.54)',
+  },
+  errorBannerText: {
+    ...urTypography.label,
+    color: '#F6AAA2',
+    fontSize: 11,
+    textAlign: 'center',
+  },
   statusText: {
     ...urTypography.label,
     color: 'rgba(216, 232, 251, 0.9)',
@@ -234,5 +338,14 @@ const styles = StyleSheet.create({
   },
   statusError: {
     color: '#F6AAA2',
+  },
+  optionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: urTheme.spacing.sm,
+  },
+  optionCell: {
+    flexBasis: 150,
+    flexGrow: 1,
   },
 });
