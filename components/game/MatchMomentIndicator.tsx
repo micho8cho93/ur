@@ -16,10 +16,11 @@ export interface MatchMomentIndicatorCue {
 interface MatchMomentIndicatorProps {
   cue: MatchMomentIndicatorCue | null;
   fontFamily?: string;
+  supplementaryText?: string | null;
   onHidden: (cueId: number) => void;
 }
 
-export function MatchMomentIndicator({ cue, fontFamily, onHidden }: MatchMomentIndicatorProps) {
+export function MatchMomentIndicator({ cue, fontFamily, supplementaryText, onHidden }: MatchMomentIndicatorProps) {
   const opacity = React.useRef(new Animated.Value(0)).current;
   const translateY = React.useRef(new Animated.Value(18)).current;
   const scale = React.useRef(new Animated.Value(0.94)).current;
@@ -164,6 +165,22 @@ export function MatchMomentIndicator({ cue, fontFamily, onHidden }: MatchMomentI
             <View style={[styles.rule, { backgroundColor: cue.border }]} />
           </View>
         </View>
+        {supplementaryText ? (
+          <View style={styles.supplementaryRow}>
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.supplementaryText,
+                {
+                  color: urTheme.colors.ivory,
+                  fontFamily: resolvedFontFamily,
+                },
+              ]}
+            >
+              {supplementaryText}
+            </Text>
+          </View>
+        ) : null}
       </Animated.View>
     </View>
   );
@@ -242,5 +259,18 @@ const styles = StyleSheet.create({
     lineHeight: 40,
     letterSpacing: 1.3,
     textAlign: 'center',
+  },
+  supplementaryRow: {
+    width: '100%',
+    marginTop: urTheme.spacing.xs,
+    paddingLeft: urTheme.spacing.lg,
+    alignItems: 'flex-start',
+  },
+  supplementaryText: {
+    ...urTypography.title,
+    fontSize: 34,
+    lineHeight: 38,
+    letterSpacing: 0.8,
+    textAlign: 'left',
   },
 });

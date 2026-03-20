@@ -11,13 +11,16 @@ import React from 'react';
 import {
   Image,
   Modal as RNModal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const VOLUME_OPTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
 const DICE_SPEED_OPTIONS: ReadonlyArray<{ label: string; value: DiceAnimationSpeed }> = [
@@ -175,147 +178,226 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   onToggleMoveHint,
   onSetTimerDuration,
   onToggleTimer,
-}) => (
-  <RNModal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-    <Pressable style={styles.backdrop} onPress={onClose}>
-      <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
-        <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
-        <Image source={urTextures.border} resizeMode="repeat" style={styles.borderTexture} />
-        <View style={styles.sheetGlow} />
-        <View style={styles.border} />
+}) => {
+  const { width } = useWindowDimensions();
+  const isWeb = Platform.OS === 'web';
+  const isMobileWeb = isWeb && width < 760;
 
-        <Text style={styles.title}>Match Settings</Text>
-        <Text style={styles.subtitle}>
-          Tune the match atmosphere, visual pacing, and how much of the rolling flow happens automatically.
-        </Text>
+  if (!visible) {
+    return null;
+  }
 
-        <ScrollView
-          alwaysBounceVertical={false}
-          contentContainerStyle={styles.optionList}
-          showsVerticalScrollIndicator={false}
-        >
+  const sheet = (
+    <View
+      style={[
+        styles.sheet,
+        isMobileWeb && styles.sheetMobileWeb,
+      ]}
+      accessibilityViewIsModal
+    >
+      <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
+      <Image source={urTextures.border} resizeMode="repeat" style={styles.borderTexture} />
+      <View style={styles.sheetGlow} />
+      <View style={styles.border} />
+
+      <Text style={styles.title}>Match Settings</Text>
+      <Text style={styles.subtitle}>
+        Tune the match atmosphere, visual pacing, and how much of the rolling flow happens automatically.
+      </Text>
+
+      <ScrollView
+        style={styles.scroll}
+        alwaysBounceVertical={false}
+        contentContainerStyle={styles.optionList}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <ToggleSettingRow
+          title="Background Music"
+          hint="Ancient ambience during the match"
+          value={musicEnabled}
+          onValueChange={onToggleMusic}
+        />
+
+        <ChoiceSettingRow
+          title="Music Volume"
+          hint="Master level for the background playlist"
+          value={musicVolume}
+          valueLabel={formatPercent(musicVolume)}
+          options={VOLUME_OPTIONS.map((option) => ({ label: formatPercent(option), value: option }))}
+          onValueChange={onSetMusicVolume}
+        />
+
+        <ToggleSettingRow
+          title="Sound Effects"
+          hint="Board drops, rolls, captures, scores, and tray drops"
+          value={sfxEnabled}
+          onValueChange={onToggleSfx}
+        />
+
+        <ChoiceSettingRow
+          title="Sound Volume"
+          hint="Master level for rolls, movement, scoring, and impact cues"
+          value={sfxVolume}
+          valueLabel={formatPercent(sfxVolume)}
+          options={VOLUME_OPTIONS.map((option) => ({ label: formatPercent(option), value: option }))}
+          onValueChange={onSetSfxVolume}
+        />
+
+        <ToggleSettingRow
+          title="Dice Animation"
+          hint="Show the rolling dice scene before the result lands"
+          value={diceAnimationEnabled}
+          onValueChange={onToggleDiceAnimation}
+        />
+
+        <ChoiceSettingRow
+          title="Dice Animation Speed"
+          hint="Faster speeds shorten the roll animation"
+          value={diceAnimationSpeed}
+          valueLabel={`${diceAnimationSpeed}x`}
+          options={DICE_SPEED_OPTIONS}
+          onValueChange={onSetDiceAnimationSpeed}
+          disabled={!diceAnimationEnabled}
+        />
+
+        <ToggleSettingRow
+          title="Bug Animation"
+          hint="Show the wandering ambient bugs around the board"
+          value={bugAnimationEnabled}
+          onValueChange={onToggleBugAnimation}
+        />
+
+        <ToggleSettingRow
+          title="Roll Dice Automatically"
+          hint="Trigger your roll shortly after your turn begins"
+          value={autoRollEnabled}
+          onValueChange={onToggleAutoRoll}
+        />
+
+        <ToggleSettingRow
+          title="Available Move Hint"
+          hint="Highlight one legal piece or reserve entry and preview its route by default"
+          value={moveHintEnabled}
+          onValueChange={onToggleMoveHint}
+        />
+
+        {showTimerToggle ? (
           <ToggleSettingRow
-            title="Background Music"
-            hint="Ancient ambience during the match"
-            value={musicEnabled}
-            onValueChange={onToggleMusic}
+            title="Turn Timer"
+            hint="Show the hourglass and allow timeout auto-roll and auto-move in bot matches"
+            value={timerEnabled}
+            onValueChange={onToggleTimer}
           />
+        ) : null}
 
-          <ChoiceSettingRow
-            title="Music Volume"
-            hint="Master level for the background playlist"
-            value={musicVolume}
-            valueLabel={formatPercent(musicVolume)}
-            options={VOLUME_OPTIONS.map((option) => ({ label: formatPercent(option), value: option }))}
-            onValueChange={onSetMusicVolume}
-          />
+        <ChoiceSettingRow
+          title="Turn Timer Length"
+          hint="Choose how long the match countdown runs before timeout assistance steps in"
+          value={timerDurationSeconds}
+          valueLabel={`${timerDurationSeconds}s`}
+          options={TURN_TIMER_OPTIONS}
+          onValueChange={onSetTimerDuration}
+        />
 
-          <ToggleSettingRow
-            title="Sound Effects"
-            hint="Board drops, rolls, captures, scores, and tray drops"
-            value={sfxEnabled}
-            onValueChange={onToggleSfx}
-          />
+        <ToggleSettingRow
+          title="Announcement Cues"
+          hint="Show prompts like Your Turn, Roll Again, and Time's up during the match"
+          value={announcementCuesEnabled}
+          onValueChange={onToggleAnnouncementCues}
+        />
+      </ScrollView>
 
-          <ChoiceSettingRow
-            title="Sound Volume"
-            hint="Master level for rolls, movement, scoring, and impact cues"
-            value={sfxVolume}
-            valueLabel={formatPercent(sfxVolume)}
-            options={VOLUME_OPTIONS.map((option) => ({ label: formatPercent(option), value: option }))}
-            onValueChange={onSetSfxVolume}
-          />
+      <View style={styles.buttonWrap}>
+        <Button title="Close" variant="secondary" onPress={onClose} />
+      </View>
+    </View>
+  );
 
-          <ToggleSettingRow
-            title="Dice Animation"
-            hint="Show the rolling dice scene before the result lands"
-            value={diceAnimationEnabled}
-            onValueChange={onToggleDiceAnimation}
-          />
+  if (isWeb) {
+    return (
+      <View style={styles.webOverlayRoot}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close match settings"
+        />
+        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']} pointerEvents="box-none">
+          <View pointerEvents="box-none" style={[styles.centerWrap, isMobileWeb && styles.centerWrapMobileWeb]}>
+            {sheet}
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
 
-          <ChoiceSettingRow
-            title="Dice Animation Speed"
-            hint="Faster speeds shorten the roll animation"
-            value={diceAnimationSpeed}
-            valueLabel={`${diceAnimationSpeed}x`}
-            options={DICE_SPEED_OPTIONS}
-            onValueChange={onSetDiceAnimationSpeed}
-            disabled={!diceAnimationEnabled}
-          />
-
-          <ToggleSettingRow
-            title="Bug Animation"
-            hint="Show the wandering ambient bugs around the board"
-            value={bugAnimationEnabled}
-            onValueChange={onToggleBugAnimation}
-          />
-
-          <ToggleSettingRow
-            title="Roll Dice Automatically"
-            hint="Trigger your roll shortly after your turn begins"
-            value={autoRollEnabled}
-            onValueChange={onToggleAutoRoll}
-          />
-
-          <ToggleSettingRow
-            title="Available Move Hint"
-            hint="Highlight one legal piece or reserve entry and preview its route by default"
-            value={moveHintEnabled}
-            onValueChange={onToggleMoveHint}
-          />
-
-          {showTimerToggle ? (
-            <ToggleSettingRow
-              title="Turn Timer"
-              hint="Show the hourglass and allow timeout auto-roll and auto-move in bot matches"
-              value={timerEnabled}
-              onValueChange={onToggleTimer}
-            />
-          ) : null}
-
-          <ChoiceSettingRow
-            title="Turn Timer Length"
-            hint="Choose how long the match countdown runs before timeout assistance steps in"
-            value={timerDurationSeconds}
-            valueLabel={`${timerDurationSeconds}s`}
-            options={TURN_TIMER_OPTIONS}
-            onValueChange={onSetTimerDuration}
-          />
-
-          <ToggleSettingRow
-            title="Announcement Cues"
-            hint="Show prompts like Your Turn, Roll Again, and Time's up during the match"
-            value={announcementCuesEnabled}
-            onValueChange={onToggleAnnouncementCues}
-          />
-        </ScrollView>
-
-        <View style={styles.buttonWrap}>
-          <Button title="Close" variant="secondary" onPress={onClose} />
-        </View>
-      </Pressable>
-    </Pressable>
-  </RNModal>
-);
+  return (
+    <RNModal
+      transparent
+      visible={visible}
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+      presentationStyle="overFullScreen"
+    >
+      <View style={styles.modalRoot}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close match settings"
+        />
+        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']} pointerEvents="box-none">
+          <View pointerEvents="box-none" style={styles.centerWrap}>
+            {sheet}
+          </View>
+        </SafeAreaView>
+      </View>
+    </RNModal>
+  );
+};
 
 const styles = StyleSheet.create({
-  backdrop: {
+  modalRoot: {
     flex: 1,
-    backgroundColor: 'rgba(4, 7, 12, 0.72)',
+    backgroundColor: 'rgba(4, 7, 12, 0.24)',
+  },
+  webOverlayRoot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 90,
+    elevation: 90,
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(4, 7, 12, 0.68)',
+  },
+  safeArea: {
+    flex: 1,
+  },
+  centerWrap: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: urTheme.spacing.md,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.md,
+  },
+  centerWrapMobileWeb: {
+    justifyContent: 'flex-start',
+    paddingTop: urTheme.spacing.lg + urTheme.spacing.sm,
   },
   sheet: {
     width: '100%',
-    maxWidth: 460,
-    maxHeight: '86%',
+    maxWidth: 680,
+    maxHeight: '92%',
     borderRadius: urTheme.radii.lg,
     overflow: 'hidden',
     backgroundColor: '#3B2416',
     borderWidth: 1.5,
     borderColor: 'rgba(217, 164, 65, 0.7)',
-    padding: urTheme.spacing.lg,
+    paddingHorizontal: urTheme.spacing.lg,
+    paddingTop: urTheme.spacing.lg,
+    paddingBottom: urTheme.spacing.md,
     ...boxShadow({
       color: '#000',
       opacity: 0.34,
@@ -323,6 +405,10 @@ const styles = StyleSheet.create({
       blurRadius: 18,
       elevation: 12,
     }),
+  },
+  sheetMobileWeb: {
+    maxWidth: 520,
+    maxHeight: '88%',
   },
   texture: {
     ...StyleSheet.absoluteFillObject,
@@ -360,6 +446,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: urTheme.spacing.xs,
     marginBottom: urTheme.spacing.md,
+  },
+  scroll: {
+    flexGrow: 0,
+    flexShrink: 1,
   },
   optionList: {
     gap: urTheme.spacing.sm,
@@ -441,5 +531,6 @@ const styles = StyleSheet.create({
   },
   buttonWrap: {
     marginTop: urTheme.spacing.md,
+    width: '100%',
   },
 });

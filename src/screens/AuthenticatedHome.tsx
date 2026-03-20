@@ -21,6 +21,8 @@ export default function AuthenticatedHome() {
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
+  const isCompactLayout = width < 760;
+  const showInlineGuestBackButton = user?.provider === 'guest' && isCompactLayout;
   const blackButtonLabel = styles.blackButtonLabel;
 
   const handleLogout = async () => {
@@ -34,7 +36,7 @@ export default function AuthenticatedHome() {
   };
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, isCompactLayout && styles.screenCompact]}>
       <WideScreenBackground
         source={homeWideBackground}
         visible={showWideBackground}
@@ -54,7 +56,7 @@ export default function AuthenticatedHome() {
       <View style={styles.midGlow} />
       <View style={styles.bottomShade} />
 
-      {user?.provider === 'guest' ? (
+      {user?.provider === 'guest' && !showInlineGuestBackButton ? (
         <Pressable
           onPress={async () => {
             await logout();
@@ -65,11 +67,13 @@ export default function AuthenticatedHome() {
         >
           <MaterialIcons name="arrow-back" size={22} color="#F7E9D2" />
         </Pressable>
-      ) : (
-        <View style={styles.authBar}>
+      ) : user?.provider !== 'guest' ? (
+        <View style={[styles.authBar, isCompactLayout && styles.authBarCompact]}>
           <View>
             <Text style={styles.authLabel}>Signed in as</Text>
-            <Text style={styles.authValue}>{user?.username ?? 'Player'}</Text>
+            <Text style={[styles.authValue, isCompactLayout && styles.authValueCompact]}>
+              {user?.username ?? 'Player'}
+            </Text>
           </View>
           <Button
             title={isLoggingOut ? 'Logging out...' : 'Logout'}
@@ -77,27 +81,43 @@ export default function AuthenticatedHome() {
             loading={isLoggingOut}
             disabled={isLoggingOut}
             onPress={handleLogout}
-            style={styles.logoutButton}
+            style={[styles.logoutButton, isCompactLayout && styles.logoutButtonCompact]}
           />
         </View>
-      )}
+      ) : null}
 
-      <View style={styles.hero}>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>Royal Archive</Text>
+      <View style={[styles.hero, isCompactLayout && styles.heroCompact]}>
+        <View style={[styles.heroBadgeRow, isCompactLayout && styles.heroBadgeRowCompact]}>
+          {showInlineGuestBackButton ? (
+            <Pressable
+              onPress={async () => {
+                await logout();
+                router.replace('/(auth)/login');
+              }}
+              style={({ pressed }) => [styles.backButton, styles.heroBackButton, pressed && styles.backButtonPressed]}
+              accessibilityLabel="Back to login"
+            >
+              <MaterialIcons name="arrow-back" size={22} color="#F7E9D2" />
+            </Pressable>
+          ) : null}
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>Royal Archive</Text>
+          </View>
         </View>
-        <Text style={styles.title}>Royal Game of Ur</Text>
-        <Text style={styles.subtitle}>An ancient race across carved lanes, sacred rosettes, and dramatic turns.</Text>
+        <Text style={[styles.title, isCompactLayout && styles.titleCompact]}>Royal Game of Ur</Text>
+        <Text style={[styles.subtitle, isCompactLayout && styles.subtitleCompact]}>
+          An ancient race across carved lanes, sacred rosettes, and dramatic turns.
+        </Text>
       </View>
 
-      <View style={styles.panel}>
+      <View style={[styles.panel, isCompactLayout && styles.panelCompact]}>
         <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.panelTexture} />
         <View style={styles.panelBorder} />
 
-        <ProgressionSummaryCard style={styles.progressionCard} />
-        <ChallengeSummaryCard style={styles.challengeCard} />
+        <ProgressionSummaryCard style={[styles.progressionCard, isCompactLayout && styles.summaryCardCompact]} />
+        <ChallengeSummaryCard style={[styles.challengeCard, isCompactLayout && styles.summaryCardCompact]} />
 
-        <View style={styles.buttonStack}>
+        <View style={[styles.buttonStack, isCompactLayout && styles.buttonStackCompact]}>
           <Button
             title="Quick Play"
             onPress={() => router.push('/(game)/bot')}
@@ -138,6 +158,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: urTheme.spacing.lg,
     backgroundColor: urTheme.colors.night,
+    overflow: 'hidden',
+  },
+  screenCompact: {
+    paddingHorizontal: urTheme.spacing.md,
+    paddingTop: urTheme.spacing.xl + urTheme.spacing.sm,
+    paddingBottom: urTheme.spacing.md,
   },
   texture: {
     ...StyleSheet.absoluteFillObject,
@@ -183,6 +209,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  heroBackButton: {
+    top: 0,
+    left: 0,
+  },
   backButtonPressed: {
     backgroundColor: 'rgba(217, 164, 65, 0.18)',
   },
@@ -196,6 +226,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: urTheme.spacing.md,
   },
+  authBarCompact: {
+    top: urTheme.spacing.sm,
+    left: urTheme.spacing.md,
+    right: urTheme.spacing.md,
+    gap: urTheme.spacing.sm,
+  },
   authLabel: {
     ...urTypography.label,
     color: 'rgba(239, 224, 198, 0.72)',
@@ -207,13 +243,36 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 28,
   },
+  authValueCompact: {
+    fontSize: 18,
+    lineHeight: 22,
+  },
   logoutButton: {
     minWidth: 132,
   },
+  logoutButtonCompact: {
+    minWidth: 104,
+  },
   hero: {
+    width: '100%',
     alignItems: 'center',
     marginBottom: urTheme.spacing.xl + 10,
     maxWidth: 560,
+  },
+  heroCompact: {
+    marginBottom: urTheme.spacing.sm,
+    maxWidth: 440,
+  },
+  heroBadgeRow: {
+    width: '100%',
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: urTheme.spacing.sm,
+  },
+  heroBadgeRowCompact: {
+    minHeight: 34,
+    marginBottom: urTheme.spacing.xs,
   },
   badge: {
     paddingHorizontal: urTheme.spacing.sm + 2,
@@ -222,7 +281,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(13, 15, 18, 0.62)',
     borderWidth: 1,
     borderColor: 'rgba(217, 164, 65, 0.6)',
-    marginBottom: urTheme.spacing.sm,
   },
   badgeText: {
     ...urTypography.label,
@@ -236,12 +294,21 @@ const styles = StyleSheet.create({
     color: '#F7E9D2',
     textAlign: 'center',
   },
+  titleCompact: {
+    fontSize: 30,
+    lineHeight: 36,
+  },
   subtitle: {
     marginTop: urTheme.spacing.sm,
     textAlign: 'center',
     color: 'rgba(239, 224, 198, 0.82)',
     fontSize: 17,
     lineHeight: 24,
+  },
+  subtitleCompact: {
+    fontSize: 13,
+    lineHeight: 18,
+    maxWidth: 390,
   },
   panel: {
     width: '100%',
@@ -260,6 +327,10 @@ const styles = StyleSheet.create({
       elevation: 10,
     }),
   },
+  panelCompact: {
+    maxWidth: 420,
+    padding: urTheme.spacing.sm + 2,
+  },
   panelTexture: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.16,
@@ -274,11 +345,17 @@ const styles = StyleSheet.create({
   buttonStack: {
     gap: urTheme.spacing.sm,
   },
+  buttonStackCompact: {
+    gap: urTheme.spacing.xs,
+  },
   progressionCard: {
     marginBottom: urTheme.spacing.md,
   },
   challengeCard: {
     marginBottom: urTheme.spacing.md,
+  },
+  summaryCardCompact: {
+    marginBottom: urTheme.spacing.sm,
   },
   quickPlayButton: {
     backgroundColor: '#D9CCB1',

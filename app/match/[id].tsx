@@ -17,7 +17,7 @@ import { MatchDiceRollStage } from '@/components/game/MatchDiceRollStage';
 import { MatchMomentIndicator } from '@/components/game/MatchMomentIndicator';
 import type { MatchMomentIndicatorCue } from '@/components/game/MatchMomentIndicator';
 import { HowToPlayModal } from '@/components/HowToPlayModal';
-import { PieceRail, ReserveSlotMeasurement } from '@/components/game/PieceRail';
+import { PieceRail, PieceRailFrameMeasurement, ReserveSlotMeasurement } from '@/components/game/PieceRail';
 import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
 import { ProgressionAwardSummary } from '@/components/progression/ProgressionAwardSummary';
 import { PlayTutorialCoachModal } from '@/components/tutorial/PlayTutorialCoachModal';
@@ -299,6 +299,8 @@ export function GameRoom() {
   const [hasBoardArtLayout, setHasBoardArtLayout] = React.useState(false);
   const [lightReserveSlots, setLightReserveSlots] = React.useState<ReserveSlotMeasurement[]>([]);
   const [darkReserveSlots, setDarkReserveSlots] = React.useState<ReserveSlotMeasurement[]>([]);
+  const [lightTrayFrame, setLightTrayFrame] = React.useState<PieceRailFrameMeasurement | null>(null);
+  const [darkTrayFrame, setDarkTrayFrame] = React.useState<PieceRailFrameMeasurement | null>(null);
   const [showBoardDropIntro, setShowBoardDropIntro] = React.useState(false);
   const [hasPlayedBoardDropIntro, setHasPlayedBoardDropIntro] = React.useState(false);
   const [showReserveCascadeIntro, setShowReserveCascadeIntro] = React.useState(false);
@@ -646,6 +648,30 @@ export function GameRoom() {
     },
     [syncBoardTargetFrame],
   );
+
+  const handleLightTrayFrameLayout = React.useCallback((nextFrame: PieceRailFrameMeasurement) => {
+    setLightTrayFrame((previous) =>
+      previous &&
+      previous.x === nextFrame.x &&
+      previous.y === nextFrame.y &&
+      previous.width === nextFrame.width &&
+      previous.height === nextFrame.height
+        ? previous
+        : nextFrame,
+    );
+  }, []);
+
+  const handleDarkTrayFrameLayout = React.useCallback((nextFrame: PieceRailFrameMeasurement) => {
+    setDarkTrayFrame((previous) =>
+      previous &&
+      previous.x === nextFrame.x &&
+      previous.y === nextFrame.y &&
+      previous.width === nextFrame.width &&
+      previous.height === nextFrame.height
+        ? previous
+        : nextFrame,
+    );
+  }, []);
 
   useGameLoop(isOffline && !isScriptedTutorialPhase);
   useEffect(() => {
@@ -1612,16 +1638,25 @@ export function GameRoom() {
   const useSideColumns = width >= 760;
   const isWebLayout = Platform.OS === 'web';
   const isMobileWebLayout = isWebLayout && width < 760;
+  const useMobileWebSideReserveRails = isMobileWebLayout;
   const showWebSideDiceVisual = Platform.OS === 'web' && useSideColumns;
-  const boardClusterGap = useSideColumns ? urTheme.spacing.xs : urTheme.spacing.sm;
+  const boardClusterGap = useSideColumns || useMobileWebSideReserveRails ? urTheme.spacing.xs : urTheme.spacing.sm;
   const sideColumnWidth = useSideColumns
     ? Math.max(88, Math.min(264, Math.floor(stageContentWidth * (width < 720 ? 0.2 : 0.24))))
+    : 0;
+  const mobileReserveColumnWidth = useMobileWebSideReserveRails
+    ? Math.max(52, Math.min(80, Math.round(stageContentWidth * 0.16)))
     : 0;
   const boardWidthLimitByLayout = useSideColumns
     ? Math.max(
       224,
       Math.min(urTheme.layout.boardMax, stageContentWidth - sideColumnWidth * 2 - boardClusterGap * 2),
     )
+    : useMobileWebSideReserveRails
+      ? Math.max(
+        160,
+        Math.min(urTheme.layout.boardMax, stageContentWidth - mobileReserveColumnWidth * 2 - boardClusterGap * 2),
+      )
     : Math.max(224, Math.min(urTheme.layout.boardMax, stageContentWidth - 2));
 
   // Must match Board.tsx base width before boardScale is applied.
@@ -1629,6 +1664,9 @@ export function GameRoom() {
   const boardFramePadding = urTheme.spacing.sm;
   const boardInnerPadding = urTheme.spacing.xs;
   const boardGridGap = 0;
+  // Keep these ratios in sync with the vertical board art fit in Board.tsx.
+  const boardArtInsetTop = 0.024;
+  const boardArtInsetBottom = 0.018;
   const boardOuterPadding = boardFramePadding * 2 + boardInnerPadding * 2;
   const verticalBoardRows = BOARD_COLS;
   const verticalBoardCols = BOARD_ROWS;
@@ -1646,10 +1684,11 @@ export function GameRoom() {
   const isMobileLayout = width < 760;
   const mobileBoardScaleBoost = isMobileLayout ? 1.28 : 1;
   const mobileBoardScaleCap = isMobileLayout ? 1.28 : 1.2;
-  const boardScale = Math.max(
+  const baseBoardScale = Math.max(
     0.24,
     Math.min(mobileBoardScaleCap, (targetBoardWidth / Math.max(boardBaseWidth, 1)) * mobileBoardScaleBoost),
   );
+  const boardScale = useMobileWebSideReserveRails ? baseBoardScale * 0.8 : baseBoardScale;
   const reservePiecePixelSize = useMemo(
     () => getBoardPiecePixelSize({ viewportWidth: width, boardScale, orientation: 'vertical' }),
     [boardScale, width],
@@ -1690,7 +1729,7 @@ export function GameRoom() {
     : 0;
   const webRollResultFontSize = Math.round(webCountdownFontSize * 1.69);
   const mobileWebDiceVisualFrame = useMemo(() => {
-    if (!isMobileWebLayout || !boardTargetFrame) {
+    if (useMobileWebSideReserveRails || !isMobileWebLayout || !boardTargetFrame) {
       return null;
     }
 
@@ -1705,7 +1744,7 @@ export function GameRoom() {
       top,
       width,
     };
-  }, [boardTargetFrame, isMobileWebLayout]);
+  }, [boardTargetFrame, isMobileWebLayout, useMobileWebSideReserveRails]);
   const showMobileWebDetachedDiceVisual = mobileWebDiceVisualFrame !== null;
   const shouldDetachDiceVisual = isMatchStageExternal || showWebSideDiceVisual || showMobileWebDetachedDiceVisual;
   const detachedDiceVisualPlacement = shouldDetachDiceVisual ? 'external' : 'embedded';
@@ -1714,11 +1753,16 @@ export function GameRoom() {
     Math.round(urTheme.spacing.md + 34),
   );
   const mobileBoardVisualOffset = isMobileLayout
-    ? Math.max(urTheme.spacing.md, Math.round(height * 0.024))
+    ? useMobileWebSideReserveRails
+      ? 0
+      : Math.max(urTheme.spacing.md, Math.round(height * 0.024))
     : 0;
   const mobileBoardTopGap = Math.max(urTheme.spacing.xs, Math.round(height * 0.012));
+  const mobileWebBoardLift = useMobileWebSideReserveRails
+    ? Math.max(urTheme.spacing.sm, Math.round(height * 0.02))
+    : 0;
   const mobileBoardOffsetTop = isMobileLayout
-    ? scoreOverlayTop + mobileStatusRowHeight + mobileBoardTopGap
+    ? scoreOverlayTop + mobileStatusRowHeight + mobileBoardTopGap - mobileWebBoardLift
     : 0;
   const mobileScoreRowInset = Math.max(urTheme.spacing.xs, Math.round(width / 65));
   const mobileDarkScoreNudge = isMobileLayout
@@ -1727,11 +1771,14 @@ export function GameRoom() {
   const mobileScoreRowLift = isMobileLayout
     ? Math.max(urTheme.spacing.sm, Math.round(height * 0.008))
     : 0;
+  const mobileScoreOverlayTop = isMobileLayout ? scoreOverlayTop - mobileScoreRowLift : scoreOverlayTop;
   const mobileSupportOffsetTop = isMobileLayout
     ? Math.max(urTheme.spacing.md, Math.round(height * 0.04))
     : 0;
   const mobileLowerClusterShift = isMobileLayout
-    ? Math.max(urTheme.spacing.md, Math.round(height * 0.024))
+    ? useMobileWebSideReserveRails
+      ? Math.max(urTheme.spacing.xs, Math.round(height * 0.012))
+      : Math.max(urTheme.spacing.md, Math.round(height * 0.024))
     : 0;
   const mobileTrayDockShift = isMobileLayout
     ? Math.max(insets.bottom, urTheme.spacing.xs)
@@ -1739,12 +1786,44 @@ export function GameRoom() {
   const mobileSupportVisualOffset = isMobileLayout ? mobileSupportOffsetTop + mobileTrayDockShift : 0;
   const mobileTrayVisualOffset = isMobileLayout ? mobileSupportOffsetTop + mobileLowerClusterShift : 0;
   const mobileRollResultOffset = isMobileLayout
-    ? Math.max(0, mobileSupportVisualOffset - urTheme.spacing.sm + mobileLowerClusterShift)
+    ? useMobileWebSideReserveRails
+      ? 0
+      : Math.max(0, mobileSupportVisualOffset - urTheme.spacing.sm + mobileLowerClusterShift)
     : 0;
   const mobileBottomDockGap = isMobileLayout
     ? 0
     : 0;
-  const mobileDiceDockWidth = Math.min(Math.max(Math.round(stageContentWidth * 0.46), 176), 248);
+  const mobileWebRollButtonArtSize = useMobileWebSideReserveRails
+    ? Math.min(Math.max(Math.round(stageContentWidth * 0.22), 84), 102)
+    : 0;
+  const mobileDiceDockWidth = useMobileWebSideReserveRails
+    ? mobileWebRollButtonArtSize
+    : Math.min(Math.max(Math.round(stageContentWidth * 0.46), 176), 248);
+  const mobileWebUnderBoardDiceFrame = useMemo(() => {
+    if (!useMobileWebSideReserveRails || !boardTargetFrame) {
+      return null;
+    }
+
+    const overlayWidth = mobileWebRollButtonArtSize;
+    const boardColumnCenterRatio = 0.4875;
+    const boardGridBottom = boardTargetFrame.y + boardTargetFrame.height * (1 - boardArtInsetBottom);
+    const boardBottomGap = Math.max(2, Math.round(overlayWidth * 0.02));
+    const left = Math.max(
+      urTheme.spacing.xs,
+      Math.min(
+        Math.max(urTheme.spacing.xs, width - overlayWidth - urTheme.spacing.xs),
+        Math.round(boardTargetFrame.x + boardTargetFrame.width * boardColumnCenterRatio - overlayWidth / 2),
+      ),
+    );
+    const top = Math.round(boardGridBottom + boardBottomGap);
+
+    return {
+      left,
+      top,
+      width: overlayWidth,
+    };
+  }, [boardArtInsetBottom, boardTargetFrame, mobileWebRollButtonArtSize, useMobileWebSideReserveRails, width]);
+  const showMobileWebUnderBoardDiceOverlay = mobileWebUnderBoardDiceFrame !== null;
 
   const reserveCascadeTargets = useMemo<ReserveCascadePieceTarget[]>(() => {
     const orderedLight = [...lightReserveSlots].sort((a, b) => a.index - b.index);
@@ -1787,6 +1866,77 @@ export function GameRoom() {
     gameState.rollValue !== null &&
     (!diceAnimationEnabled || gameState.rollValue !== 0);
   const showWebRollResult = introsComplete && showWebSideDiceVisual && !rollingVisual && gameState.rollValue !== null;
+  const showMobileWebDetachedDarkScore = useMobileWebSideReserveRails && darkTrayFrame !== null;
+  const mobileWebDetachedDarkScoreFrame = useMemo(() => {
+    if (!useMobileWebSideReserveRails || !darkTrayFrame) {
+      return null;
+    }
+
+    const overlayWidth = Math.max(62, Math.round(darkTrayFrame.width + urTheme.spacing.sm));
+    const left = Math.max(
+      urTheme.spacing.xs,
+      Math.min(
+        Math.max(urTheme.spacing.xs, width - overlayWidth - urTheme.spacing.xs),
+        Math.round(darkTrayFrame.x + darkTrayFrame.width / 2 - overlayWidth / 2),
+      ),
+    );
+
+    return {
+      left,
+      top: mobileScoreOverlayTop,
+      width: overlayWidth,
+    };
+  }, [darkTrayFrame, mobileScoreOverlayTop, useMobileWebSideReserveRails, width]);
+  const mobileWebTrayRollResultFrame = useMemo(() => {
+    if (
+      !useMobileWebSideReserveRails ||
+      !lightTrayFrame ||
+      !boardTargetFrame ||
+      !showMobileRollResult ||
+      gameState.rollValue === null
+    ) {
+      return null;
+    }
+
+    const resultWidth = Math.max(44, Math.min(72, Math.round(lightTrayFrame.width * 0.94)));
+    const resultHeight = Math.max(36, Math.round(resultWidth * 0.84));
+    const gridTop = boardTargetFrame.y + boardTargetFrame.height * boardArtInsetTop;
+    const gridHeight = boardTargetFrame.height * (1 - boardArtInsetTop - boardArtInsetBottom);
+    const middleColumnSixthTileIndex = 5;
+    const tileCenterY = gridTop + ((middleColumnSixthTileIndex + 0.5) * gridHeight) / verticalBoardRows;
+    const left = Math.max(
+      urTheme.spacing.xs,
+      Math.min(
+        Math.max(urTheme.spacing.xs, width - resultWidth - urTheme.spacing.xs),
+        Math.round(lightTrayFrame.x + lightTrayFrame.width / 2 - resultWidth / 2),
+      ),
+    );
+
+    return {
+      height: resultHeight,
+      left,
+      top: Math.round(tileCenterY - resultHeight / 2),
+      width: resultWidth,
+    };
+  }, [
+    boardArtInsetBottom,
+    boardArtInsetTop,
+    boardTargetFrame,
+    gameState.rollValue,
+    lightTrayFrame,
+    showMobileRollResult,
+    useMobileWebSideReserveRails,
+    verticalBoardRows,
+    width,
+  ]);
+  useEffect(() => {
+    if (useMobileWebSideReserveRails) {
+      return;
+    }
+
+    setLightTrayFrame(null);
+    setDarkTrayFrame(null);
+  }, [useMobileWebSideReserveRails]);
   useEffect(() => {
     if (hasPlayedBoardDropIntro || showBoardDropIntro) return;
     if (!isBoardTargetFrameReady) return;
@@ -1926,6 +2076,86 @@ export function GameRoom() {
           />
         </View>
       ) : null}
+      {useMobileWebSideReserveRails && showMobileWebUnderBoardDiceOverlay && mobileWebUnderBoardDiceFrame ? (
+        <View
+          style={[
+            styles.mobileWebUnderBoardDiceOverlay,
+            {
+              left: mobileWebUnderBoardDiceFrame.left,
+              top: mobileWebUnderBoardDiceFrame.top,
+              width: mobileWebUnderBoardDiceFrame.width,
+            },
+          ]}
+        >
+          <View style={styles.mobileDiceRow}>
+            <View style={styles.mobileDiceWrap}>
+              <Dice
+                animationDurationMs={diceAnimationDurationMs}
+                value={gameState.rollValue}
+                rolling={rollingVisual}
+                onRoll={handleRoll}
+                canRoll={introsComplete && canRoll}
+                pressedIn={introsComplete ? isRollButtonPressedIn : false}
+                mode="stage"
+                compact={compactSupportUi}
+                showNumericResult={false}
+                showStatusCopy={introsComplete}
+                showVisual={false}
+                visualPlacement={detachedDiceVisualPlacement}
+                artSize={mobileWebRollButtonArtSize}
+              />
+            </View>
+          </View>
+        </View>
+      ) : null}
+      {showMobileWebDetachedDarkScore && mobileWebDetachedDarkScoreFrame ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.mobileWebTrayAlignedOverlay,
+            {
+              left: mobileWebDetachedDarkScoreFrame.left,
+              top: mobileWebDetachedDarkScoreFrame.top,
+              width: mobileWebDetachedDarkScoreFrame.width,
+            },
+          ]}
+        >
+          <EdgeScore
+            label="Dark Score"
+            value={`${gameState.dark.finishedCount}/${pieceCountPerSide}`}
+            active={introsComplete && !isMyTurn}
+            align="right"
+          />
+        </View>
+      ) : null}
+      {mobileWebTrayRollResultFrame ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.mobileWebTrayAlignedOverlay,
+            {
+              left: mobileWebTrayRollResultFrame.left,
+              top: mobileWebTrayRollResultFrame.top,
+              width: mobileWebTrayRollResultFrame.width,
+              height: mobileWebTrayRollResultFrame.height,
+            },
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.mobileWebFloatingRollResultValue,
+              {
+                fontFamily: rollResultFontFamily,
+                fontSize: Math.max(28, Math.round(mobileWebTrayRollResultFrame.height * 0.84)),
+                lineHeight: Math.max(30, Math.round(mobileWebTrayRollResultFrame.height * 0.88)),
+              },
+            ]}
+          >
+            {gameState.rollValue}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={[styles.topChrome, { top: topChromeTop }]}>
         <View style={styles.topChromeLeft}>
@@ -2031,7 +2261,7 @@ export function GameRoom() {
               styles.scoreRow,
               styles.scoreRowOverlay,
               isMobileLayout && isTurnTimerEnabled && styles.mobileScoreRow,
-              { top: isMobileLayout ? scoreOverlayTop - mobileScoreRowLift : scoreOverlayTop },
+              { top: mobileScoreOverlayTop },
               isMobileLayout && styles.scoreRowOverlayMobile,
               isMobileLayout && { left: mobileScoreRowInset, right: mobileScoreRowInset },
             ]}
@@ -2061,13 +2291,26 @@ export function GameRoom() {
                 />
               </View>
             ) : null}
-            <EdgeScore
-              label="Dark Score"
-              value={`${gameState.dark.finishedCount}/${pieceCountPerSide}`}
-              active={introsComplete && !isMyTurn}
-              align="right"
-              style={isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined}
-            />
+            {showMobileWebDetachedDarkScore ? (
+              <EdgeScore
+                label="Dark Score"
+                value={`${gameState.dark.finishedCount}/${pieceCountPerSide}`}
+                active={introsComplete && !isMyTurn}
+                align="right"
+                style={[
+                  isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined,
+                  styles.mobileDetachedScoreGhost,
+                ]}
+              />
+            ) : (
+              <EdgeScore
+                label="Dark Score"
+                value={`${gameState.dark.finishedCount}/${pieceCountPerSide}`}
+                active={introsComplete && !isMyTurn}
+                align="right"
+                style={isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined}
+              />
+            )}
           </View>
 
           {useSideColumns ? (
@@ -2237,108 +2480,181 @@ export function GameRoom() {
               style={[
                 styles.boardClusterMobile,
                 {
-                  gap: urTheme.spacing.sm,
+                  gap: useMobileWebSideReserveRails ? urTheme.spacing.xs : urTheme.spacing.sm,
                   paddingTop: mobileBoardOffsetTop,
                 },
               ]}
             >
               <View
-                style={[styles.boardViewport]}
-                onLayout={(event) => {
-                  const { width: slotWidth, height: slotHeight } = event.nativeEvent.layout;
-                  setBoardSlotSize((prev) =>
-                    prev.width === slotWidth && prev.height === slotHeight
-                      ? prev
-                      : { width: slotWidth, height: slotHeight },
-                  );
-                }}
-              >
-                <View style={styles.boardCard}>
-                  {liveBoard}
-                </View>
-              </View>
-
-              <View style={styles.mobileRollResultRow}>
-                {showMobileRollResult ? (
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.mobileRollResultValue,
-                      { fontFamily: rollResultFontFamily, transform: [{ translateY: mobileRollResultOffset }] },
-                    ]}
-                  >
-                    {gameState.rollValue}
-                  </Text>
-                ) : null}
-              </View>
-
-              <View
                 style={[
-                  styles.mobileSupportStack,
-                  {
-                    transform: [{ translateY: mobileTrayVisualOffset }],
-                  },
+                  styles.mobileBoardStageRow,
+                  useMobileWebSideReserveRails && { gap: boardClusterGap },
                 ]}
               >
-                <View style={styles.mobileReserveRow}>
-                  <View style={styles.mobileReserveCell}>
+                {useMobileWebSideReserveRails ? (
+                  <View style={[styles.mobileReserveSideColumn, { width: mobileReserveColumnWidth }]}>
                     <PieceRail
                       label="Light Reserve"
                       color="light"
                       tokenVariant="light"
+                      orientation="vertical"
                       piecePixelSize={scaledReservePiecePixelSize}
                       reserveCount={lightReserve}
                       totalCount={pieceCountPerSide}
                       active={introsComplete && isMyTurn}
                       hideReservePieces={shouldHideReservePieces}
                       onReserveSlotsLayout={setLightReserveSlots}
+                      onRailFrameLayout={handleLightTrayFrameLayout}
                     />
                   </View>
+                ) : null}
 
-                  <View style={styles.mobileReserveCell}>
+                <View style={styles.boardCenterColumn}>
+                  <View
+                    style={[styles.boardViewport]}
+                    onLayout={(event) => {
+                      const { width: slotWidth, height: slotHeight } = event.nativeEvent.layout;
+                      setBoardSlotSize((prev) =>
+                        prev.width === slotWidth && prev.height === slotHeight
+                          ? prev
+                          : { width: slotWidth, height: slotHeight },
+                      );
+                    }}
+                  >
+                    <View style={styles.boardCard}>
+                      {liveBoard}
+                    </View>
+                  </View>
+                </View>
+
+                {useMobileWebSideReserveRails ? (
+                  <View style={[styles.mobileReserveSideColumn, { width: mobileReserveColumnWidth }]}>
                     <PieceRail
                       label="Dark Reserve"
                       color="dark"
                       tokenVariant="dark"
+                      orientation="vertical"
                       piecePixelSize={scaledReservePiecePixelSize}
                       reserveCount={darkReserve}
                       totalCount={pieceCountPerSide}
                       active={introsComplete && !isMyTurn}
                       hideReservePieces={shouldHideReservePieces}
                       onReserveSlotsLayout={setDarkReserveSlots}
+                      onRailFrameLayout={handleDarkTrayFrameLayout}
                     />
                   </View>
-                </View>
+                ) : null}
               </View>
 
-              <View
-                style={[
-                  styles.mobileBottomDiceDock,
-                  {
-                    paddingBottom: mobileBottomDockGap,
-                    transform: [{ translateY: mobileLowerClusterShift }],
-                  },
-                ]}
-              >
-                <View style={styles.mobileDiceRow}>
-                  <View style={[styles.mobileDiceWrap, { width: mobileDiceDockWidth }]}>
-                    <Dice
-                      animationDurationMs={diceAnimationDurationMs}
-                      value={gameState.rollValue}
-                      rolling={rollingVisual}
-                      onRoll={handleRoll}
-                      canRoll={introsComplete && canRoll}
-                      pressedIn={introsComplete ? isRollButtonPressedIn : false}
-                      mode="stage"
-                      compact={compactSupportUi}
-                      showNumericResult={false}
-                      showStatusCopy={introsComplete}
-                      showVisual={introsComplete && showLocalDiceVisual && !showMobileWebDetachedDiceVisual}
-                      visualPlacement={detachedDiceVisualPlacement}
-                    />
+              {useMobileWebSideReserveRails && !showMobileWebUnderBoardDiceOverlay ? (
+                <View style={[styles.mobileBottomDiceDock, styles.mobileBottomDiceDockUnderBoard]}>
+                  <View style={styles.mobileDiceRow}>
+                    <View style={[styles.mobileDiceWrap, { width: mobileDiceDockWidth }]}>
+                      <Dice
+                        animationDurationMs={diceAnimationDurationMs}
+                        value={gameState.rollValue}
+                        rolling={rollingVisual}
+                        onRoll={handleRoll}
+                        canRoll={introsComplete && canRoll}
+                        pressedIn={introsComplete ? isRollButtonPressedIn : false}
+                        mode="stage"
+                        compact={compactSupportUi}
+                        showNumericResult={false}
+                        showStatusCopy={introsComplete}
+                        showVisual={false}
+                        visualPlacement={detachedDiceVisualPlacement}
+                        artSize={mobileWebRollButtonArtSize}
+                      />
+                    </View>
                   </View>
                 </View>
-              </View>
+              ) : !useMobileWebSideReserveRails ? (
+                <View style={styles.mobileRollResultRow}>
+                  {showMobileRollResult ? (
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.mobileRollResultValue,
+                        { fontFamily: rollResultFontFamily, transform: [{ translateY: mobileRollResultOffset }] },
+                      ]}
+                    >
+                      {gameState.rollValue}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {!useMobileWebSideReserveRails ? (
+                <View
+                  style={[
+                    styles.mobileSupportStack,
+                    {
+                      transform: [{ translateY: mobileTrayVisualOffset }],
+                    },
+                  ]}
+                >
+                  <View style={styles.mobileReserveRow}>
+                    <View style={styles.mobileReserveCell}>
+                      <PieceRail
+                        label="Light Reserve"
+                        color="light"
+                        tokenVariant="light"
+                        piecePixelSize={scaledReservePiecePixelSize}
+                        reserveCount={lightReserve}
+                        totalCount={pieceCountPerSide}
+                        active={introsComplete && isMyTurn}
+                        hideReservePieces={shouldHideReservePieces}
+                        onReserveSlotsLayout={setLightReserveSlots}
+                      />
+                    </View>
+
+                    <View style={styles.mobileReserveCell}>
+                      <PieceRail
+                        label="Dark Reserve"
+                        color="dark"
+                        tokenVariant="dark"
+                        piecePixelSize={scaledReservePiecePixelSize}
+                        reserveCount={darkReserve}
+                        totalCount={pieceCountPerSide}
+                        active={introsComplete && !isMyTurn}
+                        hideReservePieces={shouldHideReservePieces}
+                        onReserveSlotsLayout={setDarkReserveSlots}
+                      />
+                    </View>
+                  </View>
+                </View>
+              ) : null}
+
+              {!useMobileWebSideReserveRails ? (
+                <View
+                  style={[
+                    styles.mobileBottomDiceDock,
+                    {
+                      paddingBottom: mobileBottomDockGap,
+                      transform: [{ translateY: mobileLowerClusterShift }],
+                    },
+                  ]}
+                >
+                  <View style={styles.mobileDiceRow}>
+                    <View style={[styles.mobileDiceWrap, { width: mobileDiceDockWidth }]}>
+                      <Dice
+                        animationDurationMs={diceAnimationDurationMs}
+                        value={gameState.rollValue}
+                        rolling={rollingVisual}
+                        onRoll={handleRoll}
+                        canRoll={introsComplete && canRoll}
+                        pressedIn={introsComplete ? isRollButtonPressedIn : false}
+                        mode="stage"
+                        compact={compactSupportUi}
+                        showNumericResult={false}
+                        showStatusCopy={introsComplete}
+                        showVisual={introsComplete && showLocalDiceVisual && !showMobileWebDetachedDiceVisual}
+                        visualPlacement={detachedDiceVisualPlacement}
+                      />
+                    </View>
+                  </View>
+                </View>
+              ) : null}
             </View>
           )}
         </View>
@@ -2499,6 +2815,7 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#D9C39A',
+    overflow: 'hidden',
   },
   matchRewardsXpDisplay: {
     width: '100%',
@@ -2520,11 +2837,16 @@ const styles = StyleSheet.create({
     position: 'absolute',
     zIndex: 4,
   },
+  mobileWebUnderBoardDiceOverlay: {
+    position: 'absolute',
+    zIndex: 5,
+  },
   stageViewport: {
     flex: 1,
     paddingHorizontal: urTheme.spacing.md,
     alignItems: 'center',
     zIndex: 2,
+    overflow: 'hidden',
   },
   stageWrap: {
     width: '100%',
@@ -2631,6 +2953,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     gap: urTheme.spacing.xs,
   },
+  mobileDetachedScoreGhost: {
+    opacity: 0,
+  },
   scoreRowOverlay: {
     position: 'absolute',
     left: urTheme.spacing.xs,
@@ -2674,6 +2999,12 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
   },
+  mobileBoardStageRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 0,
+  },
   sideColumn: {
     justifyContent: 'flex-start',
     gap: urTheme.spacing.md,
@@ -2693,6 +3024,12 @@ const styles = StyleSheet.create({
     width: '100%',
     justifyContent: 'flex-start',
     alignItems: 'center',
+  },
+  mobileReserveSideColumn: {
+    alignSelf: 'stretch',
+    justifyContent: 'flex-start',
+    flexShrink: 0,
+    minHeight: 0,
   },
   mobileSupportStack: {
     width: '100%',
@@ -2722,6 +3059,9 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: 'auto',
   },
+  mobileBottomDiceDockUnderBoard: {
+    marginTop: urTheme.spacing.xs,
+  },
   mobileDiceRow: {
     width: '100%',
     alignItems: 'center',
@@ -2729,6 +3069,23 @@ const styles = StyleSheet.create({
   },
   mobileDiceWrap: {
     maxWidth: '100%',
+  },
+  mobileWebTrayAlignedOverlay: {
+    position: 'absolute',
+    zIndex: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mobileWebFloatingRollResultValue: {
+    ...urTypography.title,
+    color: urTheme.colors.ivory,
+    letterSpacing: 0.75,
+    textAlign: 'center',
+    ...textShadow({
+      color: '#120d09',
+      offset: { width: 0, height: 1 },
+      blurRadius: 2,
+    }),
   },
   webDiceVisualSlot: {
     width: '100%',

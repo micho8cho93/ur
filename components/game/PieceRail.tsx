@@ -1,6 +1,6 @@
 import { urTheme } from '@/constants/urTheme';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Image, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -44,12 +44,14 @@ interface PieceRailProps {
   label?: string;
   color: 'light' | 'dark';
   tokenVariant?: 'light' | 'dark' | 'reserve';
+  orientation?: 'horizontal' | 'vertical';
   piecePixelSize?: number;
   reserveCount: number;
   totalCount?: number;
   active?: boolean;
   hideReservePieces?: boolean;
   onReserveSlotsLayout?: (slots: ReserveSlotMeasurement[]) => void;
+  onRailFrameLayout?: (frame: PieceRailFrameMeasurement) => void;
 }
 
 export interface ReserveSlotMeasurement {
@@ -60,26 +62,41 @@ export interface ReserveSlotMeasurement {
   size: number;
 }
 
+export interface PieceRailFrameMeasurement {
+  color: 'light' | 'dark';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export const PieceRail: React.FC<PieceRailProps> = ({
   color,
   tokenVariant,
+  orientation = 'horizontal',
   piecePixelSize,
   reserveCount,
   totalCount = 7,
   active = false,
   hideReservePieces = false,
   onReserveSlotsLayout,
+  onRailFrameLayout,
 }) => {
   const { width, height } = useWindowDimensions();
   const glow = useSharedValue(active ? 0.5 : 0);
-  const [railWidth, setRailWidth] = useState(0);
+  const [railMainAxisSize, setRailMainAxisSize] = useState(0);
   const isMobile = width < 760;
+  const isMobileWeb = Platform.OS === 'web' && isMobile;
+  const isVertical = orientation === 'vertical';
   const isTabletPortrait = width >= 760 && width <= 1024 && height > width;
   const railScale = isMobile ? MOBILE_RAIL_SCALE : isTabletPortrait ? 0.9 : 1;
   const railMinHeight = Math.round(RAIL_MIN_HEIGHT * railScale);
   const railHorizontalPadding = Math.round(RAIL_HORIZONTAL_PADDING * railScale);
   const reserveStackOffsetY = Math.round(RESERVE_STACK_OFFSET_Y * railScale);
-  const trayArtScale = TRAY_ART_FIT.scale * (isMobile ? 0.78 : isTabletPortrait ? 0.92 : 1);
+  const trayArtScale =
+    TRAY_ART_FIT.scale *
+    (isVertical ? (isMobile ? 0.92 : 1) : isMobile ? 0.78 : isTabletPortrait ? 0.92 : 1) *
+    (isVertical && isMobileWeb ? 2 : 1);
 
   useEffect(() => {
     if (active) {
@@ -107,41 +124,47 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   const resolvedVariant = tokenVariant ?? color;
   const reservePieceSize = Math.max(
     1,
-    Math.round((piecePixelSize ?? DEFAULT_RESERVE_PIECE_SIZE) * RESERVE_PIECE_SIZE_BOOST),
+    Math.round(
+      (piecePixelSize ?? DEFAULT_RESERVE_PIECE_SIZE) *
+      RESERVE_PIECE_SIZE_BOOST *
+      (isMobileWeb ? 0.85 : 1),
+    ),
   );
   const slotRefs = useRef<(View | null)[]>([]);
+  const railRef = useRef<View | null>(null);
   const reportedSlotsKeyRef = useRef<string>('');
+  const reportedRailFrameKeyRef = useRef<string>('');
 
-  const pieceLayout = useMemo(() => {
+  const resolveStackLayout = useCallback((slotCount: number) => {
     const minOverlapRatio = isMobile ? 0.5 : 0.22;
     const preferredOverlapRatio = isMobile ? 0.58 : 0.3;
     const minOverlap = Math.max(1, Math.round(reservePieceSize * minOverlapRatio));
     const preferredOverlap = Math.max(minOverlap, Math.round(reservePieceSize * preferredOverlapRatio));
     const preferredInset = Math.max(10, Math.round(reservePieceSize * 0.28));
 
-    if (shownCount <= 0) {
+    if (slotCount <= 0) {
       return {
         overlap: preferredOverlap,
-        horizontalInset: preferredInset,
+        inset: preferredInset,
       };
     }
 
-    if (railWidth <= 0) {
+    if (railMainAxisSize <= 0) {
       return {
         overlap: preferredOverlap,
-        horizontalInset: preferredInset,
+        inset: preferredInset,
       };
     }
 
     const preferredStep = reservePieceSize - preferredOverlap;
-    const preferredSpan = reservePieceSize + preferredStep * Math.max(0, shownCount - 1);
-    const maxInset = Math.max(0, Math.floor((railWidth - preferredSpan) / 2));
-    const horizontalInset = Math.min(preferredInset, maxInset);
-    const usableWidth = Math.max(0, railWidth - horizontalInset * 2);
+    const preferredSpan = reservePieceSize + preferredStep * Math.max(0, slotCount - 1);
+    const maxInset = Math.max(0, Math.floor((railMainAxisSize - preferredSpan) / 2));
+    const inset = Math.min(preferredInset, maxInset);
+    const usableSize = Math.max(0, railMainAxisSize - inset * 2);
 
     let overlap = preferredOverlap;
-    if (shownCount > 1) {
-      const maxStepForFit = Math.floor((usableWidth - reservePieceSize) / (shownCount - 1));
+    if (slotCount > 1) {
+      const maxStepForFit = Math.floor((usableSize - reservePieceSize) / (slotCount - 1));
       const maxStepWithMinOverlap = reservePieceSize - minOverlap;
       const resolvedStep = Math.max(1, Math.min(preferredStep, maxStepForFit, maxStepWithMinOverlap));
       overlap = Math.max(minOverlap, reservePieceSize - resolvedStep);
@@ -149,9 +172,30 @@ export const PieceRail: React.FC<PieceRailProps> = ({
 
     return {
       overlap,
-      horizontalInset,
+      inset,
     };
-  }, [isMobile, railWidth, reservePieceSize, shownCount]);
+  }, [isMobile, railMainAxisSize, reservePieceSize]);
+  const pieceLayout = useMemo(() => resolveStackLayout(shownCount), [resolveStackLayout, shownCount]);
+  const traySlotCount = Math.max(1, totalCount);
+  const trayArtLayout = useMemo(() => resolveStackLayout(traySlotCount), [resolveStackLayout, traySlotCount]);
+  const trayArtSpan = useMemo(() => {
+    if (traySlotCount <= 0) {
+      return 0;
+    }
+
+    const step = reservePieceSize - trayArtLayout.overlap;
+    return reservePieceSize + step * Math.max(0, traySlotCount - 1);
+  }, [reservePieceSize, trayArtLayout.overlap, traySlotCount]);
+  const verticalTrayOffsetY = useMemo(() => {
+    if (!isVertical || railMainAxisSize <= 0 || trayArtSpan <= 0) {
+      return 0;
+    }
+
+    const stackCenterY = trayArtLayout.inset + trayArtSpan / 2;
+    const columnCenterY = railMainAxisSize / 2;
+
+    return Math.round(stackCenterY - columnCenterY);
+  }, [isVertical, railMainAxisSize, trayArtLayout.inset, trayArtSpan]);
 
   const reportReserveSlots = useCallback(() => {
     if (!onReserveSlotsLayout) return;
@@ -197,24 +241,58 @@ export const PieceRail: React.FC<PieceRailProps> = ({
     });
   }, [color, onReserveSlotsLayout, shownCount]);
 
+  const reportRailFrame = useCallback(() => {
+    if (!onRailFrameLayout || !railRef.current) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      railRef.current?.measureInWindow((x, y, width, height) => {
+        const nextFrame = {
+          color,
+          x,
+          y,
+          width,
+          height,
+        };
+        const nextKey = JSON.stringify(nextFrame);
+        if (nextKey !== reportedRailFrameKeyRef.current) {
+          reportedRailFrameKeyRef.current = nextKey;
+          onRailFrameLayout(nextFrame);
+        }
+      });
+    });
+  }, [color, onRailFrameLayout]);
+
   useEffect(() => {
     reportReserveSlots();
-  }, [reportReserveSlots, reservePieceSize, pieceLayout.horizontalInset, pieceLayout.overlap, reserveStackOffsetY, railWidth]);
+  }, [reportReserveSlots, reservePieceSize, pieceLayout.inset, pieceLayout.overlap, reserveStackOffsetY, railMainAxisSize]);
+
+  useEffect(() => {
+    reportRailFrame();
+  }, [reportRailFrame, railMainAxisSize, verticalTrayOffsetY]);
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, isVertical && styles.wrapVertical]}>
       <View
+        ref={railRef}
+        collapsable={false}
         style={[
           styles.rail,
+          isVertical && styles.railVertical,
           {
             minHeight: railMinHeight,
-            paddingHorizontal: railHorizontalPadding,
+            paddingHorizontal: isVertical ? 0 : railHorizontalPadding,
+            paddingVertical: isVertical ? railHorizontalPadding : 0,
           },
         ]}
         onLayout={(event) => {
-          const nextWidth = Math.round(event.nativeEvent.layout.width);
-          setRailWidth((prev) => (prev === nextWidth ? prev : nextWidth));
+          const nextMainAxisSize = Math.round(
+            isVertical ? event.nativeEvent.layout.height : event.nativeEvent.layout.width,
+          );
+          setRailMainAxisSize((prev) => (prev === nextMainAxisSize ? prev : nextMainAxisSize));
           reportReserveSlots();
+          reportRailFrame();
         }}
       >
         {/*
@@ -222,7 +300,15 @@ export const PieceRail: React.FC<PieceRailProps> = ({
           Piece positions and stacking geometry are determined by gameplay layout,
           not by the tray image.
         */}
-        <View pointerEvents="none" style={styles.trayArtLayer}>
+        <View
+          pointerEvents="none"
+          style={[
+            styles.trayArtLayer,
+            isVertical && {
+              transform: [{ translateY: verticalTrayOffsetY }],
+            },
+          ]}
+        >
           <Image
             source={TRAY_ASSETS[color]}
             resizeMode="contain"
@@ -230,6 +316,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
               styles.trayArt,
               {
                 transform: [
+                  ...(isVertical ? [{ rotate: '90deg' as const }] : []),
                   { translateX: TRAY_ART_FIT.offsetX },
                   { translateY: TRAY_ART_FIT.offsetY },
                   { scale: trayArtScale },
@@ -243,9 +330,11 @@ export const PieceRail: React.FC<PieceRailProps> = ({
         <View
           style={[
             styles.pieceStack,
+            isVertical && styles.pieceStackVertical,
             {
-              paddingHorizontal: pieceLayout.horizontalInset,
-              transform: [{ translateY: reserveStackOffsetY }],
+              paddingHorizontal: isVertical ? 0 : pieceLayout.inset,
+              paddingVertical: isVertical ? pieceLayout.inset : 0,
+              transform: isVertical ? undefined : [{ translateY: reserveStackOffsetY }],
             },
           ]}
         >
@@ -257,8 +346,10 @@ export const PieceRail: React.FC<PieceRailProps> = ({
               }}
               style={[
                 styles.stackPiece,
+                isVertical && styles.stackPieceVertical,
                 {
-                  marginLeft: index === 0 ? 0 : -pieceLayout.overlap,
+                  marginLeft: isVertical || index === 0 ? 0 : -pieceLayout.overlap,
+                  marginTop: isVertical && index > 0 ? -pieceLayout.overlap : 0,
                   width: reservePieceSize,
                   height: reservePieceSize,
                   zIndex: index + 1,
@@ -284,6 +375,9 @@ const styles = StyleSheet.create({
   wrap: {
     width: '100%',
   },
+  wrapVertical: {
+    flex: 1,
+  },
   rail: {
     borderRadius: urTheme.radii.pill,
     borderWidth: 1.2,
@@ -291,6 +385,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     overflow: 'visible',
     justifyContent: 'center',
+  },
+  railVertical: {
+    flex: 1,
   },
   trayArtLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -312,7 +409,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 2,
   },
+  pieceStackVertical: {
+    flex: 1,
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+  },
   stackPiece: {
     zIndex: 5,
+  },
+  stackPieceVertical: {
+    alignSelf: 'center',
   },
 });
