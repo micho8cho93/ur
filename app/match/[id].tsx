@@ -16,7 +16,6 @@ import { GameStageHUD } from '@/components/game/GameStageHUD';
 import { MatchDiceRollStage } from '@/components/game/MatchDiceRollStage';
 import { MatchMomentIndicator } from '@/components/game/MatchMomentIndicator';
 import type { MatchMomentIndicatorCue } from '@/components/game/MatchMomentIndicator';
-import { HowToPlayModal } from '@/components/HowToPlayModal';
 import { PieceRail, PieceRailFrameMeasurement, ReserveSlotMeasurement } from '@/components/game/PieceRail';
 import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
 import { ProgressionAwardSummary } from '@/components/progression/ProgressionAwardSummary';
@@ -265,7 +264,6 @@ export function GameRoom() {
   const winModalMessage = didPlayerWin ? 'The royal path is yours.' : 'The opponent seized the final lane.';
 
   const [showWinModal, setShowWinModal] = React.useState(false);
-  const [showHowToPlay, setShowHowToPlay] = React.useState(false);
   const [showAudioSettings, setShowAudioSettings] = React.useState(false);
   const [showTopMenu, setShowTopMenu] = React.useState(false);
   const [matchChallengeSummary, setMatchChallengeSummary] = React.useState<MatchChallengeRewardSummary | null>(null);
@@ -343,6 +341,7 @@ export function GameRoom() {
     matchId: string | null;
     timestamp: number;
   } | null>(null);
+  const suppressMatchCuesUntilInteractionRef = useRef(false);
   const hasShownOpeningCueRef = useRef<string | null>(null);
   const previousStateRef = useRef<{ matchId: string | null; state: GameState }>({
     matchId: matchId ?? null,
@@ -548,9 +547,13 @@ export function GameRoom() {
     setActiveMatchCue(cue);
   }, []);
 
+  const resumeAnnouncementCuesFromInteraction = React.useCallback(() => {
+    suppressMatchCuesUntilInteractionRef.current = false;
+  }, []);
+
   const enqueueMatchCue = React.useCallback(
     (kind: MatchMomentCueKind) => {
-      if (!announcementCuesEnabled || !introsComplete) {
+      if (!announcementCuesEnabled || !introsComplete || suppressMatchCuesUntilInteractionRef.current) {
         return;
       }
 
@@ -866,12 +869,12 @@ export function GameRoom() {
     showWinModal,
   ]);
   useEffect(() => {
-    if (!showHowToPlay && !showAudioSettings && !showWinModal && !tutorialCoachVisible) {
+    if (!showAudioSettings && !showWinModal && !tutorialCoachVisible) {
       return;
     }
 
     setShowTopMenu(false);
-  }, [showAudioSettings, showHowToPlay, showWinModal, tutorialCoachVisible]);
+  }, [showAudioSettings, showWinModal, tutorialCoachVisible]);
   useEffect(() => {
     boardImageLayoutRef.current = null;
     tutorialHydratingStateRef.current = false;
@@ -897,6 +900,7 @@ export function GameRoom() {
     setHasPlayedReserveCascadeIntro(false);
     queuedMatchCuesRef.current = [];
     lastQueuedMatchCueRef.current = null;
+    suppressMatchCuesUntilInteractionRef.current = false;
     hasShownOpeningCueRef.current = null;
     matchCueIdRef.current = 0;
     setTutorialSegmentIndex(0);
@@ -1028,6 +1032,7 @@ export function GameRoom() {
         return;
       }
 
+      suppressMatchCuesUntilInteractionRef.current = true;
       enqueueMatchCue('timeout');
 
       if (liveState.phase === 'rolling') {
@@ -1075,7 +1080,6 @@ export function GameRoom() {
       rollingVisual ||
       rollButtonLatchPhase !== 'idle' ||
       showAudioSettings ||
-      showHowToPlay ||
       showTopMenu ||
       showWinModal
     ) {
@@ -1101,7 +1105,6 @@ export function GameRoom() {
     rollButtonLatchPhase,
     rollingVisual,
     showAudioSettings,
-    showHowToPlay,
     showTopMenu,
     showWinModal,
     triggerLocalRoll,
@@ -1536,7 +1539,23 @@ export function GameRoom() {
     validMoves.length,
   ]);
 
+  const handleBoardMove = React.useCallback(
+    (move: MoveAction) => {
+      resumeAnnouncementCuesFromInteraction();
+
+      if (isScriptedTutorialPhase) {
+        handleTutorialMove(move);
+        return;
+      }
+
+      makeMove(move);
+    },
+    [handleTutorialMove, isScriptedTutorialPhase, makeMove, resumeAnnouncementCuesFromInteraction],
+  );
+
   const handleRoll = React.useCallback(() => {
+    resumeAnnouncementCuesFromInteraction();
+
     if (isScriptedTutorialPhase) {
       if (tutorialCoachPhase === 'lesson_play' && tutorialSegment) {
         triggerTutorialRoll(tutorialSegment.forcedRoll);
@@ -1545,7 +1564,14 @@ export function GameRoom() {
     }
 
     triggerLocalRoll();
-  }, [isScriptedTutorialPhase, triggerLocalRoll, triggerTutorialRoll, tutorialCoachPhase, tutorialSegment]);
+  }, [
+    isScriptedTutorialPhase,
+    resumeAnnouncementCuesFromInteraction,
+    triggerLocalRoll,
+    triggerTutorialRoll,
+    tutorialCoachPhase,
+    tutorialSegment,
+  ]);
 
   const handleToggleMusic = async (enabled: boolean) => {
     setMusicEnabled(enabled);
@@ -2000,7 +2026,8 @@ export function GameRoom() {
           showRailHints
           highlightMode="theatrical"
           validMovesOverride={displayedValidMoves}
-          onMakeMoveOverride={isScriptedTutorialPhase ? handleTutorialMove : undefined}
+          onMakeMoveOverride={handleBoardMove}
+          onInteraction={resumeAnnouncementCuesFromInteraction}
           boardScale={boardScale}
           orientation="vertical"
           onBoardImageLayout={handleLiveBoardImageLayout}
@@ -2188,7 +2215,10 @@ export function GameRoom() {
 
         <View style={styles.topChromeRight}>
           <Pressable
-            onPress={() => setShowTopMenu((current) => !current)}
+            onPress={() => {
+              resumeAnnouncementCuesFromInteraction();
+              setShowTopMenu((current) => !current);
+            }}
             accessibilityRole="button"
             accessibilityLabel="Open match menu"
             style={({ pressed }) => [
@@ -2209,21 +2239,9 @@ export function GameRoom() {
             <View style={styles.topMenu}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Open how to play instructions"
-                onPress={() => {
-                  setShowTopMenu(false);
-                  setShowHowToPlay(true);
-                }}
-                style={({ pressed }) => [styles.topMenuItem, pressed && styles.topMenuItemPressed]}
-              >
-                <MaterialIcons name="help-outline" size={18} color={TOP_CHROME_ACCENT} />
-                <Text style={styles.topMenuLabel}>Help</Text>
-              </Pressable>
-
-              <Pressable
-                accessibilityRole="button"
                 accessibilityLabel="Open audio settings"
                 onPress={() => {
+                  resumeAnnouncementCuesFromInteraction();
                   setShowTopMenu(false);
                   setShowAudioSettings(true);
                 }}
@@ -2796,7 +2814,6 @@ export function GameRoom() {
           void handleToggleBotTimer(enabled);
         }}
       />
-      <HowToPlayModal visible={showHowToPlay} onClose={() => setShowHowToPlay(false)} />
       <PlayTutorialCoachModal
         visible={tutorialCoachVisible}
         eyebrow={tutorialCoachEyebrow}

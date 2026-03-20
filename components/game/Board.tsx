@@ -46,6 +46,7 @@ interface BoardProps {
   onMakeMoveOverride?: (move: MoveAction) => void;
   playerColorOverride?: PlayerColor | null;
   allowInteraction?: boolean;
+  onInteraction?: () => void;
   onBoardImageLayout?: (layout: BoardImageLayoutFrame) => void;
 }
 
@@ -155,6 +156,7 @@ export const Board: React.FC<BoardProps> = ({
   onMakeMoveOverride,
   playerColorOverride,
   allowInteraction = true,
+  onInteraction,
   onBoardImageLayout,
 }) => {
   const storeGameState = useGameStore((state) => state.gameState);
@@ -173,6 +175,9 @@ export const Board: React.FC<BoardProps> = ({
   const validMoves = validMovesOverride ?? storeValidMoves;
   const makeMove = onMakeMoveOverride ?? storeMakeMove;
   const playerColor = playerColorOverride ?? storePlayerColor;
+  const notifyInteraction = React.useCallback(() => {
+    onInteraction?.();
+  }, [onInteraction]);
   const isVertical = orientation === 'vertical';
   const displayRows = isVertical ? BOARD_COLS : BOARD_ROWS;
   const displayCols = isVertical ? BOARD_ROWS : BOARD_COLS;
@@ -665,6 +670,7 @@ export const Board: React.FC<BoardProps> = ({
     );
 
   const handleSpawnCuePress = () => {
+    notifyInteraction();
     if (!spawnMove || !isInteractiveTurn || gameState.phase !== 'moving') return;
     setHoveredMove(null);
     executeMove(spawnMove);
@@ -691,6 +697,7 @@ export const Board: React.FC<BoardProps> = ({
   };
 
   const handleScoreCuePress = () => {
+    notifyInteraction();
     if (!isInteractiveTurn || gameState.phase !== 'moving') return;
 
     if (selectedMove && selectedMove.toIndex === pathLength) {
@@ -714,6 +721,7 @@ export const Board: React.FC<BoardProps> = ({
   };
 
   const handlePreviewDestinationPress = () => {
+    notifyInteraction();
     if (!isInteractiveTurn || gameState.phase !== 'moving' || !isMoveValid(previewMove)) {
       return;
     }
@@ -722,6 +730,7 @@ export const Board: React.FC<BoardProps> = ({
   };
 
   const handleTilePress = (r: number, c: number) => {
+    notifyInteraction();
     if (!assignedPlayerColor || !isInteractiveTurn || gameState.phase !== 'moving') return;
 
     const moveFromTile = validMoves.find(

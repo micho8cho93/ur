@@ -13,6 +13,11 @@ const mockDiceRollScene = jest.fn(() => {
   return <Text testID="mock-inline-dice-scene">inline</Text>;
 });
 
+const mockMatchMomentIndicator = jest.fn(({ cue }: { cue: { message: string } | null }) => {
+  const { Text } = require('react-native');
+  return cue ? <Text testID="mock-match-cue">{cue.message}</Text> : null;
+});
+
 const mockRouterReplace = jest.fn();
 const mockSearchParams = {
   id: 'local-1',
@@ -203,6 +208,10 @@ jest.mock('@/components/ui/Modal', () => {
 
 jest.mock('@/components/game/MatchDiceRollStage', () => ({
   MatchDiceRollStage: (props: { playbackId: number }) => mockMatchDiceRollStage(props),
+}));
+
+jest.mock('@/components/game/MatchMomentIndicator', () => ({
+  MatchMomentIndicator: (props: { cue: { message: string } | null }) => mockMatchMomentIndicator(props),
 }));
 
 jest.mock('@/components/3d/DiceRollScene', () => ({
@@ -470,6 +479,54 @@ describe('GameRoom match dice stage', () => {
     });
 
     expect(mockRoll).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows only settings in the in-game top menu', async () => {
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Open match menu'));
+    });
+
+    expect(screen.getByText('Settings')).toBeTruthy();
+    expect(screen.queryByText('Help')).toBeNull();
+  });
+
+  it('suppresses announcement cues after timeout assistance takes over during idle play', async () => {
+    mockStoreState.gameState = {
+      ...baseGameState,
+      history: ['light opened the match.'],
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(15_000);
+    });
+
+    expect(mockRoll).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+
+    expect(mockRoll).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Time's up")).toBeNull();
   });
 
   it('shows the guided tutorial title when launched in tutorial mode', async () => {

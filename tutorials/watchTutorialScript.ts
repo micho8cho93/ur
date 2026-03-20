@@ -38,7 +38,7 @@ export const WATCH_TUTORIAL_SCRIPT: TutorialStep[] = [
       ],
       [
         'When the banner flips, the glowing side and reserve rails usually flip with it.',
-        'In live matches, the Help button is in the top-right header if you need a rules refresher.',
+        'If you need a rules refresher, you can return Home and open the Help guide there.',
       ],
       'Always check the turn banner before tapping: many mistakes are just moving during the wrong phase.',
     ),
