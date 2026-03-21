@@ -1923,6 +1923,14 @@ var canUserJoinPrivateMatch = (state, userId) => {
   return Boolean(state.privateGuestUserId && state.privateGuestUserId === userId);
 };
 var isPrivateMatchReady = (state) => !state.privateMatch || Object.keys(state.presences).length >= MAX_PLAYERS;
+var buildPrivateMatchRpcResponse = (matchId, modeId, privateCode, hasGuestJoined) => JSON.stringify(__spreadValues({
+  matchId,
+  modeId,
+  // Some deployed Nakama runtimes have dropped a `code` field from RPC payloads.
+  // Keep the original key for compatibility and add a second alias the client can fall back to.
+  code: privateCode,
+  privateCode
+}, typeof hasGuestJoined === "boolean" ? { hasGuestJoined } : {}));
 var buildPlayerMatchSummary = (state, matchId, playerUserId, playerColor) => {
   const opponentColor = playerColor === "light" ? "dark" : "light";
   const playerTelemetry = state.telemetry.players[playerColor];
@@ -2060,11 +2068,7 @@ function rpcCreatePrivateMatch(ctx, _logger, nk, payload) {
     allowsChallengeRewards: false
   });
   createPrivateMatchCodeRecord(nk, modeId, matchId, ctx.userId, privateCode);
-  return JSON.stringify({
-    matchId,
-    modeId,
-    code: privateCode
-  });
+  return buildPrivateMatchRpcResponse(matchId, modeId, privateCode);
 }
 function rpcJoinPrivateMatch(ctx, _logger, nk, payload) {
   if (!ctx.userId) {
@@ -2073,11 +2077,7 @@ function rpcJoinPrivateMatch(ctx, _logger, nk, payload) {
   const data = parseRpcPayload(payload);
   const requestedCode = typeof data.code === "string" ? data.code : "";
   const reservation = claimPrivateMatchCode(nk, requestedCode, ctx.userId);
-  return JSON.stringify({
-    matchId: reservation.matchId,
-    modeId: reservation.modeId,
-    code: reservation.code
-  });
+  return buildPrivateMatchRpcResponse(reservation.matchId, reservation.modeId, reservation.code);
 }
 function rpcGetPrivateMatchStatus(ctx, _logger, nk, payload) {
   if (!ctx.userId) {
@@ -2096,12 +2096,12 @@ function rpcGetPrivateMatchStatus(ctx, _logger, nk, payload) {
   if (record.creatorUserId !== ctx.userId && record.joinedUserId !== ctx.userId) {
     throw new Error("You do not have access to this private game.");
   }
-  return JSON.stringify({
-    matchId: record.matchId,
-    modeId: record.modeId,
-    code: record.code,
-    hasGuestJoined: Boolean(record.joinedUserId)
-  });
+  return buildPrivateMatchRpcResponse(
+    record.matchId,
+    record.modeId,
+    record.code,
+    Boolean(record.joinedUserId)
+  );
 }
 function matchmakerMatched(_ctx, logger, nk, matched) {
   const users = Array.isArray(matched.users) ? matched.users : [];

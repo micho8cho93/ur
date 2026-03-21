@@ -163,9 +163,14 @@ export type MatchmakingHandlers = {
 
 type CreatePrivateMatchRpcPayload = {
   matchId?: unknown;
+  match_id?: unknown;
   modeId?: unknown;
+  mode_id?: unknown;
   code?: unknown;
+  privateCode?: unknown;
+  private_code?: unknown;
   hasGuestJoined?: unknown;
+  has_guest_joined?: unknown;
 };
 
 const normalizeRpcPayload = (payload: unknown): unknown => {
@@ -185,11 +190,28 @@ const parsePrivateMatchPayload = (
   options?: { requireGuestFlag?: boolean }
 ): { matchId: string; modeId: MatchModeId; code: string; hasGuestJoined?: boolean } => {
   const rpcPayload = normalizeRpcPayload(payload) as CreatePrivateMatchRpcPayload | undefined;
-  const matchId = typeof rpcPayload?.matchId === "string" ? rpcPayload.matchId : null;
-  const modeId = rpcPayload?.modeId;
-  const code = normalizePrivateMatchCodeInput(typeof rpcPayload?.code === "string" ? rpcPayload.code : "");
+  const matchId =
+    typeof rpcPayload?.matchId === "string"
+      ? rpcPayload.matchId
+      : typeof rpcPayload?.match_id === "string"
+        ? rpcPayload.match_id
+        : null;
+  const modeId = rpcPayload?.modeId ?? rpcPayload?.mode_id;
+  const rawCode =
+    typeof rpcPayload?.code === "string"
+      ? rpcPayload.code
+      : typeof rpcPayload?.privateCode === "string"
+        ? rpcPayload.privateCode
+        : typeof rpcPayload?.private_code === "string"
+          ? rpcPayload.private_code
+          : "";
+  const code = normalizePrivateMatchCodeInput(rawCode);
   const hasGuestJoined =
-    typeof rpcPayload?.hasGuestJoined === "boolean" ? rpcPayload.hasGuestJoined : undefined;
+    typeof rpcPayload?.hasGuestJoined === "boolean"
+      ? rpcPayload.hasGuestJoined
+      : typeof rpcPayload?.has_guest_joined === "boolean"
+        ? rpcPayload.has_guest_joined
+        : undefined;
 
   if (!matchId || !isMatchModeId(modeId) || !isPrivateMatchCode(code)) {
     throw new Error("Private match returned an invalid payload.");

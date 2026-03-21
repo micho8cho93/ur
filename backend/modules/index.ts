@@ -489,6 +489,22 @@ const canUserJoinPrivateMatch = (state: MatchState, userId: string): boolean => 
 const isPrivateMatchReady = (state: MatchState): boolean =>
   !state.privateMatch || Object.keys(state.presences).length >= MAX_PLAYERS;
 
+const buildPrivateMatchRpcResponse = (
+  matchId: string,
+  modeId: MatchModeId,
+  privateCode: string,
+  hasGuestJoined?: boolean
+): string =>
+  JSON.stringify({
+    matchId,
+    modeId,
+    // Some deployed Nakama runtimes have dropped a `code` field from RPC payloads.
+    // Keep the original key for compatibility and add a second alias the client can fall back to.
+    code: privateCode,
+    privateCode,
+    ...(typeof hasGuestJoined === "boolean" ? { hasGuestJoined } : {}),
+  });
+
 const buildPlayerMatchSummary = (
   state: MatchState,
   matchId: string,
@@ -683,11 +699,7 @@ function rpcCreatePrivateMatch(
   });
   createPrivateMatchCodeRecord(nk, modeId, matchId, ctx.userId, privateCode);
 
-  return JSON.stringify({
-    matchId,
-    modeId,
-    code: privateCode,
-  });
+  return buildPrivateMatchRpcResponse(matchId, modeId, privateCode);
 }
 
 function rpcJoinPrivateMatch(
@@ -704,11 +716,7 @@ function rpcJoinPrivateMatch(
   const requestedCode = typeof data.code === "string" ? data.code : "";
   const reservation = claimPrivateMatchCode(nk, requestedCode, ctx.userId);
 
-  return JSON.stringify({
-    matchId: reservation.matchId,
-    modeId: reservation.modeId,
-    code: reservation.code,
-  });
+  return buildPrivateMatchRpcResponse(reservation.matchId, reservation.modeId, reservation.code);
 }
 
 function rpcGetPrivateMatchStatus(
@@ -738,12 +746,12 @@ function rpcGetPrivateMatchStatus(
     throw new Error("You do not have access to this private game.");
   }
 
-  return JSON.stringify({
-    matchId: record.matchId,
-    modeId: record.modeId,
-    code: record.code,
-    hasGuestJoined: Boolean(record.joinedUserId),
-  });
+  return buildPrivateMatchRpcResponse(
+    record.matchId,
+    record.modeId,
+    record.code,
+    Boolean(record.joinedUserId)
+  );
 }
 
 function matchmakerMatched(

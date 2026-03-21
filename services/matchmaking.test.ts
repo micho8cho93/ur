@@ -77,4 +77,38 @@ describe('matchmaking private RPC parsing', () => {
       hasGuestJoined: true,
     });
   });
+
+  it('accepts privateCode aliases when the backend omits code', async () => {
+    mockRpc
+      .mockResolvedValueOnce({
+        payload: {
+          matchId: 'match-3',
+          modeId: 'standard',
+          privateCode: 'ZXCV2345',
+        },
+      })
+      .mockResolvedValueOnce({
+        payload: JSON.stringify({
+          match_id: 'match-3',
+          mode_id: 'standard',
+          private_code: 'ZXCV2345',
+          has_guest_joined: false,
+        }),
+      });
+
+    await expect(createPrivateMatch('standard')).resolves.toEqual(
+      expect.objectContaining({
+        matchId: 'match-3',
+        modeId: 'standard',
+        code: 'ZXCV2345',
+      })
+    );
+
+    await expect(getPrivateMatchStatus('zxcv2345')).resolves.toEqual({
+      matchId: 'match-3',
+      modeId: 'standard',
+      code: 'ZXCV2345',
+      hasGuestJoined: false,
+    });
+  });
 });
