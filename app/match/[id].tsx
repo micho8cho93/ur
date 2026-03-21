@@ -8,6 +8,7 @@ import { AudioSettingsModal } from '@/components/game/AudioSettingsModal';
 import { AmbientBackgroundEffects } from '@/components/game/AmbientBackgroundEffects';
 import { BoardDropIntro } from '@/components/game/BoardDropIntro';
 import { MatchChallengeRewardsPanel } from '@/components/challenges/MatchChallengeRewardsPanel';
+import { EloMatchSummaryPanel } from '@/components/elo/EloMatchSummaryPanel';
 import { XPDisplay } from '@/components/challenges/XPDisplay';
 import { Dice, DiceStageVisual } from '@/components/game/Dice';
 import { EdgeScore } from '@/components/game/EdgeScore';
@@ -64,6 +65,7 @@ import {
   isPlaythroughTutorialId,
 } from '@/tutorials/playthroughTutorial';
 import type { CompletedBotMatchRewardMode } from '@/shared/challenges';
+import { isEloRatingChangeNotificationPayload } from '@/shared/elo';
 import { isProgressionAwardNotificationPayload } from '@/shared/progression';
 import {
   MatchOpCode,
@@ -271,6 +273,7 @@ export function GameRoom() {
   const playerColor = useGameStore((state) => state.playerColor);
   const matchPresences = useGameStore((state) => state.matchPresences);
   const lastProgressionAward = useGameStore((state) => state.lastProgressionAward);
+  const lastEloRatingChange = useGameStore((state) => state.lastEloRatingChange);
   const initGame = useGameStore((state) => state.initGame);
   const setMatchId = useGameStore((state) => state.setMatchId);
   const storedMatchId = useGameStore((state) => state.matchId);
@@ -283,6 +286,7 @@ export function GameRoom() {
   const setMatchPresences = useGameStore((state) => state.setMatchPresences);
   const updateMatchPresences = useGameStore((state) => state.updateMatchPresences);
   const setLastProgressionAward = useGameStore((state) => state.setLastProgressionAward);
+  const setLastEloRatingChange = useGameStore((state) => state.setLastEloRatingChange);
   const setSocketState = useGameStore((state) => state.setSocketState);
   const setRollCommandSender = useGameStore((state) => state.setRollCommandSender);
   const setMoveCommandSender = useGameStore((state) => state.setMoveCommandSender);
@@ -313,6 +317,20 @@ export function GameRoom() {
     effectiveMatchConfig.allowsChallenges &&
     !isPlaythroughTutorialMatch &&
     !isPrivateMatch;
+  const isRankedHumanMatch =
+    !isOffline &&
+    !isPrivateMatch &&
+    effectiveMatchConfig.allowsRankedStats &&
+    !isPlaythroughTutorialMatch;
+  const eloUnchangedReason = isRankedHumanMatch
+    ? null
+    : isPrivateMatch
+      ? 'Private matches do not affect Elo.'
+      : isOffline
+        ? 'Bot and offline matches do not affect Elo.'
+        : !effectiveMatchConfig.allowsRankedStats
+          ? 'This mode does not affect Elo.'
+          : 'Elo was unchanged for this match.';
   const effectiveMatchToken = storedMatchId === matchId ? matchToken : null;
   const isMyTurn = hasAssignedColor && gameState.currentTurn === playerColor;
   const didPlayerWin =
@@ -1409,6 +1427,22 @@ export function GameRoom() {
           rankChanged: award.rankChanged,
         });
         setLastProgressionAward(award);
+        return;
+      }
+
+      if (matchData.op_code === MatchOpCode.ELO_RATING_UPDATE) {
+        if (!isEloRatingChangeNotificationPayload(payload)) {
+          return;
+        }
+
+        console.info('[Nakama][elo_rating_update]', {
+          matchId: payload.matchId,
+          playerDelta: payload.player.delta,
+          playerNewRating: payload.player.newRating,
+          opponentDelta: payload.opponent.delta,
+          playerRank: payload.player.rank ?? null,
+        });
+        setLastEloRatingChange(payload);
       }
     };
 
@@ -3067,6 +3101,13 @@ export function GameRoom() {
           <View style={styles.privateRewardLabel}>
             <Text style={styles.privateRewardLabelText}>Private Match: Reduced XP Reward</Text>
           </View>
+        ) : null}
+        {!isPlaythroughTutorialMatch ? (
+          <EloMatchSummaryPanel
+            result={isRankedHumanMatch ? lastEloRatingChange : null}
+            pending={isRankedHumanMatch && !lastEloRatingChange}
+            unchangedReason={!isRankedHumanMatch ? eloUnchangedReason : null}
+          />
         ) : null}
         {shouldShowAccountRewards ? (
           <>

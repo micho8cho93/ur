@@ -28,6 +28,10 @@ jest.mock('@/components/progression/ProgressionSummaryCard', () => ({
   ProgressionSummaryCard: () => null,
 }));
 
+jest.mock('@/components/elo/EloRatingSummaryCard', () => ({
+  EloRatingSummaryCard: () => null,
+}));
+
 jest.mock('@/components/challenges/ChallengeSummaryCard', () => ({
   ChallengeSummaryCard: () => null,
 }));

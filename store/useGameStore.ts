@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { BotDifficulty, DEFAULT_BOT_DIFFICULTY } from '@/logic/bot/types';
 import { DEFAULT_MATCH_CONFIG, type MatchConfig } from '@/logic/matchConfigs';
 import { GameState, MoveAction, PlayerColor } from '@/logic/types';
+import { EloRatingChangeNotificationPayload } from '@/shared/elo';
 import { ProgressionAwardResponse } from '@/shared/progression';
 import { createInitialState, getValidMoves, applyMove, rollDice } from '@/logic/engine';
 import { MatchPresenceEvent, Session } from '@heroiclabs/nakama-js';
@@ -25,6 +26,7 @@ interface GameStore {
   validMoves: MoveAction[];
   matchPresences: string[];
   lastProgressionAward: ProgressionAwardResponse | null;
+  lastEloRatingChange: EloRatingChangeNotificationPayload | null;
   socketState: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
   rollCommandSender: RollCommandSender;
   moveCommandSender: MoveCommandSender;
@@ -43,6 +45,7 @@ interface GameStore {
   setMatchPresences: (presences: string[]) => void;
   updateMatchPresences: (event: MatchPresenceEvent) => void;
   setLastProgressionAward: (award: ProgressionAwardResponse | null) => void;
+  setLastEloRatingChange: (change: EloRatingChangeNotificationPayload | null) => void;
   setSocketState: (status: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error') => void;
   setRollCommandSender: (sender: RollCommandSender) => void;
   setMoveCommandSender: (sender: MoveCommandSender) => void;
@@ -65,6 +68,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   validMoves: [],
   matchPresences: [],
   lastProgressionAward: null,
+  lastEloRatingChange: null,
   socketState: 'idle',
   rollCommandSender: null,
   moveCommandSender: null,
@@ -78,6 +82,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       validMoves: [],
       matchPresences: [],
       lastProgressionAward: null,
+      lastEloRatingChange: null,
       socketState: 'idle',
       serverRevision: 0,
       playerColor: null,
@@ -162,6 +167,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ lastProgressionAward: award });
   },
 
+  setLastEloRatingChange: (change) => {
+    set({ lastEloRatingChange: change });
+  },
+
   setSocketState: (status) => {
     set({ socketState: status });
   },
@@ -182,6 +191,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       validMoves: [],
       matchPresences: [],
       lastProgressionAward: null,
+      lastEloRatingChange: null,
       socketState: 'idle',
       rollCommandSender: null,
       moveCommandSender: null,

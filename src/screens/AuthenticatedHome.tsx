@@ -2,6 +2,7 @@ import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBac
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { Button } from '@/components/ui/Button';
 import { ChallengeSummaryCard } from '@/components/challenges/ChallengeSummaryCard';
+import { EloRatingSummaryCard } from '@/components/elo/EloRatingSummaryCard';
 import { ProgressionSummaryCard } from '@/components/progression/ProgressionSummaryCard';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
@@ -129,6 +130,12 @@ export default function AuthenticatedHome() {
             ]}
           >
             <ProgressionSummaryCard
+              style={[
+                styles.summaryCard,
+                useWideWebMenuLayout && styles.summaryCardWide,
+              ]}
+            />
+            <EloRatingSummaryCard
               style={[
                 styles.summaryCard,
                 useWideWebMenuLayout && styles.summaryCardWide,

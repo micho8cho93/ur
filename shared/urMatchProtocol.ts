@@ -1,5 +1,9 @@
 import { GameState, MoveAction, PlayerColor } from "../logic/types";
 import {
+  EloRatingChangeNotificationPayload,
+  isEloRatingChangeNotificationPayload,
+} from "./elo";
+import {
   isProgressionAwardNotificationPayload,
   ProgressionAwardNotificationPayload,
 } from "./progression";
@@ -10,6 +14,7 @@ export const MatchOpCode = {
   STATE_SNAPSHOT: 100,
   SERVER_ERROR: 101,
   PROGRESSION_AWARD: 102,
+  ELO_RATING_UPDATE: 103,
 } as const;
 
 export type MatchOpCodeValue = (typeof MatchOpCode)[keyof typeof MatchOpCode];
@@ -51,7 +56,8 @@ export type ServerErrorPayload = {
 
 export type ServerMatchPayload = StateSnapshotPayload | ServerErrorPayload;
 export type MatchProgressionPayload = ProgressionAwardNotificationPayload;
-export type ExtendedServerMatchPayload = ServerMatchPayload | MatchProgressionPayload;
+export type MatchEloRatingPayload = EloRatingChangeNotificationPayload;
+export type ExtendedServerMatchPayload = ServerMatchPayload | MatchProgressionPayload | MatchEloRatingPayload;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -97,7 +103,9 @@ export const isServerMatchPayload = (value: unknown): value is ServerMatchPayloa
   isStateSnapshotPayload(value) || isServerErrorPayload(value);
 
 export const isExtendedServerMatchPayload = (value: unknown): value is ExtendedServerMatchPayload =>
-  isServerMatchPayload(value) || isProgressionAwardNotificationPayload(value);
+  isServerMatchPayload(value) ||
+  isProgressionAwardNotificationPayload(value) ||
+  isEloRatingChangeNotificationPayload(value);
 
 export const encodePayload = (payload: ClientMatchPayload | ExtendedServerMatchPayload): string =>
   JSON.stringify(payload);

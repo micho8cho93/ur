@@ -56,6 +56,36 @@ describe('useGameStore', () => {
           progressPercent: 0,
         },
       },
+      lastEloRatingChange: {
+        type: 'elo_rating_update',
+        leaderboardId: 'elo_global',
+        matchId: 'old-match',
+        duplicate: false,
+        player: {
+          userId: 'u-1',
+          usernameDisplay: 'Michel',
+          oldRating: 1200,
+          newRating: 1216,
+          delta: 16,
+          provisional: true,
+          ratedGames: 1,
+          ratedWins: 1,
+          ratedLosses: 0,
+          rank: 42,
+        },
+        opponent: {
+          userId: 'u-2',
+          usernameDisplay: 'RoyalTwo',
+          oldRating: 1200,
+          newRating: 1184,
+          delta: -16,
+          provisional: true,
+          ratedGames: 1,
+          ratedWins: 0,
+          ratedLosses: 1,
+          rank: 43,
+        },
+      },
       socketState: 'connected',
       serverRevision: 12,
       playerColor: 'light',
@@ -72,6 +102,7 @@ describe('useGameStore', () => {
     expect(state.validMoves).toEqual([]);
     expect(state.matchPresences).toEqual([]);
     expect(state.lastProgressionAward).toBeNull();
+    expect(state.lastEloRatingChange).toBeNull();
     expect(state.socketState).toBe('idle');
     expect(state.serverRevision).toBe(0);
     expect(state.playerColor).toBeNull();
@@ -281,6 +312,36 @@ describe('useGameStore', () => {
           progressPercent: 0,
         },
       },
+      lastEloRatingChange: {
+        type: 'elo_rating_update',
+        leaderboardId: 'elo_global',
+        matchId: 'm-1',
+        duplicate: false,
+        player: {
+          userId: 'user-1',
+          usernameDisplay: 'Michel',
+          oldRating: 1200,
+          newRating: 1216,
+          delta: 16,
+          provisional: true,
+          ratedGames: 1,
+          ratedWins: 1,
+          ratedLosses: 0,
+          rank: 42,
+        },
+        opponent: {
+          userId: 'user-2',
+          usernameDisplay: 'RoyalTwo',
+          oldRating: 1200,
+          newRating: 1184,
+          delta: -16,
+          provisional: true,
+          ratedGames: 1,
+          ratedWins: 0,
+          ratedLosses: 1,
+          rank: 43,
+        },
+      },
       socketState: 'connected',
       rollCommandSender: jest.fn(),
       moveCommandSender: jest.fn(),
@@ -301,6 +362,7 @@ describe('useGameStore', () => {
     expect(state.matchToken).toBeNull();
     expect(state.matchPresences).toEqual([]);
     expect(state.lastProgressionAward).toBeNull();
+    expect(state.lastEloRatingChange).toBeNull();
     expect(state.socketState).toBe('idle');
     expect(state.rollCommandSender).toBeNull();
     expect(state.moveCommandSender).toBeNull();

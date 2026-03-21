@@ -3,6 +3,7 @@ import { urTheme } from '@/constants/urTheme';
 import { sendPresenceHeartbeat } from '@/services/presence';
 import { AuthProvider } from '@/src/auth/AuthProvider';
 import { ChallengesProvider } from '@/src/challenges/ChallengesContext';
+import { EloRatingProvider } from '@/src/elo/EloContext';
 import { ProgressionProvider } from '@/src/progression/ProgressionContext';
 import { useAuth } from '@/src/auth/useAuth';
 import { StatusBar } from 'expo-status-bar';
@@ -68,6 +69,7 @@ function RootNavigator() {
       >
         <Stack.Screen name="index" options={{ title: 'Royal Game of Ur', headerShown: false }} />
         <Stack.Screen name="challenges" options={{ title: 'Challenges' }} />
+        <Stack.Screen name="leaderboard" options={{ title: 'Elo Leaderboard' }} />
         <Stack.Screen name="username-onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="(game)" options={{ headerShown: false }} />
         <Stack.Screen name="match" options={{ headerShown: false }} />
@@ -83,11 +85,13 @@ export default function Layout() {
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <StatusBar style="light" translucent backgroundColor="transparent" />
       <AuthProvider>
-        <ProgressionProvider>
-          <ChallengesProvider>
-            <RootNavigator />
-          </ChallengesProvider>
-        </ProgressionProvider>
+        <EloRatingProvider>
+          <ProgressionProvider>
+            <ChallengesProvider>
+              <RootNavigator />
+            </ChallengesProvider>
+          </ProgressionProvider>
+        </EloRatingProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

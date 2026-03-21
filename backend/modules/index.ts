@@ -19,6 +19,17 @@ import {
   STORAGE_PERMISSION_NONE,
 } from "./progression";
 import {
+  createEloRatingChangeNotification,
+  ensureEloLeaderboard,
+  processRankedMatchResult,
+  rpcGetEloLeaderboardAroundMe,
+  rpcGetMyRatingProfile,
+  rpcListTopEloPlayers,
+  RPC_GET_ELO_LEADERBOARD_AROUND_ME,
+  RPC_GET_MY_RATING_PROFILE,
+  RPC_LIST_TOP_ELO_PLAYERS,
+} from "./elo";
+import {
   ensureChallengeDefinitions,
   processCompletedMatch,
   rpcGetChallengeDefinitions,
@@ -72,6 +83,7 @@ type MatchState = {
   revision: number;
   opponentType: OpponentType;
   modeId: MatchModeId;
+  classification: MatchClassification;
   privateMatch: boolean;
   privateCode: string | null;
   privateCreatorUserId: string | null;
@@ -110,6 +122,14 @@ type MatchPlayerTelemetry = {
 type MatchTelemetry = {
   totalMoves: number;
   players: Record<PlayerColor, MatchPlayerTelemetry>;
+};
+
+type MatchClassification = {
+  ranked: boolean;
+  casual: boolean;
+  private: boolean;
+  bot: boolean;
+  experimental: boolean;
 };
 
 type RuntimeRecord = Record<string, unknown>;
@@ -236,6 +256,25 @@ const getContextUserId = (ctx: nkruntime.Context): string | null =>
 
 const resolveMatchModeId = (value: unknown): MatchModeId =>
   isMatchModeId(value) ? value : "standard";
+
+const buildMatchClassification = (params: Record<string, unknown>, modeId: MatchModeId): MatchClassification => {
+  const config = getMatchConfig(modeId);
+  const privateMatch = params.privateMatch === true;
+  const botMatch = params.botMatch === true;
+  const casualMatch = params.casualMatch === true;
+  const experimental = !config.allowsRankedStats;
+  const ranked =
+    params.rankedMatch === true ||
+    (!privateMatch && !botMatch && !casualMatch && !experimental && params.rankedMatch !== false);
+
+  return {
+    ranked,
+    casual: casualMatch,
+    private: privateMatch,
+    bot: botMatch,
+    experimental,
+  };
+};
 
 const pruneOnlinePresence = (nowMs: number): void => {
   onlinePresenceByUser.forEach((lastSeenMs, userId) => {
@@ -565,6 +604,9 @@ function InitModule(
   initializer.registerRpc(RPC_AUTH_LINK_CUSTOM, rpcAuthLinkCustom);
   initializer.registerRpc(RPC_GET_PROGRESSION_NAME, rpcGetProgression);
   initializer.registerRpc(RPC_GET_USER_XP_PROGRESS_NAME, rpcGetUserXpProgress);
+  initializer.registerRpc(RPC_GET_MY_RATING_PROFILE, rpcGetMyRatingProfile);
+  initializer.registerRpc(RPC_LIST_TOP_ELO_PLAYERS, rpcListTopEloPlayers);
+  initializer.registerRpc(RPC_GET_ELO_LEADERBOARD_AROUND_ME, rpcGetEloLeaderboardAroundMe);
   initializer.registerRpc(RPC_GET_CHALLENGE_DEFINITIONS_NAME, rpcGetChallengeDefinitions);
   initializer.registerRpc(RPC_GET_USER_CHALLENGE_PROGRESS_NAME, rpcGetUserChallengeProgress);
   initializer.registerRpc(RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME, rpcSubmitCompletedBotMatch);
@@ -586,6 +628,15 @@ function InitModule(
     matchSignal: matchSignalHandler,
   });
   initializer.registerMatchmakerMatched(matchmakerMatched);
+  try {
+    ensureEloLeaderboard(nk, logger);
+  } catch (error) {
+    logger.warn(
+      "Skipping Elo leaderboard setup on startup: %s",
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+
   try {
     ensureChallengeDefinitions(nk, logger);
   } catch (error) {
@@ -708,6 +759,9 @@ function rpcCreatePrivateMatch(
   const matchId = nk.matchCreate(MATCH_HANDLER, {
     playerIds: [ctx.userId],
     modeId,
+    rankedMatch: false,
+    casualMatch: false,
+    botMatch: false,
     privateMatch: true,
     privateCode,
     privateCreatorUserId: ctx.userId,
@@ -791,6 +845,9 @@ function matchmakerMatched(
   return nk.matchCreate(MATCH_HANDLER, {
     playerIds,
     modeId: "standard",
+    rankedMatch: true,
+    casualMatch: false,
+    botMatch: false,
     privateMatch: false,
     winRewardSource: "pvp_win",
     allowsChallengeRewards: true,
@@ -805,7 +862,8 @@ function matchInit(
 ): { state: MatchState; tickRate: number; label: string } {
   const playerIds = Array.isArray(params.playerIds) ? (params.playerIds as string[]) : [];
   const modeId = resolveMatchModeId(params.modeId);
-  const privateMatch = params.privateMatch === true;
+  const classification = buildMatchClassification(params, modeId);
+  const privateMatch = classification.private;
   const privateCode = typeof params.privateCode === "string" ? normalizePrivateMatchCodeInput(params.privateCode) : "";
   const privateCreatorUserId =
     typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
@@ -827,6 +885,7 @@ function matchInit(
     revision: 0,
     opponentType: "human",
     modeId,
+    classification,
     privateMatch,
     privateCode: isPrivateMatchCode(privateCode) ? privateCode : null,
     privateCreatorUserId,
@@ -1165,8 +1224,81 @@ function applyMoveRequest(
   broadcastSnapshot(dispatcher, state, matchId);
 
   if (state.gameState.winner) {
+    processCompletedMatchRatings(logger, nk, dispatcher, state, matchId);
     awardWinnerProgression(logger, nk, dispatcher, state, matchId);
     processCompletedMatchSummaries(logger, nk, state, matchId);
+  }
+}
+
+function processCompletedMatchRatings(
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  dispatcher: nkruntime.MatchDispatcher,
+  state: MatchState,
+  matchId: string
+): void {
+  const winnerColor = state.gameState.winner;
+  if (!winnerColor) {
+    return;
+  }
+
+  const winnerEntry = Object.entries(state.assignments).find(([, color]) => color === winnerColor);
+  const loserEntry = Object.entries(state.assignments).find(([, color]) => color !== winnerColor);
+
+  if (!winnerEntry || !loserEntry) {
+    logger.warn("Match %s could not resolve both Elo participants.", matchId);
+    return;
+  }
+
+  const [winnerUserId] = winnerEntry;
+  const [loserUserId] = loserEntry;
+
+  try {
+    const ratingResult = processRankedMatchResult(nk, logger, {
+      matchId,
+      winnerUserId,
+      loserUserId,
+      ranked: state.classification.ranked,
+      privateMatch: state.classification.private,
+      botMatch: state.classification.bot,
+      casualMatch: state.classification.casual,
+      experimentalMode: state.classification.experimental,
+    });
+
+    if (!ratingResult) {
+      return;
+    }
+
+    ratingResult.record.playerResults.forEach((playerResult) => {
+      const targetPresence = state.presences[playerResult.userId];
+      if (!targetPresence) {
+        logger.info(
+          "Ranked Elo processed for user %s on match %s, but no live presence was available for notification.",
+          playerResult.userId,
+          matchId
+        );
+        return;
+      }
+
+      dispatcher.broadcastMessage(
+        MatchOpCode.ELO_RATING_UPDATE,
+        encodePayload(
+          createEloRatingChangeNotification(
+            ratingResult.record,
+            playerResult.userId,
+            ratingResult.ranksByUserId,
+            ratingResult.duplicate
+          )
+        ),
+        [targetPresence]
+      );
+    });
+  } catch (error) {
+    logger.error(
+      "Failed to process ranked Elo result for match %s: %s",
+      matchId,
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
@@ -1292,6 +1424,9 @@ type RuntimeGlobalBindings = {
   rpcAuthLinkCustom: typeof rpcAuthLinkCustom;
   rpcGetUsernameOnboardingStatus: typeof rpcGetUsernameOnboardingStatus;
   rpcClaimUsername: typeof rpcClaimUsername;
+  rpcGetMyRatingProfile: typeof rpcGetMyRatingProfile;
+  rpcListTopEloPlayers: typeof rpcListTopEloPlayers;
+  rpcGetEloLeaderboardAroundMe: typeof rpcGetEloLeaderboardAroundMe;
   rpcMatchmakerAdd: typeof rpcMatchmakerAdd;
   rpcCreatePrivateMatch: typeof rpcCreatePrivateMatch;
   rpcJoinPrivateMatch: typeof rpcJoinPrivateMatch;
@@ -1313,6 +1448,9 @@ const runtimeGlobals: RuntimeGlobalBindings = {
   rpcAuthLinkCustom,
   rpcGetUsernameOnboardingStatus,
   rpcClaimUsername,
+  rpcGetMyRatingProfile,
+  rpcListTopEloPlayers,
+  rpcGetEloLeaderboardAroundMe,
   rpcMatchmakerAdd,
   rpcCreatePrivateMatch,
   rpcJoinPrivateMatch,
