@@ -13,6 +13,8 @@ socket:
 
 session:
   token_expiry_sec: 7200
+  encryption_key: "6d916eacb622fed61449cfeb3580593ac8cd6cefc504586047f061346e0e98aa"
+  refresh_encryption_key: "b1576dc2ab4285055674e7acc85c3424902ae214498db807b511c70ad6fc8224"
 
 runtime:
   path: "/nakama/data/modules"
@@ -26,7 +28,3 @@ console:
   username: "admin"
   password: "password"
   signing_key: "c8055f65ec35cbe4b5b5fe3af6b5f5b6d988176a0759b255853973016409eab3"
-
-session:
-  encryption_key: "6d916eacb622fed61449cfeb3580593ac8cd6cefc504586047f061346e0e98aa"
-  refresh_encryption_key: "b1576dc2ab4285055674e7acc85c3424902ae214498db807b511c70ad6fc8224"

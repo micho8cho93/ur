@@ -5,7 +5,6 @@ import { useRouter } from 'expo-router';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
 import { useChallenges } from '@/src/challenges/useChallenges';
-import { buildChallengeViewModels } from '@/src/challenges/challengeUi';
 import { Button } from '../ui/Button';
 
 interface ChallengeSummaryCardProps {
@@ -18,18 +17,6 @@ export const ChallengeSummaryCard: React.FC<ChallengeSummaryCardProps> = ({ styl
 
   const challengeCount = definitions.length;
   const completedCount = progress?.totalCompleted ?? 0;
-  const challengeRows = buildChallengeViewModels(definitions, progress);
-  const completedChallenges = [...challengeRows]
-    .filter((challenge) => challenge.completed)
-    .sort((left, right) => {
-      const leftTime = left.completedAt ? Date.parse(left.completedAt) : 0;
-      const rightTime = right.completedAt ? Date.parse(right.completedAt) : 0;
-      if (leftTime === rightTime) {
-        return left.name.localeCompare(right.name);
-      }
-
-      return rightTime - leftTime;
-    });
 
   return (
     <View style={[styles.card, style]}>
@@ -58,22 +45,6 @@ export const ChallengeSummaryCard: React.FC<ChallengeSummaryCardProps> = ({ styl
               <Text style={styles.statLabel}>Total</Text>
             </View>
           </View>
-
-          {completedChallenges.length > 0 ? (
-            <View style={styles.previewList}>
-              <Text style={styles.listHeading}>Completed Challenges</Text>
-              {completedChallenges.map((challenge) => (
-                <View key={challenge.id} style={styles.previewRow}>
-                  <Text style={styles.previewName}>{challenge.name}</Text>
-                  <Text style={styles.previewReward}>+{challenge.rewardXp} XP</Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.body}>
-              No completed challenges yet. Your confirmed completions will appear here as the backend records them.
-            </Text>
-          )}
 
           {isRefreshing ? <Text style={styles.metaText}>Refreshing your latest challenge record…</Text> : null}
           {errorMessage && definitions.length > 0 ? (
@@ -152,30 +123,6 @@ const styles = StyleSheet.create({
   statLabel: {
     ...urTypography.label,
     color: 'rgba(232, 210, 176, 0.74)',
-    fontSize: 10,
-  },
-  previewList: {
-    gap: 6,
-  },
-  listHeading: {
-    ...urTypography.label,
-    color: 'rgba(240, 224, 196, 0.72)',
-    fontSize: 10,
-  },
-  previewRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: urTheme.spacing.sm,
-  },
-  previewName: {
-    color: '#F8ECD6',
-    fontSize: 13,
-    lineHeight: 18,
-    flex: 1,
-  },
-  previewReward: {
-    ...urTypography.label,
-    color: urTheme.colors.goldBright,
     fontSize: 10,
   },
   metaText: {

@@ -30,7 +30,7 @@ describe('ChallengeSummaryCard', () => {
     jest.clearAllMocks();
   });
 
-  it('lists completed challenges without the redundant completion sentence', () => {
+  it('shows summary stats without the completed challenge preview list', () => {
     const definitions = CHALLENGE_DEFINITIONS.slice(0, 3);
     const progress = createDefaultUserChallengeProgressSnapshot('2026-03-21T12:00:00.000Z');
 
@@ -59,9 +59,12 @@ describe('ChallengeSummaryCard', () => {
 
     const view = render(<ChallengeSummaryCard />);
 
-    expect(view.getByText('Completed Challenges')).toBeTruthy();
-    expect(view.getByText(definitions[0].name)).toBeTruthy();
-    expect(view.getByText(definitions[1].name)).toBeTruthy();
+    expect(view.getByText('Completed')).toBeTruthy();
+    expect(view.getByText('Total')).toBeTruthy();
+    expect(view.getByText('View Challenges')).toBeTruthy();
+    expect(view.queryByText('Completed Challenges')).toBeNull();
+    expect(view.queryByText(definitions[0].name)).toBeNull();
+    expect(view.queryByText(definitions[1].name)).toBeNull();
     expect(view.queryByText(definitions[2].name)).toBeNull();
     expect(view.queryByText(`You have completed 2 of ${definitions.length} permanent challenges.`)).toBeNull();
   });
