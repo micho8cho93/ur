@@ -168,11 +168,23 @@ type CreatePrivateMatchRpcPayload = {
   hasGuestJoined?: unknown;
 };
 
+const normalizeRpcPayload = (payload: unknown): unknown => {
+  if (typeof payload !== "string") {
+    return payload;
+  }
+
+  try {
+    return JSON.parse(payload);
+  } catch {
+    return payload;
+  }
+};
+
 const parsePrivateMatchPayload = (
   payload: unknown,
   options?: { requireGuestFlag?: boolean }
 ): { matchId: string; modeId: MatchModeId; code: string; hasGuestJoined?: boolean } => {
-  const rpcPayload = payload as CreatePrivateMatchRpcPayload | undefined;
+  const rpcPayload = normalizeRpcPayload(payload) as CreatePrivateMatchRpcPayload | undefined;
   const matchId = typeof rpcPayload?.matchId === "string" ? rpcPayload.matchId : null;
   const modeId = rpcPayload?.modeId;
   const code = normalizePrivateMatchCodeInput(typeof rpcPayload?.code === "string" ? rpcPayload.code : "");
