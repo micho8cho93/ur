@@ -1,3 +1,4 @@
+import { XpRewardBadge } from '@/components/progression/XpRewardBadge';
 import { Button } from '@/components/ui/Button';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
@@ -6,10 +7,11 @@ import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { useMatchmaking } from '@/hooks/useMatchmaking';
 import { BotDifficulty } from '@/logic/bot/types';
 import { GAME_MODE_SCREEN_NOTE, getMatchConfig } from '@/logic/matchConfigs';
+import { getXpAwardAmount } from '@/shared/progression';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React from 'react';
-import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Platform, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 
 const botWideBackground = require('../../assets/images/bot_bg.png');
 const botMobileBackground = require('../../assets/images/bot_bg_mobile.png');
@@ -71,10 +73,41 @@ export default function BotSelection() {
   const matchConfig = React.useMemo(() => getMatchConfig(resolvedModeId), [resolvedModeId]);
   const isPracticeMode = matchConfig.isPracticeMode;
   const headerTitle = isPracticeMode ? 'Game Modes' : 'Local Match';
+  const winRewardXp = getXpAwardAmount(matchConfig.offlineWinRewardSource);
 
   const handleSelect = (difficulty: BotDifficulty) => {
     setPendingDifficulty(difficulty);
     startBotGame(difficulty, matchConfig);
+  };
+
+  const renderBotCard = (level: BotLevelCard, cardStyle: StyleProp<ViewStyle>) => {
+    const isPending = pendingDifficulty === level.difficulty;
+
+    return (
+      <View key={level.difficulty} style={[styles.card, cardStyle, { borderColor: `${level.accent}C8` }]}>
+        <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+        <View style={styles.cardBorder} />
+        <XpRewardBadge amount={winRewardXp} style={styles.rewardBadge} />
+
+        <View style={styles.cardHeader}>
+          <View style={[styles.iconWrap, { backgroundColor: `${level.accent}26`, borderColor: `${level.accent}88` }]}>
+            <MaterialIcons name={level.icon} size={20} color={level.accent} />
+          </View>
+          <View style={styles.copyColumn}>
+            <Text style={styles.cardTitle}>{level.title}</Text>
+            <Text style={styles.cardTagline}>{level.tagline}</Text>
+          </View>
+        </View>
+
+        <Text style={styles.cardDescription}>{level.description}</Text>
+        <Button
+          title={isPending ? 'Preparing...' : `Play ${level.title}`}
+          disabled={pendingDifficulty !== null}
+          loading={isPending}
+          onPress={() => handleSelect(level.difficulty)}
+        />
+      </View>
+    );
   };
 
   return (
@@ -126,65 +159,11 @@ export default function BotSelection() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.compactCardRow}
           >
-            {BOT_LEVELS.map(level => {
-              const isPending = pendingDifficulty === level.difficulty;
-
-              return (
-                <View key={level.difficulty} style={[styles.card, styles.compactCard, { borderColor: `${level.accent}C8` }]}>
-                  <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
-                  <View style={styles.cardBorder} />
-
-                  <View style={styles.cardHeader}>
-                    <View style={[styles.iconWrap, { backgroundColor: `${level.accent}26`, borderColor: `${level.accent}88` }]}>
-                      <MaterialIcons name={level.icon} size={20} color={level.accent} />
-                    </View>
-                    <View style={styles.copyColumn}>
-                      <Text style={styles.cardTitle}>{level.title}</Text>
-                      <Text style={styles.cardTagline}>{level.tagline}</Text>
-                    </View>
-                  </View>
-
-                  <Text style={styles.cardDescription}>{level.description}</Text>
-                  <Button
-                    title={isPending ? 'Preparing...' : `Play ${level.title}`}
-                    disabled={pendingDifficulty !== null}
-                    loading={isPending}
-                    onPress={() => handleSelect(level.difficulty)}
-                  />
-                </View>
-              );
-            })}
+            {BOT_LEVELS.map((level) => renderBotCard(level, styles.compactCard))}
           </ScrollView>
         ) : (
           <View style={styles.gridList}>
-            {BOT_LEVELS.map(level => {
-              const isPending = pendingDifficulty === level.difficulty;
-
-              return (
-                <View key={level.difficulty} style={[styles.card, styles.gridCard, { borderColor: `${level.accent}C8` }]}>
-                  <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
-                  <View style={styles.cardBorder} />
-
-                  <View style={styles.cardHeader}>
-                    <View style={[styles.iconWrap, { backgroundColor: `${level.accent}26`, borderColor: `${level.accent}88` }]}>
-                      <MaterialIcons name={level.icon} size={20} color={level.accent} />
-                    </View>
-                    <View style={styles.copyColumn}>
-                      <Text style={styles.cardTitle}>{level.title}</Text>
-                      <Text style={styles.cardTagline}>{level.tagline}</Text>
-                    </View>
-                  </View>
-
-                  <Text style={styles.cardDescription}>{level.description}</Text>
-                  <Button
-                    title={isPending ? 'Preparing...' : `Play ${level.title}`}
-                    disabled={pendingDifficulty !== null}
-                    loading={isPending}
-                    onPress={() => handleSelect(level.difficulty)}
-                  />
-                </View>
-              );
-            })}
+            {BOT_LEVELS.map((level) => renderBotCard(level, styles.gridCard))}
           </View>
         )}
       </ScrollView>
@@ -311,6 +290,9 @@ const styles = StyleSheet.create({
     borderRadius: urTheme.radii.md,
     borderWidth: 1,
     borderColor: 'rgba(255, 230, 181, 0.22)',
+  },
+  rewardBadge: {
+    marginBottom: urTheme.spacing.md,
   },
   cardHeader: {
     flexDirection: 'row',

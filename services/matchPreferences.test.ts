@@ -47,6 +47,20 @@ describe('matchPreferences', () => {
     });
   });
 
+  it('normalizes legacy dice animation speeds to the closest supported option', async () => {
+    mockedAsyncStorage.getItem.mockResolvedValue(
+      JSON.stringify({
+        ...DEFAULT_MATCH_PREFERENCES,
+        diceAnimationSpeed: 1.4,
+      }),
+    );
+
+    await expect(getMatchPreferences()).resolves.toEqual({
+      ...DEFAULT_MATCH_PREFERENCES,
+      diceAnimationSpeed: 1,
+    });
+  });
+
   it('persists partial updates while preserving the rest of the match preferences', async () => {
     mockedAsyncStorage.getItem.mockResolvedValue(JSON.stringify(DEFAULT_MATCH_PREFERENCES));
 

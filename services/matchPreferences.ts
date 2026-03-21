@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const DICE_ANIMATION_SPEED_OPTIONS = [0.75, 1, 1.25, 1.5] as const;
+export const DICE_ANIMATION_SPEED_OPTIONS = [0.25, 0.5, 0.75, 1] as const;
 export const TURN_TIMER_SECONDS_OPTIONS = [10, 20, 30] as const;
 
 export type DiceAnimationSpeed = (typeof DICE_ANIMATION_SPEED_OPTIONS)[number];
@@ -25,7 +25,7 @@ export const DEFAULT_MATCH_PREFERENCES: MatchPreferences = {
   autoRollEnabled: false,
   bugAnimationEnabled: true,
   diceAnimationEnabled: true,
-  diceAnimationSpeed: 1,
+  diceAnimationSpeed: 0.5,
   moveHintEnabled: true,
   timerDurationSeconds: 20,
   timerEnabled: true,

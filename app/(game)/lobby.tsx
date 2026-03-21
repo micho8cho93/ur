@@ -1,3 +1,4 @@
+import { XpRewardBadge } from '@/components/progression/XpRewardBadge';
 import { Button } from '@/components/ui/Button';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
@@ -5,6 +6,7 @@ import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { LobbyMode, useMatchmaking } from '@/hooks/useMatchmaking';
 import { PRIVATE_MATCH_OPTIONS } from '@/logic/matchConfigs';
+import { getXpAwardAmount } from '@/shared/progression';
 import { PRIVATE_MATCH_CODE_LENGTH, isPrivateMatchCode, normalizePrivateMatchCodeInput } from '@/shared/privateMatchCode';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -113,6 +115,8 @@ export default function Lobby() {
     PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === createdPrivateMatch?.modeId) ?? null;
   const normalizedPrivateCodeInput = normalizePrivateMatchCodeInput(privateCodeInput);
   const canJoinPrivateGame = isPrivateMatchCode(normalizedPrivateCodeInput) && !isBusy;
+  const publicWinRewardXp = getXpAwardAmount('pvp_win');
+  const privateWinRewardXp = getXpAwardAmount('private_pvp_win');
 
   const buttonTitle = (() => {
     if (status === 'error' && activeAction !== 'create_private' && activeAction !== 'join_private') {
@@ -175,7 +179,6 @@ export default function Lobby() {
         overlayColor="rgba(7, 10, 16, 0.24)"
       />
       <Image
-        pointerEvents="none"
         source={urTextures.woodDark}
         resizeMode="repeat"
         style={[styles.pageTexture, showWideBackground && styles.pageTextureWide]}
@@ -213,8 +216,9 @@ export default function Lobby() {
 
         <View style={styles.cardGrid}>
           <View style={styles.card}>
-            <Image pointerEvents="none" source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+            <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
             <View pointerEvents="none" style={styles.cardBorder} />
+            <XpRewardBadge amount={publicWinRewardXp} style={styles.rewardBadge} />
 
             <Text style={styles.title}>Find Opponent</Text>
             <Text style={styles.subtitle}>
@@ -236,12 +240,13 @@ export default function Lobby() {
           </View>
 
           <View style={styles.card}>
-            <Image pointerEvents="none" source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+            <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
             <View pointerEvents="none" style={styles.cardBorder} />
+            <XpRewardBadge amount={privateWinRewardXp} style={styles.rewardBadge} />
 
             <Text style={styles.title}>Create Private Game</Text>
             <Text style={styles.subtitle}>
-              Make a shareable room code for a friend. Private matches award the lowest XP and never count toward challenges.
+              {`Make a shareable room code for a friend. Private match wins award +${privateWinRewardXp} XP and never count toward challenges.`}
             </Text>
 
             {privateStatusLabel ? <Text style={styles.statusText}>{privateStatusLabel}</Text> : null}
@@ -296,12 +301,13 @@ export default function Lobby() {
           </View>
 
           <View style={styles.card}>
-            <Image pointerEvents="none" source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+            <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
             <View pointerEvents="none" style={styles.cardBorder} />
+            <XpRewardBadge amount={privateWinRewardXp} style={styles.rewardBadge} />
 
             <Text style={styles.title}>Enter Private Game Code</Text>
             <Text style={styles.subtitle}>
-              Paste the short code your friend sent you to enter their private table.
+              {`Paste the short code your friend sent you to enter their private table and play for the +${privateWinRewardXp} XP private-match reward.`}
             </Text>
 
             {joinStatusLabel ? <Text style={styles.statusText}>{joinStatusLabel}</Text> : null}
@@ -428,6 +434,9 @@ const styles = StyleSheet.create({
     borderRadius: urTheme.radii.md,
     borderWidth: 1,
     borderColor: 'rgba(255, 231, 192, 0.25)',
+  },
+  rewardBadge: {
+    marginBottom: urTheme.spacing.md,
   },
   title: {
     ...urTypography.title,

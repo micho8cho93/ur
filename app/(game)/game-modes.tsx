@@ -1,9 +1,11 @@
+import { XpRewardBadge } from '@/components/progression/XpRewardBadge';
 import { Button } from '@/components/ui/Button';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { GAME_MODE_CONFIGS, type MatchModeId } from '@/logic/matchConfigs';
+import { getXpAwardAmount } from '@/shared/progression';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import React from 'react';
@@ -57,6 +59,10 @@ export default function GameModesScreen() {
             <View key={config.modeId} style={[styles.card, isCompactLayout && styles.cardCompact]}>
               <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
               <View style={styles.cardBorder} />
+              <XpRewardBadge
+                amount={getXpAwardAmount(config.offlineWinRewardSource)}
+                style={styles.rewardBadge}
+              />
 
               <View style={styles.cardHeader}>
                 <View style={styles.iconWrap}>
@@ -177,6 +183,9 @@ const styles = StyleSheet.create({
     borderRadius: urTheme.radii.md,
     borderWidth: 1,
     borderColor: 'rgba(255, 230, 181, 0.22)',
+  },
+  rewardBadge: {
+    marginBottom: urTheme.spacing.md,
   },
   cardHeader: {
     flexDirection: 'row',

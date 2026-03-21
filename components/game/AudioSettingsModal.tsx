@@ -23,12 +23,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const VOLUME_OPTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
-const DICE_SPEED_OPTIONS: ReadonlyArray<{ label: string; value: DiceAnimationSpeed }> = [
-  { label: '0.75x', value: 0.75 },
-  { label: '1x', value: 1 },
-  { label: '1.25x', value: 1.25 },
-  { label: '1.5x', value: 1.5 },
-];
 const TURN_TIMER_OPTIONS: ReadonlyArray<{ label: string; value: TurnTimerSeconds }> = TURN_TIMER_SECONDS_OPTIONS.map(
   (option) => ({ label: `${option}s`, value: option }),
 );
@@ -82,6 +76,13 @@ type ChoiceRowProps<T extends string | number> = {
 };
 
 const formatPercent = (value: number) => `${Math.round(value * 100)}%`;
+const formatDiceAnimationSpeedLabel = (value: DiceAnimationSpeed) => (value === 1 ? '1x' : `${value.toFixed(2)}x`);
+const DICE_SPEED_OPTIONS: ReadonlyArray<{ label: string; value: DiceAnimationSpeed }> = [
+  { label: formatDiceAnimationSpeedLabel(0.25), value: 0.25 },
+  { label: formatDiceAnimationSpeedLabel(0.5), value: 0.5 },
+  { label: formatDiceAnimationSpeedLabel(0.75), value: 0.75 },
+  { label: formatDiceAnimationSpeedLabel(1), value: 1 },
+];
 
 const ToggleSettingRow: React.FC<ToggleSettingRowProps> = ({
   title,
@@ -253,9 +254,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
         <ChoiceSettingRow
           title="Dice Animation Speed"
-          hint="Faster speeds shorten the roll animation"
+          hint="Lower values make the roll animation last longer"
           value={diceAnimationSpeed}
-          valueLabel={`${diceAnimationSpeed}x`}
+          valueLabel={formatDiceAnimationSpeedLabel(diceAnimationSpeed)}
           options={DICE_SPEED_OPTIONS}
           onValueChange={onSetDiceAnimationSpeed}
           disabled={!diceAnimationEnabled}

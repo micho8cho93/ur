@@ -294,7 +294,7 @@ jest.mock('@/services/matchPreferences', () => ({
     autoRollEnabled: false,
     bugAnimationEnabled: true,
     diceAnimationEnabled: true,
-    diceAnimationSpeed: 1,
+    diceAnimationSpeed: 0.5,
     timerDurationSeconds: 20,
     timerEnabled: true,
   },
@@ -365,7 +365,7 @@ describe('GameRoom match dice stage', () => {
       autoRollEnabled: false,
       bugAnimationEnabled: true,
       diceAnimationEnabled: true,
-      diceAnimationSpeed: 1,
+      diceAnimationSpeed: 0.5,
       timerDurationSeconds: 20,
       timerEnabled: true,
     });
@@ -374,7 +374,7 @@ describe('GameRoom match dice stage', () => {
       autoRollEnabled: false,
       bugAnimationEnabled: true,
       diceAnimationEnabled: true,
-      diceAnimationSpeed: 1,
+      diceAnimationSpeed: 0.5,
       timerDurationSeconds: 20,
       timerEnabled: true,
     });
