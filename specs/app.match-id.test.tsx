@@ -8,7 +8,7 @@ const mockMatchDiceRollStage = jest.fn(({ playbackId }: { playbackId: number }) 
   return <Text testID="match-dice-stage-playback">{String(playbackId)}</Text>;
 });
 
-const mockDiceRollScene = jest.fn(() => {
+const mockSlotDiceScene = jest.fn(() => {
   const { Text } = require('react-native');
   return <Text testID="mock-inline-dice-scene">inline</Text>;
 });
@@ -215,8 +215,8 @@ jest.mock('@/components/game/MatchMomentIndicator', () => ({
   MatchMomentIndicator: (props: { cue: { message: string } | null }) => mockMatchMomentIndicator(props),
 }));
 
-jest.mock('@/components/3d/DiceRollScene', () => ({
-  DiceRollScene: () => mockDiceRollScene(),
+jest.mock('@/components/game/SlotDiceScene', () => ({
+  SlotDiceScene: () => mockSlotDiceScene(),
 }));
 
 jest.mock('@/config/nakama', () => ({
@@ -372,6 +372,8 @@ describe('GameRoom match dice stage', () => {
   });
 
   it('routes iOS rolls through the external stage playback id and keeps the inline scene idle', async () => {
+    jest.useFakeTimers();
+
     render(<GameRoom />);
 
     await act(async () => {
@@ -395,10 +397,12 @@ describe('GameRoom match dice stage', () => {
         playbackId: 1,
       }),
     );
-    expect(mockDiceRollScene).not.toHaveBeenCalled();
+    expect(mockSlotDiceScene).not.toHaveBeenCalled();
   });
 
   it('clears the embedded dice visual before an offline bot roll resolves on Android', async () => {
+    jest.useFakeTimers();
+
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
       get: () => 'android',
@@ -451,6 +455,8 @@ describe('GameRoom match dice stage', () => {
   });
 
   it('auto-rolls after the configured delay when automatic rolling is enabled', async () => {
+    jest.useFakeTimers();
+
     mockGetMatchPreferences.mockResolvedValue({
       announcementCuesEnabled: true,
       autoRollEnabled: true,
@@ -498,6 +504,8 @@ describe('GameRoom match dice stage', () => {
   });
 
   it('suppresses announcement cues after timeout assistance takes over during idle play', async () => {
+    jest.useFakeTimers();
+
     mockStoreState.gameState = {
       ...baseGameState,
       history: ['light opened the match.'],

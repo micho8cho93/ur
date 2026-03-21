@@ -1,5 +1,4 @@
-import { DiceRollScene } from '@/components/3d/DiceRollScene';
-import { DEFAULT_DICE_ROLL_DURATION_MS } from '@/components/3d/DiceRollScene.shared';
+import { SlotDiceScene } from '@/components/game/SlotDiceScene';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures } from '@/constants/urTheme';
 import React, { useEffect, useRef, useState } from 'react';
@@ -13,11 +12,12 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
+import { DEFAULT_DICE_ROLL_DURATION_MS } from './slotDiceShared';
 
 const STAGE_ROLL_BUTTON_WIDTH_SCALE = 1.2;
 const STAGE_ROLL_BUTTON_HEIGHT_SCALE = 0.8;
-const STAGE_ROLL_SCENE_SCALE = 0.92;
-const MOBILE_DICE_SCALE = 1.44;
+const STAGE_ROLL_SCENE_SCALE = 1.08;
+const MOBILE_DICE_SCALE = 1.62;
 const MOBILE_DICE_VIEWPORT_WIDTH_SCALE = 1.5;
 const ROLL_BUTTON_ART = require('../../assets/buttons/roll_button.png');
 
@@ -44,6 +44,7 @@ interface DiceStageVisualProps {
   rolling: boolean;
   canRoll: boolean;
   compact?: boolean;
+  onResultShown?: () => void;
   visible?: boolean;
 }
 
@@ -52,7 +53,6 @@ interface DiceSceneStateParams {
   rolling: boolean;
   canRoll: boolean;
   showVisual: boolean;
-  onResultShown?: () => void;
 }
 
 const useDiceSceneState = ({
@@ -60,11 +60,9 @@ const useDiceSceneState = ({
   rolling,
   canRoll,
   showVisual,
-  onResultShown,
 }: DiceSceneStateParams) => {
   const previousShowVisualRef = useRef(showVisual);
   const wasRollingRef = useRef(false);
-  const reportedResultPlaybackRef = useRef<number>(0);
   const [scenePlaybackId, setScenePlaybackId] = useState(0);
   const [lastResolvedValue, setLastResolvedValue] = useState<number | null>(value);
 
@@ -97,28 +95,6 @@ const useDiceSceneState = ({
   const resolvedValue = value ?? lastResolvedValue;
   const isSceneRolling = showVisual && rolling;
 
-  useEffect(() => {
-    if (!rolling) {
-      return;
-    }
-
-    // Reset result reporting for the active cast so we can notify exactly once once it settles.
-    reportedResultPlaybackRef.current = 0;
-  }, [rolling]);
-
-  useEffect(() => {
-    if (!showVisual || !onResultShown || resolvedValue === null || isSceneRolling || scenePlaybackId === 0) {
-      return;
-    }
-
-    if (reportedResultPlaybackRef.current === scenePlaybackId) {
-      return;
-    }
-
-    reportedResultPlaybackRef.current = scenePlaybackId;
-    onResultShown();
-  }, [isSceneRolling, onResultShown, resolvedValue, scenePlaybackId, showVisual]);
-
   const hasSettledResult = resolvedValue !== null && !rolling;
   const shouldHoldSettledDice = hasSettledResult && showVisual;
   const sceneVariant: 'animated' | 'settled' | 'start' = isSceneRolling
@@ -143,12 +119,13 @@ export const DiceStageVisual: React.FC<DiceStageVisualProps> = ({
   rolling,
   canRoll,
   compact = false,
+  onResultShown,
   visible = true,
 }) => {
   const { width } = useWindowDimensions();
   const isCompactVisual = compact || width < 1280;
-  const sceneSize = isCompactVisual ? 0.98 : 1.12;
-  const { renderedPlaybackId, sceneVariant } = useDiceSceneState({
+  const sceneSize = isCompactVisual ? 1.12 : 1.26;
+  const { renderedPlaybackId, resolvedValue, sceneVariant } = useDiceSceneState({
     value,
     rolling,
     canRoll,
@@ -168,9 +145,12 @@ export const DiceStageVisual: React.FC<DiceStageVisualProps> = ({
           isCompactVisual && styles.externalStageVisualViewportCompact,
         ]}
       >
-        <DiceRollScene
+        <SlotDiceScene
           playbackId={renderedPlaybackId}
           durationMs={animationDurationMs}
+          onSettled={onResultShown}
+          rollValue={resolvedValue}
+          presentation="stage"
           size={sceneSize}
           variant={sceneVariant}
         />
@@ -212,7 +192,6 @@ export const Dice: React.FC<DiceProps> = ({
     rolling,
     canRoll,
     showVisual: shouldRenderEmbeddedVisual,
-    onResultShown,
   });
 
   useEffect(() => {
@@ -411,9 +390,11 @@ export const Dice: React.FC<DiceProps> = ({
 
   const renderDiceVisual = (sceneStyle?: StyleProp<ViewStyle>) => (
     <View pointerEvents="none" testID="dice-roll-scene-host" style={[styles.rollSceneViewport, sceneStyle]}>
-      <DiceRollScene
+      <SlotDiceScene
         playbackId={renderedPlaybackId}
         durationMs={animationDurationMs}
+        onSettled={onResultShown}
+        rollValue={resolvedValue}
         size={sceneSize}
         variant={sceneVariant}
       />
@@ -703,18 +684,18 @@ const styles = StyleSheet.create({
     marginBottom: urTheme.spacing.xs,
   },
   rollSceneViewport: {
-    width: 244,
-    height: 100,
+    width: 276,
+    height: 122,
     alignItems: 'center',
     justifyContent: 'center',
   },
   compactRollSceneViewport: {
-    width: 204,
-    height: 78,
+    width: 232,
+    height: 96,
   },
   stageRollSceneViewport: {
-    width: Math.round(244 * STAGE_ROLL_BUTTON_WIDTH_SCALE),
-    height: Math.round(100 * STAGE_ROLL_BUTTON_HEIGHT_SCALE),
+    width: Math.round(262 * STAGE_ROLL_BUTTON_WIDTH_SCALE),
+    height: Math.round(112 * STAGE_ROLL_BUTTON_HEIGHT_SCALE),
   },
   compactStageContent: {
     width: '100%',
@@ -732,20 +713,20 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   compactStageRollSceneViewport: {
-    width: Math.round(126 * STAGE_ROLL_BUTTON_WIDTH_SCALE),
-    height: Math.round(52 * STAGE_ROLL_BUTTON_HEIGHT_SCALE),
+    width: Math.round(150 * STAGE_ROLL_BUTTON_WIDTH_SCALE),
+    height: Math.round(64 * STAGE_ROLL_BUTTON_HEIGHT_SCALE),
   },
   iosCompactStageRollSceneViewport: {
-    width: Math.round(136 * STAGE_ROLL_BUTTON_WIDTH_SCALE),
-    height: Math.round(56 * STAGE_ROLL_BUTTON_HEIGHT_SCALE),
+    width: Math.round(158 * STAGE_ROLL_BUTTON_WIDTH_SCALE),
+    height: Math.round(68 * STAGE_ROLL_BUTTON_HEIGHT_SCALE),
   },
   mobileCompactStageRollSceneViewport: {
-    width: Math.round(118 * MOBILE_DICE_VIEWPORT_WIDTH_SCALE),
-    height: 46,
+    width: Math.round(138 * MOBILE_DICE_VIEWPORT_WIDTH_SCALE),
+    height: 58,
   },
   iosMobileCompactStageRollSceneViewport: {
-    width: Math.round(128 * MOBILE_DICE_VIEWPORT_WIDTH_SCALE),
-    height: 50,
+    width: Math.round(148 * MOBILE_DICE_VIEWPORT_WIDTH_SCALE),
+    height: 62,
   },
   compactStageTextWrap: {
     marginLeft: 8,
@@ -860,8 +841,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   mobileArtRollSceneViewport: {
-    width: Math.round(168 * MOBILE_DICE_VIEWPORT_WIDTH_SCALE),
-    height: 76,
+    width: Math.round(188 * MOBILE_DICE_VIEWPORT_WIDTH_SCALE),
+    height: 90,
   },
   mobileArtButtonWrap: {
     alignItems: 'center',
@@ -884,15 +865,15 @@ const styles = StyleSheet.create({
   },
   externalStageVisualViewport: {
     width: '100%',
-    maxWidth: 232,
-    height: 112,
+    maxWidth: 264,
+    height: 130,
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
   },
   externalStageVisualViewportCompact: {
-    maxWidth: 216,
-    height: 96,
+    maxWidth: 242,
+    height: 112,
   },
   stageSubtitle: {
     textTransform: 'uppercase',

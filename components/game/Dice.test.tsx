@@ -3,19 +3,35 @@ import { render, screen } from '@testing-library/react-native';
 import { Platform, StyleSheet } from 'react-native';
 import { Dice } from './Dice';
 
-const mockDiceRollScene = jest.fn(({ playbackId, variant }: { playbackId: number; variant: string }) => {
+const mockSlotDiceScene = jest.fn(
+  ({
+    playbackId,
+    onSettled,
+    rollValue,
+    variant,
+  }: {
+    playbackId: number;
+    onSettled?: () => void;
+    rollValue: number | null;
+    variant: string;
+  }) => {
   const React = jest.requireActual('react');
   const { Text } = jest.requireActual('react-native');
-  return <Text testID="mock-dice-roll-scene">{`${playbackId}:${variant}`}</Text>;
+  return <Text testID="mock-slot-dice-scene">{`${playbackId}:${variant}:${String(rollValue)}`}</Text>;
 });
 
-jest.mock('@/components/3d/DiceRollScene', () => ({
-  DiceRollScene: (props: { playbackId: number; variant: string }) => mockDiceRollScene(props),
+jest.mock('@/components/game/SlotDiceScene', () => ({
+  SlotDiceScene: (props: {
+    playbackId: number;
+    onSettled?: () => void;
+    rollValue: number | null;
+    variant: string;
+  }) => mockSlotDiceScene(props),
 }));
 
 describe('Dice', () => {
   beforeEach(() => {
-    mockDiceRollScene.mockClear();
+    mockSlotDiceScene.mockClear();
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
       get: () => 'ios',
@@ -36,7 +52,7 @@ describe('Dice', () => {
     );
 
     expect(screen.queryByTestId('dice-roll-scene-host')).toBeNull();
-    expect(mockDiceRollScene).not.toHaveBeenCalled();
+    expect(mockSlotDiceScene).not.toHaveBeenCalled();
   });
 
   it('hides the embedded scene when visuals are disabled', () => {
@@ -53,7 +69,7 @@ describe('Dice', () => {
     );
 
     expect(screen.queryByTestId('dice-roll-scene-host')).toBeNull();
-    expect(mockDiceRollScene).not.toHaveBeenCalled();
+    expect(mockSlotDiceScene).not.toHaveBeenCalled();
   });
 
   it('uses the roll button art for the web stage control', () => {
@@ -75,7 +91,7 @@ describe('Dice', () => {
 
     expect(screen.getByTestId('dice-roll-art')).toBeTruthy();
     expect(screen.queryByTestId('dice-roll-scene-host')).toBeNull();
-    expect(mockDiceRollScene).not.toHaveBeenCalled();
+    expect(mockSlotDiceScene).not.toHaveBeenCalled();
   });
 
   it('renders the roll button in a sunk state when latched', () => {
@@ -102,5 +118,27 @@ describe('Dice', () => {
     )?.translateY;
 
     expect(translateY).toBeGreaterThan(0);
+  });
+
+  it('forwards the settled callback to the visual scene', () => {
+    const onResultShown = jest.fn();
+
+    render(
+      <Dice
+        value={2}
+        rolling={false}
+        onRoll={jest.fn()}
+        onResultShown={onResultShown}
+        canRoll={false}
+        mode="panel"
+      />,
+    );
+
+    const latestCall = mockSlotDiceScene.mock.calls.at(-1)?.[0] as { onSettled?: () => void } | undefined;
+    expect(latestCall?.onSettled).toBeDefined();
+
+    latestCall?.onSettled?.();
+
+    expect(onResultShown).toHaveBeenCalledTimes(1);
   });
 });

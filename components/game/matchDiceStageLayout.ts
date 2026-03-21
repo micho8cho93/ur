@@ -1,5 +1,3 @@
-import type { DiceMotionSample } from '@/components/3d/diceShared';
-
 export type BoardFrame = {
   height: number;
   width: number;
@@ -19,16 +17,6 @@ export const BOARD_CLEARANCE = 12;
 export const COMPACT_STAGE_LEFT_NUDGE = 16;
 export const COMPACT_STAGE_MIN_X = -28;
 export const MOBILE_DICE_STAGE_WIDTH_SCALE = 1.5;
-export const MATCH_DICE_STAGE_RIGHT_PADDING_RATIO = 0.08;
-export const MATCH_DICE_STAGE_PROJECTION = {
-  horizontalCenterRatio: 0.47,
-  horizontalScaleRatio: 0.148,
-  verticalAnchorRatio: 0.77,
-  verticalYScaleRatio: 0.18,
-  verticalZScaleRatio: 0.09,
-  dieRadiusWidthRatio: 0.09,
-  dieRadiusHeightRatio: 0.17,
-} as const;
 
 export const computeLandingZone = ({
   boardFrame,
@@ -70,35 +58,3 @@ export const computeLandingZone = ({
     y: Math.min(Math.max(preferredY, minY), maxY),
   };
 };
-
-export const getStagePixelPosition = ({
-  landingZone,
-  sample,
-}: {
-  landingZone: Pick<LandingZone, 'height' | 'width'>;
-  sample: DiceMotionSample;
-}) => {
-  const { height, width } = landingZone;
-
-  return {
-    x:
-      width * MATCH_DICE_STAGE_PROJECTION.horizontalCenterRatio +
-      sample.translate[0] * width * MATCH_DICE_STAGE_PROJECTION.horizontalScaleRatio,
-    y:
-      height * MATCH_DICE_STAGE_PROJECTION.verticalAnchorRatio +
-      sample.translate[2] * height * MATCH_DICE_STAGE_PROJECTION.verticalZScaleRatio -
-      sample.translate[1] * height * MATCH_DICE_STAGE_PROJECTION.verticalYScaleRatio,
-  };
-};
-
-export const getStageDieFootprintRadiusPx = (landingZone: Pick<LandingZone, 'height' | 'width'>) =>
-  Math.max(
-    16,
-    Math.min(
-      landingZone.width * MATCH_DICE_STAGE_PROJECTION.dieRadiusWidthRatio,
-      landingZone.height * MATCH_DICE_STAGE_PROJECTION.dieRadiusHeightRatio,
-    ),
-  );
-
-export const getLandingZoneRightEdgeLimitPx = (landingZone: Pick<LandingZone, 'width'>) =>
-  landingZone.width - Math.max(14, landingZone.width * MATCH_DICE_STAGE_RIGHT_PADDING_RATIO);
