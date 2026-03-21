@@ -1,4 +1,5 @@
 import { GameState, Player, PlayerColor } from "../logic/types";
+import { MatchModeId, isMatchModeId } from "../logic/matchConfigs";
 import { getPathLength } from "../logic/pathVariants";
 import { ProgressionAwardResponse, isProgressionAwardResponse } from "./progression";
 
@@ -85,6 +86,7 @@ export type CompletedBotMatchRewardMode = "standard" | "base_win_only";
 export type SubmitCompletedBotMatchRpcRequest = {
   summary: CompletedMatchSummary;
   tutorialId?: string | null;
+  modeId?: MatchModeId | null;
   rewardMode?: CompletedBotMatchRewardMode;
 };
 
@@ -98,49 +100,49 @@ export const CHALLENGE_DEFINITIONS: readonly ChallengeDefinition[] = [
     name: "First Victory",
     description: "Win your first completed game against any opponent.",
     type: "milestone",
-    rewardXp: 150,
+    rewardXp: 50,
   },
   {
     id: CHALLENGE_IDS.BEAT_EASY_BOT,
     name: "Beat the Easy Bot",
     description: "Win a completed game against the easy AI opponent.",
     type: "bot",
-    rewardXp: 100,
+    rewardXp: 30,
   },
   {
     id: CHALLENGE_IDS.FAST_FINISH,
     name: "Fast Finish",
     description: "Win a completed game in fewer than 100 total applied moves.",
     type: "match",
-    rewardXp: 175,
+    rewardXp: 150,
   },
   {
     id: CHALLENGE_IDS.SAFE_PLAY,
     name: "Safe Play",
     description: "Win a completed game without losing any pieces to captures.",
     type: "match",
-    rewardXp: 200,
+    rewardXp: 150,
   },
   {
     id: CHALLENGE_IDS.LUCKY_ROLL,
     name: "Lucky Roll",
     description: "Win a completed game after rolling the maximum value at least 3 times.",
     type: "match",
-    rewardXp: 175,
+    rewardXp: 100,
   },
   {
     id: CHALLENGE_IDS.HOME_STRETCH,
     name: "Home Stretch",
     description: "Win a completed game while making zero captures across the entire match.",
     type: "match",
-    rewardXp: 225,
+    rewardXp: 150,
   },
   {
     id: CHALLENGE_IDS.CAPTURE_MASTER,
     name: "Capture Master",
     description: "Capture at least 3 opponent pieces in a single completed game. Victory is not required.",
     type: "match",
-    rewardXp: 200,
+    rewardXp: 150,
   },
   {
     id: CHALLENGE_IDS.COMEBACK_WIN,
@@ -162,21 +164,21 @@ export const CHALLENGE_DEFINITIONS: readonly ChallengeDefinition[] = [
     name: "Beat the Medium Bot",
     description: "Win a completed game against the medium AI opponent.",
     type: "bot",
-    rewardXp: 150,
+    rewardXp: 100,
   },
   {
     id: CHALLENGE_IDS.BEAT_HARD_BOT,
     name: "Beat the Hard Bot",
     description: "Win a completed game against the hard AI opponent.",
     type: "bot",
-    rewardXp: 225,
+    rewardXp: 150,
   },
   {
     id: CHALLENGE_IDS.BEAT_PERFECT_BOT,
     name: "Beat the Perfect Bot",
     description: "Win a completed game against the perfect AI opponent.",
     type: "bot",
-    rewardXp: 350,
+    rewardXp: 250,
   },
 ] as const;
 
@@ -299,6 +301,7 @@ export const isSubmitCompletedBotMatchRpcRequest = (
   return (
     isCompletedMatchSummary(payload.summary) &&
     (typeof payload.tutorialId === "string" || payload.tutorialId === null || typeof payload.tutorialId === "undefined") &&
+    (typeof payload.modeId === "undefined" || payload.modeId === null || isMatchModeId(payload.modeId)) &&
     (typeof payload.rewardMode === "undefined" || isCompletedBotMatchRewardMode(payload.rewardMode))
   );
 };

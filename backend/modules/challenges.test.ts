@@ -2,6 +2,23 @@ import { CHALLENGE_DEFINITIONS } from "../../shared/challenges";
 import { ensureChallengeDefinitions } from "./challenges";
 
 describe("ensureChallengeDefinitions", () => {
+  it("publishes the configured challenge reward values", () => {
+    const rewardsById = Object.fromEntries(
+      CHALLENGE_DEFINITIONS.map((definition) => [definition.id, definition.rewardXp])
+    );
+
+    expect(rewardsById.first_victory).toBe(50);
+    expect(rewardsById.beat_easy_bot).toBe(30);
+    expect(rewardsById.fast_finish).toBe(150);
+    expect(rewardsById.safe_play).toBe(150);
+    expect(rewardsById.lucky_roll).toBe(100);
+    expect(rewardsById.home_stretch).toBe(150);
+    expect(rewardsById.capture_master).toBe(150);
+    expect(rewardsById.beat_medium_bot).toBe(100);
+    expect(rewardsById.beat_hard_bot).toBe(150);
+    expect(rewardsById.beat_perfect_bot).toBe(250);
+  });
+
   it("retries after a version conflict and succeeds once the definitions are already synced", () => {
     const logger = {
       info: jest.fn(),

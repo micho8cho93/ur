@@ -31,8 +31,7 @@ import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import { applyMove as applyEngineMove } from '@/logic/engine';
 import {
   getMatchConfig,
-  getPrivateMatchLabel,
-  PRACTICE_MODE_REWARD_LABEL,
+  getPracticeModeRewardLabel,
 } from '@/logic/matchConfigs';
 import type { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { gameAudio } from '@/services/audio';
@@ -79,7 +78,6 @@ import {
 import { MatchData, MatchPresenceEvent, Socket } from '@heroiclabs/nakama-js';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useFonts } from 'expo-font';
-import * as ExpoLinking from 'expo-linking';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Image, Platform, Pressable, Share, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -105,7 +103,7 @@ const AUTO_ROLL_DELAY_MS = 550;
 const BOARD_INTRO_FALLBACK_DELAY_MS = 400;
 const SHOULD_BYPASS_CINEMATIC_INTROS = process.env.NODE_ENV === 'test';
 
-type MatchMomentCueKind = 'play' | 'yourTurn' | 'zero' | 'stuck' | 'timeout' | 'rosette';
+type MatchMomentCueKind = 'play' | 'yourTurn' | 'zero' | 'stuck' | 'timeout' | 'rosette' | 'opponentJoined';
 type RollButtonLatchPhase = 'idle' | 'awaitingOutcome' | 'awaitingTurnReset';
 type TutorialCoachPhase =
   | 'idle'
@@ -163,6 +161,14 @@ const MATCH_MOMENT_CUES: Record<MatchMomentCueKind, Omit<MatchMomentIndicatorCue
     background: 'rgba(29, 31, 50, 0.94)',
     durationMs: 1300,
   },
+  opponentJoined: {
+    message: 'Opponent Joined',
+    accent: urTheme.colors.goldBright,
+    border: 'rgba(246, 214, 151, 0.86)',
+    glow: 'rgba(90, 168, 255, 0.16)',
+    background: 'rgba(20, 32, 37, 0.94)',
+    durationMs: 1450,
+  },
 };
 
 interface BoardTargetFrame {
@@ -176,7 +182,7 @@ const isMoveMatch = (left: MoveAction, right: MoveAction) =>
   left.pieceId === right.pieceId && left.fromIndex === right.fromIndex && left.toIndex === right.toIndex;
 
 export function GameRoom() {
-  const { id, offline, botDifficulty, tutorial, modeId, privateMatch, privateHost } = useLocalSearchParams<{
+  const { id, offline, botDifficulty, tutorial, modeId, privateMatch, privateHost, privateCode } = useLocalSearchParams<{
     id?: string | string[];
     offline?: string | string[];
     botDifficulty?: string | string[];
@@ -184,6 +190,7 @@ export function GameRoom() {
     modeId?: string | string[];
     privateMatch?: string | string[];
     privateHost?: string | string[];
+    privateCode?: string | string[];
   }>();
   const router = useRouter();
   const { width, height } = useWindowDimensions();
@@ -210,6 +217,10 @@ export function GameRoom() {
   const privateHostParam = useMemo(
     () => (Array.isArray(privateHost) ? privateHost[0] : privateHost),
     [privateHost],
+  );
+  const privateCodeParam = useMemo(
+    () => (Array.isArray(privateCode) ? privateCode[0] : privateCode),
+    [privateCode],
   );
   const resolvedBotDifficulty = useMemo(
     () => (isBotDifficulty(botDifficultyParam) ? botDifficultyParam : DEFAULT_BOT_DIFFICULTY),
@@ -308,28 +319,28 @@ export function GameRoom() {
     refresh: refreshChallenges,
   } = useChallenges();
   const isPlaythroughTutorialMatch = tutorialId === PLAYTHROUGH_TUTORIAL_ID;
-  const tutorialRewardMode: CompletedBotMatchRewardMode | undefined = isPlaythroughTutorialMatch
-    ? 'base_win_only'
-    : undefined;
   const effectiveMatchConfig = storedMatchId === matchId ? gameState.matchConfig : resolvedMatchConfig;
   const isPrivateMatch = privateMatchParam === '1';
   const isPrivateMatchHost = privateHostParam === '1';
-  const privateMatchLabel = useMemo(
-    () => getPrivateMatchLabel(effectiveMatchConfig.modeId),
-    [effectiveMatchConfig.modeId],
-  );
+  const privateMatchCode = privateCodeParam ?? null;
   const pieceCountPerSide = effectiveMatchConfig.pieceCountPerSide;
   const isPracticeModeMatch = effectiveMatchConfig.isPracticeMode;
+  const offlineBotRewardMode: CompletedBotMatchRewardMode | undefined =
+    isPlaythroughTutorialMatch || !effectiveMatchConfig.allowsChallenges ? 'base_win_only' : undefined;
+  const practiceModeRewardLabel = isPracticeModeMatch ? getPracticeModeRewardLabel(effectiveMatchConfig) : null;
 
   const hasAssignedColor = playerColor === 'light' || playerColor === 'dark';
   const canSyncOfflineBotRewards =
     effectiveMatchConfig.allowsXp && isOffline && isNakamaEnabled() && hasNakamaConfig() && Boolean(user);
   const shouldShowAccountRewards =
     (!isOffline && (effectiveMatchConfig.allowsXp || isPrivateMatch)) || canSyncOfflineBotRewards;
-  const shouldShowChallengeRewards = shouldShowAccountRewards && !isPlaythroughTutorialMatch && !isPrivateMatch;
+  const shouldShowChallengeRewards =
+    shouldShowAccountRewards &&
+    effectiveMatchConfig.allowsChallenges &&
+    !isPlaythroughTutorialMatch &&
+    !isPrivateMatch;
   const effectiveMatchToken = storedMatchId === matchId ? matchToken : null;
   const isMyTurn = hasAssignedColor && gameState.currentTurn === playerColor;
-  const canRoll = isMyTurn && gameState.phase === 'rolling';
   const didPlayerWin =
     gameState.winner !== null && hasAssignedColor ? gameState.winner === playerColor : gameState.winner === 'light';
   const winModalTitle = didPlayerWin ? 'Victory' : 'Defeat';
@@ -346,59 +357,47 @@ export function GameRoom() {
 
     return presenceIds.size;
   }, [isOffline, matchPresences, userId]);
-  const isWaitingForPrivateOpponent = isPrivateMatch && joinedPlayerCount < 2 && gameState.winner === null;
-  const privateInviteUrl = useMemo(() => {
-    if (!matchId || !isPrivateMatch) {
+  const isPrivateMatchReady = !isPrivateMatch || joinedPlayerCount >= 2 || gameState.winner !== null;
+  const canRoll = isMyTurn && gameState.phase === 'rolling' && isPrivateMatchReady;
+  const privateMatchStatusText = useMemo(() => {
+    if (!isPrivateMatch) {
       return null;
     }
 
-    const queryString = `modeId=${encodeURIComponent(effectiveMatchConfig.modeId)}&privateMatch=1`;
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-      return `${window.location.origin}/match/${encodeURIComponent(matchId)}?${queryString}`;
+    if (!isPrivateMatchReady) {
+      return isPrivateMatchHost
+        ? 'Waiting for the other player to arrive. The board stays locked until they do.'
+        : 'Waiting for the host to arrive. The board unlocks as soon as both of you are here.';
     }
 
-    return ExpoLinking.createURL(`/match/${matchId}`, {
-      queryParams: {
-        modeId: effectiveMatchConfig.modeId,
-        privateMatch: '1',
-      },
-    });
-  }, [effectiveMatchConfig.modeId, isPrivateMatch, matchId]);
+    return isPrivateMatchHost
+      ? 'Opponent connected. Your private board is unlocked.'
+      : 'Host connected. Your private board is unlocked.';
+  }, [isPrivateMatch, isPrivateMatchHost, isPrivateMatchReady]);
 
-  const handleSharePrivateInvite = React.useCallback(async () => {
-    if (!privateInviteUrl) {
+  const handleCopyPrivateCode = React.useCallback(async () => {
+    if (!privateMatchCode) {
       return;
     }
 
-    const message = `Join my Royal Game of Ur private match (${privateMatchLabel}): ${privateInviteUrl}`;
-
     try {
       if (Platform.OS === 'web') {
-        const shareApi = typeof navigator !== 'undefined' ? (navigator as Navigator & {
-          share?: (data: { title?: string; text?: string; url?: string }) => Promise<void>;
-        }).share : undefined;
-
-        if (shareApi) {
-          await shareApi({
-            title: 'Royal Game of Ur Private Match',
-            text: `Join my ${privateMatchLabel} private match.`,
-            url: privateInviteUrl,
-          });
+        const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+        if (clipboard?.writeText) {
+          await clipboard.writeText(privateMatchCode);
+          return;
         }
-        return;
       }
 
       await Share.share({
-        message,
-        url: privateInviteUrl,
+        message: `Royal Game of Ur private game code: ${privateMatchCode}`,
       });
     } catch {
-      // Sharing is best-effort. The invite URL stays visible in the modal.
+      // Copy/share is best-effort.
     }
-  }, [privateInviteUrl, privateMatchLabel]);
+  }, [privateMatchCode]);
 
   const [showWinModal, setShowWinModal] = React.useState(false);
-  const [showPrivateInviteModal, setShowPrivateInviteModal] = React.useState(isPrivateMatchHost);
   const [showAudioSettings, setShowAudioSettings] = React.useState(false);
   const [showTopMenu, setShowTopMenu] = React.useState(false);
   const [matchChallengeSummary, setMatchChallengeSummary] = React.useState<MatchChallengeRewardSummary | null>(null);
@@ -492,6 +491,7 @@ export function GameRoom() {
     currentTurn: PlayerColor;
     phase: typeof gameState.phase;
   } | null>(null);
+  const previousJoinedPlayerCountRef = useRef(0);
 
   const tutorialSegment =
     tutorialSegmentIndex < PLAYTHROUGH_TUTORIAL_SEGMENTS.length
@@ -856,8 +856,9 @@ export function GameRoom() {
         });
         const submission = await submitCompletedBotMatchResult({
           summary,
+          modeId: effectiveMatchConfig.modeId,
           tutorialId,
-          rewardMode: tutorialRewardMode,
+          rewardMode: offlineBotRewardMode,
         });
 
         if (!isMounted) {
@@ -936,8 +937,9 @@ export function GameRoom() {
     resolvedBotDifficulty,
     setLastProgressionAward,
     showWinModal,
+    effectiveMatchConfig.modeId,
     tutorialId,
-    tutorialRewardMode,
+    offlineBotRewardMode,
     user,
     isPlaythroughTutorialMatch,
   ]);
@@ -1059,6 +1061,7 @@ export function GameRoom() {
     suppressMatchCuesUntilInteractionRef.current = false;
     hasShownOpeningCueRef.current = null;
     matchCueIdRef.current = 0;
+    previousJoinedPlayerCountRef.current = 0;
     setTutorialSegmentIndex(0);
     setTutorialCoachPhase('idle');
     setLiveMatchCue(null);
@@ -1167,6 +1170,7 @@ export function GameRoom() {
       !introsComplete ||
       isScriptedTutorialPhase ||
       (isOffline && !botTimerEnabled) ||
+      !isPrivateMatchReady ||
       !isMyTurn ||
       gameState.winner !== null ||
       gameState.phase === 'ended'
@@ -1214,6 +1218,7 @@ export function GameRoom() {
     enqueueMatchCue,
     gameState.phase,
     gameState.winner,
+    isPrivateMatchReady,
     isMyTurn,
     isOffline,
     isScriptedTutorialPhase,
@@ -1270,7 +1275,7 @@ export function GameRoom() {
       return;
     }
 
-    if (!isMyTurn || gameState.winner !== null || gameState.phase === 'ended') {
+    if (!isPrivateMatchReady || !isMyTurn || gameState.winner !== null || gameState.phase === 'ended') {
       forceMoveAfterRollRef.current = false;
       return;
     }
@@ -1281,7 +1286,7 @@ export function GameRoom() {
 
     forceMoveAfterRollRef.current = false;
     makeMove(validMoves[0]);
-  }, [gameState.phase, gameState.winner, isMyTurn, makeMove, validMoves]);
+  }, [gameState.phase, gameState.winner, isMyTurn, isPrivateMatchReady, makeMove, validMoves]);
   useEffect(() => {
     if (!matchId) return;
     if (storedMatchId !== matchId) {
@@ -1301,14 +1306,19 @@ export function GameRoom() {
   }, [applyTutorialSnapshot, isPlaythroughTutorialMatch, matchId]);
 
   useEffect(() => {
-    setShowPrivateInviteModal(isPrivateMatchHost);
-  }, [isPrivateMatchHost, matchId]);
-
-  useEffect(() => {
-    if (!isWaitingForPrivateOpponent) {
-      setShowPrivateInviteModal(false);
+    if (!isPrivateMatch) {
+      previousJoinedPlayerCountRef.current = joinedPlayerCount;
+      return;
     }
-  }, [isWaitingForPrivateOpponent]);
+
+    const previousJoinedPlayerCount = previousJoinedPlayerCountRef.current;
+
+    if (previousJoinedPlayerCount > 0 && previousJoinedPlayerCount < 2 && joinedPlayerCount >= 2) {
+      enqueueMatchCue('opponentJoined');
+    }
+
+    previousJoinedPlayerCountRef.current = joinedPlayerCount;
+  }, [enqueueMatchCue, isPrivateMatch, joinedPlayerCount, matchId]);
 
   const socketRef = useRef<Socket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1715,6 +1725,10 @@ export function GameRoom() {
     (move: MoveAction) => {
       resumeAnnouncementCuesFromInteraction();
 
+      if (!isPrivateMatchReady) {
+        return;
+      }
+
       if (isScriptedTutorialPhase) {
         handleTutorialMove(move);
         return;
@@ -1722,7 +1736,7 @@ export function GameRoom() {
 
       makeMove(move);
     },
-    [handleTutorialMove, isScriptedTutorialPhase, makeMove, resumeAnnouncementCuesFromInteraction],
+    [handleTutorialMove, isPrivateMatchReady, isScriptedTutorialPhase, makeMove, resumeAnnouncementCuesFromInteraction],
   );
 
   const handleRoll = React.useCallback(() => {
@@ -2116,9 +2130,10 @@ export function GameRoom() {
     !hasPlayedReserveCascadeIntro &&
     hasMeasuredReserveTargets;
   const isTurnTimerEnabled = introsComplete && !isScriptedTutorialPhase && (!isOffline || botTimerEnabled);
-  const isVisualTurnTimerRunning = isTurnTimerEnabled && gameState.phase !== 'ended' && gameState.winner === null;
+  const isVisualTurnTimerRunning =
+    isTurnTimerEnabled && isPrivateMatchReady && gameState.phase !== 'ended' && gameState.winner === null;
   const showDestinationHighlights = introsComplete && !rollingVisual && gameState.rollValue !== null;
-  const displayedValidMoves = showDestinationHighlights ? validMoves : [];
+  const displayedValidMoves = showDestinationHighlights && isPrivateMatchReady ? validMoves : [];
   const showMobileRollResult =
     introsComplete &&
     isMobileLayout &&
@@ -2516,19 +2531,19 @@ export function GameRoom() {
                   </View>
                 </View>
               ) : null}
-              {isPrivateMatchHost && privateInviteUrl ? (
+              {isPrivateMatchHost && privateMatchCode ? (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Share private invite"
+                  accessibilityLabel="Copy private game code"
                   onPress={() => {
                     resumeAnnouncementCuesFromInteraction();
-                    void handleSharePrivateInvite();
+                    void handleCopyPrivateCode();
                     setShowTopMenu(false);
                   }}
                   style={({ pressed }) => [styles.topMenuItem, pressed && styles.topMenuItemPressed]}
                 >
-                  <MaterialIcons name="share" size={18} color={TOP_CHROME_ACCENT} />
-                  <Text style={styles.topMenuLabel}>Share Invite</Text>
+                  <MaterialIcons name="content-copy" size={18} color={TOP_CHROME_ACCENT} />
+                  <Text style={styles.topMenuLabel}>Copy Code</Text>
                 </Pressable>
               ) : null}
               <Pressable
@@ -2562,6 +2577,15 @@ export function GameRoom() {
         ]}
       >
         <View style={[styles.stageWrap, { gap: stageGap }]}>
+          {isPrivateMatch ? (
+            <View pointerEvents="none" style={[styles.privateStatusBanner, isPrivateMatchReady ? styles.privateStatusBannerReady : null]}>
+              <Text style={styles.privateStatusEyebrow}>
+                {isPrivateMatchHost ? 'Private Match Code' : 'Joined Private Match'}
+              </Text>
+              {privateMatchCode ? <Text style={styles.privateStatusCode}>{privateMatchCode}</Text> : null}
+              {privateMatchStatusText ? <Text style={styles.privateStatusText}>{privateMatchStatusText}</Text> : null}
+            </View>
+          ) : null}
           {tutorialObjectiveBanner ? (
             <View pointerEvents="none" style={styles.tutorialObjectiveBanner}>
               <Text style={styles.tutorialObjectiveText}>{tutorialObjectiveBanner}</Text>
@@ -3029,30 +3053,6 @@ export function GameRoom() {
       ) : null}
 
       <Modal
-        visible={showPrivateInviteModal && Boolean(privateInviteUrl)}
-        title="Private Match"
-        message={`Share this ${privateMatchLabel.toLowerCase()} invite link with a friend to bring them straight into your room.`}
-        actionLabel={isWaitingForPrivateOpponent ? 'Keep Waiting' : 'Continue'}
-        onAction={() => setShowPrivateInviteModal(false)}
-        maxWidth={520}
-      >
-        <View style={styles.privateInvitePanel}>
-          <Text style={styles.privateInviteEyebrow}>
-            {joinedPlayerCount < 2 ? 'Waiting for opponent' : 'Opponent joined'}
-          </Text>
-          <Text selectable style={styles.privateInviteUrl}>
-            {privateInviteUrl}
-          </Text>
-          <Text style={styles.privateInviteNote}>
-            Private matches award reduced XP and do not advance challenge rewards.
-          </Text>
-        </View>
-        <View style={styles.privateInviteShareButtonWrap}>
-          <Button title="Share Invite" variant="outline" onPress={() => void handleSharePrivateInvite()} />
-        </View>
-      </Modal>
-
-      <Modal
         visible={showWinModal}
         title={winModalTitle}
         message={winModalMessage}
@@ -3060,9 +3060,9 @@ export function GameRoom() {
         onAction={handleExit}
         maxWidth={520}
       >
-        {isPracticeModeMatch && !isPrivateMatch ? (
+        {didPlayerWin && isPracticeModeMatch && !isPrivateMatch && canSyncOfflineBotRewards && practiceModeRewardLabel ? (
           <View style={styles.practiceRewardLabel}>
-            <Text style={styles.practiceRewardLabelText}>{PRACTICE_MODE_REWARD_LABEL}</Text>
+            <Text style={styles.practiceRewardLabelText}>{practiceModeRewardLabel}</Text>
           </View>
         ) : null}
         {didPlayerWin && isPrivateMatch ? (
@@ -3173,17 +3173,25 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: urTheme.spacing.sm,
   },
-  privateInvitePanel: {
+  privateStatusBanner: {
+    alignSelf: 'center',
     width: '100%',
-    marginBottom: urTheme.spacing.md,
+    maxWidth: 620,
+    marginTop: 4,
+    marginBottom: urTheme.spacing.xs,
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.sm,
     borderRadius: urTheme.radii.md,
     borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.4)',
-    backgroundColor: 'rgba(13, 15, 18, 0.46)',
+    borderColor: 'rgba(217, 164, 65, 0.42)',
+    backgroundColor: 'rgba(29, 19, 12, 0.82)',
+    zIndex: 6,
   },
-  privateInviteEyebrow: {
+  privateStatusBannerReady: {
+    backgroundColor: 'rgba(17, 35, 39, 0.84)',
+    borderColor: 'rgba(126, 177, 255, 0.34)',
+  },
+  privateStatusEyebrow: {
     ...urTypography.label,
     color: urTheme.colors.goldBright,
     fontSize: 11,
@@ -3191,22 +3199,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: urTheme.spacing.xs,
   },
-  privateInviteUrl: {
+  privateStatusCode: {
     color: urTheme.colors.parchment,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 24,
+    lineHeight: 28,
+    letterSpacing: 2.1,
     textAlign: 'center',
+    marginBottom: urTheme.spacing.xs,
   },
-  privateInviteNote: {
+  privateStatusText: {
     color: 'rgba(247, 229, 203, 0.82)',
     fontSize: 11,
     lineHeight: 17,
     textAlign: 'center',
-    marginTop: urTheme.spacing.sm,
-  },
-  privateInviteShareButtonWrap: {
-    width: '100%',
-    marginBottom: urTheme.spacing.sm,
   },
   backdropLayer: {
     ...StyleSheet.absoluteFillObject,

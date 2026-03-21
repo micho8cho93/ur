@@ -16,6 +16,7 @@ import {
   UserChallengeProgressRpcResponse,
   UserChallengeProgressSnapshot,
 } from "../../shared/challenges";
+import { getMatchConfig, isMatchModeId } from "../../logic/matchConfigs";
 import { ProgressionProfile, getRankForXp } from "../../shared/progression";
 import {
   MAX_WRITE_ATTEMPTS,
@@ -691,9 +692,16 @@ export const rpcSubmitCompletedBotMatch = (
     throw new Error("Completed bot match summary must reference a bot opponent.");
   }
 
-  const rewardMode: CompletedBotMatchRewardMode = isCompletedBotMatchRewardMode(requestPayload.rewardMode)
+  const modeId = isMatchModeId(requestPayload.modeId) ? requestPayload.modeId : "standard";
+  const matchConfig = getMatchConfig(modeId);
+  const requestedRewardMode: CompletedBotMatchRewardMode = isCompletedBotMatchRewardMode(
+    requestPayload.rewardMode
+  )
     ? requestPayload.rewardMode
     : "standard";
+  const rewardMode: CompletedBotMatchRewardMode = matchConfig.allowsChallenges
+    ? requestedRewardMode
+    : "base_win_only";
 
   const summary: CompletedMatchSummary = {
     ...requestPayload.summary,
@@ -704,7 +712,7 @@ export const rpcSubmitCompletedBotMatch = (
     ? awardXpForMatchWin(nk, logger, {
         userId: ctx.userId,
         matchId: summary.matchId,
-        source: "bot_win",
+        source: matchConfig.offlineWinRewardSource,
       })
     : null;
 

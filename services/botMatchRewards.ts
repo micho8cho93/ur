@@ -24,6 +24,7 @@ export const submitCompletedBotMatchResult = async (
   params: {
     summary: CompletedMatchSummary;
     tutorialId?: string | null;
+    modeId?: string | null;
     rewardMode?: CompletedBotMatchRewardMode;
   }
 ): Promise<SubmitCompletedBotMatchRpcResponse> => {

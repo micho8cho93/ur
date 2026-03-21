@@ -10,10 +10,13 @@ import { GameState, PlayerColor } from "../../logic/types";
 import {
   awardXpForMatchWin,
   createProgressionAwardNotification,
+  findStorageObject,
+  getStorageObjectVersion,
   rpcGetProgression,
   RPC_GET_PROGRESSION,
   rpcGetUserXpProgress,
   RPC_GET_USER_XP_PROGRESS,
+  STORAGE_PERMISSION_NONE,
 } from "./progression";
 import {
   ensureChallengeDefinitions,
@@ -38,6 +41,11 @@ import {
 } from "../../shared/urMatchProtocol";
 import { CompletedMatchSummary, OpponentType, calculateComebackCheckpoint } from "../../shared/challenges";
 import type { XpSource } from "../../shared/progression";
+import {
+  generatePrivateMatchCode,
+  isPrivateMatchCode,
+  normalizePrivateMatchCodeInput,
+} from "../../shared/privateMatchCode";
 
 declare namespace nkruntime {
   type Context = any;
@@ -58,9 +66,27 @@ type MatchState = {
   opponentType: OpponentType;
   modeId: MatchModeId;
   privateMatch: boolean;
+  privateCode: string | null;
+  privateCreatorUserId: string | null;
+  privateGuestUserId: string | null;
   winRewardSource: XpSource;
   allowsChallengeRewards: boolean;
   telemetry: MatchTelemetry;
+};
+
+type RuntimeStorageObject = RuntimeRecord & {
+  value?: unknown;
+  version?: string;
+};
+
+type PrivateMatchCodeRecord = {
+  code: string;
+  matchId: string;
+  modeId: MatchModeId;
+  creatorUserId: string;
+  joinedUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type MatchPlayerTelemetry = {
@@ -93,9 +119,14 @@ const RPC_GET_USER_CHALLENGE_PROGRESS_NAME = RPC_GET_USER_CHALLENGE_PROGRESS;
 const RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME = RPC_SUBMIT_COMPLETED_BOT_MATCH;
 const RPC_MATCHMAKER_ADD = "matchmaker_add";
 const RPC_CREATE_PRIVATE_MATCH = "create_private_match";
+const RPC_JOIN_PRIVATE_MATCH = "join_private_match";
+const RPC_GET_PRIVATE_MATCH_STATUS = "get_private_match_status";
 const RPC_PRESENCE_HEARTBEAT = "presence_heartbeat";
 const RPC_PRESENCE_COUNT = "presence_count";
 const MATCH_HANDLER = "authoritative_match";
+const PRIVATE_MATCH_CODE_COLLECTION = "private_match_codes";
+const PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS = 12;
+const PRIVATE_MATCH_CODE_WRITE_ATTEMPTS = 4;
 const onlinePresenceByUser = new Map<string, number>();
 
 const asRecord = (value: unknown): RuntimeRecord | null =>
@@ -270,6 +301,194 @@ const updateComebackTelemetry = (state: MatchState): void => {
   });
 };
 
+const parseRpcPayload = (payload: string): RuntimeRecord => {
+  if (!payload) {
+    return {};
+  }
+
+  const data = JSON.parse(payload);
+  return asRecord(data) ?? {};
+};
+
+const normalizePrivateMatchCodeRecord = (value: unknown): PrivateMatchCodeRecord | null => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const code = normalizePrivateMatchCodeInput(readStringField(record, ["code"]) ?? "");
+  const matchId = readStringField(record, ["matchId", "match_id"]);
+  const modeId = record.modeId;
+  const creatorUserId = readStringField(record, ["creatorUserId", "creator_user_id"]);
+  const joinedUserId = readStringField(record, ["joinedUserId", "joined_user_id"]);
+  const createdAt = readStringField(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField(record, ["updatedAt", "updated_at"]);
+
+  if (!isPrivateMatchCode(code) || !matchId || !isMatchModeId(modeId) || !creatorUserId || !createdAt || !updatedAt) {
+    return null;
+  }
+
+  return {
+    code,
+    matchId,
+    modeId,
+    creatorUserId,
+    joinedUserId: joinedUserId ?? null,
+    createdAt,
+    updatedAt,
+  };
+};
+
+const readPrivateMatchCodeObject = (
+  nk: nkruntime.Nakama,
+  code: string
+): { object: RuntimeStorageObject | null; record: PrivateMatchCodeRecord | null } => {
+  const normalizedCode = normalizePrivateMatchCodeInput(code);
+  if (!isPrivateMatchCode(normalizedCode)) {
+    return {
+      object: null,
+      record: null,
+    };
+  }
+
+  const objects = nk.storageRead([
+    {
+      collection: PRIVATE_MATCH_CODE_COLLECTION,
+      key: normalizedCode,
+    },
+  ]) as RuntimeStorageObject[];
+  const object = findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode);
+
+  return {
+    object,
+    record: normalizePrivateMatchCodeRecord(object?.value),
+  };
+};
+
+const writePrivateMatchCodeRecord = (
+  nk: nkruntime.Nakama,
+  record: PrivateMatchCodeRecord,
+  version: string
+): void => {
+  nk.storageWrite([
+    {
+      collection: PRIVATE_MATCH_CODE_COLLECTION,
+      key: record.code,
+      value: record,
+      version,
+      permissionRead: STORAGE_PERMISSION_NONE,
+      permissionWrite: STORAGE_PERMISSION_NONE,
+    },
+  ]);
+};
+
+const createAvailablePrivateMatchCode = (nk: nkruntime.Nakama): string => {
+  for (let attempt = 0; attempt < PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS; attempt += 1) {
+    const code = generatePrivateMatchCode();
+    const existing = readPrivateMatchCodeObject(nk, code);
+
+    if (existing.record) {
+      continue;
+    }
+
+    return code;
+  }
+
+  throw new Error("Unable to create a private game code right now.");
+};
+
+const createPrivateMatchCodeRecord = (
+  nk: nkruntime.Nakama,
+  modeId: MatchModeId,
+  matchId: string,
+  creatorUserId: string,
+  code: string
+): PrivateMatchCodeRecord => {
+  const now = new Date().toISOString();
+  const record: PrivateMatchCodeRecord = {
+    code,
+    matchId,
+    modeId,
+    creatorUserId,
+    joinedUserId: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  writePrivateMatchCodeRecord(nk, record, "*");
+  return record;
+};
+
+const claimPrivateMatchCode = (
+  nk: nkruntime.Nakama,
+  code: string,
+  userId: string
+): PrivateMatchCodeRecord => {
+  const normalizedCode = normalizePrivateMatchCodeInput(code);
+  if (!isPrivateMatchCode(normalizedCode)) {
+    throw new Error("Enter a valid private game code.");
+  }
+
+  for (let attempt = 0; attempt < PRIVATE_MATCH_CODE_WRITE_ATTEMPTS; attempt += 1) {
+    const { object, record } = readPrivateMatchCodeObject(nk, normalizedCode);
+    if (!record) {
+      throw new Error("Private game code not found.");
+    }
+
+    if (record.creatorUserId === userId || record.joinedUserId === userId) {
+      return record;
+    }
+
+    if (record.joinedUserId && record.joinedUserId !== userId) {
+      throw new Error("This private game code has already been claimed.");
+    }
+
+    const nextRecord: PrivateMatchCodeRecord = {
+      ...record,
+      joinedUserId: userId,
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      writePrivateMatchCodeRecord(nk, nextRecord, getStorageObjectVersion(object) ?? "");
+      return nextRecord;
+    } catch {
+      // Retry when another guest claims between read and write.
+    }
+  }
+
+  throw new Error("Unable to claim this private game code right now.");
+};
+
+const syncPrivateMatchReservation = (nk: nkruntime.Nakama, state: MatchState): void => {
+  if (!state.privateMatch || !state.privateCode) {
+    return;
+  }
+
+  const { record } = readPrivateMatchCodeObject(nk, state.privateCode);
+  if (!record) {
+    return;
+  }
+
+  state.privateCreatorUserId = record.creatorUserId;
+  state.privateGuestUserId = record.joinedUserId;
+};
+
+const canUserJoinPrivateMatch = (state: MatchState, userId: string): boolean => {
+  if (!state.privateMatch) {
+    return true;
+  }
+
+  if (state.privateCreatorUserId && state.privateCreatorUserId === userId) {
+    return true;
+  }
+
+  return Boolean(state.privateGuestUserId && state.privateGuestUserId === userId);
+};
+
+const isPrivateMatchReady = (state: MatchState): boolean =>
+  !state.privateMatch || Object.keys(state.presences).length >= MAX_PLAYERS;
+
 const buildPlayerMatchSummary = (
   state: MatchState,
   matchId: string,
@@ -324,6 +543,8 @@ function InitModule(
   initializer.registerRpc(RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME, rpcSubmitCompletedBotMatch);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
   initializer.registerRpc(RPC_CREATE_PRIVATE_MATCH, rpcCreatePrivateMatch);
+  initializer.registerRpc(RPC_JOIN_PRIVATE_MATCH, rpcJoinPrivateMatch);
+  initializer.registerRpc(RPC_GET_PRIVATE_MATCH_STATUS, rpcGetPrivateMatchStatus);
   initializer.registerRpc(RPC_PRESENCE_HEARTBEAT, rpcPresenceHeartbeat);
   initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
   initializer.registerMatch(MATCH_HANDLER, {
@@ -448,19 +669,80 @@ function rpcCreatePrivateMatch(
     throw new Error("Authentication required.");
   }
 
-  const data = payload ? JSON.parse(payload) : {};
+  const data = parseRpcPayload(payload);
   const modeId = resolveMatchModeId(data.modeId);
+  const privateCode = createAvailablePrivateMatchCode(nk);
   const matchId = nk.matchCreate(MATCH_HANDLER, {
     playerIds: [ctx.userId],
     modeId,
     privateMatch: true,
+    privateCode,
+    privateCreatorUserId: ctx.userId,
     winRewardSource: "private_pvp_win",
     allowsChallengeRewards: false,
   });
+  createPrivateMatchCodeRecord(nk, modeId, matchId, ctx.userId, privateCode);
 
   return JSON.stringify({
     matchId,
     modeId,
+    code: privateCode,
+  });
+}
+
+function rpcJoinPrivateMatch(
+  ctx: nkruntime.Context,
+  _logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+
+  const data = parseRpcPayload(payload);
+  const requestedCode = typeof data.code === "string" ? data.code : "";
+  const reservation = claimPrivateMatchCode(nk, requestedCode, ctx.userId);
+
+  return JSON.stringify({
+    matchId: reservation.matchId,
+    modeId: reservation.modeId,
+    code: reservation.code,
+  });
+}
+
+function rpcGetPrivateMatchStatus(
+  ctx: nkruntime.Context,
+  _logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+
+  const data = parseRpcPayload(payload);
+  const requestedCode = typeof data.code === "string" ? data.code : "";
+  const normalizedCode = normalizePrivateMatchCodeInput(requestedCode);
+
+  if (!isPrivateMatchCode(normalizedCode)) {
+    throw new Error("Enter a valid private game code.");
+  }
+
+  const { record } = readPrivateMatchCodeObject(nk, normalizedCode);
+  if (!record) {
+    throw new Error("Private game code not found.");
+  }
+
+  if (record.creatorUserId !== ctx.userId && record.joinedUserId !== ctx.userId) {
+    throw new Error("You do not have access to this private game.");
+  }
+
+  return JSON.stringify({
+    matchId: record.matchId,
+    modeId: record.modeId,
+    code: record.code,
+    hasGuestJoined: Boolean(record.joinedUserId),
   });
 }
 
@@ -495,6 +777,9 @@ function matchInit(
   const playerIds = Array.isArray(params.playerIds) ? (params.playerIds as string[]) : [];
   const modeId = resolveMatchModeId(params.modeId);
   const privateMatch = params.privateMatch === true;
+  const privateCode = typeof params.privateCode === "string" ? normalizePrivateMatchCodeInput(params.privateCode) : "";
+  const privateCreatorUserId =
+    typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
   const winRewardSource = params.winRewardSource === "private_pvp_win" ? "private_pvp_win" : "pvp_win";
   const allowsChallengeRewards = params.allowsChallengeRewards !== false;
 
@@ -514,6 +799,9 @@ function matchInit(
     opponentType: "human",
     modeId,
     privateMatch,
+    privateCode: isPrivateMatchCode(privateCode) ? privateCode : null,
+    privateCreatorUserId,
+    privateGuestUserId: null,
     winRewardSource,
     allowsChallengeRewards,
     telemetry: createMatchTelemetry(),
@@ -525,7 +813,7 @@ function matchInit(
 function matchJoinAttempt(
   _ctx: nkruntime.Context,
   logger: nkruntime.Logger,
-  _nk: nkruntime.Nakama,
+  nk: nkruntime.Nakama,
   _dispatcher: nkruntime.MatchDispatcher,
   _tick: number,
   state: MatchState,
@@ -535,6 +823,14 @@ function matchJoinAttempt(
   if (!userId) {
     logger.warn("Rejecting join attempt with missing user ID.");
     return { state, accept: false, rejectMessage: "Unable to identify player." };
+  }
+
+  if (state.privateMatch) {
+    syncPrivateMatchReservation(nk, state);
+
+    if (!canUserJoinPrivateMatch(state, userId)) {
+      return { state, accept: false, rejectMessage: "Enter the private game code before joining this table." };
+    }
   }
 
   const activeCount = Object.keys(state.presences).length;
@@ -719,6 +1015,11 @@ function applyRollRequest(
     return;
   }
 
+  if (!isPrivateMatchReady(state)) {
+    sendError(dispatcher, state, userId, "MATCH_NOT_READY", "Waiting for the other player to join.");
+    return;
+  }
+
   if (state.gameState.currentTurn !== playerColor) {
     sendError(dispatcher, state, userId, "INVALID_TURN", "It is not your turn to roll.");
     return;
@@ -772,6 +1073,11 @@ function applyMoveRequest(
 ): void {
   if (state.gameState.winner) {
     sendError(dispatcher, state, userId, "INVALID_PHASE", "The match has already ended.");
+    return;
+  }
+
+  if (!isPrivateMatchReady(state)) {
+    sendError(dispatcher, state, userId, "MATCH_NOT_READY", "Waiting for the other player to join.");
     return;
   }
 
@@ -947,6 +1253,8 @@ type RuntimeGlobalBindings = {
   rpcAuthLinkCustom: typeof rpcAuthLinkCustom;
   rpcMatchmakerAdd: typeof rpcMatchmakerAdd;
   rpcCreatePrivateMatch: typeof rpcCreatePrivateMatch;
+  rpcJoinPrivateMatch: typeof rpcJoinPrivateMatch;
+  rpcGetPrivateMatchStatus: typeof rpcGetPrivateMatchStatus;
   rpcPresenceHeartbeat: typeof rpcPresenceHeartbeat;
   rpcPresenceCount: typeof rpcPresenceCount;
   matchmakerMatched: typeof matchmakerMatched;
@@ -964,6 +1272,8 @@ const runtimeGlobals: RuntimeGlobalBindings = {
   rpcAuthLinkCustom,
   rpcMatchmakerAdd,
   rpcCreatePrivateMatch,
+  rpcJoinPrivateMatch,
+  rpcGetPrivateMatchStatus,
   rpcPresenceHeartbeat,
   rpcPresenceCount,
   matchmakerMatched,

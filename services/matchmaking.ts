@@ -2,10 +2,13 @@ import { MatchData, Session, Socket } from "@heroiclabs/nakama-js";
 
 import { MatchModeId, isMatchModeId } from "@/logic/matchConfigs";
 import { PlayerColor } from "@/logic/types";
+import { isPrivateMatchCode, normalizePrivateMatchCodeInput } from "@/shared/privateMatchCode";
 import { MatchOpCode, decodePayload, isStateSnapshotPayload } from "@/shared/urMatchProtocol";
 import { nakamaService } from "./nakama";
 
 const RPC_CREATE_PRIVATE_MATCH = "create_private_match";
+const RPC_JOIN_PRIVATE_MATCH = "join_private_match";
+const RPC_GET_PRIVATE_MATCH_STATUS = "get_private_match_status";
 const CONNECT_TIMEOUT_MS = 10_000;
 const START_MATCHMAKING_TIMEOUT_MS = 10_000;
 const WAIT_FOR_MATCH_TIMEOUT_MS = 20_000;
@@ -142,8 +145,16 @@ export type MatchResult = {
 export type PrivateMatchResult = {
   matchId: string;
   modeId: MatchModeId;
+  code: string;
   session: Session;
   userId: string;
+};
+
+export type PrivateMatchStatusResult = {
+  matchId: string;
+  modeId: MatchModeId;
+  code: string;
+  hasGuestJoined: boolean;
 };
 
 export type MatchmakingHandlers = {
@@ -153,20 +164,34 @@ export type MatchmakingHandlers = {
 type CreatePrivateMatchRpcPayload = {
   matchId?: unknown;
   modeId?: unknown;
+  code?: unknown;
+  hasGuestJoined?: unknown;
 };
 
-const parseCreatePrivateMatchPayload = (payload: unknown): { matchId: string; modeId: MatchModeId } => {
+const parsePrivateMatchPayload = (
+  payload: unknown,
+  options?: { requireGuestFlag?: boolean }
+): { matchId: string; modeId: MatchModeId; code: string; hasGuestJoined?: boolean } => {
   const rpcPayload = payload as CreatePrivateMatchRpcPayload | undefined;
   const matchId = typeof rpcPayload?.matchId === "string" ? rpcPayload.matchId : null;
   const modeId = rpcPayload?.modeId;
+  const code = normalizePrivateMatchCodeInput(typeof rpcPayload?.code === "string" ? rpcPayload.code : "");
+  const hasGuestJoined =
+    typeof rpcPayload?.hasGuestJoined === "boolean" ? rpcPayload.hasGuestJoined : undefined;
 
-  if (!matchId || !isMatchModeId(modeId)) {
-    throw new Error("Private match creation returned an invalid payload.");
+  if (!matchId || !isMatchModeId(modeId) || !isPrivateMatchCode(code)) {
+    throw new Error("Private match returned an invalid payload.");
+  }
+
+  if (options?.requireGuestFlag && typeof hasGuestJoined !== "boolean") {
+    throw new Error("Private match status returned an invalid payload.");
   }
 
   return {
     matchId,
     modeId,
+    code,
+    hasGuestJoined,
   };
 };
 
@@ -247,7 +272,7 @@ export const createPrivateMatch = async (modeId: MatchModeId = "standard"): Prom
 
   try {
     const response = await client.rpc(session, RPC_CREATE_PRIVATE_MATCH, { modeId });
-    const payload = parseCreatePrivateMatchPayload(response.payload);
+    const payload = parsePrivateMatchPayload(response.payload);
 
     if (!session.user_id) {
       throw new Error("Authenticated session is missing user ID.");
@@ -256,8 +281,62 @@ export const createPrivateMatch = async (modeId: MatchModeId = "standard"): Prom
     return {
       matchId: payload.matchId,
       modeId: payload.modeId,
+      code: payload.code,
       session,
       userId: session.user_id,
+    };
+  } catch (error) {
+    throw normalizeMatchmakingError(error);
+  }
+};
+
+export const joinPrivateMatch = async (code: string): Promise<PrivateMatchResult> => {
+  const session = await ensureAuthenticated();
+  const client = nakamaService.getClient();
+  const normalizedCode = normalizePrivateMatchCodeInput(code);
+
+  if (!isPrivateMatchCode(normalizedCode)) {
+    throw new Error("Enter a valid private game code.");
+  }
+
+  try {
+    const response = await client.rpc(session, RPC_JOIN_PRIVATE_MATCH, { code: normalizedCode });
+    const payload = parsePrivateMatchPayload(response.payload);
+
+    if (!session.user_id) {
+      throw new Error("Authenticated session is missing user ID.");
+    }
+
+    return {
+      matchId: payload.matchId,
+      modeId: payload.modeId,
+      code: payload.code,
+      session,
+      userId: session.user_id,
+    };
+  } catch (error) {
+    throw normalizeMatchmakingError(error);
+  }
+};
+
+export const getPrivateMatchStatus = async (code: string): Promise<PrivateMatchStatusResult> => {
+  const session = await ensureAuthenticated();
+  const client = nakamaService.getClient();
+  const normalizedCode = normalizePrivateMatchCodeInput(code);
+
+  if (!isPrivateMatchCode(normalizedCode)) {
+    throw new Error("Enter a valid private game code.");
+  }
+
+  try {
+    const response = await client.rpc(session, RPC_GET_PRIVATE_MATCH_STATUS, { code: normalizedCode });
+    const payload = parsePrivateMatchPayload(response.payload, { requireGuestFlag: true });
+
+    return {
+      matchId: payload.matchId,
+      modeId: payload.modeId,
+      code: payload.code,
+      hasGuestJoined: Boolean(payload.hasGuestJoined),
     };
   } catch (error) {
     throw normalizeMatchmakingError(error);

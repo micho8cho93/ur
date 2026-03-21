@@ -129,6 +129,134 @@ var PATH_LENGTH = DEFAULT_PATH_DEFINITION.pathLength;
 var isRosette = (r, c) => ROSETTES.some((coord) => coord.row === r && coord.col === c);
 var isWarZone = (r, c) => r === 1;
 
+// shared/progression.ts
+var PROGRESSION_RANKS = [
+  { index: 1, title: "Laborer", threshold: 0 },
+  { index: 2, title: "Servant of the Temple", threshold: 100 },
+  { index: 3, title: "Apprentice Scribe", threshold: 250 },
+  { index: 4, title: "Scribe", threshold: 475 },
+  { index: 5, title: "Merchant", threshold: 800 },
+  { index: 6, title: "Artisan", threshold: 1275 },
+  { index: 7, title: "Priest", threshold: 1975 },
+  { index: 8, title: "Diviner", threshold: 2975 },
+  { index: 9, title: "Royal Guard", threshold: 4375 },
+  { index: 10, title: "Noble of the Court", threshold: 6375 },
+  { index: 11, title: "Governor", threshold: 9175 },
+  { index: 12, title: "Royalty", threshold: 13175 },
+  { index: 13, title: "High Priest", threshold: 19175 },
+  { index: 14, title: "Emperor of Sumer & Akkad", threshold: 28175 },
+  { index: 15, title: "Immortal", threshold: 4e4 }
+];
+var XP_SOURCE_CONFIG = {
+  pvp_win: {
+    amount: 100,
+    description: "Authoritative PvP win reward."
+  },
+  private_pvp_win: {
+    amount: 25,
+    description: "Private PvP win reward."
+  },
+  bot_win: {
+    amount: 50,
+    description: "Authenticated standard bot win reward."
+  },
+  practice_1_piece_win: {
+    amount: 10,
+    description: "Authenticated 1-piece practice win reward."
+  },
+  practice_3_pieces_win: {
+    amount: 20,
+    description: "Authenticated 3-piece practice win reward."
+  },
+  practice_5_pieces_win: {
+    amount: 30,
+    description: "Authenticated 5-piece practice win reward."
+  },
+  practice_extended_path_win: {
+    amount: 60,
+    description: "Authenticated extended-path practice win reward."
+  }
+};
+var MAX_RANK = PROGRESSION_RANKS[PROGRESSION_RANKS.length - 1];
+var roundProgressPercent = (value) => Math.round(value * 100) / 100;
+var sanitizeTotalXp = (value) => {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(value));
+};
+var getXpAwardAmount = (source) => XP_SOURCE_CONFIG[source].amount;
+var createDefaultProgressionProfile = (totalXp = 0, lastUpdatedAt = (/* @__PURE__ */ new Date()).toISOString()) => {
+  const sanitizedXp = sanitizeTotalXp(totalXp);
+  const currentRank = getRankForXp(sanitizedXp);
+  return {
+    totalXp: sanitizedXp,
+    currentRankTitle: currentRank.title,
+    lastUpdatedAt
+  };
+};
+var getRankForXp = (totalXp) => {
+  const sanitizedXp = sanitizeTotalXp(totalXp);
+  for (let index = PROGRESSION_RANKS.length - 1; index >= 0; index -= 1) {
+    const rank = PROGRESSION_RANKS[index];
+    if (sanitizedXp >= rank.threshold) {
+      return rank;
+    }
+  }
+  return PROGRESSION_RANKS[0];
+};
+var getNextRankForXp = (totalXp) => {
+  var _a;
+  const currentRank = getRankForXp(totalXp);
+  const nextRankIndex = currentRank.index;
+  return (_a = PROGRESSION_RANKS[nextRankIndex]) != null ? _a : null;
+};
+var getProgressWithinCurrentRank = (totalXp) => {
+  const sanitizedXp = sanitizeTotalXp(totalXp);
+  const currentRank = getRankForXp(sanitizedXp);
+  const nextRank = getNextRankForXp(sanitizedXp);
+  if (!nextRank) {
+    return {
+      currentRank,
+      nextRank: null,
+      xpIntoCurrentRank: Math.max(0, sanitizedXp - currentRank.threshold),
+      progressPercent: 100
+    };
+  }
+  const xpIntoCurrentRank = Math.max(0, sanitizedXp - currentRank.threshold);
+  const rankSpan = Math.max(1, nextRank.threshold - currentRank.threshold);
+  const progressPercent = roundProgressPercent(Math.min(100, xpIntoCurrentRank / rankSpan * 100));
+  return {
+    currentRank,
+    nextRank,
+    xpIntoCurrentRank,
+    progressPercent
+  };
+};
+var getXpRequiredForNextRank = (totalXp) => {
+  const sanitizedXp = sanitizeTotalXp(totalXp);
+  const nextRank = getNextRankForXp(sanitizedXp);
+  if (!nextRank) {
+    return 0;
+  }
+  return Math.max(0, nextRank.threshold - sanitizedXp);
+};
+var buildProgressionSnapshot = (totalXp) => {
+  var _a, _b;
+  const sanitizedXp = sanitizeTotalXp(totalXp);
+  const { currentRank, nextRank, xpIntoCurrentRank, progressPercent } = getProgressWithinCurrentRank(sanitizedXp);
+  return {
+    totalXp: sanitizedXp,
+    currentRank: currentRank.title,
+    currentRankThreshold: currentRank.threshold,
+    nextRank: (_a = nextRank == null ? void 0 : nextRank.title) != null ? _a : null,
+    nextRankThreshold: (_b = nextRank == null ? void 0 : nextRank.threshold) != null ? _b : null,
+    xpIntoCurrentRank,
+    xpNeededForNextRank: getXpRequiredForNextRank(sanitizedXp),
+    progressPercent: nextRank ? progressPercent : 100
+  };
+};
+
 // logic/matchConfigs.ts
 var STANDARD_MATCH_CONFIG = {
   modeId: "standard",
@@ -140,6 +268,7 @@ var STANDARD_MATCH_CONFIG = {
   allowsChallenges: true,
   allowsCoins: true,
   allowsRankedStats: true,
+  offlineWinRewardSource: "bot_win",
   opponentType: "bot",
   pathVariant: "default",
   isPracticeMode: false
@@ -150,11 +279,12 @@ var GAME_MODE_MATCH_CONFIGS = [
     displayName: "1 Piece",
     pieceCountPerSide: 1,
     rulesVariant: "standard",
-    allowsXp: false,
+    allowsXp: true,
     allowsOnline: false,
     allowsChallenges: false,
     allowsCoins: false,
     allowsRankedStats: false,
+    offlineWinRewardSource: "practice_1_piece_win",
     opponentType: "bot",
     pathVariant: "default",
     isPracticeMode: true,
@@ -165,11 +295,12 @@ var GAME_MODE_MATCH_CONFIGS = [
     displayName: "3 Pieces",
     pieceCountPerSide: 3,
     rulesVariant: "standard",
-    allowsXp: false,
+    allowsXp: true,
     allowsOnline: false,
     allowsChallenges: false,
     allowsCoins: false,
     allowsRankedStats: false,
+    offlineWinRewardSource: "practice_3_pieces_win",
     opponentType: "bot",
     pathVariant: "default",
     isPracticeMode: true,
@@ -180,11 +311,12 @@ var GAME_MODE_MATCH_CONFIGS = [
     displayName: "5 Pieces",
     pieceCountPerSide: 5,
     rulesVariant: "standard",
-    allowsXp: false,
+    allowsXp: true,
     allowsOnline: false,
     allowsChallenges: false,
     allowsCoins: false,
     allowsRankedStats: false,
+    offlineWinRewardSource: "practice_5_pieces_win",
     opponentType: "bot",
     pathVariant: "default",
     isPracticeMode: true,
@@ -195,11 +327,12 @@ var GAME_MODE_MATCH_CONFIGS = [
     displayName: "Extended Path",
     pieceCountPerSide: 7,
     rulesVariant: "standard",
-    allowsXp: false,
+    allowsXp: true,
     allowsOnline: false,
     allowsChallenges: false,
     allowsCoins: false,
     allowsRankedStats: false,
+    offlineWinRewardSource: "practice_extended_path_win",
     opponentType: "bot",
     pathVariant: "full-path",
     isPracticeMode: true,
@@ -337,118 +470,6 @@ var applyMove = (state, move) => {
   return newState;
 };
 
-// shared/progression.ts
-var PROGRESSION_RANKS = [
-  { index: 1, title: "Laborer", threshold: 0 },
-  { index: 2, title: "Servant of the Temple", threshold: 100 },
-  { index: 3, title: "Apprentice Scribe", threshold: 250 },
-  { index: 4, title: "Scribe", threshold: 475 },
-  { index: 5, title: "Merchant", threshold: 800 },
-  { index: 6, title: "Artisan", threshold: 1275 },
-  { index: 7, title: "Priest", threshold: 1975 },
-  { index: 8, title: "Diviner", threshold: 2975 },
-  { index: 9, title: "Royal Guard", threshold: 4375 },
-  { index: 10, title: "Noble of the Court", threshold: 6375 },
-  { index: 11, title: "Governor", threshold: 9175 },
-  { index: 12, title: "Royalty", threshold: 13175 },
-  { index: 13, title: "High Priest", threshold: 19175 },
-  { index: 14, title: "Emperor of Sumer & Akkad", threshold: 28175 },
-  { index: 15, title: "Immortal", threshold: 4e4 }
-];
-var XP_SOURCE_CONFIG = {
-  pvp_win: {
-    amount: 100,
-    description: "Authoritative PvP win reward."
-  },
-  private_pvp_win: {
-    amount: 25,
-    description: "Private PvP win reward."
-  },
-  bot_win: {
-    amount: 100,
-    description: "Authenticated bot win reward."
-  }
-};
-var MAX_RANK = PROGRESSION_RANKS[PROGRESSION_RANKS.length - 1];
-var roundProgressPercent = (value) => Math.round(value * 100) / 100;
-var sanitizeTotalXp = (value) => {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.max(0, Math.floor(value));
-};
-var getXpAwardAmount = (source) => XP_SOURCE_CONFIG[source].amount;
-var createDefaultProgressionProfile = (totalXp = 0, lastUpdatedAt = (/* @__PURE__ */ new Date()).toISOString()) => {
-  const sanitizedXp = sanitizeTotalXp(totalXp);
-  const currentRank = getRankForXp(sanitizedXp);
-  return {
-    totalXp: sanitizedXp,
-    currentRankTitle: currentRank.title,
-    lastUpdatedAt
-  };
-};
-var getRankForXp = (totalXp) => {
-  const sanitizedXp = sanitizeTotalXp(totalXp);
-  for (let index = PROGRESSION_RANKS.length - 1; index >= 0; index -= 1) {
-    const rank = PROGRESSION_RANKS[index];
-    if (sanitizedXp >= rank.threshold) {
-      return rank;
-    }
-  }
-  return PROGRESSION_RANKS[0];
-};
-var getNextRankForXp = (totalXp) => {
-  var _a;
-  const currentRank = getRankForXp(totalXp);
-  const nextRankIndex = currentRank.index;
-  return (_a = PROGRESSION_RANKS[nextRankIndex]) != null ? _a : null;
-};
-var getProgressWithinCurrentRank = (totalXp) => {
-  const sanitizedXp = sanitizeTotalXp(totalXp);
-  const currentRank = getRankForXp(sanitizedXp);
-  const nextRank = getNextRankForXp(sanitizedXp);
-  if (!nextRank) {
-    return {
-      currentRank,
-      nextRank: null,
-      xpIntoCurrentRank: Math.max(0, sanitizedXp - currentRank.threshold),
-      progressPercent: 100
-    };
-  }
-  const xpIntoCurrentRank = Math.max(0, sanitizedXp - currentRank.threshold);
-  const rankSpan = Math.max(1, nextRank.threshold - currentRank.threshold);
-  const progressPercent = roundProgressPercent(Math.min(100, xpIntoCurrentRank / rankSpan * 100));
-  return {
-    currentRank,
-    nextRank,
-    xpIntoCurrentRank,
-    progressPercent
-  };
-};
-var getXpRequiredForNextRank = (totalXp) => {
-  const sanitizedXp = sanitizeTotalXp(totalXp);
-  const nextRank = getNextRankForXp(sanitizedXp);
-  if (!nextRank) {
-    return 0;
-  }
-  return Math.max(0, nextRank.threshold - sanitizedXp);
-};
-var buildProgressionSnapshot = (totalXp) => {
-  var _a, _b;
-  const sanitizedXp = sanitizeTotalXp(totalXp);
-  const { currentRank, nextRank, xpIntoCurrentRank, progressPercent } = getProgressWithinCurrentRank(sanitizedXp);
-  return {
-    totalXp: sanitizedXp,
-    currentRank: currentRank.title,
-    currentRankThreshold: currentRank.threshold,
-    nextRank: (_a = nextRank == null ? void 0 : nextRank.title) != null ? _a : null,
-    nextRankThreshold: (_b = nextRank == null ? void 0 : nextRank.threshold) != null ? _b : null,
-    xpIntoCurrentRank,
-    xpNeededForNextRank: getXpRequiredForNextRank(sanitizedXp),
-    progressPercent: nextRank ? progressPercent : 100
-  };
-};
-
 // backend/modules/progression.ts
 var PROGRESSION_COLLECTION = "progression";
 var PROGRESSION_PROFILE_KEY = "profile";
@@ -547,13 +568,15 @@ var normalizeStoredXpRewardRecord = (rawValue) => {
   const previousTotalXp = sanitizeTotalXp((_b = readNumberField(record, ["previousTotalXp", "previous_total_xp"])) != null ? _b : 0);
   const newTotalXp = sanitizeTotalXp((_c = readNumberField(record, ["newTotalXp", "new_total_xp"])) != null ? _c : 0);
   const progression = record.progression;
-  if (!userId || !ledgerKey || !sourceId || !awardedAt || source !== "pvp_win" && source !== "private_pvp_win" && source !== "bot_win" && source !== "challenge_completion" || typeof progression !== "object" || progression === null) {
+  const isKnownRewardSource = (candidate) => typeof candidate === "string" && (candidate === "challenge_completion" || candidate in XP_SOURCE_CONFIG);
+  const normalizedSource = isKnownRewardSource(source) ? source : null;
+  if (!userId || !ledgerKey || !sourceId || !awardedAt || !normalizedSource || typeof progression !== "object" || progression === null) {
     return null;
   }
   return {
     userId,
     ledgerKey,
-    source,
+    source: normalizedSource,
     sourceId,
     matchId: matchId != null ? matchId : null,
     awardedAt,
@@ -882,49 +905,49 @@ var CHALLENGE_DEFINITIONS = [
     name: "First Victory",
     description: "Win your first completed game against any opponent.",
     type: "milestone",
-    rewardXp: 150
+    rewardXp: 50
   },
   {
     id: CHALLENGE_IDS.BEAT_EASY_BOT,
     name: "Beat the Easy Bot",
     description: "Win a completed game against the easy AI opponent.",
     type: "bot",
-    rewardXp: 100
+    rewardXp: 30
   },
   {
     id: CHALLENGE_IDS.FAST_FINISH,
     name: "Fast Finish",
     description: "Win a completed game in fewer than 100 total applied moves.",
     type: "match",
-    rewardXp: 175
+    rewardXp: 150
   },
   {
     id: CHALLENGE_IDS.SAFE_PLAY,
     name: "Safe Play",
     description: "Win a completed game without losing any pieces to captures.",
     type: "match",
-    rewardXp: 200
+    rewardXp: 150
   },
   {
     id: CHALLENGE_IDS.LUCKY_ROLL,
     name: "Lucky Roll",
     description: "Win a completed game after rolling the maximum value at least 3 times.",
     type: "match",
-    rewardXp: 175
+    rewardXp: 100
   },
   {
     id: CHALLENGE_IDS.HOME_STRETCH,
     name: "Home Stretch",
     description: "Win a completed game while making zero captures across the entire match.",
     type: "match",
-    rewardXp: 225
+    rewardXp: 150
   },
   {
     id: CHALLENGE_IDS.CAPTURE_MASTER,
     name: "Capture Master",
     description: "Capture at least 3 opponent pieces in a single completed game. Victory is not required.",
     type: "match",
-    rewardXp: 200
+    rewardXp: 150
   },
   {
     id: CHALLENGE_IDS.COMEBACK_WIN,
@@ -945,21 +968,21 @@ var CHALLENGE_DEFINITIONS = [
     name: "Beat the Medium Bot",
     description: "Win a completed game against the medium AI opponent.",
     type: "bot",
-    rewardXp: 150
+    rewardXp: 100
   },
   {
     id: CHALLENGE_IDS.BEAT_HARD_BOT,
     name: "Beat the Hard Bot",
     description: "Win a completed game against the hard AI opponent.",
     type: "bot",
-    rewardXp: 225
+    rewardXp: 150
   },
   {
     id: CHALLENGE_IDS.BEAT_PERFECT_BOT,
     name: "Beat the Perfect Bot",
     description: "Win a completed game against the perfect AI opponent.",
     type: "bot",
-    rewardXp: 350
+    rewardXp: 250
   }
 ];
 var CHALLENGE_DEFINITION_BY_ID = CHALLENGE_DEFINITIONS.reduce(
@@ -1018,7 +1041,7 @@ var isSubmitCompletedBotMatchRpcRequest = (value) => {
     return false;
   }
   const payload = value;
-  return isCompletedMatchSummary(payload.summary) && (typeof payload.tutorialId === "string" || payload.tutorialId === null || typeof payload.tutorialId === "undefined") && (typeof payload.rewardMode === "undefined" || isCompletedBotMatchRewardMode(payload.rewardMode));
+  return isCompletedMatchSummary(payload.summary) && (typeof payload.tutorialId === "string" || payload.tutorialId === null || typeof payload.tutorialId === "undefined") && (typeof payload.modeId === "undefined" || payload.modeId === null || isMatchModeId(payload.modeId)) && (typeof payload.rewardMode === "undefined" || isCompletedBotMatchRewardMode(payload.rewardMode));
 };
 var getPieceProgressScore = (position, pathLength) => {
   if (position < 0) {
@@ -1535,14 +1558,19 @@ var rpcSubmitCompletedBotMatch = (ctx, logger, nk, payload) => {
   if (!isBotOpponentType(requestPayload.summary.opponentType)) {
     throw new Error("Completed bot match summary must reference a bot opponent.");
   }
-  const rewardMode = isCompletedBotMatchRewardMode(requestPayload.rewardMode) ? requestPayload.rewardMode : "standard";
+  const modeId = isMatchModeId(requestPayload.modeId) ? requestPayload.modeId : "standard";
+  const matchConfig = getMatchConfig(modeId);
+  const requestedRewardMode = isCompletedBotMatchRewardMode(
+    requestPayload.rewardMode
+  ) ? requestPayload.rewardMode : "standard";
+  const rewardMode = matchConfig.allowsChallenges ? requestedRewardMode : "base_win_only";
   const summary = __spreadProps(__spreadValues({}, requestPayload.summary), {
     playerUserId: ctx.userId
   });
   const progressionAward = summary.didWin ? awardXpForMatchWin(nk, logger, {
     userId: ctx.userId,
     matchId: summary.matchId,
-    source: "bot_win"
+    source: matchConfig.offlineWinRewardSource
   }) : null;
   if (rewardMode !== "base_win_only") {
     processCompletedMatch(nk, logger, summary);
@@ -1582,6 +1610,22 @@ var decodePayload = (raw) => {
   }
 };
 
+// shared/privateMatchCode.ts
+var PRIVATE_MATCH_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+var PRIVATE_MATCH_CODE_LENGTH = 8;
+var PRIVATE_MATCH_CODE_CHARACTER_SET = new Set(PRIVATE_MATCH_CODE_ALPHABET.split(""));
+var normalizePrivateMatchCodeInput = (value) => value.toUpperCase().split("").filter((character) => PRIVATE_MATCH_CODE_CHARACTER_SET.has(character)).join("").slice(0, PRIVATE_MATCH_CODE_LENGTH);
+var isPrivateMatchCode = (value) => normalizePrivateMatchCodeInput(value) === value && value.length === PRIVATE_MATCH_CODE_LENGTH;
+var generatePrivateMatchCode = (random = Math.random) => {
+  var _a;
+  let code = "";
+  for (let index = 0; index < PRIVATE_MATCH_CODE_LENGTH; index += 1) {
+    const characterIndex = Math.floor(random() * PRIVATE_MATCH_CODE_ALPHABET.length);
+    code += (_a = PRIVATE_MATCH_CODE_ALPHABET[characterIndex]) != null ? _a : PRIVATE_MATCH_CODE_ALPHABET[0];
+  }
+  return code;
+};
+
 // backend/modules/index.ts
 var TICK_RATE = 10;
 var MAX_PLAYERS = 2;
@@ -1594,9 +1638,14 @@ var RPC_GET_USER_CHALLENGE_PROGRESS_NAME = RPC_GET_USER_CHALLENGE_PROGRESS;
 var RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME = RPC_SUBMIT_COMPLETED_BOT_MATCH;
 var RPC_MATCHMAKER_ADD = "matchmaker_add";
 var RPC_CREATE_PRIVATE_MATCH = "create_private_match";
+var RPC_JOIN_PRIVATE_MATCH = "join_private_match";
+var RPC_GET_PRIVATE_MATCH_STATUS = "get_private_match_status";
 var RPC_PRESENCE_HEARTBEAT = "presence_heartbeat";
 var RPC_PRESENCE_COUNT = "presence_count";
 var MATCH_HANDLER = "authoritative_match";
+var PRIVATE_MATCH_CODE_COLLECTION = "private_match_codes";
+var PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS = 12;
+var PRIVATE_MATCH_CODE_WRITE_ATTEMPTS = 4;
 var onlinePresenceByUser = /* @__PURE__ */ new Map();
 var asRecord2 = (value) => typeof value === "object" && value !== null ? value : null;
 var readStringField3 = (value, keys) => {
@@ -1733,6 +1782,147 @@ var updateComebackTelemetry = (state) => {
     checkpoint.reasons.forEach((reason) => playerTelemetry.behindReasons.add(reason));
   });
 };
+var parseRpcPayload = (payload) => {
+  var _a;
+  if (!payload) {
+    return {};
+  }
+  const data = JSON.parse(payload);
+  return (_a = asRecord2(data)) != null ? _a : {};
+};
+var normalizePrivateMatchCodeRecord = (value) => {
+  var _a;
+  const record = asRecord2(value);
+  if (!record) {
+    return null;
+  }
+  const code = normalizePrivateMatchCodeInput((_a = readStringField3(record, ["code"])) != null ? _a : "");
+  const matchId = readStringField3(record, ["matchId", "match_id"]);
+  const modeId = record.modeId;
+  const creatorUserId = readStringField3(record, ["creatorUserId", "creator_user_id"]);
+  const joinedUserId = readStringField3(record, ["joinedUserId", "joined_user_id"]);
+  const createdAt = readStringField3(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField3(record, ["updatedAt", "updated_at"]);
+  if (!isPrivateMatchCode(code) || !matchId || !isMatchModeId(modeId) || !creatorUserId || !createdAt || !updatedAt) {
+    return null;
+  }
+  return {
+    code,
+    matchId,
+    modeId,
+    creatorUserId,
+    joinedUserId: joinedUserId != null ? joinedUserId : null,
+    createdAt,
+    updatedAt
+  };
+};
+var readPrivateMatchCodeObject = (nk, code) => {
+  const normalizedCode = normalizePrivateMatchCodeInput(code);
+  if (!isPrivateMatchCode(normalizedCode)) {
+    return {
+      object: null,
+      record: null
+    };
+  }
+  const objects = nk.storageRead([
+    {
+      collection: PRIVATE_MATCH_CODE_COLLECTION,
+      key: normalizedCode
+    }
+  ]);
+  const object = findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode);
+  return {
+    object,
+    record: normalizePrivateMatchCodeRecord(object == null ? void 0 : object.value)
+  };
+};
+var writePrivateMatchCodeRecord = (nk, record, version) => {
+  nk.storageWrite([
+    {
+      collection: PRIVATE_MATCH_CODE_COLLECTION,
+      key: record.code,
+      value: record,
+      version,
+      permissionRead: STORAGE_PERMISSION_NONE,
+      permissionWrite: STORAGE_PERMISSION_NONE
+    }
+  ]);
+};
+var createAvailablePrivateMatchCode = (nk) => {
+  for (let attempt = 0; attempt < PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS; attempt += 1) {
+    const code = generatePrivateMatchCode();
+    const existing = readPrivateMatchCodeObject(nk, code);
+    if (existing.record) {
+      continue;
+    }
+    return code;
+  }
+  throw new Error("Unable to create a private game code right now.");
+};
+var createPrivateMatchCodeRecord = (nk, modeId, matchId, creatorUserId, code) => {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const record = {
+    code,
+    matchId,
+    modeId,
+    creatorUserId,
+    joinedUserId: null,
+    createdAt: now,
+    updatedAt: now
+  };
+  writePrivateMatchCodeRecord(nk, record, "*");
+  return record;
+};
+var claimPrivateMatchCode = (nk, code, userId) => {
+  var _a;
+  const normalizedCode = normalizePrivateMatchCodeInput(code);
+  if (!isPrivateMatchCode(normalizedCode)) {
+    throw new Error("Enter a valid private game code.");
+  }
+  for (let attempt = 0; attempt < PRIVATE_MATCH_CODE_WRITE_ATTEMPTS; attempt += 1) {
+    const { object, record } = readPrivateMatchCodeObject(nk, normalizedCode);
+    if (!record) {
+      throw new Error("Private game code not found.");
+    }
+    if (record.creatorUserId === userId || record.joinedUserId === userId) {
+      return record;
+    }
+    if (record.joinedUserId && record.joinedUserId !== userId) {
+      throw new Error("This private game code has already been claimed.");
+    }
+    const nextRecord = __spreadProps(__spreadValues({}, record), {
+      joinedUserId: userId,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    try {
+      writePrivateMatchCodeRecord(nk, nextRecord, (_a = getStorageObjectVersion(object)) != null ? _a : "");
+      return nextRecord;
+    } catch (e) {
+    }
+  }
+  throw new Error("Unable to claim this private game code right now.");
+};
+var syncPrivateMatchReservation = (nk, state) => {
+  if (!state.privateMatch || !state.privateCode) {
+    return;
+  }
+  const { record } = readPrivateMatchCodeObject(nk, state.privateCode);
+  if (!record) {
+    return;
+  }
+  state.privateCreatorUserId = record.creatorUserId;
+  state.privateGuestUserId = record.joinedUserId;
+};
+var canUserJoinPrivateMatch = (state, userId) => {
+  if (!state.privateMatch) {
+    return true;
+  }
+  if (state.privateCreatorUserId && state.privateCreatorUserId === userId) {
+    return true;
+  }
+  return Boolean(state.privateGuestUserId && state.privateGuestUserId === userId);
+};
+var isPrivateMatchReady = (state) => !state.privateMatch || Object.keys(state.presences).length >= MAX_PLAYERS;
 var buildPlayerMatchSummary = (state, matchId, playerUserId, playerColor) => {
   const opponentColor = playerColor === "light" ? "dark" : "light";
   const playerTelemetry = state.telemetry.players[playerColor];
@@ -1772,6 +1962,8 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME, rpcSubmitCompletedBotMatch);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
   initializer.registerRpc(RPC_CREATE_PRIVATE_MATCH, rpcCreatePrivateMatch);
+  initializer.registerRpc(RPC_JOIN_PRIVATE_MATCH, rpcJoinPrivateMatch);
+  initializer.registerRpc(RPC_GET_PRIVATE_MATCH_STATUS, rpcGetPrivateMatchStatus);
   initializer.registerRpc(RPC_PRESENCE_HEARTBEAT, rpcPresenceHeartbeat);
   initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
   initializer.registerMatch(MATCH_HANDLER, {
@@ -1855,18 +2047,60 @@ function rpcCreatePrivateMatch(ctx, _logger, nk, payload) {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
-  const data = payload ? JSON.parse(payload) : {};
+  const data = parseRpcPayload(payload);
   const modeId = resolveMatchModeId(data.modeId);
+  const privateCode = createAvailablePrivateMatchCode(nk);
   const matchId = nk.matchCreate(MATCH_HANDLER, {
     playerIds: [ctx.userId],
     modeId,
     privateMatch: true,
+    privateCode,
+    privateCreatorUserId: ctx.userId,
     winRewardSource: "private_pvp_win",
     allowsChallengeRewards: false
   });
+  createPrivateMatchCodeRecord(nk, modeId, matchId, ctx.userId, privateCode);
   return JSON.stringify({
     matchId,
-    modeId
+    modeId,
+    code: privateCode
+  });
+}
+function rpcJoinPrivateMatch(ctx, _logger, nk, payload) {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  const data = parseRpcPayload(payload);
+  const requestedCode = typeof data.code === "string" ? data.code : "";
+  const reservation = claimPrivateMatchCode(nk, requestedCode, ctx.userId);
+  return JSON.stringify({
+    matchId: reservation.matchId,
+    modeId: reservation.modeId,
+    code: reservation.code
+  });
+}
+function rpcGetPrivateMatchStatus(ctx, _logger, nk, payload) {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  const data = parseRpcPayload(payload);
+  const requestedCode = typeof data.code === "string" ? data.code : "";
+  const normalizedCode = normalizePrivateMatchCodeInput(requestedCode);
+  if (!isPrivateMatchCode(normalizedCode)) {
+    throw new Error("Enter a valid private game code.");
+  }
+  const { record } = readPrivateMatchCodeObject(nk, normalizedCode);
+  if (!record) {
+    throw new Error("Private game code not found.");
+  }
+  if (record.creatorUserId !== ctx.userId && record.joinedUserId !== ctx.userId) {
+    throw new Error("You do not have access to this private game.");
+  }
+  return JSON.stringify({
+    matchId: record.matchId,
+    modeId: record.modeId,
+    code: record.code,
+    hasGuestJoined: Boolean(record.joinedUserId)
   });
 }
 function matchmakerMatched(_ctx, logger, nk, matched) {
@@ -1885,6 +2119,8 @@ function matchInit(_ctx, _logger, _nk, params) {
   const playerIds = Array.isArray(params.playerIds) ? params.playerIds : [];
   const modeId = resolveMatchModeId(params.modeId);
   const privateMatch = params.privateMatch === true;
+  const privateCode = typeof params.privateCode === "string" ? normalizePrivateMatchCodeInput(params.privateCode) : "";
+  const privateCreatorUserId = typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
   const winRewardSource = params.winRewardSource === "private_pvp_win" ? "private_pvp_win" : "pvp_win";
   const allowsChallengeRewards = params.allowsChallengeRewards !== false;
   const assignments = {};
@@ -1902,17 +2138,26 @@ function matchInit(_ctx, _logger, _nk, params) {
     opponentType: "human",
     modeId,
     privateMatch,
+    privateCode: isPrivateMatchCode(privateCode) ? privateCode : null,
+    privateCreatorUserId,
+    privateGuestUserId: null,
     winRewardSource,
     allowsChallengeRewards,
     telemetry: createMatchTelemetry()
   };
   return { state, tickRate: TICK_RATE, label: MATCH_HANDLER };
 }
-function matchJoinAttempt(_ctx, logger, _nk, _dispatcher, _tick, state, presence) {
+function matchJoinAttempt(_ctx, logger, nk, _dispatcher, _tick, state, presence) {
   const userId = getPresenceUserId(presence);
   if (!userId) {
     logger.warn("Rejecting join attempt with missing user ID.");
     return { state, accept: false, rejectMessage: "Unable to identify player." };
+  }
+  if (state.privateMatch) {
+    syncPrivateMatchReservation(nk, state);
+    if (!canUserJoinPrivateMatch(state, userId)) {
+      return { state, accept: false, rejectMessage: "Enter the private game code before joining this table." };
+    }
   }
   const activeCount = Object.keys(state.presences).length;
   const hasExistingAssignment = Boolean(state.assignments[userId]);
@@ -2021,6 +2266,10 @@ function applyRollRequest(logger, dispatcher, state, userId, playerColor, _paylo
     sendError(dispatcher, state, userId, "INVALID_PHASE", "The match has already ended.");
     return;
   }
+  if (!isPrivateMatchReady(state)) {
+    sendError(dispatcher, state, userId, "MATCH_NOT_READY", "Waiting for the other player to join.");
+    return;
+  }
   if (state.gameState.currentTurn !== playerColor) {
     sendError(dispatcher, state, userId, "INVALID_TURN", "It is not your turn to roll.");
     return;
@@ -2056,6 +2305,10 @@ function applyRollRequest(logger, dispatcher, state, userId, playerColor, _paylo
 function applyMoveRequest(logger, nk, dispatcher, state, userId, playerColor, payload, matchId) {
   if (state.gameState.winner) {
     sendError(dispatcher, state, userId, "INVALID_PHASE", "The match has already ended.");
+    return;
+  }
+  if (!isPrivateMatchReady(state)) {
+    sendError(dispatcher, state, userId, "MATCH_NOT_READY", "Waiting for the other player to join.");
     return;
   }
   if (state.gameState.currentTurn !== playerColor) {
@@ -2188,6 +2441,8 @@ var runtimeGlobals = {
   rpcAuthLinkCustom,
   rpcMatchmakerAdd,
   rpcCreatePrivateMatch,
+  rpcJoinPrivateMatch,
+  rpcGetPrivateMatchStatus,
   rpcPresenceHeartbeat,
   rpcPresenceCount,
   matchmakerMatched,

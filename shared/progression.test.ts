@@ -72,8 +72,16 @@ describe("progression helpers", () => {
     });
   });
 
-  it("keeps private-match wins as the smallest win reward", () => {
+  it("returns the configured win rewards for public, private, bot, and practice matches", () => {
+    expect(getXpAwardAmount("pvp_win")).toBe(100);
     expect(getXpAwardAmount("private_pvp_win")).toBe(25);
-    expect(getXpAwardAmount("private_pvp_win")).toBeLessThan(getXpAwardAmount("pvp_win"));
+    expect(getXpAwardAmount("bot_win")).toBe(50);
+    expect(getXpAwardAmount("practice_1_piece_win")).toBe(10);
+    expect(getXpAwardAmount("practice_3_pieces_win")).toBe(20);
+    expect(getXpAwardAmount("practice_5_pieces_win")).toBe(30);
+    expect(getXpAwardAmount("practice_extended_path_win")).toBe(60);
+    expect(getXpAwardAmount("practice_1_piece_win")).toBeLessThan(getXpAwardAmount("private_pvp_win"));
+    expect(getXpAwardAmount("private_pvp_win")).toBeLessThan(getXpAwardAmount("bot_win"));
+    expect(getXpAwardAmount("bot_win")).toBeLessThan(getXpAwardAmount("pvp_win"));
   });
 });

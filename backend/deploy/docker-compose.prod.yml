@@ -59,7 +59,6 @@ services:
         condition: service_healthy
     environment:
       NAKAMA_DOMAIN: ${NAKAMA_DOMAIN}
-      CADDY_ADMIN_HASH: ${CADDY_ADMIN_HASH}
     ports:
       - "80:80"
       - "443:443"

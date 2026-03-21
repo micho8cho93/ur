@@ -33,12 +33,34 @@ export const XP_SOURCE_CONFIG = {
     description: "Private PvP win reward.",
   },
   bot_win: {
-    amount: 100,
-    description: "Authenticated bot win reward.",
+    amount: 50,
+    description: "Authenticated standard bot win reward.",
+  },
+  practice_1_piece_win: {
+    amount: 10,
+    description: "Authenticated 1-piece practice win reward.",
+  },
+  practice_3_pieces_win: {
+    amount: 20,
+    description: "Authenticated 3-piece practice win reward.",
+  },
+  practice_5_pieces_win: {
+    amount: 30,
+    description: "Authenticated 5-piece practice win reward.",
+  },
+  practice_extended_path_win: {
+    amount: 60,
+    description: "Authenticated extended-path practice win reward.",
   },
 } as const;
 
 export type XpSource = keyof typeof XP_SOURCE_CONFIG;
+export type BotMatchXpSource =
+  | "bot_win"
+  | "practice_1_piece_win"
+  | "practice_3_pieces_win"
+  | "practice_5_pieces_win"
+  | "practice_extended_path_win";
 
 export type ProgressionProfile = {
   totalXp: number;

@@ -5,9 +5,20 @@ import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { LobbyMode, useMatchmaking } from '@/hooks/useMatchmaking';
 import { PRIVATE_MATCH_OPTIONS } from '@/logic/matchConfigs';
+import { PRIVATE_MATCH_CODE_LENGTH, isPrivateMatchCode, normalizePrivateMatchCodeInput } from '@/shared/privateMatchCode';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo } from 'react';
-import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Image,
+  Platform,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
 const multiplayerWideBackground = require('../../assets/images/multiplayer_bg.png');
 const multiplayerMobileBackground = require('../../assets/images/multiplayer_bg_mobile.png');
@@ -17,14 +28,20 @@ export default function Lobby() {
   const { mode: rawMode } = useLocalSearchParams<{ mode?: string }>();
   const mode: LobbyMode = useMemo(() => (rawMode === 'online' ? 'online' : 'bot'), [rawMode]);
   const router = useRouter();
+  const [privateCodeInput, setPrivateCodeInput] = useState('');
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const {
     startMatch,
     startPrivateMatch,
+    startCreatedPrivateMatch,
+    joinPrivateMatchByCode,
+    clearCreatedPrivateMatch,
     status,
     errorMessage,
     onlineCount,
     activeAction,
     pendingPrivateMode,
+    createdPrivateMatch,
   } = useMatchmaking(mode);
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
@@ -35,6 +52,20 @@ export default function Lobby() {
     }
   }, [mode, router]);
 
+  useEffect(() => {
+    if (!copyFeedback) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setCopyFeedback(null);
+    }, 1_800);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [copyFeedback]);
+
   if (mode === 'bot') {
     return null;
   }
@@ -43,14 +74,55 @@ export default function Lobby() {
     await startMatch();
   };
 
+  const handleJoinPrivateGame = async () => {
+    await joinPrivateMatchByCode(privateCodeInput);
+  };
+
+  const handleCopyPrivateCode = async () => {
+    if (!createdPrivateMatch) {
+      return;
+    }
+
+    const code = createdPrivateMatch.code;
+
+    try {
+      if (Platform.OS === 'web') {
+        const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+        if (clipboard?.writeText) {
+          await clipboard.writeText(code);
+          setCopyFeedback('Code copied.');
+          return;
+        }
+      }
+
+      await Share.share({
+        message: `Join my Royal Game of Ur private game with code ${code}.`,
+      });
+      setCopyFeedback('Share sheet opened.');
+    } catch {
+      setCopyFeedback('Select the code and copy it manually.');
+    }
+  };
+
   const isBusy = status === 'connecting' || status === 'searching';
   const isFindingOpponent = isBusy && activeAction === 'find_opponent';
   const isCreatingPrivateGame = isBusy && activeAction === 'create_private';
+  const isJoiningPrivateGame = isBusy && activeAction === 'join_private';
   const pendingPrivateOption = PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === pendingPrivateMode) ?? null;
+  const createdPrivateOption =
+    PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === createdPrivateMatch?.modeId) ?? null;
+  const normalizedPrivateCodeInput = normalizePrivateMatchCodeInput(privateCodeInput);
+  const canJoinPrivateGame = isPrivateMatchCode(normalizedPrivateCodeInput) && !isBusy;
 
   const buttonTitle = (() => {
-    if (status === 'error' && activeAction !== 'create_private') return 'Retry Matchmaking';
-    if (isFindingOpponent) return 'Searching...';
+    if (status === 'error' && activeAction !== 'create_private' && activeAction !== 'join_private') {
+      return 'Retry Matchmaking';
+    }
+
+    if (isFindingOpponent) {
+      return 'Searching...';
+    }
+
     return 'Find Opponent';
   })();
 
@@ -67,13 +139,27 @@ export default function Lobby() {
   })();
 
   const privateStatusLabel = (() => {
+    if (createdPrivateMatch) {
+      return createdPrivateMatch.hasGuestJoined
+        ? 'Friend connected. Start when you are ready. The board will unlock once both of you are inside.'
+        : 'Your code is ready. Share it now, then start the game whenever you want. The board stays locked until your friend arrives.';
+    }
+
     if (isCreatingPrivateGame) {
       return pendingPrivateOption
         ? `Preparing a ${pendingPrivateOption.label.toLowerCase()} private table...`
         : 'Preparing your private table...';
     }
 
-    return 'Choose a ruleset, create a room, and invite a friend.';
+    return 'Choose a ruleset, generate a short code, and invite a friend. Private wins award reduced XP.';
+  })();
+
+  const joinStatusLabel = (() => {
+    if (isJoiningPrivateGame) {
+      return 'Connecting you to that private table...';
+    }
+
+    return 'Enter the short code your friend shared with you.';
   })();
 
   return (
@@ -105,7 +191,7 @@ export default function Lobby() {
         <View style={styles.hero}>
           <Text style={styles.pageTitle}>Online Play</Text>
           <Text style={styles.pageSubtitle}>
-            Find a live opponent or open a private board for a friend.
+            Match publicly, create a private table with a short code, or join one your friend already opened.
           </Text>
 
           <View style={styles.onlineCountRow}>
@@ -134,11 +220,16 @@ export default function Lobby() {
               Jump into public matchmaking and get paired with the next available player.
             </Text>
 
-            <Text style={[styles.statusText, status === 'error' && activeAction !== 'create_private' && styles.statusError]}>
+            <Text style={[styles.statusText, status === 'error' && activeAction === 'find_opponent' && styles.statusError]}>
               {statusLabel}
             </Text>
 
-            <Button title={buttonTitle} loading={isFindingOpponent} disabled={isCreatingPrivateGame} onPress={handleStart} />
+            <Button
+              title={buttonTitle}
+              loading={isFindingOpponent}
+              disabled={isCreatingPrivateGame || isJoiningPrivateGame}
+              onPress={handleStart}
+            />
           </View>
 
           <View style={styles.card}>
@@ -147,26 +238,89 @@ export default function Lobby() {
 
             <Text style={styles.title}>Create Private Game</Text>
             <Text style={styles.subtitle}>
-              Invite a friend with a private link. Private wins award reduced XP and challenge rewards stay off.
+              Make a shareable room code for a friend. Private matches award the lowest XP and never count toward challenges.
             </Text>
 
             <Text style={styles.statusText}>{privateStatusLabel}</Text>
 
-            <View style={styles.optionGrid}>
-              {PRIVATE_MATCH_OPTIONS.map((option) => (
-                <View key={option.modeId} style={styles.optionCell}>
-                  <Button
-                    title={option.label}
-                    variant="outline"
-                    loading={isCreatingPrivateGame && pendingPrivateMode === option.modeId}
-                    disabled={isBusy && pendingPrivateMode !== option.modeId}
-                    onPress={() => {
-                      void startPrivateMatch(option.modeId);
-                    }}
-                  />
+            {createdPrivateMatch ? (
+              <>
+                <View style={styles.privateCodePanel}>
+                  <Text style={styles.privateCodeEyebrow}>
+                    {createdPrivateOption ? `${createdPrivateOption.label} Private Code` : 'Private Game Code'}
+                  </Text>
+                  <Text selectable style={styles.privateCodeValue}>
+                    {createdPrivateMatch.code}
+                  </Text>
+                  <View style={styles.privatePresenceRow}>
+                    <View
+                      style={[
+                        styles.privatePresenceDot,
+                        createdPrivateMatch.hasGuestJoined ? styles.privatePresenceDotReady : null,
+                      ]}
+                    />
+                    <Text style={styles.privatePresenceText}>
+                      {createdPrivateMatch.hasGuestJoined ? 'Friend has arrived' : 'Waiting for friend'}
+                    </Text>
+                  </View>
+                  {copyFeedback ? <Text style={styles.copyFeedbackText}>{copyFeedback}</Text> : null}
                 </View>
-              ))}
-            </View>
+
+                <View style={styles.actionRow}>
+                  <Button title="Copy Code" variant="outline" style={styles.actionButton} onPress={() => void handleCopyPrivateCode()} />
+                  <Button title="Start Game" style={styles.actionButton} onPress={startCreatedPrivateMatch} />
+                </View>
+
+                <Button title="Pick Another Ruleset" variant="outline" onPress={clearCreatedPrivateMatch} />
+              </>
+            ) : (
+              <View style={styles.optionGrid}>
+                {PRIVATE_MATCH_OPTIONS.map((option) => (
+                  <View key={option.modeId} style={styles.optionCell}>
+                    <Button
+                      title={option.label}
+                      variant="outline"
+                      loading={isCreatingPrivateGame && pendingPrivateMode === option.modeId}
+                      disabled={isBusy && pendingPrivateMode !== option.modeId}
+                      onPress={() => {
+                        void startPrivateMatch(option.modeId);
+                      }}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
+          <View style={styles.card}>
+            <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+            <View style={styles.cardBorder} />
+
+            <Text style={styles.title}>Enter Private Game Code</Text>
+            <Text style={styles.subtitle}>
+              Paste the short code your friend sent you to enter their private table.
+            </Text>
+
+            <Text style={styles.statusText}>{joinStatusLabel}</Text>
+
+            <TextInput
+              value={normalizedPrivateCodeInput}
+              onChangeText={(value) => setPrivateCodeInput(normalizePrivateMatchCodeInput(value))}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={PRIVATE_MATCH_CODE_LENGTH}
+              placeholder="Enter code"
+              placeholderTextColor="rgba(247, 229, 203, 0.36)"
+              selectionColor={urTheme.colors.goldBright}
+              style={styles.codeInput}
+            />
+
+            <Button
+              title={isJoiningPrivateGame ? 'Joining...' : 'Join Private Game'}
+              loading={isJoiningPrivateGame}
+              disabled={!canJoinPrivateGame}
+              onPress={() => void handleJoinPrivateGame()}
+            />
           </View>
         </View>
       </ScrollView>
@@ -192,7 +346,7 @@ const styles = StyleSheet.create({
   },
   hero: {
     width: '100%',
-    maxWidth: 920,
+    maxWidth: 1080,
     alignItems: 'center',
     marginBottom: urTheme.spacing.lg,
   },
@@ -207,7 +361,7 @@ const styles = StyleSheet.create({
     color: 'rgba(238, 223, 197, 0.86)',
     textAlign: 'center',
     lineHeight: 22,
-    maxWidth: 560,
+    maxWidth: 640,
     marginTop: urTheme.spacing.xs,
     marginBottom: urTheme.spacing.md,
   },
@@ -236,7 +390,7 @@ const styles = StyleSheet.create({
   },
   cardGrid: {
     width: '100%',
-    maxWidth: 920,
+    maxWidth: 1080,
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
@@ -244,7 +398,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 440,
+    maxWidth: 340,
     minWidth: 280,
     flexGrow: 1,
     borderRadius: urTheme.radii.lg,
@@ -275,8 +429,8 @@ const styles = StyleSheet.create({
   title: {
     ...urTypography.title,
     color: urTheme.colors.parchment,
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 30,
+    lineHeight: 36,
     marginBottom: urTheme.spacing.sm,
     textAlign: 'center',
   },
@@ -335,6 +489,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginBottom: urTheme.spacing.md,
     textAlign: 'center',
+    lineHeight: 18,
   },
   statusError: {
     color: '#F6AAA2',
@@ -345,7 +500,86 @@ const styles = StyleSheet.create({
     gap: urTheme.spacing.sm,
   },
   optionCell: {
-    flexBasis: 150,
+    flexBasis: 120,
     flexGrow: 1,
+  },
+  privateCodePanel: {
+    marginBottom: urTheme.spacing.md,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.md,
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(217, 164, 65, 0.45)',
+    backgroundColor: 'rgba(13, 15, 18, 0.52)',
+  },
+  privateCodeEyebrow: {
+    ...urTypography.label,
+    color: urTheme.colors.goldBright,
+    fontSize: 11,
+    textAlign: 'center',
+    letterSpacing: 0.8,
+    marginBottom: urTheme.spacing.xs,
+  },
+  privateCodeValue: {
+    color: urTheme.colors.parchment,
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: 2.2,
+    textAlign: 'center',
+    marginBottom: urTheme.spacing.sm,
+  },
+  privatePresenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  privatePresenceDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(217, 164, 65, 0.5)',
+  },
+  privatePresenceDotReady: {
+    backgroundColor: '#4ADE80',
+    ...boxShadow({
+      color: '#4ADE80',
+      opacity: 0.55,
+      blurRadius: 4,
+    }),
+  },
+  privatePresenceText: {
+    color: 'rgba(247, 229, 203, 0.82)',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  copyFeedbackText: {
+    marginTop: urTheme.spacing.sm,
+    color: 'rgba(216, 232, 251, 0.9)',
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: urTheme.spacing.sm,
+    marginBottom: urTheme.spacing.sm,
+  },
+  actionButton: {
+    flexGrow: 1,
+    minWidth: 120,
+  },
+  codeInput: {
+    minHeight: 54,
+    borderRadius: urTheme.radii.pill,
+    borderWidth: 1.3,
+    borderColor: 'rgba(217, 164, 65, 0.68)',
+    backgroundColor: 'rgba(10, 12, 15, 0.68)',
+    color: urTheme.colors.parchment,
+    textAlign: 'center',
+    fontSize: 22,
+    letterSpacing: 2.2,
+    paddingHorizontal: urTheme.spacing.md,
+    marginBottom: urTheme.spacing.md,
   },
 });

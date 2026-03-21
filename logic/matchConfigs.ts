@@ -1,4 +1,5 @@
 import type { PathVariant } from './pathVariants';
+import { getXpAwardAmount, type BotMatchXpSource } from '../shared/progression';
 
 export type RulesVariant = 'standard';
 export type MatchOpponentType = 'bot';
@@ -18,6 +19,7 @@ export type MatchConfig = {
   displayName: string;
   isPracticeMode: boolean;
   modeId: MatchModeId;
+  offlineWinRewardSource: BotMatchXpSource;
   opponentType: MatchOpponentType;
   pathVariant: PathVariant;
   pieceCountPerSide: number;
@@ -41,6 +43,7 @@ const STANDARD_MATCH_CONFIG: MatchConfig = {
   allowsChallenges: true,
   allowsCoins: true,
   allowsRankedStats: true,
+  offlineWinRewardSource: 'bot_win',
   opponentType: 'bot',
   pathVariant: 'default',
   isPracticeMode: false,
@@ -52,11 +55,12 @@ const GAME_MODE_MATCH_CONFIGS: readonly MatchConfig[] = [
     displayName: '1 Piece',
     pieceCountPerSide: 1,
     rulesVariant: 'standard',
-    allowsXp: false,
+    allowsXp: true,
     allowsOnline: false,
     allowsChallenges: false,
     allowsCoins: false,
     allowsRankedStats: false,
+    offlineWinRewardSource: 'practice_1_piece_win',
     opponentType: 'bot',
     pathVariant: 'default',
     isPracticeMode: true,
@@ -67,11 +71,12 @@ const GAME_MODE_MATCH_CONFIGS: readonly MatchConfig[] = [
     displayName: '3 Pieces',
     pieceCountPerSide: 3,
     rulesVariant: 'standard',
-    allowsXp: false,
+    allowsXp: true,
     allowsOnline: false,
     allowsChallenges: false,
     allowsCoins: false,
     allowsRankedStats: false,
+    offlineWinRewardSource: 'practice_3_pieces_win',
     opponentType: 'bot',
     pathVariant: 'default',
     isPracticeMode: true,
@@ -82,11 +87,12 @@ const GAME_MODE_MATCH_CONFIGS: readonly MatchConfig[] = [
     displayName: '5 Pieces',
     pieceCountPerSide: 5,
     rulesVariant: 'standard',
-    allowsXp: false,
+    allowsXp: true,
     allowsOnline: false,
     allowsChallenges: false,
     allowsCoins: false,
     allowsRankedStats: false,
+    offlineWinRewardSource: 'practice_5_pieces_win',
     opponentType: 'bot',
     pathVariant: 'default',
     isPracticeMode: true,
@@ -97,11 +103,12 @@ const GAME_MODE_MATCH_CONFIGS: readonly MatchConfig[] = [
     displayName: 'Extended Path',
     pieceCountPerSide: 7,
     rulesVariant: 'standard',
-    allowsXp: false,
+    allowsXp: true,
     allowsOnline: false,
     allowsChallenges: false,
     allowsCoins: false,
     allowsRankedStats: false,
+    offlineWinRewardSource: 'practice_extended_path_win',
     opponentType: 'bot',
     pathVariant: 'full-path',
     isPracticeMode: true,
@@ -146,8 +153,11 @@ export const PRIVATE_MATCH_OPTIONS: readonly PrivateMatchOption[] = [
     description: 'Seven pieces with the extended-path rules.',
   },
 ] as const;
-export const PRACTICE_MODE_REWARD_LABEL = 'Practice Mode: No XP Rewards';
-export const GAME_MODE_SCREEN_NOTE = 'Game Modes are offline bot matches only. No XP or online play.';
+export const getPracticeModeRewardLabel = (config: MatchConfig): string =>
+  `Practice Mode Win Reward: +${getXpAwardAmount(config.offlineWinRewardSource)} XP`;
+
+export const GAME_MODE_SCREEN_NOTE =
+  'Game Modes are offline bot matches with reduced XP rewards when signed in. No challenge rewards or online play.';
 
 export const isMatchModeId = (value: unknown): value is MatchModeId =>
   typeof value === 'string' && value in MATCH_CONFIGS;

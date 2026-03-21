@@ -8,6 +8,7 @@ import {
   ProgressionProfile,
   ProgressionSnapshot,
   sanitizeTotalXp,
+  XP_SOURCE_CONFIG,
   XpSource,
 } from "../../shared/progression";
 
@@ -21,7 +22,7 @@ export type RuntimeStorageObject = RuntimeRecord & {
   version?: string;
 };
 
-export type XpRewardSource = "pvp_win" | "private_pvp_win" | "bot_win" | "challenge_completion";
+export type XpRewardSource = XpSource | "challenge_completion";
 
 export type StoredXpRewardRecord = {
   userId: string;
@@ -187,16 +188,18 @@ export const normalizeStoredXpRewardRecord = (rawValue: unknown): StoredXpReward
   const previousTotalXp = sanitizeTotalXp(readNumberField(record, ["previousTotalXp", "previous_total_xp"]) ?? 0);
   const newTotalXp = sanitizeTotalXp(readNumberField(record, ["newTotalXp", "new_total_xp"]) ?? 0);
   const progression = record.progression as unknown;
+  const isKnownRewardSource = (
+    candidate: string | null
+  ): candidate is XpRewardSource =>
+    typeof candidate === "string" && (candidate === "challenge_completion" || candidate in XP_SOURCE_CONFIG);
+  const normalizedSource = isKnownRewardSource(source) ? source : null;
 
   if (
     !userId ||
     !ledgerKey ||
     !sourceId ||
     !awardedAt ||
-    (source !== "pvp_win" &&
-      source !== "private_pvp_win" &&
-      source !== "bot_win" &&
-      source !== "challenge_completion") ||
+    !normalizedSource ||
     typeof progression !== "object" ||
     progression === null
   ) {
@@ -206,7 +209,7 @@ export const normalizeStoredXpRewardRecord = (rawValue: unknown): StoredXpReward
   return {
     userId,
     ledgerKey,
-    source,
+    source: normalizedSource,
     sourceId,
     matchId: matchId ?? null,
     awardedAt,
