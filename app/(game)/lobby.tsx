@@ -135,7 +135,7 @@ export default function Lobby() {
       return 'Searching for an opponent...';
     }
 
-    return 'Quick-match into a live public game.';
+    return null;
   })();
 
   const privateStatusLabel = (() => {
@@ -151,7 +151,7 @@ export default function Lobby() {
         : 'Preparing your private table...';
     }
 
-    return 'Choose a ruleset, generate a short code, and invite a friend. Private wins award reduced XP.';
+    return null;
   })();
 
   const joinStatusLabel = (() => {
@@ -159,7 +159,7 @@ export default function Lobby() {
       return 'Connecting you to that private table...';
     }
 
-    return 'Enter the short code your friend shared with you.';
+    return null;
   })();
 
   return (
@@ -221,9 +221,11 @@ export default function Lobby() {
               Jump into public matchmaking and get paired with the next available player.
             </Text>
 
-            <Text style={[styles.statusText, status === 'error' && activeAction === 'find_opponent' && styles.statusError]}>
-              {statusLabel}
-            </Text>
+            {statusLabel ? (
+              <Text style={[styles.statusText, status === 'error' && activeAction === 'find_opponent' && styles.statusError]}>
+                {statusLabel}
+              </Text>
+            ) : null}
 
             <Button
               title={buttonTitle}
@@ -242,7 +244,7 @@ export default function Lobby() {
               Make a shareable room code for a friend. Private matches award the lowest XP and never count toward challenges.
             </Text>
 
-            <Text style={styles.statusText}>{privateStatusLabel}</Text>
+            {privateStatusLabel ? <Text style={styles.statusText}>{privateStatusLabel}</Text> : null}
 
             {createdPrivateMatch ? (
               <>
@@ -302,7 +304,7 @@ export default function Lobby() {
               Paste the short code your friend sent you to enter their private table.
             </Text>
 
-            <Text style={styles.statusText}>{joinStatusLabel}</Text>
+            {joinStatusLabel ? <Text style={styles.statusText}>{joinStatusLabel}</Text> : null}
 
             <TextInput
               value={privateCodeInput}

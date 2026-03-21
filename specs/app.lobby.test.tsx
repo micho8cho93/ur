@@ -84,4 +84,14 @@ describe('Lobby private game join input', () => {
 
     expect(mockJoinPrivateMatchByCode).toHaveBeenCalledWith('AB23CD45');
   });
+
+  it('hides the idle helper status copy on the online cards', () => {
+    const view = render(<Lobby />);
+
+    expect(view.queryByText('Quick-match into a live public game.')).toBeNull();
+    expect(
+      view.queryByText('Choose a ruleset, generate a short code, and invite a friend. Private wins award reduced XP.'),
+    ).toBeNull();
+    expect(view.queryByText('Enter the short code your friend shared with you.')).toBeNull();
+  });
 });

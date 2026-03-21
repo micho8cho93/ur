@@ -3,7 +3,7 @@ import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBac
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
-import { GAME_MODE_CONFIGS, GAME_MODE_SCREEN_NOTE, type MatchModeId } from '@/logic/matchConfigs';
+import { GAME_MODE_CONFIGS, type MatchModeId } from '@/logic/matchConfigs';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import React from 'react';
@@ -50,10 +50,6 @@ export default function GameModesScreen() {
         <View style={styles.hero}>
           <Text style={styles.eyebrow}>Game Modes</Text>
           <Text style={styles.title}>Offline Practice Variants</Text>
-          <Text style={styles.subtitle}>Choose a bot-only variant, then pick the difficulty on the next screen.</Text>
-          <View style={styles.notePill}>
-            <Text style={styles.noteText}>{GAME_MODE_SCREEN_NOTE}</Text>
-          </View>
         </View>
 
         <View style={[styles.gridList, isCompactLayout && styles.gridListCompact]}>
@@ -138,29 +134,6 @@ const styles = StyleSheet.create({
     fontSize: 34,
     lineHeight: 40,
     maxWidth: 520,
-  },
-  subtitle: {
-    marginTop: urTheme.spacing.sm,
-    color: 'rgba(239, 224, 198, 0.84)',
-    textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: 560,
-  },
-  notePill: {
-    marginTop: urTheme.spacing.md,
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.sm,
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.54)',
-    backgroundColor: 'rgba(13, 15, 18, 0.58)',
-    maxWidth: 620,
-  },
-  noteText: {
-    ...urTypography.label,
-    color: urTheme.colors.parchment,
-    fontSize: 11,
-    textAlign: 'center',
   },
   gridList: {
     flexDirection: 'row',

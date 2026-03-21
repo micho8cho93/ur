@@ -19,14 +19,17 @@ export const ChallengeSummaryCard: React.FC<ChallengeSummaryCardProps> = ({ styl
   const challengeCount = definitions.length;
   const completedCount = progress?.totalCompleted ?? 0;
   const challengeRows = buildChallengeViewModels(definitions, progress);
-  const latestCompleted = [...challengeRows]
+  const completedChallenges = [...challengeRows]
     .filter((challenge) => challenge.completed)
     .sort((left, right) => {
       const leftTime = left.completedAt ? Date.parse(left.completedAt) : 0;
       const rightTime = right.completedAt ? Date.parse(right.completedAt) : 0;
+      if (leftTime === rightTime) {
+        return left.name.localeCompare(right.name);
+      }
+
       return rightTime - leftTime;
-    })
-    .slice(0, 2);
+    });
 
   return (
     <View style={[styles.card, style]}>
@@ -56,22 +59,21 @@ export const ChallengeSummaryCard: React.FC<ChallengeSummaryCardProps> = ({ styl
             </View>
           </View>
 
-          <Text style={styles.body}>
-            {completedCount > 0
-              ? `You have completed ${completedCount} of ${challengeCount} permanent challenges.`
-              : 'No completed challenges yet. Your confirmed completions will appear here as the backend records them.'}
-          </Text>
-
-          {latestCompleted.length > 0 ? (
+          {completedChallenges.length > 0 ? (
             <View style={styles.previewList}>
-              {latestCompleted.map((challenge) => (
+              <Text style={styles.listHeading}>Completed Challenges</Text>
+              {completedChallenges.map((challenge) => (
                 <View key={challenge.id} style={styles.previewRow}>
                   <Text style={styles.previewName}>{challenge.name}</Text>
                   <Text style={styles.previewReward}>+{challenge.rewardXp} XP</Text>
                 </View>
               ))}
             </View>
-          ) : null}
+          ) : (
+            <Text style={styles.body}>
+              No completed challenges yet. Your confirmed completions will appear here as the backend records them.
+            </Text>
+          )}
 
           {isRefreshing ? <Text style={styles.metaText}>Refreshing your latest challenge record…</Text> : null}
           {errorMessage && definitions.length > 0 ? (
@@ -154,6 +156,11 @@ const styles = StyleSheet.create({
   },
   previewList: {
     gap: 6,
+  },
+  listHeading: {
+    ...urTypography.label,
+    color: 'rgba(240, 224, 196, 0.72)',
+    fontSize: 10,
   },
   previewRow: {
     flexDirection: 'row',

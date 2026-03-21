@@ -3,9 +3,9 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { createInitialState } from '@/logic/engine';
 import type { GameState, MoveAction } from '@/logic/types';
 
-const mockMatchDiceRollStage = jest.fn(({ playbackId }: { playbackId: number }) => {
+const mockMatchDiceRollStage = jest.fn(({ rolling, visible }: { rolling: boolean; visible: boolean }) => {
   const { Text } = require('react-native');
-  return <Text testID="match-dice-stage-playback">{String(playbackId)}</Text>;
+  return <Text testID="match-dice-stage-playback">{`${visible ? 'visible' : 'hidden'}:${rolling ? 'rolling' : 'idle'}`}</Text>;
 });
 
 const mockSlotDiceScene = jest.fn(() => {
@@ -37,6 +37,21 @@ const mockSetRollCommandSender = jest.fn();
 const mockSetMoveCommandSender = jest.fn();
 const mockGetMatchPreferences = jest.fn();
 const mockUpdateMatchPreferences = jest.fn();
+const mockConnectSocketWithRetry = jest.fn();
+const mockDisconnectSocket = jest.fn();
+const mockSocketJoinMatch = jest.fn();
+const mockSocketLeaveMatch = jest.fn();
+const mockSocketSendMatchState = jest.fn();
+const mockHasNakamaConfig = jest.fn();
+const mockIsNakamaEnabled = jest.fn();
+const mockSocket = {
+  joinMatch: (...args: unknown[]) => mockSocketJoinMatch(...args),
+  leaveMatch: (...args: unknown[]) => mockSocketLeaveMatch(...args),
+  sendMatchState: (...args: unknown[]) => mockSocketSendMatchState(...args),
+  onmatchdata: null as ((...args: unknown[]) => void) | null,
+  onmatchpresence: null as ((...args: unknown[]) => void) | null,
+  ondisconnect: null as (() => void) | null,
+};
 
 const baseGameState: GameState = {
   ...createInitialState(),
@@ -208,7 +223,7 @@ jest.mock('@/components/ui/Modal', () => {
 });
 
 jest.mock('@/components/game/MatchDiceRollStage', () => ({
-  MatchDiceRollStage: (props: { playbackId: number }) => mockMatchDiceRollStage(props),
+  MatchDiceRollStage: (props: { rolling: boolean; visible: boolean }) => mockMatchDiceRollStage(props),
 }));
 
 jest.mock('@/components/game/MatchMomentIndicator', () => ({
@@ -220,8 +235,8 @@ jest.mock('@/components/game/SlotDiceScene', () => ({
 }));
 
 jest.mock('@/config/nakama', () => ({
-  hasNakamaConfig: () => false,
-  isNakamaEnabled: () => false,
+  hasNakamaConfig: () => mockHasNakamaConfig(),
+  isNakamaEnabled: () => mockIsNakamaEnabled(),
 }));
 
 jest.mock('@/hooks/useGameLoop', () => ({
@@ -289,7 +304,8 @@ jest.mock('@/services/matchPreferences', () => ({
 
 jest.mock('@/services/nakama', () => ({
   nakamaService: {
-    disconnectSocket: jest.fn(),
+    connectSocketWithRetry: (...args: unknown[]) => mockConnectSocketWithRetry(...args),
+    disconnectSocket: (...args: unknown[]) => mockDisconnectSocket(...args),
   },
 }));
 
@@ -325,7 +341,9 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('@expo/vector-icons/MaterialIcons', () => {
   const React = require('react');
   const { Text } = require('react-native');
-  return ({ name }: { name: string }) => <Text>{name}</Text>;
+  const MaterialIconsMock = ({ name }: { name: string }) => <Text>{name}</Text>;
+  MaterialIconsMock.displayName = 'MaterialIconsMock';
+  return MaterialIconsMock;
 });
 
 import { Platform } from 'react-native';
@@ -337,6 +355,9 @@ describe('GameRoom match dice stage', () => {
     jest.useFakeTimers();
     mockSearchParams.id = 'local-1';
     mockSearchParams.offline = '1';
+    delete mockSearchParams.privateMatch;
+    delete mockSearchParams.privateHost;
+    delete mockSearchParams.privateCode;
     delete mockSearchParams.tutorial;
     delete mockSearchParams.botDifficulty;
     mockGetMatchPreferences.mockResolvedValue({
@@ -357,10 +378,26 @@ describe('GameRoom match dice stage', () => {
       timerDurationSeconds: 20,
       timerEnabled: true,
     });
+    mockConnectSocketWithRetry.mockResolvedValue(mockSocket);
+    mockHasNakamaConfig.mockReturnValue(false);
+    mockIsNakamaEnabled.mockReturnValue(false);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'local-1',
+    });
+    mockSocketLeaveMatch.mockResolvedValue(undefined);
+    mockSocketSendMatchState.mockResolvedValue(undefined);
+    mockSocket.onmatchdata = null;
+    mockSocket.onmatchpresence = null;
+    mockSocket.ondisconnect = null;
     mockStoreState.gameState = {
       ...baseGameState,
     };
+    mockStoreState.matchId = 'local-1';
     mockStoreState.validMoves = [];
+    mockStoreState.matchPresences = [];
+    mockStoreState.userId = null;
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
       get: () => 'ios',
@@ -371,7 +408,7 @@ describe('GameRoom match dice stage', () => {
     jest.useRealTimers();
   });
 
-  it('routes iOS rolls through the external stage playback id and keeps the inline scene idle', async () => {
+  it('routes iOS rolls through the external stage and keeps the inline scene idle', async () => {
     jest.useFakeTimers();
 
     render(<GameRoom />);
@@ -394,13 +431,14 @@ describe('GameRoom match dice stage', () => {
     expect(mockRoll).toHaveBeenCalledTimes(1);
     expect(mockMatchDiceRollStage).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        playbackId: 1,
+        rolling: true,
+        visible: true,
       }),
     );
     expect(mockSlotDiceScene).not.toHaveBeenCalled();
   });
 
-  it('clears the embedded dice visual before an offline bot roll resolves on Android', async () => {
+  it('keeps the embedded dice visual mounted while an offline bot roll resolves on Android', async () => {
     jest.useFakeTimers();
 
     Object.defineProperty(Platform, 'OS', {
@@ -451,7 +489,7 @@ describe('GameRoom match dice stage', () => {
       view.rerender(<GameRoom />);
     });
 
-    expect(screen.queryByTestId('dice-roll-scene-host')).toBeNull();
+    expect(screen.queryByTestId('dice-roll-scene-host')).not.toBeNull();
   });
 
   it('auto-rolls after the configured delay when automatic rolling is enabled', async () => {
@@ -550,5 +588,96 @@ describe('GameRoom match dice stage', () => {
 
     expect(screen.getByText('Play Tutorial')).toBeTruthy();
     expect(screen.getByTestId('mock-play-tutorial-coach')).toBeTruthy();
+  });
+
+  it('shows Opponent Joined only when a private match becomes ready', async () => {
+    mockSearchParams.id = 'private-1';
+    mockSearchParams.offline = '0';
+    mockSearchParams.privateMatch = '1';
+    mockSearchParams.privateHost = '1';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'private-1',
+    });
+    mockStoreState.matchId = 'private-1';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.matchPresences = ['self-user'];
+    mockStoreState.gameState = {
+      ...baseGameState,
+      history: ['light opened the match.'],
+    };
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('Opponent Joined')).toBeNull();
+
+    mockStoreState.matchPresences = ['self-user', 'opponent-user'];
+
+    await act(async () => {
+      view.rerender(<GameRoom />);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Opponent Joined')).toBeTruthy();
+  });
+
+  it('shows Opponent Forfeit when a private opponent leaves mid-match', async () => {
+    mockSearchParams.id = 'private-2';
+    mockSearchParams.offline = '0';
+    mockSearchParams.privateMatch = '1';
+    mockSearchParams.privateHost = '1';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'private-2',
+    });
+    mockStoreState.matchId = 'private-2';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.matchPresences = ['self-user', 'opponent-user'];
+    mockStoreState.gameState = {
+      ...baseGameState,
+      history: ['light opened the match.'],
+    };
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('Opponent Forfeit')).toBeNull();
+
+    mockStoreState.matchPresences = ['self-user'];
+
+    await act(async () => {
+      view.rerender(<GameRoom />);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Opponent Forfeit')).toBeTruthy();
+    expect(screen.queryByText('Opponent Joined')).toBeNull();
   });
 });

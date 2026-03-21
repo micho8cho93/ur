@@ -96,13 +96,12 @@ const TOP_CHROME_BORDER = urTheme.colors.cedar;
 const VISUAL_TURN_TIMER_WARNING_THRESHOLD = 0.22;
 const MATCH_CUE_FONT_FAMILY = 'CinzelDecorativeBold';
 const HOURGLASS_HEIGHT_RATIO = 156 / 100;
-const LOCAL_NO_MOVE_HISTORY_RE = /^(light|dark) rolled ([0-4]) but had no moves\.$/;
 const LOCAL_MOVE_HISTORY_RE = /^(light|dark) moved to \d+\. Rosette: (true|false)$/;
 const AUTO_ROLL_DELAY_MS = 550;
 const BOARD_INTRO_FALLBACK_DELAY_MS = 400;
 const SHOULD_BYPASS_CINEMATIC_INTROS = process.env.NODE_ENV === 'test';
 
-type MatchMomentCueKind = 'play' | 'yourTurn' | 'zero' | 'stuck' | 'timeout' | 'rosette' | 'opponentJoined';
+type MatchMomentCueKind = 'play' | 'rosette' | 'opponentJoined' | 'opponentForfeit';
 type RollButtonLatchPhase = 'idle' | 'awaitingOutcome' | 'awaitingTurnReset';
 type TutorialCoachPhase =
   | 'idle'
@@ -120,38 +119,6 @@ const MATCH_MOMENT_CUES: Record<MatchMomentCueKind, Omit<MatchMomentIndicatorCue
     background: 'rgba(48, 28, 14, 0.94)',
     durationMs: 1100,
   },
-  yourTurn: {
-    message: 'Your Turn',
-    accent: urTheme.colors.lapisBright,
-    border: 'rgba(126, 177, 255, 0.84)',
-    glow: 'rgba(90, 168, 255, 0.2)',
-    background: 'rgba(13, 26, 43, 0.94)',
-    durationMs: 1200,
-  },
-  zero: {
-    message: 'Zero: no move',
-    accent: urTheme.colors.ember,
-    border: 'rgba(240, 168, 64, 0.84)',
-    glow: 'rgba(240, 168, 64, 0.22)',
-    background: 'rgba(54, 24, 10, 0.95)',
-    durationMs: 1250,
-  },
-  stuck: {
-    message: "You're stuck!",
-    accent: urTheme.colors.carnelianBright,
-    border: 'rgba(232, 98, 46, 0.84)',
-    glow: 'rgba(232, 98, 46, 0.24)',
-    background: 'rgba(56, 20, 11, 0.95)',
-    durationMs: 1250,
-  },
-  timeout: {
-    message: "Time's up",
-    accent: urTheme.colors.gold,
-    border: 'rgba(232, 210, 176, 0.82)',
-    glow: 'rgba(240, 192, 64, 0.18)',
-    background: 'rgba(39, 23, 14, 0.94)',
-    durationMs: 1300,
-  },
   rosette: {
     message: 'Roll Again!',
     accent: urTheme.colors.goldGlow,
@@ -167,6 +134,14 @@ const MATCH_MOMENT_CUES: Record<MatchMomentCueKind, Omit<MatchMomentIndicatorCue
     glow: 'rgba(90, 168, 255, 0.16)',
     background: 'rgba(20, 32, 37, 0.94)',
     durationMs: 1450,
+  },
+  opponentForfeit: {
+    message: 'Opponent Forfeit',
+    accent: urTheme.colors.carnelianBright,
+    border: 'rgba(232, 98, 46, 0.86)',
+    glow: 'rgba(232, 98, 46, 0.2)',
+    background: 'rgba(47, 20, 15, 0.94)',
+    durationMs: 1500,
   },
 };
 
@@ -727,6 +702,27 @@ export function GameRoom() {
     [setLiveMatchCue],
   );
 
+  const replaceMatchCue = React.useCallback(
+    (kind: MatchMomentCueKind) => {
+      if (!announcementCuesEnabled || !introsComplete) {
+        return;
+      }
+
+      matchCueIdRef.current += 1;
+      lastQueuedMatchCueRef.current = {
+        kind,
+        matchId: matchId ?? null,
+        timestamp: Date.now(),
+      };
+      queuedMatchCuesRef.current = [];
+      setLiveMatchCue({
+        id: matchCueIdRef.current,
+        ...MATCH_MOMENT_CUES[kind],
+      });
+    },
+    [announcementCuesEnabled, introsComplete, matchId, setLiveMatchCue],
+  );
+
   useEffect(() => {
     if (announcementCuesEnabled && introsComplete) {
       return;
@@ -1197,7 +1193,6 @@ export function GameRoom() {
       }
 
       suppressMatchCuesUntilInteractionRef.current = true;
-      enqueueMatchCue('timeout');
 
       if (liveState.phase === 'rolling') {
         forceMoveAfterRollRef.current = true;
@@ -1219,7 +1214,6 @@ export function GameRoom() {
     };
   }, [
     botTimerEnabled,
-    enqueueMatchCue,
     gameState.phase,
     gameState.winner,
     isPrivateMatchReady,
@@ -1315,14 +1309,23 @@ export function GameRoom() {
       return;
     }
 
+    if (gameState.winner !== null || gameState.phase === 'ended') {
+      previousJoinedPlayerCountRef.current = joinedPlayerCount;
+      return;
+    }
+
     const previousJoinedPlayerCount = previousJoinedPlayerCountRef.current;
 
     if (previousJoinedPlayerCount > 0 && previousJoinedPlayerCount < 2 && joinedPlayerCount >= 2) {
       enqueueMatchCue('opponentJoined');
     }
 
+    if (previousJoinedPlayerCount >= 2 && joinedPlayerCount < 2) {
+      replaceMatchCue('opponentForfeit');
+    }
+
     previousJoinedPlayerCountRef.current = joinedPlayerCount;
-  }, [enqueueMatchCue, isPrivateMatch, joinedPlayerCount, matchId]);
+  }, [enqueueMatchCue, gameState.phase, gameState.winner, isPrivateMatch, joinedPlayerCount, replaceMatchCue]);
 
   const socketRef = useRef<Socket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1600,14 +1603,6 @@ export function GameRoom() {
     const isBotRoll = isOffline && gameState.currentTurn === 'dark';
     const rollValueChanged = previous.rollValue !== gameState.rollValue;
     let shouldSkipResolvedRollAudio = false;
-    const justEnteredNoMoveState =
-      hasAssignedColor &&
-      playerColor !== null &&
-      gameState.currentTurn === playerColor &&
-      gameState.phase === 'moving' &&
-      gameState.rollValue !== null &&
-      validMoves.length === 0 &&
-      (previous.phase !== gameState.phase || previous.rollValue !== gameState.rollValue);
     const newHistoryEntries =
       gameState.history.length > previous.history.length ? gameState.history.slice(previous.history.length) : [];
 
@@ -1638,10 +1633,6 @@ export function GameRoom() {
       void gameAudio.play('roll');
     }
 
-    if (justEnteredNoMoveState) {
-      enqueueMatchCue(gameState.rollValue === 0 ? 'zero' : 'stuck');
-    }
-
     if (newHistoryEntries.length > 0) {
       for (const entry of newHistoryEntries) {
         if (entry.includes('captured')) {
@@ -1651,12 +1642,6 @@ export function GameRoom() {
         }
 
         if (!playerColor) {
-          continue;
-        }
-
-        const noMoveMatch = entry.match(LOCAL_NO_MOVE_HISTORY_RE);
-        if (noMoveMatch && noMoveMatch[1] === playerColor) {
-          enqueueMatchCue(noMoveMatch[2] === '0' ? 'zero' : 'stuck');
           continue;
         }
 
@@ -1695,17 +1680,6 @@ export function GameRoom() {
     if (!previous.winner && gameState.winner) {
       const resultCue = hasAssignedColor ? (didPlayerWin ? 'win' : 'lose') : 'win';
       void gameAudio.play(resultCue);
-    }
-
-    if (
-      hasAssignedColor &&
-      playerColor !== null &&
-      gameState.currentTurn === playerColor &&
-      previous.currentTurn !== gameState.currentTurn &&
-      gameState.phase === 'rolling' &&
-      gameState.winner === null
-    ) {
-      enqueueMatchCue('yourTurn');
     }
 
     previousStateRef.current = { matchId: matchId ?? null, state: gameState };

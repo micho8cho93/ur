@@ -302,7 +302,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
         <ToggleSettingRow
           title="Announcement Cues"
-          hint="Show prompts like Your Turn, Roll Again, and Time's up during the match"
+          hint="Show prompts like Play!, Roll Again, and private match status during the match"
           value={announcementCuesEnabled}
           onValueChange={onToggleAnnouncementCues}
         />

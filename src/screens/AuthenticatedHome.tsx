@@ -22,6 +22,7 @@ export default function AuthenticatedHome() {
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
   const isCompactLayout = width < 760;
+  const useWideWebMenuLayout = Platform.OS === 'web' && !isCompactLayout;
   const showInlineGuestBackButton = user?.provider === 'guest' && isCompactLayout;
   const blackButtonLabel = styles.blackButtonLabel;
 
@@ -116,41 +117,73 @@ export default function AuthenticatedHome() {
           </Text>
         </View>
 
-        <View style={[styles.panel, isCompactLayout && styles.panelCompact]}>
+        <View style={[styles.panel, isCompactLayout && styles.panelCompact, useWideWebMenuLayout && styles.panelWide]}>
           <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.panelTexture} />
           <View style={styles.panelBorder} />
 
-          <ProgressionSummaryCard style={[styles.progressionCard, isCompactLayout && styles.summaryCardCompact]} />
-          <ChallengeSummaryCard style={[styles.challengeCard, isCompactLayout && styles.summaryCardCompact]} />
+          <View
+            style={[
+              styles.summaryGrid,
+              isCompactLayout && styles.summaryGridCompact,
+              useWideWebMenuLayout && styles.summaryGridWide,
+            ]}
+          >
+            <ProgressionSummaryCard
+              style={[
+                styles.summaryCard,
+                useWideWebMenuLayout && styles.summaryCardWide,
+              ]}
+            />
+            <ChallengeSummaryCard
+              style={[
+                styles.summaryCard,
+                useWideWebMenuLayout && styles.summaryCardWide,
+              ]}
+            />
+          </View>
 
-          <View style={[styles.buttonStack, isCompactLayout && styles.buttonStackCompact]}>
-            <Button
-              title="Quick Play"
-              onPress={() => router.push('/(game)/bot')}
-              style={styles.quickPlayButton}
-              labelStyle={blackButtonLabel}
-            />
-            <Button
-              title="Game Modes"
-              variant="outline"
-              onPress={() => router.push('/(game)/game-modes')}
-              style={styles.gameModesButton}
-              labelStyle={blackButtonLabel}
-            />
-            <Button
-              title="Play Online"
-              variant="outline"
-              onPress={() => router.push('/(game)/lobby?mode=online')}
-              style={styles.playOnlineButton}
-              labelStyle={blackButtonLabel}
-            />
-            <Button
-              title="Play Tutorial"
-              variant="outline"
-              onPress={() => router.push(`/match/local-${Date.now()}?offline=1&tutorial=playthrough&botDifficulty=easy` as never)}
-              style={styles.extendedTutorialButton}
-              labelStyle={blackButtonLabel}
-            />
+          <View
+            style={[
+              styles.buttonGrid,
+              isCompactLayout && styles.buttonGridCompact,
+              useWideWebMenuLayout && styles.buttonGridWide,
+            ]}
+          >
+            <View style={[styles.buttonCell, useWideWebMenuLayout && styles.buttonCellWide]}>
+              <Button
+                title="Quick Play"
+                onPress={() => router.push('/(game)/bot')}
+                style={[styles.actionButton, styles.quickPlayButton]}
+                labelStyle={blackButtonLabel}
+              />
+            </View>
+            <View style={[styles.buttonCell, useWideWebMenuLayout && styles.buttonCellWide]}>
+              <Button
+                title="Game Modes"
+                variant="outline"
+                onPress={() => router.push('/(game)/game-modes')}
+                style={[styles.actionButton, styles.gameModesButton]}
+                labelStyle={blackButtonLabel}
+              />
+            </View>
+            <View style={[styles.buttonCell, useWideWebMenuLayout && styles.buttonCellWide]}>
+              <Button
+                title="Play Online"
+                variant="outline"
+                onPress={() => router.push('/(game)/lobby?mode=online')}
+                style={[styles.actionButton, styles.playOnlineButton]}
+                labelStyle={blackButtonLabel}
+              />
+            </View>
+            <View style={[styles.buttonCell, useWideWebMenuLayout && styles.buttonCellWide]}>
+              <Button
+                title="Play Tutorial"
+                variant="outline"
+                onPress={() => router.push(`/match/local-${Date.now()}?offline=1&tutorial=playthrough&botDifficulty=easy` as never)}
+                style={[styles.actionButton, styles.extendedTutorialButton]}
+                labelStyle={blackButtonLabel}
+              />
+            </View>
           </View>
         </View>
       </ScrollView>
@@ -346,6 +379,9 @@ const styles = StyleSheet.create({
     maxWidth: 420,
     padding: urTheme.spacing.sm + 2,
   },
+  panelWide: {
+    maxWidth: 980,
+  },
   panelTexture: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.16,
@@ -357,20 +393,45 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 230, 181, 0.24)',
   },
-  buttonStack: {
+  summaryGrid: {
+    gap: urTheme.spacing.md,
+    marginBottom: urTheme.spacing.md,
+  },
+  summaryGridCompact: {
+    gap: urTheme.spacing.sm,
+    marginBottom: urTheme.spacing.sm,
+  },
+  summaryGridWide: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  summaryCard: {
+    minWidth: 0,
+  },
+  summaryCardWide: {
+    flex: 1,
+  },
+  buttonGrid: {
     gap: urTheme.spacing.sm,
   },
-  buttonStackCompact: {
+  buttonGridCompact: {
     gap: urTheme.spacing.xs,
   },
-  progressionCard: {
-    marginBottom: urTheme.spacing.md,
+  buttonGridWide: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: urTheme.spacing.sm,
+    columnGap: urTheme.spacing.sm,
   },
-  challengeCard: {
-    marginBottom: urTheme.spacing.md,
+  buttonCell: {
+    width: '100%',
   },
-  summaryCardCompact: {
-    marginBottom: urTheme.spacing.sm,
+  buttonCellWide: {
+    width: '48.5%',
+  },
+  actionButton: {
+    width: '100%',
   },
   quickPlayButton: {
     backgroundColor: '#D9CCB1',
