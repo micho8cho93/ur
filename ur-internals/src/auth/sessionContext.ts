@@ -1,0 +1,18 @@
+import { createContext } from 'react'
+import type { AdminIdentity } from '../types/auth'
+
+export interface SessionContextValue {
+  sessionToken: string | null
+  hasSession: boolean
+  isBootstrapping: boolean
+  isAuthenticating: boolean
+  isAuthenticated: boolean
+  adminIdentity: AdminIdentity | null
+  authError: string | null
+  loginWithEmail: (email: string, password: string) => Promise<AdminIdentity>
+  loginWithGoogle: () => Promise<AdminIdentity | null>
+  logout: () => Promise<void>
+  clearAuthError: () => void
+}
+
+export const SessionContext = createContext<SessionContextValue | null>(null)

@@ -1,0 +1,286 @@
+import env from '../config/env'
+import { mockTournamentEntriesById, mockTournaments } from '../data/mockData'
+import type {
+  CreateTournamentInput,
+  Tournament,
+  TournamentEntry,
+  TournamentOperator,
+  TournamentStandings,
+  TournamentStatus,
+} from '../types/tournament'
+import { callRpc } from './client'
+import {
+  asRecord,
+  readArrayField,
+  readBooleanField,
+  readNumberField,
+  readStringField,
+} from './runtime'
+
+const RPC_ADMIN_LIST_TOURNAMENTS = 'rpc_admin_list_tournaments'
+const RPC_ADMIN_GET_TOURNAMENT_RUN = 'rpc_admin_get_tournament_run'
+const RPC_ADMIN_CREATE_TOURNAMENT_RUN = 'rpc_admin_create_tournament_run'
+const RPC_ADMIN_GET_TOURNAMENT_STANDINGS = 'rpc_admin_get_tournament_standings'
+
+async function wait(ms: number) {
+  await new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function mapTournamentStatus(value: string | null): TournamentStatus {
+  if (value === 'open') {
+    return 'Open'
+  }
+
+  if (value === 'closed') {
+    return 'Closed'
+  }
+
+  if (value === 'finalized') {
+    return 'Finalized'
+  }
+
+  return 'Draft'
+}
+
+function mapOperator(value: string | null): TournamentOperator {
+  if (value === 'best' || value === 'set' || value === 'incr') {
+    return value
+  }
+
+  return 'incr'
+}
+
+function formatPrizePool(metadata: Record<string, unknown>) {
+  const explicitPrizePool = readStringField(metadata, ['prizePool', 'prize_pool'])
+  if (explicitPrizePool) {
+    return explicitPrizePool
+  }
+
+  const buyIn = readStringField(metadata, ['buyIn', 'buy_in']) ?? 'Free'
+  return buyIn === 'Free' ? 'Not configured' : `${buyIn} buy-in`
+}
+
+function toIsoFromUnixSeconds(seconds: number | null, fallback: string | null) {
+  if (typeof seconds === 'number' && seconds > 0) {
+    return new Date(seconds * 1000).toISOString()
+  }
+
+  return fallback
+}
+
+function normalizeTournament(runValue: unknown, nakamaTournamentValue: unknown): Tournament {
+  const run = asRecord(runValue) ?? {}
+  const nakamaTournament = asRecord(nakamaTournamentValue) ?? {}
+  const metadata = asRecord(run.metadata) ?? {}
+
+  const id = readStringField(run, ['runId', 'run_id']) ?? readStringField(run, ['id']) ?? 'unknown-run'
+  const tournamentId =
+    readStringField(run, ['tournamentId', 'tournament_id']) ??
+    readStringField(nakamaTournament, ['id']) ??
+    id
+  const createdAt =
+    readStringField(run, ['createdAt', 'created_at']) ?? new Date(0).toISOString()
+  const updatedAt =
+    readStringField(run, ['updatedAt', 'updated_at']) ?? createdAt
+  const startAt = toIsoFromUnixSeconds(
+    readNumberField(nakamaTournament, ['startTime', 'start_time']) ??
+      readNumberField(run, ['startTime', 'start_time']),
+    createdAt,
+  )
+  const endAt = toIsoFromUnixSeconds(
+    readNumberField(nakamaTournament, ['endTime', 'end_time']) ??
+      readNumberField(run, ['endTime', 'end_time']),
+    null,
+  )
+
+  return {
+    id,
+    tournamentId,
+    name: readStringField(run, ['title', 'name']) ?? id,
+    description: readStringField(run, ['description']) ?? 'No description configured.',
+    status: mapTournamentStatus(readStringField(run, ['lifecycle'])),
+    gameMode: readStringField(metadata, ['gameMode', 'game_mode']) ?? 'Standard',
+    entrants: Math.max(0, Math.floor(readNumberField(nakamaTournament, ['size']) ?? 0)),
+    maxEntrants: Math.max(
+      0,
+      Math.floor(
+        readNumberField(nakamaTournament, ['maxSize', 'max_size']) ??
+          readNumberField(run, ['maxSize', 'max_size']) ??
+          0,
+      ),
+    ),
+    startAt: startAt ?? createdAt,
+    endAt,
+    buyIn: readStringField(metadata, ['buyIn', 'buy_in']) ?? 'Free',
+    region: readStringField(metadata, ['region']) ?? 'Global',
+    prizePool: formatPrizePool(metadata),
+    createdBy: readStringField(run, ['createdByLabel', 'created_by_label']) ?? 'Unknown operator',
+    createdAt,
+    updatedAt,
+    category: Math.max(0, Math.floor(readNumberField(run, ['category']) ?? 0)),
+    authoritative: readBooleanField(run, ['authoritative']) !== false,
+    joinRequired: readBooleanField(run, ['joinRequired', 'join_required']) !== false,
+    enableRanks: readBooleanField(run, ['enableRanks', 'enable_ranks']) !== false,
+    operator: mapOperator(readStringField(run, ['operator'])),
+    durationSeconds: Math.max(0, Math.floor(readNumberField(run, ['duration']) ?? 0)),
+    maxNumScore: Math.max(0, Math.floor(readNumberField(run, ['maxNumScore', 'max_num_score']) ?? 0)),
+  }
+}
+
+function normalizeTournamentFromListItem(value: unknown): Tournament {
+  const record = asRecord(value) ?? {}
+  return normalizeTournament(record.run ?? record, record.nakamaTournament)
+}
+
+function normalizeTournamentEntry(value: unknown): TournamentEntry {
+  const record = asRecord(value) ?? {}
+  const metadata = asRecord(record.metadata) ?? {}
+
+  return {
+    rank: readNumberField(record, ['rank']) ?? null,
+    ownerId: readStringField(record, ['ownerId', 'owner_id']) ?? 'unknown-owner',
+    username: readStringField(record, ['username']) ?? 'unknown',
+    score: readNumberField(record, ['score']) ?? 0,
+    subscore: readNumberField(record, ['subscore']) ?? 0,
+    attempts: readNumberField(record, ['numScore', 'num_score']) ?? null,
+    maxAttempts: readNumberField(record, ['maxNumScore', 'max_num_score']) ?? null,
+    matchId: readStringField(metadata, ['matchId', 'match_id']),
+    round: readNumberField(metadata, ['round']) ?? null,
+    result: readStringField(metadata, ['result']),
+    updatedAt:
+      readStringField(record, ['updateTime', 'update_time']) ??
+      readStringField(record, ['createTime', 'create_time']),
+    metadata,
+  }
+}
+
+export async function listTournaments(limit = 50): Promise<Tournament[]> {
+  if (env.useMockData) {
+    await wait(180)
+    return mockTournaments.map((tournament) => ({ ...tournament }))
+  }
+
+  const response = await callRpc<{ runs?: unknown[] }>(RPC_ADMIN_LIST_TOURNAMENTS, {
+    limit,
+  })
+
+  return readArrayField(response, ['runs']).map((run) => normalizeTournamentFromListItem(run))
+}
+
+export async function getTournament(tournamentId: string): Promise<Tournament | null> {
+  if (env.useMockData) {
+    await wait(180)
+    const tournament = mockTournaments.find((entry) => entry.id === tournamentId)
+    return tournament ? { ...tournament } : null
+  }
+
+  const response = await callRpc<{ run?: unknown; nakamaTournament?: unknown }>(
+    RPC_ADMIN_GET_TOURNAMENT_RUN,
+    {
+      runId: tournamentId,
+    },
+  )
+  const responseRecord = asRecord(response)
+  if (!responseRecord?.run) {
+    return null
+  }
+
+  return normalizeTournament(responseRecord.run, responseRecord.nakamaTournament)
+}
+
+export async function getTournamentStandings(
+  tournamentId: string,
+  limit = 100,
+): Promise<TournamentStandings> {
+  if (env.useMockData) {
+    await wait(180)
+    return {
+      entries: (mockTournamentEntriesById[tournamentId] ?? []).map((entry) => ({ ...entry })),
+      rankCount: mockTournamentEntriesById[tournamentId]?.length ?? 0,
+      generatedAt: new Date().toISOString(),
+    }
+  }
+
+  const response = await callRpc<{ standings?: unknown }>(RPC_ADMIN_GET_TOURNAMENT_STANDINGS, {
+    runId: tournamentId,
+    limit,
+  })
+  const standings = asRecord(asRecord(response)?.standings) ?? {}
+
+  return {
+    entries: readArrayField(standings, ['records']).map((entry) => normalizeTournamentEntry(entry)),
+    rankCount: readNumberField(standings, ['rankCount', 'rank_count']) ?? null,
+    generatedAt: readStringField(standings, ['generatedAt', 'generated_at']),
+  }
+}
+
+export async function createTournament(input: CreateTournamentInput): Promise<Tournament> {
+  if (env.useMockData) {
+    await wait(220)
+
+    const slug =
+      input.runId?.trim() ||
+      input.name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+
+    return {
+      id: slug || `tournament-${Date.now()}`,
+      tournamentId: slug || `tournament-${Date.now()}`,
+      name: input.name,
+      description: input.description,
+      status: 'Draft',
+      gameMode: input.gameMode,
+      entrants: 0,
+      maxEntrants: input.entrants,
+      startAt: input.startAt,
+      endAt: new Date(Date.parse(input.startAt) + input.durationMinutes * 60_000).toISOString(),
+      buyIn: input.buyIn,
+      region: input.region,
+      prizePool: input.buyIn === 'Free' ? 'Not configured' : `${input.buyIn} buy-in`,
+      createdBy: 'admin@urgame.live',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      category: 0,
+      authoritative: true,
+      joinRequired: input.joinRequired,
+      enableRanks: input.enableRanks,
+      operator: 'incr',
+      durationSeconds: input.durationMinutes * 60,
+      maxNumScore: input.maxNumScore,
+    }
+  }
+
+  const startTime = Math.floor(new Date(input.startAt).getTime() / 1000)
+  const durationSeconds = Math.max(300, Math.floor(input.durationMinutes * 60))
+
+  const response = await callRpc<{ run?: unknown; nakamaTournament?: unknown }>(
+    RPC_ADMIN_CREATE_TOURNAMENT_RUN,
+    {
+      ...(input.runId?.trim() ? { runId: input.runId.trim() } : {}),
+      title: input.name.trim(),
+      description: input.description.trim(),
+      category: 0,
+      authoritative: true,
+      sortOrder: 'desc',
+      operator: 'incr',
+      resetSchedule: '',
+      metadata: {
+        gameMode: input.gameMode,
+        region: input.region,
+        buyIn: input.buyIn,
+      },
+      startTime,
+      endTime: startTime + durationSeconds,
+      duration: durationSeconds,
+      maxSize: input.entrants,
+      maxNumScore: input.maxNumScore,
+      joinRequired: input.joinRequired,
+      enableRanks: input.enableRanks,
+    },
+  )
+
+  return normalizeTournament(asRecord(response)?.run, asRecord(response)?.nakamaTournament)
+}

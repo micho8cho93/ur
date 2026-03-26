@@ -64,6 +64,14 @@ import {
   RPC_CLAIM_USERNAME,
   RPC_GET_USERNAME_ONBOARDING_STATUS,
 } from "./usernameOnboarding";
+import { registerTournamentRpcs } from "./tournaments";
+import {
+  processCompletedAuthoritativeTournamentMatch,
+  resolveTournamentMatchContextFromParams,
+  type AuthoritativeTournamentMatchCompletion,
+  type TournamentMatchContext,
+  type TournamentMatchPlayerSummary,
+} from "./tournaments/matchResults";
 
 declare namespace nkruntime {
   type Context = any;
@@ -90,6 +98,7 @@ type MatchState = {
   privateGuestUserId: string | null;
   winRewardSource: XpSource;
   allowsChallengeRewards: boolean;
+  tournamentContext: TournamentMatchContext | null;
   telemetry: MatchTelemetry;
 };
 
@@ -640,6 +649,85 @@ const buildPlayerMatchSummary = (
   };
 };
 
+const getPresenceUsername = (presence: unknown): string | null =>
+  readStringField(presence, ["username", "displayName", "display_name", "name"]);
+
+const buildTournamentMatchCompletion = (
+  state: MatchState,
+  matchId: string
+): AuthoritativeTournamentMatchCompletion | null => {
+  if (!state.tournamentContext) {
+    return null;
+  }
+
+  const completedAt = new Date().toISOString();
+  const winningColor = state.gameState.winner;
+  const players: TournamentMatchPlayerSummary[] = Object.entries(state.assignments).map(([userId, color]) => {
+    const presence = getPrimaryUserPresence(state, userId);
+    const playerTelemetry = state.telemetry.players[color];
+
+    return {
+      userId,
+      username: getPresenceUsername(presence),
+      color,
+      didWin: winningColor === color,
+      score: winningColor === color ? 1 : 0,
+      finishedCount: state.gameState[color].finishedCount,
+      capturesMade: playerTelemetry.capturesMade,
+      capturesSuffered: playerTelemetry.capturesSuffered,
+      playerMoveCount: playerTelemetry.playerMoveCount,
+    };
+  });
+  const winner = winningColor ? players.find((player) => player.color === winningColor) ?? null : null;
+  const loser = winningColor ? players.find((player) => player.color !== winningColor) ?? null : null;
+
+  return {
+    matchId,
+    modeId: state.modeId,
+    context: state.tournamentContext,
+    completedAt,
+    totalMoves: state.telemetry.totalMoves,
+    revision: state.revision,
+    winningColor,
+    winnerUserId: winner?.userId ?? null,
+    loserUserId: loser?.userId ?? null,
+    classification: {
+      ranked: state.classification.ranked,
+      casual: state.classification.casual,
+      private: state.classification.private,
+      bot: state.classification.bot,
+      experimental: state.classification.experimental,
+    },
+    players,
+  };
+};
+
+function processCompletedTournamentMatch(
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  state: MatchState,
+  matchId: string
+): void {
+  if (!state.tournamentContext) {
+    return;
+  }
+
+  try {
+    const completion = buildTournamentMatchCompletion(state, matchId);
+    if (!completion) {
+      return;
+    }
+
+    processCompletedAuthoritativeTournamentMatch(nk, logger, completion);
+  } catch (error) {
+    logger.error(
+      "Failed to process tournament result for match %s: %s",
+      matchId,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+}
+
 // Nakama's JS runtime parser can panic on shorthand object properties in registerMatch.
 // Use distinct local aliases so emitted JS keeps explicit key:value pairs.
 const matchInitHandler = matchInit;
@@ -673,6 +761,7 @@ function InitModule(
   initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
   initializer.registerRpc(RPC_GET_USERNAME_ONBOARDING_STATUS_NAME, rpcGetUsernameOnboardingStatus);
   initializer.registerRpc(RPC_CLAIM_USERNAME_NAME, rpcClaimUsername);
+  registerTournamentRpcs(initializer);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,
@@ -947,6 +1036,7 @@ function matchInit(
     privateGuestUserId: null,
     winRewardSource,
     allowsChallengeRewards,
+    tournamentContext: resolveTournamentMatchContextFromParams(params),
     telemetry: createMatchTelemetry(),
   };
 
@@ -1281,6 +1371,7 @@ function applyMoveRequest(
   if (state.gameState.winner) {
     processCompletedMatchRatings(logger, nk, dispatcher, state, matchId);
     awardWinnerProgression(logger, nk, dispatcher, state, matchId);
+    processCompletedTournamentMatch(logger, nk, state, matchId);
     processCompletedMatchSummaries(logger, nk, state, matchId);
   }
 }
