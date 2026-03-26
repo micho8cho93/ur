@@ -346,50 +346,52 @@ const appendAutomatedAdminAuditEntry = (
   }
 };
 
-export const createAuditedAdminRpc = (
+export const runAuditedAdminRpc = (
   handler: AdminRpcHandler,
   options: AuditedAdminRpcOptions,
-): AdminRpcHandler => {
-  return (ctx, logger, nk, payload) => {
-    const parsedPayload = safeParsePayload(payload);
+  ctx: RuntimeContext,
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  payload: string,
+): string => {
+  const parsedPayload = safeParsePayload(payload);
 
-    try {
-      const response = handler(ctx, logger, nk, payload);
-      const parsedResponse = parseResponseRecord(response);
-      const targetId = resolveTargetId(ctx, parsedPayload, parsedResponse, options.targetId);
-      const targetName = resolveTargetName(ctx, parsedPayload, parsedResponse, targetId, options.targetName);
+  try {
+    const response = handler(ctx, logger, nk, payload);
+    const parsedResponse = parseResponseRecord(response);
+    const targetId = resolveTargetId(ctx, parsedPayload, parsedResponse, options.targetId);
+    const targetName = resolveTargetName(ctx, parsedPayload, parsedResponse, targetId, options.targetName);
 
-      appendAutomatedAdminAuditEntry(
-        ctx,
-        logger,
-        nk,
-        options.action,
-        targetId,
-        targetName,
-        createAuditPayloadSummary(parsedPayload),
-      );
+    appendAutomatedAdminAuditEntry(
+      ctx,
+      logger,
+      nk,
+      options.action,
+      targetId,
+      targetName,
+      createAuditPayloadSummary(parsedPayload),
+    );
 
-      return response;
-    } catch (error) {
-      const targetId = resolveTargetId(ctx, parsedPayload, null, options.targetId);
-      const targetName = resolveTargetName(ctx, parsedPayload, null, targetId, options.targetName);
+    return response;
+  } catch (error) {
+    const targetId = resolveTargetId(ctx, parsedPayload, null, options.targetId);
+    const targetName = resolveTargetName(ctx, parsedPayload, null, targetId, options.targetName);
 
-      appendAutomatedAdminAuditEntry(
-        ctx,
-        logger,
-        nk,
-        options.failureAction ?? `${options.action}.failed`,
-        targetId,
-        targetName,
-        {
-          ...createAuditPayloadSummary(parsedPayload),
-          error: getErrorMessage(error),
-        },
-      );
+    appendAutomatedAdminAuditEntry(
+      ctx,
+      logger,
+      nk,
+      options.failureAction ?? `${options.action}.failed`,
+      targetId,
+      targetName,
+      {
+        ...createAuditPayloadSummary(parsedPayload),
+        error: getErrorMessage(error),
+      },
+    );
 
-      throw error;
-    }
-  };
+    throw error;
+  }
 };
 
 export const listTournamentAuditEntries = (
@@ -425,14 +427,18 @@ export const rpcListTournamentAuditLog = (
     entries: listTournamentAuditEntries(nk, request),
   };
 
-  return createAuditedAdminRpc(
+  return runAuditedAdminRpc(
     () => JSON.stringify(response),
     {
       action: RPC_TOURNAMENT_AUDIT_LOG,
       targetId: request.targetId ?? request.tournamentId ?? "tournament_audit_logs",
       targetName: "Tournament audit logs",
     },
-  )(ctx, logger, nk, payload);
+    ctx,
+    logger,
+    nk,
+    payload,
+  );
 };
 
 export { RPC_TOURNAMENT_AUDIT_LOG };

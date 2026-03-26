@@ -3515,42 +3515,40 @@ var appendAutomatedAdminAuditEntry = (ctx, logger, nk, action, targetId, targetN
     logger.warn("Unable to append automated admin audit entry for %s: %s", targetId, getErrorMessage(error));
   }
 };
-var createAuditedAdminRpc = (handler, options) => {
-  return (ctx, logger, nk, payload) => {
-    var _a;
-    const parsedPayload = safeParsePayload(payload);
-    try {
-      const response = handler(ctx, logger, nk, payload);
-      const parsedResponse = parseResponseRecord(response);
-      const targetId = resolveTargetId(ctx, parsedPayload, parsedResponse, options.targetId);
-      const targetName = resolveTargetName(ctx, parsedPayload, parsedResponse, targetId, options.targetName);
-      appendAutomatedAdminAuditEntry(
-        ctx,
-        logger,
-        nk,
-        options.action,
-        targetId,
-        targetName,
-        createAuditPayloadSummary(parsedPayload)
-      );
-      return response;
-    } catch (error) {
-      const targetId = resolveTargetId(ctx, parsedPayload, null, options.targetId);
-      const targetName = resolveTargetName(ctx, parsedPayload, null, targetId, options.targetName);
-      appendAutomatedAdminAuditEntry(
-        ctx,
-        logger,
-        nk,
-        (_a = options.failureAction) != null ? _a : `${options.action}.failed`,
-        targetId,
-        targetName,
-        __spreadProps(__spreadValues({}, createAuditPayloadSummary(parsedPayload)), {
-          error: getErrorMessage(error)
-        })
-      );
-      throw error;
-    }
-  };
+var runAuditedAdminRpc = (handler, options, ctx, logger, nk, payload) => {
+  var _a;
+  const parsedPayload = safeParsePayload(payload);
+  try {
+    const response = handler(ctx, logger, nk, payload);
+    const parsedResponse = parseResponseRecord(response);
+    const targetId = resolveTargetId(ctx, parsedPayload, parsedResponse, options.targetId);
+    const targetName = resolveTargetName(ctx, parsedPayload, parsedResponse, targetId, options.targetName);
+    appendAutomatedAdminAuditEntry(
+      ctx,
+      logger,
+      nk,
+      options.action,
+      targetId,
+      targetName,
+      createAuditPayloadSummary(parsedPayload)
+    );
+    return response;
+  } catch (error) {
+    const targetId = resolveTargetId(ctx, parsedPayload, null, options.targetId);
+    const targetName = resolveTargetName(ctx, parsedPayload, null, targetId, options.targetName);
+    appendAutomatedAdminAuditEntry(
+      ctx,
+      logger,
+      nk,
+      (_a = options.failureAction) != null ? _a : `${options.action}.failed`,
+      targetId,
+      targetName,
+      __spreadProps(__spreadValues({}, createAuditPayloadSummary(parsedPayload)), {
+        error: getErrorMessage(error)
+      })
+    );
+    throw error;
+  }
 };
 var listTournamentAuditEntries = (nk, request = {}) => {
   var _a, _b;
@@ -4677,65 +4675,128 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
 };
 
 // backend/modules/tournaments/index.ts
-var registerTournamentRpcs = (initializer) => {
-  initializer.registerRpc(
-    RPC_ADMIN_WHOAMI,
-    createAuditedAdminRpc(rpcAdminWhoAmI, {
+function rpcAdminWhoAmIAudited(ctx, logger, nk, payload) {
+  return runAuditedAdminRpc(
+    rpcAdminWhoAmI,
+    {
       action: RPC_ADMIN_WHOAMI,
       targetName: "Current admin user"
-    })
+    },
+    ctx,
+    logger,
+    nk,
+    payload
   );
-  initializer.registerRpc(
-    RPC_ADMIN_LIST_TOURNAMENTS,
-    createAuditedAdminRpc(rpcAdminListTournaments, {
+}
+function rpcAdminListTournamentsAudited(ctx, logger, nk, payload) {
+  return runAuditedAdminRpc(
+    rpcAdminListTournaments,
+    {
       action: RPC_ADMIN_LIST_TOURNAMENTS,
       targetId: "tournament_runs",
       targetName: "Tournament runs"
-    })
+    },
+    ctx,
+    logger,
+    nk,
+    payload
   );
-  initializer.registerRpc(
-    RPC_ADMIN_GET_TOURNAMENT_RUN,
-    createAuditedAdminRpc(rpcAdminGetTournamentRun, {
+}
+function rpcAdminGetTournamentRunAudited(ctx, logger, nk, payload) {
+  return runAuditedAdminRpc(
+    rpcAdminGetTournamentRun,
+    {
       action: RPC_ADMIN_GET_TOURNAMENT_RUN
-    })
+    },
+    ctx,
+    logger,
+    nk,
+    payload
   );
-  initializer.registerRpc(
-    RPC_ADMIN_CREATE_TOURNAMENT_RUN,
-    createAuditedAdminRpc(rpcAdminCreateTournamentRun, {
+}
+function rpcAdminCreateTournamentRunAudited(ctx, logger, nk, payload) {
+  return runAuditedAdminRpc(
+    rpcAdminCreateTournamentRun,
+    {
       action: RPC_ADMIN_CREATE_TOURNAMENT_RUN
-    })
+    },
+    ctx,
+    logger,
+    nk,
+    payload
   );
-  initializer.registerRpc(
-    RPC_ADMIN_OPEN_TOURNAMENT,
-    createAuditedAdminRpc(rpcAdminOpenTournament, {
+}
+function rpcAdminOpenTournamentAudited(ctx, logger, nk, payload) {
+  return runAuditedAdminRpc(
+    rpcAdminOpenTournament,
+    {
       action: RPC_ADMIN_OPEN_TOURNAMENT
-    })
+    },
+    ctx,
+    logger,
+    nk,
+    payload
   );
-  initializer.registerRpc(
-    RPC_ADMIN_CLOSE_TOURNAMENT,
-    createAuditedAdminRpc(rpcAdminCloseTournament, {
+}
+function rpcAdminCloseTournamentAudited(ctx, logger, nk, payload) {
+  return runAuditedAdminRpc(
+    rpcAdminCloseTournament,
+    {
       action: RPC_ADMIN_CLOSE_TOURNAMENT
-    })
+    },
+    ctx,
+    logger,
+    nk,
+    payload
   );
-  initializer.registerRpc(
-    RPC_ADMIN_FINALIZE_TOURNAMENT,
-    createAuditedAdminRpc(rpcAdminFinalizeTournament, {
+}
+function rpcAdminFinalizeTournamentAudited(ctx, logger, nk, payload) {
+  return runAuditedAdminRpc(
+    rpcAdminFinalizeTournament,
+    {
       action: RPC_ADMIN_FINALIZE_TOURNAMENT
-    })
+    },
+    ctx,
+    logger,
+    nk,
+    payload
   );
-  initializer.registerRpc(
-    RPC_ADMIN_GET_TOURNAMENT_STANDINGS,
-    createAuditedAdminRpc(rpcAdminGetTournamentStandings, {
+}
+function rpcAdminGetTournamentStandingsAudited(ctx, logger, nk, payload) {
+  return runAuditedAdminRpc(
+    rpcAdminGetTournamentStandings,
+    {
       action: RPC_ADMIN_GET_TOURNAMENT_STANDINGS
-    })
+    },
+    ctx,
+    logger,
+    nk,
+    payload
   );
-  initializer.registerRpc(
-    RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG,
-    createAuditedAdminRpc(rpcAdminGetTournamentAuditLog, {
+}
+function rpcAdminGetTournamentAuditLogAudited(ctx, logger, nk, payload) {
+  return runAuditedAdminRpc(
+    rpcAdminGetTournamentAuditLog,
+    {
       action: RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG,
       targetName: "Tournament audit log"
-    })
+    },
+    ctx,
+    logger,
+    nk,
+    payload
   );
+}
+var registerTournamentRpcs = (initializer) => {
+  initializer.registerRpc(RPC_ADMIN_WHOAMI, rpcAdminWhoAmIAudited);
+  initializer.registerRpc(RPC_ADMIN_LIST_TOURNAMENTS, rpcAdminListTournamentsAudited);
+  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_RUN, rpcAdminGetTournamentRunAudited);
+  initializer.registerRpc(RPC_ADMIN_CREATE_TOURNAMENT_RUN, rpcAdminCreateTournamentRunAudited);
+  initializer.registerRpc(RPC_ADMIN_OPEN_TOURNAMENT, rpcAdminOpenTournamentAudited);
+  initializer.registerRpc(RPC_ADMIN_CLOSE_TOURNAMENT, rpcAdminCloseTournamentAudited);
+  initializer.registerRpc(RPC_ADMIN_FINALIZE_TOURNAMENT, rpcAdminFinalizeTournamentAudited);
+  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_STANDINGS, rpcAdminGetTournamentStandingsAudited);
+  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG, rpcAdminGetTournamentAuditLogAudited);
   initializer.registerRpc(RPC_TOURNAMENT_JOIN, rpcJoinTournament);
 };
 
