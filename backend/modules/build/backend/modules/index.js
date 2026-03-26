@@ -2942,7 +2942,16 @@ var decodeMessageData = (data, nk) => {
   return String(data != null ? data : "");
 };
 var getPresenceUserId = (presence) => readStringField5(presence, ["userId", "user_id"]);
+var getPresenceSessionId = (presence) => readStringField5(presence, ["sessionId", "session_id"]);
 var getSenderUserId = (sender) => readStringField5(sender, ["userId", "user_id"]);
+var getPresenceKey = (presence) => {
+  const sessionId = getPresenceSessionId(presence);
+  if (sessionId) {
+    return sessionId;
+  }
+  const userId = getPresenceUserId(presence);
+  return userId ? `user:${userId}` : null;
+};
 var getMatchId = (ctx) => {
   var _a;
   return (_a = readStringField5(ctx, ["matchId", "match_id"])) != null ? _a : "";
@@ -3169,7 +3178,42 @@ var canUserJoinPrivateMatch = (state, userId) => {
   }
   return Boolean(state.privateGuestUserId && state.privateGuestUserId === userId);
 };
-var isPrivateMatchReady = (state) => !state.privateMatch || Object.keys(state.presences).length >= MAX_PLAYERS;
+var getUserPresenceTargets = (state, userId) => {
+  var _a;
+  return Object.values((_a = state.presences[userId]) != null ? _a : {});
+};
+var getPrimaryUserPresence = (state, userId) => {
+  var _a;
+  return (_a = getUserPresenceTargets(state, userId)[0]) != null ? _a : null;
+};
+var getActiveUserCount = (state) => Object.keys(state.presences).length;
+var upsertPresence = (state, presence) => {
+  var _a;
+  const userId = getPresenceUserId(presence);
+  const presenceKey = getPresenceKey(presence);
+  if (!userId || !presenceKey) {
+    return;
+  }
+  state.presences[userId] = __spreadProps(__spreadValues({}, (_a = state.presences[userId]) != null ? _a : {}), {
+    [presenceKey]: presence
+  });
+};
+var removePresence = (state, presence) => {
+  const userId = getPresenceUserId(presence);
+  const presenceKey = getPresenceKey(presence);
+  if (!userId || !presenceKey) {
+    return;
+  }
+  const userPresences = state.presences[userId];
+  if (!userPresences) {
+    return;
+  }
+  delete userPresences[presenceKey];
+  if (Object.keys(userPresences).length === 0) {
+    delete state.presences[userId];
+  }
+};
+var isPrivateMatchReady = (state) => !state.privateMatch || getActiveUserCount(state) >= MAX_PLAYERS;
 var buildPrivateMatchRpcResponse = (matchId, modeId, privateCode, hasGuestJoined) => JSON.stringify(__spreadValues({
   matchId,
   modeId,
@@ -3440,12 +3484,12 @@ function matchJoinAttempt(_ctx, logger, nk, _dispatcher, _tick, state, presence)
       return { state, accept: false, rejectMessage: "Enter the private game code before joining this table." };
     }
   }
-  const activeCount = Object.keys(state.presences).length;
+  const activeCount = getActiveUserCount(state);
   const hasExistingAssignment = Boolean(state.assignments[userId]);
   if (activeCount >= MAX_PLAYERS && !hasExistingAssignment) {
     return { state, accept: false, rejectMessage: "Match is full." };
   }
-  state.presences[userId] = presence;
+  upsertPresence(state, presence);
   ensureAssignment(state, userId);
   return { state, accept: true };
 }
@@ -3456,7 +3500,7 @@ function matchJoin(ctx, logger, _nk, dispatcher, _tick, state, presences) {
       logger.warn("Skipping join presence with missing user ID.");
       return;
     }
-    state.presences[userId] = presence;
+    upsertPresence(state, presence);
     ensureAssignment(state, userId);
   });
   broadcastSnapshot(dispatcher, state, getMatchId(ctx));
@@ -3469,7 +3513,7 @@ function matchLeave(_ctx, logger, _nk, _dispatcher, _tick, state, presences) {
       logger.warn("Skipping leave presence with missing user ID.");
       return;
     }
-    delete state.presences[userId];
+    removePresence(state, presence);
   });
   return { state };
 }
@@ -3481,9 +3525,9 @@ function matchLoop(ctx, logger, nk, dispatcher, _tick, state, messages) {
       logger.warn("Ignoring message with missing sender user ID.");
       return;
     }
-    const senderPresence = state.presences[senderUserId];
+    upsertPresence(state, message.sender);
     const senderColor = state.assignments[senderUserId];
-    if (!senderPresence || !senderColor) {
+    if (!senderColor) {
       sendError(
         dispatcher,
         state,
@@ -3659,8 +3703,8 @@ function processCompletedMatchRatings(logger, nk, dispatcher, state, matchId) {
       return;
     }
     ratingResult.record.playerResults.forEach((playerResult) => {
-      const targetPresence = state.presences[playerResult.userId];
-      if (!targetPresence) {
+      const targetPresences = getUserPresenceTargets(state, playerResult.userId);
+      if (targetPresences.length === 0) {
         logger.info(
           "Ranked Elo processed for user %s on match %s, but no live presence was available for notification.",
           playerResult.userId,
@@ -3678,7 +3722,7 @@ function processCompletedMatchRatings(logger, nk, dispatcher, state, matchId) {
             ratingResult.duplicate
           )
         ),
-        [targetPresence]
+        targetPresences
       );
     });
   } catch (error) {
@@ -3709,7 +3753,7 @@ function awardWinnerProgression(logger, nk, dispatcher, state, matchId) {
     if (awardResponse.duplicate) {
       return;
     }
-    const winnerPresence = state.presences[winnerUserId];
+    const winnerPresence = getPrimaryUserPresence(state, winnerUserId);
     if (!winnerPresence) {
       logger.info(
         "Progression updated for winner %s on match %s, but no live presence was available for notification.",
@@ -3751,8 +3795,8 @@ function processCompletedMatchSummaries(logger, nk, state, matchId) {
   });
 }
 function sendError(dispatcher, state, userId, code, message) {
-  const target = state.presences[userId];
-  if (!target) {
+  const targets = getUserPresenceTargets(state, userId);
+  if (targets.length === 0) {
     return;
   }
   dispatcher.broadcastMessage(
@@ -3763,7 +3807,7 @@ function sendError(dispatcher, state, userId, code, message) {
       message,
       revision: state.revision
     }),
-    [target]
+    targets
   );
 }
 function broadcastSnapshot(dispatcher, state, matchId) {

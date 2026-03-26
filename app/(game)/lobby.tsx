@@ -178,11 +178,9 @@ export default function Lobby() {
         visible={showMobileBackground}
         overlayColor="rgba(7, 10, 16, 0.24)"
       />
-      <Image
-        source={urTextures.woodDark}
-        resizeMode="repeat"
-        style={[styles.pageTexture, showWideBackground && styles.pageTextureWide]}
-      />
+      <View pointerEvents="none" style={[styles.pageTexture, showWideBackground && styles.pageTextureWide]}>
+        <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.textureFill} />
+      </View>
       <View pointerEvents="none" style={styles.pageGlow} />
       <View pointerEvents="none" style={styles.pageShade} />
 
@@ -191,6 +189,7 @@ export default function Lobby() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         bounces={false}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.hero}>
           <Text style={styles.pageTitle}>Online Play</Text>
@@ -216,7 +215,9 @@ export default function Lobby() {
 
         <View style={styles.cardGrid}>
           <View style={styles.card}>
-            <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+            <View pointerEvents="none" style={styles.cardTexture}>
+              <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.textureFill} />
+            </View>
             <View pointerEvents="none" style={styles.cardBorder} />
             <XpRewardBadge amount={publicWinRewardXp} style={styles.rewardBadge} />
 
@@ -240,7 +241,9 @@ export default function Lobby() {
           </View>
 
           <View style={styles.card}>
-            <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+            <View pointerEvents="none" style={styles.cardTexture}>
+              <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.textureFill} />
+            </View>
             <View pointerEvents="none" style={styles.cardBorder} />
             <XpRewardBadge amount={privateWinRewardXp} style={styles.rewardBadge} />
 
@@ -301,7 +304,9 @@ export default function Lobby() {
           </View>
 
           <View style={styles.card}>
-            <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+            <View pointerEvents="none" style={styles.cardTexture}>
+              <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.textureFill} />
+            </View>
             <View pointerEvents="none" style={styles.cardBorder} />
             <XpRewardBadge amount={privateWinRewardXp} style={styles.rewardBadge} />
 
@@ -321,6 +326,12 @@ export default function Lobby() {
               placeholder="Enter code"
               placeholderTextColor="rgba(247, 229, 203, 0.36)"
               selectionColor={urTheme.colors.goldBright}
+              returnKeyType="go"
+              onSubmitEditing={() => {
+                if (canJoinPrivateGame) {
+                  void handleJoinPrivateGame();
+                }
+              }}
               style={styles.codeInput}
             />
 
@@ -427,6 +438,9 @@ const styles = StyleSheet.create({
   cardTexture: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.16,
+  },
+  textureFill: {
+    ...StyleSheet.absoluteFillObject,
   },
   cardBorder: {
     ...StyleSheet.absoluteFillObject,

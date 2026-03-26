@@ -1983,8 +1983,6 @@ export function GameRoom() {
     };
   }, [boardTargetFrame, isMobileWebLayout, useMobileSideReserveRails]);
   const showMobileWebDetachedDiceVisual = mobileWebDiceVisualFrame !== null;
-  const shouldDetachDiceVisual = isMatchStageExternal || showWebSideDiceVisual || showMobileWebDetachedDiceVisual || (!isWebLayout && useMobileSideReserveRails);
-  const detachedDiceVisualPlacement = shouldDetachDiceVisual ? 'external' : 'embedded';
   const mobileStatusRowHeight = Math.max(
     mobileScoreRowHeight,
     Math.round(urTheme.spacing.md + 34),
@@ -2119,6 +2117,12 @@ export function GameRoom() {
     verticalBoardRows,
   ]);
   const showMobileBoardGapDice = !isWebLayout && useMobileSideReserveRails && mobileBoardGapFrame !== null;
+  const shouldDetachDiceVisual =
+    isMatchStageExternal ||
+    showWebSideDiceVisual ||
+    showMobileWebDetachedDiceVisual ||
+    showMobileBoardGapDice;
+  const detachedDiceVisualPlacement = shouldDetachDiceVisual ? 'external' : 'embedded';
 
   const mobileScoreOverlayTop = baseMobileScoreOverlayTop + mobileContentVerticalShift;
   const mobileBoardOffsetTop = baseMobileBoardOffsetTop + mobileContentVerticalShift;

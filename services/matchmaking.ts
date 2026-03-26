@@ -1,9 +1,8 @@
-import { MatchData, Session, Socket } from "@heroiclabs/nakama-js";
+import { Session, Socket } from "@heroiclabs/nakama-js";
 
 import { MatchModeId, isMatchModeId } from "@/logic/matchConfigs";
 import { PlayerColor } from "@/logic/types";
 import { isPrivateMatchCode, normalizePrivateMatchCodeInput } from "@/shared/privateMatchCode";
-import { MatchOpCode, decodePayload, isStateSnapshotPayload } from "@/shared/urMatchProtocol";
 import { nakamaService } from "./nakama";
 
 const RPC_CREATE_PRIVATE_MATCH = "create_private_match";
@@ -12,7 +11,6 @@ const RPC_GET_PRIVATE_MATCH_STATUS = "get_private_match_status";
 const CONNECT_TIMEOUT_MS = 10_000;
 const START_MATCHMAKING_TIMEOUT_MS = 10_000;
 const WAIT_FOR_MATCH_TIMEOUT_MS = 20_000;
-const JOIN_MATCH_TIMEOUT_MS = 10_000;
 
 let activeMatchmakerTicket: string | null = null;
 
@@ -97,53 +95,6 @@ const normalizeMatchmakingError = (error: unknown): Error => {
 
   return new Error("No opponents found. Try again later.");
 };
-
-const waitForInitialAssignment = (
-  socket: Socket,
-  matchId: string,
-  userId: string,
-  timeoutMs: number
-): Promise<PlayerColor | null> =>
-  new Promise((resolve) => {
-    const previousHandler = socket.onmatchdata;
-    const timeout = setTimeout(() => {
-      socket.onmatchdata = previousHandler;
-      resolve(null);
-    }, timeoutMs);
-
-    socket.onmatchdata = (matchData: MatchData) => {
-      if (matchData.match_id !== matchId || matchData.op_code !== MatchOpCode.STATE_SNAPSHOT) {
-        if (previousHandler) {
-          previousHandler(matchData);
-        }
-        return;
-      }
-
-      let rawPayload = "";
-      if (typeof matchData.data === "string") {
-        rawPayload = matchData.data;
-      } else if (typeof TextDecoder !== "undefined") {
-        rawPayload = new TextDecoder().decode(matchData.data);
-      } else {
-        rawPayload = String.fromCharCode(...Array.from(matchData.data));
-      }
-
-      const payload = decodePayload(rawPayload);
-      if (isStateSnapshotPayload(payload)) {
-        const assignment = payload.assignments[userId];
-        if (assignment === "light" || assignment === "dark") {
-          clearTimeout(timeout);
-          socket.onmatchdata = previousHandler;
-          resolve(assignment);
-          return;
-        }
-      }
-
-      if (previousHandler) {
-        previousHandler(matchData);
-      }
-    };
-  });
 
 export type MatchResult = {
   matchId: string;
@@ -281,28 +232,20 @@ export const findMatch = async (handlers?: MatchmakingHandlers): Promise<MatchRe
     const matched = await waitForMatchmaker(socket, ticket.ticket, WAIT_FOR_MATCH_TIMEOUT_MS);
     activeMatchmakerTicket = null;
 
-    const match = await withTimeout(
-      socket.joinMatch(matched.matchId, matched.token),
-      JOIN_MATCH_TIMEOUT_MS,
-      "Joining the match timed out. Please retry."
-    );
-
-    if (!match.match_id) {
-      throw new Error("Match join did not return a match ID.");
-    }
-
     if (!session.user_id) {
       throw new Error("Authenticated session is missing user ID.");
     }
 
-    const playerColor = await waitForInitialAssignment(socket, match.match_id, session.user_id, 3_000);
+    if (!matched.matchId) {
+      throw new Error("Matchmaking did not return a match ID.");
+    }
 
     return {
-      matchId: match.match_id,
+      matchId: matched.matchId,
       session,
       userId: session.user_id,
       matchmakerTicket: ticket.ticket,
-      playerColor,
+      playerColor: null,
       matchToken: matched.token ?? null,
     };
   } catch (error) {

@@ -77,7 +77,7 @@ declare namespace nkruntime {
 }
 
 type MatchState = {
-  presences: Record<string, nkruntime.Presence>;
+  presences: Record<string, Record<string, nkruntime.Presence>>;
   assignments: Record<string, PlayerColor>;
   gameState: GameState;
   revision: number;
@@ -242,8 +242,21 @@ const decodeMessageData = (data: unknown, nk?: nkruntime.Nakama): string => {
 const getPresenceUserId = (presence: unknown): string | null =>
   readStringField(presence, ["userId", "user_id"]);
 
+const getPresenceSessionId = (presence: unknown): string | null =>
+  readStringField(presence, ["sessionId", "session_id"]);
+
 const getSenderUserId = (sender: unknown): string | null =>
   readStringField(sender, ["userId", "user_id"]);
+
+const getPresenceKey = (presence: unknown): string | null => {
+  const sessionId = getPresenceSessionId(presence);
+  if (sessionId) {
+    return sessionId;
+  }
+
+  const userId = getPresenceUserId(presence);
+  return userId ? `user:${userId}` : null;
+};
 
 const getMatchId = (ctx: nkruntime.Context): string =>
   readStringField(ctx, ["matchId", "match_id"]) ?? "";
@@ -536,8 +549,50 @@ const canUserJoinPrivateMatch = (state: MatchState, userId: string): boolean => 
   return Boolean(state.privateGuestUserId && state.privateGuestUserId === userId);
 };
 
+const getUserPresenceTargets = (state: MatchState, userId: string): nkruntime.Presence[] =>
+  Object.values(state.presences[userId] ?? {});
+
+const getPrimaryUserPresence = (state: MatchState, userId: string): nkruntime.Presence | null =>
+  getUserPresenceTargets(state, userId)[0] ?? null;
+
+const getActiveUserCount = (state: MatchState): number =>
+  Object.keys(state.presences).length;
+
+const upsertPresence = (state: MatchState, presence: nkruntime.Presence): void => {
+  const userId = getPresenceUserId(presence);
+  const presenceKey = getPresenceKey(presence);
+
+  if (!userId || !presenceKey) {
+    return;
+  }
+
+  state.presences[userId] = {
+    ...(state.presences[userId] ?? {}),
+    [presenceKey]: presence,
+  };
+};
+
+const removePresence = (state: MatchState, presence: nkruntime.Presence): void => {
+  const userId = getPresenceUserId(presence);
+  const presenceKey = getPresenceKey(presence);
+
+  if (!userId || !presenceKey) {
+    return;
+  }
+
+  const userPresences = state.presences[userId];
+  if (!userPresences) {
+    return;
+  }
+
+  delete userPresences[presenceKey];
+  if (Object.keys(userPresences).length === 0) {
+    delete state.presences[userId];
+  }
+};
+
 const isPrivateMatchReady = (state: MatchState): boolean =>
-  !state.privateMatch || Object.keys(state.presences).length >= MAX_PLAYERS;
+  !state.privateMatch || getActiveUserCount(state) >= MAX_PLAYERS;
 
 const buildPrivateMatchRpcResponse = (
   matchId: string,
@@ -931,14 +986,14 @@ function matchJoinAttempt(
     }
   }
 
-  const activeCount = Object.keys(state.presences).length;
+  const activeCount = getActiveUserCount(state);
   const hasExistingAssignment = Boolean(state.assignments[userId]);
 
   if (activeCount >= MAX_PLAYERS && !hasExistingAssignment) {
     return { state, accept: false, rejectMessage: "Match is full." };
   }
 
-  state.presences[userId] = presence;
+  upsertPresence(state, presence);
   ensureAssignment(state, userId);
 
   return { state, accept: true };
@@ -959,7 +1014,7 @@ function matchJoin(
       logger.warn("Skipping join presence with missing user ID.");
       return;
     }
-    state.presences[userId] = presence;
+    upsertPresence(state, presence);
     ensureAssignment(state, userId);
   });
 
@@ -983,7 +1038,7 @@ function matchLeave(
       logger.warn("Skipping leave presence with missing user ID.");
       return;
     }
-    delete state.presences[userId];
+    removePresence(state, presence);
   });
 
   return { state };
@@ -1007,10 +1062,10 @@ function matchLoop(
       return;
     }
 
-    const senderPresence = state.presences[senderUserId];
+    upsertPresence(state, message.sender);
     const senderColor = state.assignments[senderUserId];
 
-    if (!senderPresence || !senderColor) {
+    if (!senderColor) {
       sendError(
         dispatcher,
         state,
@@ -1270,8 +1325,8 @@ function processCompletedMatchRatings(
     }
 
     ratingResult.record.playerResults.forEach((playerResult) => {
-      const targetPresence = state.presences[playerResult.userId];
-      if (!targetPresence) {
+      const targetPresences = getUserPresenceTargets(state, playerResult.userId);
+      if (targetPresences.length === 0) {
         logger.info(
           "Ranked Elo processed for user %s on match %s, but no live presence was available for notification.",
           playerResult.userId,
@@ -1290,7 +1345,7 @@ function processCompletedMatchRatings(
             ratingResult.duplicate
           )
         ),
-        [targetPresence]
+        targetPresences
       );
     });
   } catch (error) {
@@ -1333,7 +1388,7 @@ function awardWinnerProgression(
       return;
     }
 
-    const winnerPresence = state.presences[winnerUserId];
+    const winnerPresence = getPrimaryUserPresence(state, winnerUserId);
     if (!winnerPresence) {
       logger.info(
         "Progression updated for winner %s on match %s, but no live presence was available for notification.",
@@ -1390,8 +1445,8 @@ function sendError(
   code: ServerErrorCode,
   message: string
 ): void {
-  const target = state.presences[userId];
-  if (!target) {
+  const targets = getUserPresenceTargets(state, userId);
+  if (targets.length === 0) {
     return;
   }
 
@@ -1403,7 +1458,7 @@ function sendError(
       message,
       revision: state.revision,
     }),
-    [target]
+    targets
   );
 }
 

@@ -1,7 +1,10 @@
-import { createPrivateMatch, getPrivateMatchStatus, joinPrivateMatch } from './matchmaking';
+import { createPrivateMatch, findMatch, getPrivateMatchStatus, joinPrivateMatch } from './matchmaking';
 
 const mockRpc = jest.fn();
 const mockEnsureAuthenticatedDevice = jest.fn();
+const mockConnectSocketWithRetry = jest.fn();
+const mockDisconnectSocket = jest.fn();
+const mockGetSocket = jest.fn();
 
 jest.mock('./nakama', () => ({
   nakamaService: {
@@ -9,9 +12,9 @@ jest.mock('./nakama', () => ({
     getClient: () => ({
       rpc: (...args: unknown[]) => mockRpc(...args),
     }),
-    connectSocketWithRetry: jest.fn(),
-    getSocket: jest.fn(),
-    disconnectSocket: jest.fn(),
+    connectSocketWithRetry: (...args: unknown[]) => mockConnectSocketWithRetry(...args),
+    getSocket: (...args: unknown[]) => mockGetSocket(...args),
+    disconnectSocket: (...args: unknown[]) => mockDisconnectSocket(...args),
   },
 }));
 
@@ -23,6 +26,40 @@ describe('matchmaking private RPC parsing', () => {
       token: 'token',
       refresh_token: 'refresh',
     });
+  });
+
+  it('waits for a matchmaker result and lets the match screen perform the actual join', async () => {
+    const socket = {
+      addMatchmaker: jest.fn().mockResolvedValue({ ticket: 'ticket-1' }),
+      joinMatch: jest.fn(),
+      onmatchmakermatched: null as ((payload: { ticket: string; match_id: string; token?: string }) => void) | null,
+    };
+    const onSearching = jest.fn();
+
+    mockConnectSocketWithRetry.mockResolvedValue(socket);
+
+    const resultPromise = findMatch({ onSearching });
+
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(socket.addMatchmaker).toHaveBeenCalledWith('*', 2, 2);
+    expect(onSearching).toHaveBeenCalledTimes(1);
+
+    socket.onmatchmakermatched?.({
+      ticket: 'ticket-1',
+      match_id: 'match-public-1',
+      token: 'join-token-1',
+    });
+
+    await expect(resultPromise).resolves.toEqual({
+      matchId: 'match-public-1',
+      session: expect.objectContaining({ user_id: 'user-1' }),
+      userId: 'user-1',
+      matchmakerTicket: 'ticket-1',
+      playerColor: null,
+      matchToken: 'join-token-1',
+    });
+    expect(socket.joinMatch).not.toHaveBeenCalled();
   });
 
   it('parses create-private payloads returned as JSON strings', async () => {
