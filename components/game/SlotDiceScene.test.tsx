@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { SlotDiceScene } from './SlotDiceScene';
 import {
@@ -16,7 +16,7 @@ const getMarkedCount = () =>
 
 const getStripStep = (index: number) => {
   const stripStyle = StyleSheet.flatten(screen.getByTestId(`slot-die-strip-${index}`).props.style) as {
-    transform?: Array<{ translateY?: number | { __getValue?: () => number } }>;
+    transform?: { translateY?: number | { __getValue?: () => number } }[];
   };
   const reelStyle = StyleSheet.flatten(screen.getByTestId(`slot-die-${index}`).props.style) as {
     height: number;
@@ -202,6 +202,35 @@ describe('SlotDiceScene', () => {
     expect(reelStyle.width).toBeGreaterThan(56);
     expect(imageStyle.height).toBe(72);
     expect(imageStyle.width).toBe(72);
+  });
+
+  it('scales the stage reels down to fit a narrow board-gap lane', () => {
+    render(
+      <SlotDiceScene
+        playbackId={24}
+        durationMs={720}
+        presentation="stage"
+        rollValue={2}
+        variant="settled"
+      />,
+    );
+
+    fireEvent(screen.getByTestId('slot-dice-scene-root'), 'layout', {
+      nativeEvent: {
+        layout: {
+          width: 148,
+          height: 76,
+        },
+      },
+    });
+
+    const reelStyle = StyleSheet.flatten(screen.getByTestId('slot-die-0').props.style) as {
+      height: number;
+      width: number;
+    };
+
+    expect(reelStyle.width).toBeLessThanOrEqual(36);
+    expect(reelStyle.height).toBeLessThanOrEqual(36);
   });
 
   it('keeps the strip render path when an animated roll transitions into settled state', () => {

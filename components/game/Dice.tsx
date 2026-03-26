@@ -44,6 +44,7 @@ interface DiceStageVisualProps {
   rolling: boolean;
   canRoll: boolean;
   compact?: boolean;
+  fitToContainer?: boolean;
   onResultShown?: () => void;
   visible?: boolean;
 }
@@ -119,6 +120,7 @@ export const DiceStageVisual: React.FC<DiceStageVisualProps> = ({
   rolling,
   canRoll,
   compact = false,
+  fitToContainer = false,
   onResultShown,
   visible = true,
 }) => {
@@ -141,8 +143,10 @@ export const DiceStageVisual: React.FC<DiceStageVisualProps> = ({
       <View
         pointerEvents="none"
         style={[
-          styles.externalStageVisualViewport,
-          isCompactVisual && styles.externalStageVisualViewportCompact,
+          fitToContainer
+            ? styles.externalStageVisualViewportFill
+            : styles.externalStageVisualViewport,
+          !fitToContainer && isCompactVisual && styles.externalStageVisualViewportCompact,
         ]}
       >
         <SlotDiceScene
@@ -874,6 +878,14 @@ const styles = StyleSheet.create({
   externalStageVisualViewportCompact: {
     maxWidth: 242,
     height: 112,
+  },
+  externalStageVisualViewportFill: {
+    width: '100%',
+    height: '100%',
+    maxWidth: '100%',
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   stageSubtitle: {
     textTransform: 'uppercase',

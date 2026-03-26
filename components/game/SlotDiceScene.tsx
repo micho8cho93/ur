@@ -43,6 +43,7 @@ const LANDING_BOUNCE_OUT_MS = scaleDuration(22);
 const LANDING_BOUNCE_DIP_SCALE = 0.985;
 const LANDING_BOUNCE_PEAK_SCALE = 1.018;
 const STOP_COMPLETION_BUFFER_MS = scaleDuration(140);
+const MIN_REEL_BOX_SIZE = 28;
 
 type SlotDiceSceneProps = {
   durationMs?: number;
@@ -559,7 +560,7 @@ export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
   const rowVerticalPadding = Math.max(2, Math.round(availableHeight * 0.02));
   const reelGap = Math.max(2, Math.round(availableWidth * 0.012));
   const boxSize = Math.max(
-    40,
+    MIN_REEL_BOX_SIZE,
     Math.min(
       (availableWidth - rowHorizontalPadding * 2 - reelGap * (SLOT_DICE_COUNT - 1)) /
         SLOT_DICE_COUNT,
@@ -574,7 +575,7 @@ export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
   );
   const rowHeight = Math.min(availableHeight, boxSize + rowVerticalPadding * 2);
   return (
-    <View onLayout={handleLayout} pointerEvents="none" style={styles.root}>
+    <View testID="slot-dice-scene-root" onLayout={handleLayout} pointerEvents="none" style={styles.root}>
       <View
         style={[
           styles.reelRowFrame,

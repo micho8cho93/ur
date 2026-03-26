@@ -13,6 +13,7 @@ import { XPDisplay } from '@/components/challenges/XPDisplay';
 import { Dice, DiceStageVisual } from '@/components/game/Dice';
 import { EdgeScore } from '@/components/game/EdgeScore';
 import { GameStageHUD } from '@/components/game/GameStageHUD';
+import { computeBoardGapControlLayout } from '@/components/game/matchDiceStageLayout';
 import { MatchDiceRollStage } from '@/components/game/MatchDiceRollStage';
 import { MatchMomentIndicator } from '@/components/game/MatchMomentIndicator';
 import type { MatchMomentIndicatorCue } from '@/components/game/MatchMomentIndicator';
@@ -1894,8 +1895,6 @@ export function GameRoom() {
   // Keep these ratios in sync with the vertical board art fit in Board.tsx.
   const boardArtInsetTop = 0.024;
   const boardArtInsetBottom = 0.018;
-  const boardArtInsetLeft = 0.36;
-  const boardArtInsetRight = 0.385;
   const boardOuterPadding = boardFramePadding * 2 + boardInnerPadding * 2;
   const verticalBoardRows = BOARD_COLS;
   const verticalBoardCols = BOARD_ROWS;
@@ -2073,50 +2072,38 @@ export function GameRoom() {
     viewportHeight,
     viewportWidth,
   ]);
-  const showMobileWebUnderBoardDiceOverlay = isWebLayout && mobileWebUnderBoardDiceFrame !== null;
+  const mobileBoardGapLayout = useMemo(() => {
+    if (!isMobileLayout || !useMobileSideReserveRails || !boardTargetFrame) {
+      return null;
+    }
 
-  const mobileBoardGapFrame = useMemo(() => {
-    if (!isMobileLayout || !useMobileSideReserveRails || isWebLayout || !boardTargetFrame) return null;
+    return computeBoardGapControlLayout({
+      boardFrame: boardTargetFrame,
+    });
+  }, [boardTargetFrame, isMobileLayout, useMobileSideReserveRails]);
+  const mobileBoardGapControlMetrics = useMemo(() => {
+    if (!mobileBoardGapLayout) {
+      return null;
+    }
 
-    const gridLeft = boardTargetFrame.x + boardTargetFrame.width * boardArtInsetLeft;
-    const gridWidth = boardTargetFrame.width * (1 - boardArtInsetLeft - boardArtInsetRight);
-    const gridTop = boardTargetFrame.y + boardTargetFrame.height * boardArtInsetTop;
-    const gridHeight = boardTargetFrame.height * (1 - boardArtInsetTop - boardArtInsetBottom);
-    const cellWidth = gridWidth / verticalBoardCols;
-    const rowHeight = gridHeight / verticalBoardRows;
-
-    // Gap rows 4 and 5 (0-indexed) — the narrow passage between the two player sections
-    const gapTop = gridTop + 4 * rowHeight;
-    const gapHeight = 2 * rowHeight;
+    const laneInset = Math.max(
+      4,
+      Math.round(Math.min(mobileBoardGapLayout.laneWidth, mobileBoardGapLayout.laneHeight) * 0.08),
+    );
 
     return {
-      left: {
-        left: Math.round(gridLeft),
-        top: Math.round(gapTop),
-        width: Math.round(cellWidth),
-        height: Math.round(gapHeight),
-      },
-      right: {
-        left: Math.round(gridLeft + 2 * cellWidth),
-        top: Math.round(gapTop),
-        width: Math.round(cellWidth),
-        height: Math.round(gapHeight),
-      },
-      cellSize: Math.round(cellWidth),
+      diceViewportHeight: Math.max(0, mobileBoardGapLayout.diceFrame.width - laneInset * 2),
+      diceViewportWidth: Math.max(0, mobileBoardGapLayout.diceFrame.height - laneInset * 2),
+      rollArtSize: Math.max(
+        44,
+        Math.round(Math.min(mobileBoardGapLayout.rollFrame.width, mobileBoardGapLayout.rollFrame.height) * 0.82),
+      ),
     };
-  }, [
-    boardArtInsetBottom,
-    boardArtInsetLeft,
-    boardArtInsetRight,
-    boardArtInsetTop,
-    boardTargetFrame,
-    isMobileLayout,
-    isWebLayout,
-    useMobileSideReserveRails,
-    verticalBoardCols,
-    verticalBoardRows,
-  ]);
-  const showMobileBoardGapDice = !isWebLayout && useMobileSideReserveRails && mobileBoardGapFrame !== null;
+  }, [mobileBoardGapLayout]);
+  const showMobileBoardGapDice =
+    useMobileSideReserveRails && mobileBoardGapLayout !== null && mobileBoardGapControlMetrics !== null;
+  const showMobileWebUnderBoardDiceOverlay =
+    isWebLayout && mobileWebUnderBoardDiceFrame !== null && !showMobileBoardGapDice;
   const shouldDetachDiceVisual =
     isMatchStageExternal ||
     showWebSideDiceVisual ||
@@ -2538,39 +2525,52 @@ export function GameRoom() {
         </View>
       ) : null}
 
-      {showMobileBoardGapDice && mobileBoardGapFrame ? (
+      {showMobileBoardGapDice && mobileBoardGapLayout && mobileBoardGapControlMetrics ? (
         <View
           pointerEvents="none"
           style={[
             styles.mobileBoardGapOverlay,
             {
-              left: mobileBoardGapFrame.left.left,
-              top: mobileBoardGapFrame.left.top,
-              width: mobileBoardGapFrame.left.width,
-              height: mobileBoardGapFrame.left.height,
+              left: mobileBoardGapLayout.diceFrame.x,
+              top: mobileBoardGapLayout.diceFrame.y,
+              width: mobileBoardGapLayout.diceFrame.width,
+              height: mobileBoardGapLayout.diceFrame.height,
             },
           ]}
         >
-          <DiceStageVisual
-            animationDurationMs={diceAnimationDurationMs}
-            value={gameState.rollValue}
-            rolling={rollingVisual}
-            canRoll={introsComplete && canRoll}
-            compact
-            onResultShown={handleRollResultShown}
-            visible={showPersistentDiceVisual}
-          />
+          <View style={styles.mobileBoardGapDiceWrap}>
+            <View
+              style={[
+                styles.mobileBoardGapDiceRotator,
+                {
+                  width: mobileBoardGapControlMetrics.diceViewportWidth,
+                  height: mobileBoardGapControlMetrics.diceViewportHeight,
+                },
+              ]}
+            >
+              <DiceStageVisual
+                animationDurationMs={diceAnimationDurationMs}
+                value={gameState.rollValue}
+                rolling={rollingVisual}
+                canRoll={introsComplete && canRoll}
+                compact
+                fitToContainer
+                onResultShown={handleRollResultShown}
+                visible={showPersistentDiceVisual}
+              />
+            </View>
+          </View>
         </View>
       ) : null}
-      {showMobileBoardGapDice && mobileBoardGapFrame ? (
+      {showMobileBoardGapDice && mobileBoardGapLayout && mobileBoardGapControlMetrics ? (
         <View
           style={[
             styles.mobileBoardGapOverlay,
             {
-              left: mobileBoardGapFrame.right.left,
-              top: mobileBoardGapFrame.right.top,
-              width: mobileBoardGapFrame.right.width,
-              height: mobileBoardGapFrame.right.height,
+              left: mobileBoardGapLayout.rollFrame.x,
+              top: mobileBoardGapLayout.rollFrame.y,
+              width: mobileBoardGapLayout.rollFrame.width,
+              height: mobileBoardGapLayout.rollFrame.height,
             },
           ]}
         >
@@ -2588,7 +2588,7 @@ export function GameRoom() {
             showStatusCopy={false}
             showVisual={false}
             visualPlacement="external"
-            artSize={mobileBoardGapFrame.cellSize}
+            artSize={mobileBoardGapControlMetrics.rollArtSize}
           />
         </View>
       ) : null}
@@ -3377,6 +3377,18 @@ const styles = StyleSheet.create({
     zIndex: 5,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  mobileBoardGapDiceWrap: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  mobileBoardGapDiceRotator: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ rotate: '-90deg' }],
   },
   mobileWebUnderBoardDiceOverlay: {
     position: 'absolute',

@@ -4,6 +4,12 @@ import {
   COMPACT_STAGE_MIN_X,
   MOBILE_DICE_STAGE_WIDTH_SCALE,
   STAGE_MARGIN,
+  VERTICAL_BOARD_ART_INSETS,
+  VERTICAL_BOARD_GAP_GRID_COLS,
+  VERTICAL_BOARD_GAP_GRID_ROWS,
+  VERTICAL_BOARD_GAP_ROW_SPAN,
+  VERTICAL_BOARD_GAP_ROW_START,
+  computeBoardGapControlLayout,
   computeLandingZone,
   type BoardFrame,
 } from './matchDiceStageLayout';
@@ -79,5 +85,43 @@ describe('matchDiceStageLayout', () => {
       5,
     );
     expect(mobileLandingZone.height).toBeCloseTo(tabletLandingZone.height, 5);
+  });
+
+  it('anchors the mobile board-gap controls to rows 5 and 6 beside the board lane', () => {
+    const boardGapLayout = computeBoardGapControlLayout({ boardFrame });
+    const renderedGridWidth =
+      boardFrame.width * (1 - VERTICAL_BOARD_ART_INSETS.left - VERTICAL_BOARD_ART_INSETS.right);
+    const renderedGridHeight =
+      boardFrame.height * (1 - VERTICAL_BOARD_ART_INSETS.top - VERTICAL_BOARD_ART_INSETS.bottom);
+    const expectedLaneWidth = Math.round(renderedGridWidth / VERTICAL_BOARD_GAP_GRID_COLS);
+    const expectedLaneHeight = Math.round(
+      (renderedGridHeight * VERTICAL_BOARD_GAP_ROW_SPAN) / VERTICAL_BOARD_GAP_GRID_ROWS,
+    );
+    const expectedGapTop = Math.round(
+      boardFrame.y +
+        boardFrame.height * VERTICAL_BOARD_ART_INSETS.top +
+        (renderedGridHeight / VERTICAL_BOARD_GAP_GRID_ROWS) * VERTICAL_BOARD_GAP_ROW_START,
+    );
+
+    expect(boardGapLayout.diceFrame.width).toBe(expectedLaneWidth);
+    expect(boardGapLayout.rollFrame.width).toBe(expectedLaneWidth);
+    expect(boardGapLayout.diceFrame.height).toBe(expectedLaneHeight);
+    expect(boardGapLayout.rollFrame.height).toBe(expectedLaneHeight);
+    expect(boardGapLayout.diceFrame.y).toBe(expectedGapTop);
+    expect(boardGapLayout.rollFrame.y).toBe(expectedGapTop);
+    expect(boardGapLayout.rollFrame.x).toBeGreaterThan(boardGapLayout.diceFrame.x);
+  });
+
+  it('keeps the gap controls inside the rendered board art bounds', () => {
+    const boardGapLayout = computeBoardGapControlLayout({ boardFrame });
+    const artLeft = boardFrame.x;
+    const artTop = boardFrame.y;
+    const artRight = boardFrame.x + boardFrame.width;
+    const artBottom = boardFrame.y + boardFrame.height;
+
+    expect(boardGapLayout.diceFrame.x).toBeGreaterThanOrEqual(artLeft);
+    expect(boardGapLayout.diceFrame.y).toBeGreaterThanOrEqual(artTop);
+    expect(boardGapLayout.rollFrame.x + boardGapLayout.rollFrame.width).toBeLessThanOrEqual(artRight);
+    expect(boardGapLayout.rollFrame.y + boardGapLayout.rollFrame.height).toBeLessThanOrEqual(artBottom);
   });
 });
