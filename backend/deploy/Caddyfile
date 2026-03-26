@@ -38,5 +38,6 @@ internals.urgame.live {
 
   encode zstd gzip
   root * /var/www/internals
+  try_files {path} /index.html
   file_server
 }
