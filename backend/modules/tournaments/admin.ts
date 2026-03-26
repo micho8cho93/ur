@@ -1,4 +1,4 @@
-import { listTournamentAuditEntries } from "./audit";
+import { listTournamentAuditEntries, runAuditedAdminRpc } from "./audit";
 import { assertAdmin } from "./auth";
 import {
   getActorLabel,
@@ -500,56 +500,80 @@ const buildRunResponse = (run: TournamentRunRecord, nakamaTournament: Record<str
 
 export const rpcAdminListTournaments = (
   ctx: RuntimeContext,
-  _logger: RuntimeLogger,
+  logger: RuntimeLogger,
   nk: RuntimeNakama,
   payload: string,
 ): string => {
-  assertAdmin(ctx, "viewer", nk);
-  const parsed = parseJsonPayload(payload);
-  const limit = clampInteger(parsed.limit, 50, 1, MAX_RUN_LIST_LIMIT);
-  const lifecycleFilter = readStringField(parsed, ["lifecycle"]);
+  return runAuditedAdminRpc(
+    (_ctx, _logger, _nk, _payload) => {
+      assertAdmin(_ctx, "viewer", _nk);
+      const parsed = parseJsonPayload(_payload);
+      const limit = clampInteger(parsed.limit, 50, 1, MAX_RUN_LIST_LIMIT);
+      const lifecycleFilter = readStringField(parsed, ["lifecycle"]);
 
-  const indexState = readRunIndexState(nk);
-  const runs = sortRuns(readRunsByIds(nk, indexState.index.runIds));
-  const filteredRuns =
-    lifecycleFilter && (lifecycleFilter === "draft" || lifecycleFilter === "open" || lifecycleFilter === "closed" || lifecycleFilter === "finalized")
-      ? runs.filter((run) => run.lifecycle === lifecycleFilter)
-      : runs;
-  const limitedRuns = filteredRuns.slice(0, limit);
-  const tournamentsById = getNakamaTournamentsById(
+      const indexState = readRunIndexState(_nk);
+      const runs = sortRuns(readRunsByIds(_nk, indexState.index.runIds));
+      const filteredRuns =
+        lifecycleFilter && (lifecycleFilter === "draft" || lifecycleFilter === "open" || lifecycleFilter === "closed" || lifecycleFilter === "finalized")
+          ? runs.filter((run) => run.lifecycle === lifecycleFilter)
+          : runs;
+      const limitedRuns = filteredRuns.slice(0, limit);
+      const tournamentsById = getNakamaTournamentsById(
+        _nk,
+        limitedRuns.map((run) => run.tournamentId),
+      );
+      const items: TournamentRunListItem[] = limitedRuns.map((run) => ({
+        ...run,
+        nakamaTournament: tournamentsById[run.tournamentId] ?? null,
+      }));
+
+      return JSON.stringify({
+        ok: true,
+        runs: items,
+        totalCount: filteredRuns.length,
+      });
+    },
+    {
+      action: RPC_ADMIN_LIST_TOURNAMENTS,
+      targetId: "tournament_runs",
+      targetName: "Tournament runs",
+    },
+    ctx,
+    logger,
     nk,
-    limitedRuns.map((run) => run.tournamentId),
+    payload,
   );
-  const items: TournamentRunListItem[] = limitedRuns.map((run) => ({
-    ...run,
-    nakamaTournament: tournamentsById[run.tournamentId] ?? null,
-  }));
-
-  return JSON.stringify({
-    ok: true,
-    runs: items,
-    totalCount: filteredRuns.length,
-  });
 };
 
 export const rpcAdminGetTournamentRun = (
   ctx: RuntimeContext,
-  _logger: RuntimeLogger,
+  logger: RuntimeLogger,
   nk: RuntimeNakama,
   payload: string,
 ): string => {
-  assertAdmin(ctx, "viewer", nk);
-  const parsed = parseJsonPayload(payload);
-  const runId = readStringField(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+  return runAuditedAdminRpc(
+    (_ctx, _logger, _nk, _payload) => {
+      assertAdmin(_ctx, "viewer", _nk);
+      const parsed = parseJsonPayload(_payload);
+      const runId = readStringField(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
 
-  if (!runId) {
-    throw new Error("runId is required.");
-  }
+      if (!runId) {
+        throw new Error("runId is required.");
+      }
 
-  const run = readRunOrThrow(nk, runId);
-  const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
+      const run = readRunOrThrow(_nk, runId);
+      const nakamaTournament = getNakamaTournamentById(_nk, run.tournamentId);
 
-  return JSON.stringify(buildRunResponse(run, nakamaTournament));
+      return JSON.stringify(buildRunResponse(run, nakamaTournament));
+    },
+    {
+      action: RPC_ADMIN_GET_TOURNAMENT_RUN,
+    },
+    ctx,
+    logger,
+    nk,
+    payload,
+  );
 };
 
 export const rpcAdminCreateTournamentRun = (
@@ -558,91 +582,102 @@ export const rpcAdminCreateTournamentRun = (
   nk: RuntimeNakama,
   payload: string,
 ): string => {
-  assertAdmin(ctx, "operator", nk);
-  const parsed = parseJsonPayload(payload);
-  const title = readStringField(parsed, ["title"]);
+  return runAuditedAdminRpc(
+    (_ctx, _logger, _nk, _payload) => {
+      assertAdmin(_ctx, "operator", _nk);
+      const parsed = parseJsonPayload(_payload);
+      const title = readStringField(parsed, ["title"]);
 
-  if (!title) {
-    throw new Error("title is required.");
-  }
-
-  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
-    const indexState = readRunIndexState(nk);
-    const createdAt = new Date().toISOString();
-    const runId = buildRunId(
-      readStringField(parsed, ["runId", "run_id"]),
-      title,
-      indexState.index.runIds,
-    );
-    const run: TournamentRunRecord = {
-      runId,
-      tournamentId: runId,
-      title,
-      description: readStringField(parsed, ["description"]) ?? "",
-      category: clampInteger(readNumberField(parsed, ["category"]), DEFAULT_CATEGORY, 0, 127),
-      authoritative: readBooleanField(parsed, ["authoritative"]) ?? true,
-      sortOrder: normalizeSortOrder(readStringField(parsed, ["sortOrder", "sort_order"])),
-      operator: normalizeOperator(readStringField(parsed, ["operator"])),
-      resetSchedule: readStringField(parsed, ["resetSchedule", "reset_schedule"]) ?? "",
-      metadata: readMetadataField(parsed, ["metadata"]),
-      startTime: clampInteger(readNumberField(parsed, ["startTime", "start_time"]), 0, 0, 2147483647),
-      endTime: clampInteger(readNumberField(parsed, ["endTime", "end_time"]), 0, 0, 2147483647),
-      duration: clampInteger(readNumberField(parsed, ["duration"]), DEFAULT_DURATION_SECONDS, 1, 2147483647),
-      maxSize: clampInteger(readNumberField(parsed, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1000000),
-      maxNumScore: clampInteger(
-        readNumberField(parsed, ["maxNumScore", "max_num_score"]),
-        DEFAULT_MAX_NUM_SCORE,
-        1,
-        1000000,
-      ),
-      joinRequired: readBooleanField(parsed, ["joinRequired", "join_required"]) ?? true,
-      enableRanks: readBooleanField(parsed, ["enableRanks", "enable_ranks"]) ?? true,
-      lifecycle: "draft",
-      createdAt,
-      updatedAt: createdAt,
-      createdByUserId: requireAuthenticatedUserId(ctx),
-      createdByLabel: getActorLabel(ctx),
-      openedAt: null,
-      closedAt: null,
-      finalizedAt: null,
-      finalSnapshot: null,
-    };
-    const nextIndex: TournamentRunIndexRecord = {
-      runIds: [run.runId].concat(indexState.index.runIds),
-      updatedAt: createdAt,
-    };
-
-    try {
-      nk.storageWrite([
-        {
-          collection: RUNS_COLLECTION,
-          key: run.runId,
-          value: run,
-          version: "",
-          permissionRead: STORAGE_PERMISSION_NONE,
-          permissionWrite: STORAGE_PERMISSION_NONE,
-        },
-        {
-          collection: RUNS_COLLECTION,
-          key: RUNS_INDEX_KEY,
-          value: nextIndex,
-          version: getStorageObjectVersion(indexState.object) ?? "",
-          permissionRead: STORAGE_PERMISSION_NONE,
-          permissionWrite: STORAGE_PERMISSION_NONE,
-        },
-      ]);
-
-      return JSON.stringify(buildRunResponse(run, null));
-    } catch (error) {
-      if (attempt === MAX_WRITE_ATTEMPTS) {
-        throw error;
+      if (!title) {
+        throw new Error("title is required.");
       }
 
-      logger.warn("Retrying tournament run create for %s: %s", title, getErrorMessage(error));
-    }
-  }
+      for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+        const indexState = readRunIndexState(_nk);
+        const createdAt = new Date().toISOString();
+        const runId = buildRunId(
+          readStringField(parsed, ["runId", "run_id"]),
+          title,
+          indexState.index.runIds,
+        );
+        const run: TournamentRunRecord = {
+          runId,
+          tournamentId: runId,
+          title,
+          description: readStringField(parsed, ["description"]) ?? "",
+          category: clampInteger(readNumberField(parsed, ["category"]), DEFAULT_CATEGORY, 0, 127),
+          authoritative: readBooleanField(parsed, ["authoritative"]) ?? true,
+          sortOrder: normalizeSortOrder(readStringField(parsed, ["sortOrder", "sort_order"])),
+          operator: normalizeOperator(readStringField(parsed, ["operator"])),
+          resetSchedule: readStringField(parsed, ["resetSchedule", "reset_schedule"]) ?? "",
+          metadata: readMetadataField(parsed, ["metadata"]),
+          startTime: clampInteger(readNumberField(parsed, ["startTime", "start_time"]), 0, 0, 2147483647),
+          endTime: clampInteger(readNumberField(parsed, ["endTime", "end_time"]), 0, 0, 2147483647),
+          duration: clampInteger(readNumberField(parsed, ["duration"]), DEFAULT_DURATION_SECONDS, 1, 2147483647),
+          maxSize: clampInteger(readNumberField(parsed, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1000000),
+          maxNumScore: clampInteger(
+            readNumberField(parsed, ["maxNumScore", "max_num_score"]),
+            DEFAULT_MAX_NUM_SCORE,
+            1,
+            1000000,
+          ),
+          joinRequired: readBooleanField(parsed, ["joinRequired", "join_required"]) ?? true,
+          enableRanks: readBooleanField(parsed, ["enableRanks", "enable_ranks"]) ?? true,
+          lifecycle: "draft",
+          createdAt,
+          updatedAt: createdAt,
+          createdByUserId: requireAuthenticatedUserId(_ctx),
+          createdByLabel: getActorLabel(_ctx),
+          openedAt: null,
+          closedAt: null,
+          finalizedAt: null,
+          finalSnapshot: null,
+        };
+        const nextIndex: TournamentRunIndexRecord = {
+          runIds: [run.runId].concat(indexState.index.runIds),
+          updatedAt: createdAt,
+        };
 
-  throw new Error("Unable to create tournament run.");
+        try {
+          _nk.storageWrite([
+            {
+              collection: RUNS_COLLECTION,
+              key: run.runId,
+              value: run,
+              version: "",
+              permissionRead: STORAGE_PERMISSION_NONE,
+              permissionWrite: STORAGE_PERMISSION_NONE,
+            },
+            {
+              collection: RUNS_COLLECTION,
+              key: RUNS_INDEX_KEY,
+              value: nextIndex,
+              version: getStorageObjectVersion(indexState.object) ?? "",
+              permissionRead: STORAGE_PERMISSION_NONE,
+              permissionWrite: STORAGE_PERMISSION_NONE,
+            },
+          ]);
+
+          return JSON.stringify(buildRunResponse(run, null));
+        } catch (error) {
+          if (attempt === MAX_WRITE_ATTEMPTS) {
+            throw error;
+          }
+
+          _logger.warn("Retrying tournament run create for %s: %s", title, getErrorMessage(error));
+        }
+      }
+
+      throw new Error("Unable to create tournament run.");
+    },
+    {
+      action: RPC_ADMIN_CREATE_TOURNAMENT_RUN,
+    },
+    ctx,
+    logger,
+    nk,
+    payload,
+  );
 };
 
 export const rpcAdminOpenTournament = (
@@ -651,60 +686,71 @@ export const rpcAdminOpenTournament = (
   nk: RuntimeNakama,
   payload: string,
 ): string => {
-  assertAdmin(ctx, "operator", nk);
-  const parsed = parseJsonPayload(payload);
-  const runId = readStringField(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+  return runAuditedAdminRpc(
+    (_ctx, _logger, _nk, _payload) => {
+      assertAdmin(_ctx, "operator", _nk);
+      const parsed = parseJsonPayload(_payload);
+      const runId = readStringField(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
 
-  if (!runId) {
-    throw new Error("runId is required.");
-  }
-
-  let createdTournament = false;
-  const run = updateRunWithRetry(nk, logger, runId, (current) => {
-    if (current.lifecycle === "finalized") {
-      throw new Error("A finalized tournament run cannot be reopened.");
-    }
-
-    if (current.lifecycle === "draft") {
-      const existingTournament = getNakamaTournamentById(nk, current.tournamentId);
-      if (!existingTournament) {
-        nk.tournamentCreate(
-          current.tournamentId,
-          current.authoritative,
-          current.sortOrder,
-          current.operator,
-          current.resetSchedule,
-          current.metadata,
-          current.title,
-          current.description,
-          current.category,
-          current.startTime,
-          current.endTime,
-          current.duration,
-          current.maxSize,
-          current.maxNumScore,
-          current.joinRequired,
-          current.enableRanks,
-        );
-        createdTournament = true;
+      if (!runId) {
+        throw new Error("runId is required.");
       }
-    }
 
-    if (current.lifecycle === "open") {
-      return current;
-    }
+      let createdTournament = false;
+      const run = updateRunWithRetry(_nk, _logger, runId, (current) => {
+        if (current.lifecycle === "finalized") {
+          throw new Error("A finalized tournament run cannot be reopened.");
+        }
 
-    const updatedAt = new Date().toISOString();
-    return {
-      ...current,
-      lifecycle: "open",
-      updatedAt,
-      openedAt: current.openedAt ?? updatedAt,
-      closedAt: null,
-    };
-  });
+        if (current.lifecycle === "draft") {
+          const existingTournament = getNakamaTournamentById(_nk, current.tournamentId);
+          if (!existingTournament) {
+            _nk.tournamentCreate(
+              current.tournamentId,
+              current.authoritative,
+              current.sortOrder,
+              current.operator,
+              current.resetSchedule,
+              current.metadata,
+              current.title,
+              current.description,
+              current.category,
+              current.startTime,
+              current.endTime,
+              current.duration,
+              current.maxSize,
+              current.maxNumScore,
+              current.joinRequired,
+              current.enableRanks,
+            );
+            createdTournament = true;
+          }
+        }
 
-  return JSON.stringify(buildRunResponse(run, getNakamaTournamentById(nk, run.tournamentId)));
+        if (current.lifecycle === "open") {
+          return current;
+        }
+
+        const updatedAt = new Date().toISOString();
+        return {
+          ...current,
+          lifecycle: "open",
+          updatedAt,
+          openedAt: current.openedAt ?? updatedAt,
+          closedAt: null,
+        };
+      });
+
+      return JSON.stringify(buildRunResponse(run, getNakamaTournamentById(_nk, run.tournamentId)));
+    },
+    {
+      action: RPC_ADMIN_OPEN_TOURNAMENT,
+    },
+    ctx,
+    logger,
+    nk,
+    payload,
+  );
 };
 
 export const rpcAdminCloseTournament = (
@@ -713,33 +759,44 @@ export const rpcAdminCloseTournament = (
   nk: RuntimeNakama,
   payload: string,
 ): string => {
-  assertAdmin(ctx, "operator", nk);
-  const parsed = parseJsonPayload(payload);
-  const runId = readStringField(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+  return runAuditedAdminRpc(
+    (_ctx, _logger, _nk, _payload) => {
+      assertAdmin(_ctx, "operator", _nk);
+      const parsed = parseJsonPayload(_payload);
+      const runId = readStringField(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
 
-  if (!runId) {
-    throw new Error("runId is required.");
-  }
+      if (!runId) {
+        throw new Error("runId is required.");
+      }
 
-  const run = updateRunWithRetry(nk, logger, runId, (current) => {
-    if (current.lifecycle === "finalized") {
-      throw new Error("A finalized tournament run cannot be closed.");
-    }
+      const run = updateRunWithRetry(_nk, _logger, runId, (current) => {
+        if (current.lifecycle === "finalized") {
+          throw new Error("A finalized tournament run cannot be closed.");
+        }
 
-    if (current.lifecycle === "closed") {
-      return current;
-    }
+        if (current.lifecycle === "closed") {
+          return current;
+        }
 
-    const updatedAt = new Date().toISOString();
-    return {
-      ...current,
-      lifecycle: "closed",
-      updatedAt,
-      closedAt: current.closedAt ?? updatedAt,
-    };
-  });
+        const updatedAt = new Date().toISOString();
+        return {
+          ...current,
+          lifecycle: "closed",
+          updatedAt,
+          closedAt: current.closedAt ?? updatedAt,
+        };
+      });
 
-  return JSON.stringify(buildRunResponse(run, getNakamaTournamentById(nk, run.tournamentId)));
+      return JSON.stringify(buildRunResponse(run, getNakamaTournamentById(_nk, run.tournamentId)));
+    },
+    {
+      action: RPC_ADMIN_CLOSE_TOURNAMENT,
+    },
+    ctx,
+    logger,
+    nk,
+    payload,
+  );
 };
 
 export const rpcAdminFinalizeTournament = (
@@ -748,105 +805,139 @@ export const rpcAdminFinalizeTournament = (
   nk: RuntimeNakama,
   payload: string,
 ): string => {
-  assertAdmin(ctx, "admin", nk);
-  const parsed = parseJsonPayload(payload);
-  const runId = readStringField(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+  return runAuditedAdminRpc(
+    (_ctx, _logger, _nk, _payload) => {
+      assertAdmin(_ctx, "admin", _nk);
+      const parsed = parseJsonPayload(_payload);
+      const runId = readStringField(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
 
-  if (!runId) {
-    throw new Error("runId is required.");
-  }
+      if (!runId) {
+        throw new Error("runId is required.");
+      }
 
-  const runBeforeUpdate = readRunOrThrow(nk, runId);
-  const nakamaTournament = getNakamaTournamentById(nk, runBeforeUpdate.tournamentId);
-  const standingsLimit = clampInteger(parsed.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
-  const overrideExpiry = resolveOverrideExpiry(
-    readNumberField(parsed, ["overrideExpiry", "override_expiry"]),
-    nakamaTournament,
+      const runBeforeUpdate = readRunOrThrow(_nk, runId);
+      const nakamaTournament = getNakamaTournamentById(_nk, runBeforeUpdate.tournamentId);
+      const standingsLimit = clampInteger(parsed.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
+      const overrideExpiry = resolveOverrideExpiry(
+        readNumberField(parsed, ["overrideExpiry", "override_expiry"]),
+        nakamaTournament,
+      );
+      const finalSnapshot = buildStandingsSnapshot(_nk, runBeforeUpdate.tournamentId, standingsLimit, overrideExpiry);
+      let disabledRanks = false;
+
+      try {
+        _nk.tournamentRanksDisable(runBeforeUpdate.tournamentId);
+        disabledRanks = true;
+      } catch (error) {
+        _logger.warn("Unable to disable ranks for %s during finalization: %s", runBeforeUpdate.runId, String(error));
+      }
+
+      const run = updateRunWithRetry(_nk, _logger, runId, (current) => ({
+        ...current,
+        lifecycle: "finalized",
+        updatedAt: new Date().toISOString(),
+        finalizedAt: current.finalizedAt ?? new Date().toISOString(),
+        closedAt: current.closedAt ?? new Date().toISOString(),
+        finalSnapshot,
+      }));
+
+      return JSON.stringify({
+        ok: true,
+        run,
+        nakamaTournament,
+        finalSnapshot,
+        disabledRanks,
+      });
+    },
+    {
+      action: RPC_ADMIN_FINALIZE_TOURNAMENT,
+    },
+    ctx,
+    logger,
+    nk,
+    payload,
   );
-  const finalSnapshot = buildStandingsSnapshot(nk, runBeforeUpdate.tournamentId, standingsLimit, overrideExpiry);
-  let disabledRanks = false;
-
-  try {
-    nk.tournamentRanksDisable(runBeforeUpdate.tournamentId);
-    disabledRanks = true;
-  } catch (error) {
-    logger.warn("Unable to disable ranks for %s during finalization: %s", runBeforeUpdate.runId, String(error));
-  }
-
-  const run = updateRunWithRetry(nk, logger, runId, (current) => ({
-    ...current,
-    lifecycle: "finalized",
-    updatedAt: new Date().toISOString(),
-    finalizedAt: current.finalizedAt ?? new Date().toISOString(),
-    closedAt: current.closedAt ?? new Date().toISOString(),
-    finalSnapshot,
-  }));
-
-  return JSON.stringify({
-    ok: true,
-    run,
-    nakamaTournament,
-    finalSnapshot,
-    disabledRanks,
-  });
 };
 
 export const rpcAdminGetTournamentStandings = (
   ctx: RuntimeContext,
-  _logger: RuntimeLogger,
+  logger: RuntimeLogger,
   nk: RuntimeNakama,
   payload: string,
 ): string => {
-  assertAdmin(ctx, "viewer", nk);
-  const parsed = parseJsonPayload(payload);
-  const runId = readStringField(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+  return runAuditedAdminRpc(
+    (_ctx, _logger, _nk, _payload) => {
+      assertAdmin(_ctx, "viewer", _nk);
+      const parsed = parseJsonPayload(_payload);
+      const runId = readStringField(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
 
-  if (!runId) {
-    throw new Error("runId is required.");
-  }
+      if (!runId) {
+        throw new Error("runId is required.");
+      }
 
-  const run = readRunOrThrow(nk, runId);
-  const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
-  const limit = clampInteger(parsed.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
-  const overrideExpiry = resolveOverrideExpiry(
-    readNumberField(parsed, ["overrideExpiry", "override_expiry"]),
-    nakamaTournament,
+      const run = readRunOrThrow(_nk, runId);
+      const nakamaTournament = getNakamaTournamentById(_nk, run.tournamentId);
+      const limit = clampInteger(parsed.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
+      const overrideExpiry = resolveOverrideExpiry(
+        readNumberField(parsed, ["overrideExpiry", "override_expiry"]),
+        nakamaTournament,
+      );
+      const standings = buildStandingsSnapshot(_nk, run.tournamentId, limit, overrideExpiry);
+
+      return JSON.stringify({
+        ok: true,
+        run,
+        nakamaTournament,
+        standings,
+      });
+    },
+    {
+      action: RPC_ADMIN_GET_TOURNAMENT_STANDINGS,
+    },
+    ctx,
+    logger,
+    nk,
+    payload,
   );
-  const standings = buildStandingsSnapshot(nk, run.tournamentId, limit, overrideExpiry);
-
-  return JSON.stringify({
-    ok: true,
-    run,
-    nakamaTournament,
-    standings,
-  });
 };
 
 export const rpcAdminGetTournamentAuditLog = (
   ctx: RuntimeContext,
-  _logger: RuntimeLogger,
+  logger: RuntimeLogger,
   nk: RuntimeNakama,
   payload: string,
 ): string => {
-  assertAdmin(ctx, "viewer", nk);
-  const parsed = parseJsonPayload(payload);
-  const runId = readStringField(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+  return runAuditedAdminRpc(
+    (_ctx, _logger, _nk, _payload) => {
+      assertAdmin(_ctx, "viewer", _nk);
+      const parsed = parseJsonPayload(_payload);
+      const runId = readStringField(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
 
-  if (!runId) {
-    throw new Error("runId is required.");
-  }
+      if (!runId) {
+        throw new Error("runId is required.");
+      }
 
-  const run = readRunOrThrow(nk, runId);
-  const limit = clampInteger(parsed.limit, 100, 1, 500);
-  const entries = listTournamentAuditEntries(nk, {
-    tournamentId: run.runId,
-    limit,
-  });
+      const run = readRunOrThrow(_nk, runId);
+      const limit = clampInteger(parsed.limit, 100, 1, 500);
+      const entries = listTournamentAuditEntries(_nk, {
+        tournamentId: run.runId,
+        limit,
+      });
 
-  return JSON.stringify({
-    ok: true,
-    runId: run.runId,
-    tournamentId: run.tournamentId,
-    entries,
-  });
+      return JSON.stringify({
+        ok: true,
+        runId: run.runId,
+        tournamentId: run.tournamentId,
+        entries,
+      });
+    },
+    {
+      action: RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG,
+      targetName: "Tournament audit log",
+    },
+    ctx,
+    logger,
+    nk,
+    payload,
+  );
 };

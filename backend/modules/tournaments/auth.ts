@@ -1,4 +1,5 @@
 import { RuntimeStorageObject, asRecord, findStorageObject } from "../progression";
+import { runAuditedAdminRpc } from "./audit";
 import type { AdminRole, RuntimeContext, RuntimeLogger, RuntimeNakama } from "./types";
 
 export const ADMIN_COLLECTION = "admins";
@@ -152,22 +153,34 @@ const resolveAdminProfile = (
 
 export const rpcAdminWhoAmI = (
   ctx: RuntimeContext,
-  _logger: RuntimeLogger,
+  logger: RuntimeLogger,
   nk: RuntimeNakama,
-  _payload: string,
+  payload: string,
 ): string => {
-  const role = assertAdmin(ctx, "viewer", nk);
-  const userId = getContextUserId(ctx);
-  const profile = resolveAdminProfile(nk, userId);
+  return runAuditedAdminRpc(
+    (_ctx, _logger, _nk) => {
+      const role = assertAdmin(_ctx, "viewer", _nk);
+      const userId = getContextUserId(_ctx);
+      const profile = resolveAdminProfile(_nk, userId);
 
-  const response: AdminWhoAmIResponse = {
-    ok: true,
-    userId,
-    role,
-    username: profile.username,
-    displayName: profile.displayName,
-    email: profile.email,
-  };
+      const response: AdminWhoAmIResponse = {
+        ok: true,
+        userId,
+        role,
+        username: profile.username,
+        displayName: profile.displayName,
+        email: profile.email,
+      };
 
-  return JSON.stringify(response);
+      return JSON.stringify(response);
+    },
+    {
+      action: RPC_ADMIN_WHOAMI,
+      targetName: "Current admin user",
+    },
+    ctx,
+    logger,
+    nk,
+    payload,
+  );
 };
