@@ -3980,13 +3980,21 @@ var rpcAdminListTournaments = (ctx, logger, nk, payload) => {
 var rpcAdminGetTournamentRun = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
+      var _a, _b;
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
       const runId = readStringField5(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
-      const run = readRunOrThrow(_nk, runId);
+      const run = normalizeRunRecord((_b = (_a = readRunObject(_nk, runId)) == null ? void 0 : _a.value) != null ? _b : null, runId);
+      if (!run) {
+        return JSON.stringify({
+          ok: true,
+          run: null,
+          nakamaTournament: null
+        });
+      }
       const nakamaTournament = getNakamaTournamentById(_nk, run.tournamentId);
       return JSON.stringify(buildRunResponse(run, nakamaTournament));
     },

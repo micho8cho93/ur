@@ -560,7 +560,15 @@ export const rpcAdminGetTournamentRun = (
         throw new Error("runId is required.");
       }
 
-      const run = readRunOrThrow(_nk, runId);
+      const run = normalizeRunRecord(readRunObject(_nk, runId)?.value ?? null, runId);
+      if (!run) {
+        return JSON.stringify({
+          ok: true,
+          run: null,
+          nakamaTournament: null,
+        });
+      }
+
       const nakamaTournament = getNakamaTournamentById(_nk, run.tournamentId);
 
       return JSON.stringify(buildRunResponse(run, nakamaTournament));

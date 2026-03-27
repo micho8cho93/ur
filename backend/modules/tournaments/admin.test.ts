@@ -1,4 +1,9 @@
-import { rpcAdminCreateTournamentRun, RUNS_COLLECTION, RUNS_INDEX_KEY } from "./admin";
+import {
+  rpcAdminCreateTournamentRun,
+  rpcAdminGetTournamentRun,
+  RUNS_COLLECTION,
+  RUNS_INDEX_KEY,
+} from "./admin";
 import { ADMIN_COLLECTION, ADMIN_ROLE_KEY } from "./auth";
 
 type StoredObject = {
@@ -153,5 +158,35 @@ describe("admin tournament run creation", () => {
         runIds: ["spring-crown-2026"],
       }),
     );
+  });
+
+  it("returns a null run instead of throwing when the requested run does not exist", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk, "admin-1", "viewer");
+
+    const response = JSON.parse(
+      rpcAdminGetTournamentRun(
+        {
+          userId: "admin-1",
+          username: "Viewer",
+        },
+        logger,
+        nk,
+        JSON.stringify({
+          runId: "test-tournament",
+        }),
+      ),
+    ) as {
+      ok: boolean;
+      run: null;
+      nakamaTournament: null;
+    };
+
+    expect(response).toEqual({
+      ok: true,
+      run: null,
+      nakamaTournament: null,
+    });
   });
 });
