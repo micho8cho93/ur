@@ -66,6 +66,7 @@ export const XP_REWARD_LEDGER_COLLECTION = "xp_reward_ledger";
 
 export const STORAGE_PERMISSION_NONE = 0;
 export const MAX_WRITE_ATTEMPTS = 4;
+export const GLOBAL_STORAGE_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 export const RPC_GET_PROGRESSION = "get_progression";
 export const RPC_GET_USER_XP_PROGRESS = "get_user_xp_progress";
@@ -144,7 +145,7 @@ export const findStorageObject = (
       return objectUserId === userId;
     }
 
-    return !objectUserId;
+    return !objectUserId || objectUserId === GLOBAL_STORAGE_USER_ID;
   }) ?? null;
 
 export const normalizeProgressionProfile = (

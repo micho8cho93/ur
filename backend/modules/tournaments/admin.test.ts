@@ -1,10 +1,12 @@
 import {
   rpcAdminCreateTournamentRun,
   rpcAdminGetTournamentRun,
+  rpcAdminListTournaments,
   RUNS_COLLECTION,
   RUNS_INDEX_KEY,
 } from "./admin";
 import { ADMIN_COLLECTION, ADMIN_ROLE_KEY } from "./auth";
+import { GLOBAL_STORAGE_USER_ID } from "../progression";
 
 type StoredObject = {
   collection: string;
@@ -43,7 +45,19 @@ const createNakama = () => {
 
   const storageRead = jest.fn((requests: StorageReadRequest[]) =>
     requests
-      .map((request) => storage.get(buildStorageKey(request.collection, request.key, request.userId ?? "")))
+      .map((request) => {
+        const direct =
+          storage.get(buildStorageKey(request.collection, request.key, request.userId ?? ""));
+        if (direct) {
+          return direct;
+        }
+
+        if (!request.userId) {
+          return storage.get(buildStorageKey(request.collection, request.key, GLOBAL_STORAGE_USER_ID));
+        }
+
+        return undefined;
+      })
       .filter((entry): entry is StoredObject => Boolean(entry)),
   );
 
@@ -188,5 +202,102 @@ describe("admin tournament run creation", () => {
       run: null,
       nakamaTournament: null,
     });
+  });
+
+  it("lists and reads global run records when Nakama returns the nil UUID as userId", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk, "admin-1", "viewer");
+
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, RUNS_INDEX_KEY, GLOBAL_STORAGE_USER_ID), {
+      collection: RUNS_COLLECTION,
+      key: RUNS_INDEX_KEY,
+      userId: GLOBAL_STORAGE_USER_ID,
+      value: {
+        runIds: ["test-tournament"],
+        updatedAt: "2026-03-27T10:00:00.000Z",
+      },
+      version: "index-v1",
+    });
+
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, "test-tournament", GLOBAL_STORAGE_USER_ID), {
+      collection: RUNS_COLLECTION,
+      key: "test-tournament",
+      userId: GLOBAL_STORAGE_USER_ID,
+      value: {
+        runId: "test-tournament",
+        tournamentId: "test-tournament",
+        title: "Test Tournament",
+        description: "Saved globally",
+        category: 0,
+        authoritative: true,
+        sortOrder: "desc",
+        operator: "incr",
+        resetSchedule: "",
+        metadata: {
+          gameMode: "Classic ladder",
+          region: "Global",
+          buyIn: "Free",
+        },
+        startTime: 1_774_572_800,
+        endTime: 1_774_580_000,
+        duration: 7_200,
+        maxSize: 32,
+        maxNumScore: 7,
+        joinRequired: true,
+        enableRanks: true,
+        lifecycle: "draft",
+        createdAt: "2026-03-27T10:00:00.000Z",
+        updatedAt: "2026-03-27T10:00:00.000Z",
+        createdByUserId: "admin-1",
+        createdByLabel: "Viewer",
+        openedAt: null,
+        closedAt: null,
+        finalizedAt: null,
+        finalSnapshot: null,
+      },
+      version: "run-v1",
+    });
+
+    const listResponse = JSON.parse(
+      rpcAdminListTournaments(
+        {
+          userId: "admin-1",
+          username: "Viewer",
+        },
+        logger,
+        nk,
+        JSON.stringify({ limit: 10 }),
+      ),
+    ) as {
+      ok: boolean;
+      runs: Array<{ runId: string }>;
+    };
+
+    const getResponse = JSON.parse(
+      rpcAdminGetTournamentRun(
+        {
+          userId: "admin-1",
+          username: "Viewer",
+        },
+        logger,
+        nk,
+        JSON.stringify({ runId: "test-tournament" }),
+      ),
+    ) as {
+      ok: boolean;
+      run: { runId: string } | null;
+    };
+
+    expect(listResponse.runs).toEqual([
+      expect.objectContaining({
+        runId: "test-tournament",
+      }),
+    ]);
+    expect(getResponse.run).toEqual(
+      expect.objectContaining({
+        runId: "test-tournament",
+      }),
+    );
   });
 });

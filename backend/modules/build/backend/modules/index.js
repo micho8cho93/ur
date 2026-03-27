@@ -476,6 +476,7 @@ var PROGRESSION_PROFILE_KEY = "profile";
 var XP_REWARD_LEDGER_COLLECTION = "xp_reward_ledger";
 var STORAGE_PERMISSION_NONE = 0;
 var MAX_WRITE_ATTEMPTS = 4;
+var GLOBAL_STORAGE_USER_ID = "00000000-0000-0000-0000-000000000000";
 var RPC_GET_PROGRESSION = "get_progression";
 var RPC_GET_USER_XP_PROGRESS = "get_user_xp_progress";
 var asRecord = (value) => typeof value === "object" && value !== null ? value : null;
@@ -530,7 +531,7 @@ var findStorageObject = (objects, collection, key, userId) => {
     if (typeof userId === "string") {
       return objectUserId === userId;
     }
-    return !objectUserId;
+    return !objectUserId || objectUserId === GLOBAL_STORAGE_USER_ID;
   })) != null ? _a : null;
 };
 var normalizeProgressionProfile = (rawValue, fallbackUpdatedAt = (/* @__PURE__ */ new Date()).toISOString()) => {
