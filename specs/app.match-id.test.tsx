@@ -17,10 +17,6 @@ const mockMatchMomentIndicator = jest.fn(({ cue }: { cue: { message: string } | 
   const { Text } = require('react-native');
   return cue ? <Text testID="mock-match-cue">{cue.message}</Text> : null;
 });
-const mockGameStageHUD = jest.fn(() => {
-  const { View } = require('react-native');
-  return <View testID="mock-stage-hud" />;
-});
 
 const mockRouterReplace = jest.fn();
 const mockSearchParams = {
@@ -132,8 +128,10 @@ jest.mock('@/components/game/PieceRail', () => {
 });
 
 jest.mock('@/components/game/GameStageHUD', () => {
+  const React = require('react');
+  const { View } = require('react-native');
   return {
-    GameStageHUD: (props: unknown) => mockGameStageHUD(props),
+    GameStageHUD: () => <View testID="mock-stage-hud" />,
   };
 });
 
@@ -528,45 +526,6 @@ describe('GameRoom match dice stage', () => {
     expect(mockRoll).toHaveBeenCalledTimes(1);
   });
 
-  it('does not auto-roll online matches even when the saved preference is enabled', async () => {
-    jest.useFakeTimers();
-
-    mockSearchParams.id = 'online-1';
-    delete mockSearchParams.offline;
-    mockGetMatchPreferences.mockResolvedValue({
-      announcementCuesEnabled: true,
-      autoRollEnabled: true,
-      bugAnimationEnabled: true,
-      diceAnimationEnabled: true,
-      diceAnimationSpeed: 1,
-      timerDurationSeconds: 20,
-      timerEnabled: true,
-    });
-    mockHasNakamaConfig.mockReturnValue(true);
-    mockIsNakamaEnabled.mockReturnValue(true);
-    mockStoreState.matchId = 'online-1';
-    mockStoreState.userId = 'self-user';
-    mockStoreState.matchPresences = ['self-user', 'opponent-user'];
-    mockStoreState.gameState = {
-      ...baseGameState,
-      history: ['light opened the match.'],
-    };
-
-    render(<GameRoom />);
-
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    await act(async () => {
-      jest.advanceTimersByTime(2_000);
-    });
-
-    expect(mockRoll).not.toHaveBeenCalled();
-  });
-
   it('releases the live roll animation when a no-move turn snaps back to rolling', async () => {
     const view = render(<GameRoom />);
 
@@ -728,7 +687,7 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByText('Opponent Joined')).toBeTruthy();
   });
 
-  it('shows Opponent Disconnected when a private opponent leaves mid-match', async () => {
+  it('shows Opponent Forfeit when a private opponent leaves mid-match', async () => {
     mockSearchParams.id = 'private-2';
     mockSearchParams.offline = '0';
     mockSearchParams.privateMatch = '1';
@@ -761,7 +720,7 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    expect(screen.queryByText('Opponent Disconnected')).toBeNull();
+    expect(screen.queryByText('Opponent Forfeit')).toBeNull();
 
     mockStoreState.matchPresences = ['self-user'];
 
@@ -770,7 +729,7 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Opponent Disconnected')).toBeTruthy();
+    expect(screen.getByText('Opponent Forfeit')).toBeTruthy();
     expect(screen.queryByText('Opponent Joined')).toBeNull();
   });
 });

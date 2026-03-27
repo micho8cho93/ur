@@ -41,9 +41,7 @@ interface AudioSettingsModalProps {
   moveHintEnabled: boolean;
   timerEnabled?: boolean;
   timerDurationSeconds: TurnTimerSeconds;
-  showAutoRollSetting?: boolean;
   showTimerToggle?: boolean;
-  showTimerDurationSetting?: boolean;
   onClose: () => void;
   onToggleAnnouncementCues: (enabled: boolean) => void;
   onToggleMusic: (enabled: boolean) => void;
@@ -167,9 +165,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   moveHintEnabled,
   timerEnabled = true,
   timerDurationSeconds = DEFAULT_MATCH_PREFERENCES.timerDurationSeconds,
-  showAutoRollSetting = true,
   showTimerToggle = false,
-  showTimerDurationSetting = true,
   onClose,
   onToggleAnnouncementCues,
   onToggleMusic,
@@ -273,14 +269,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           onValueChange={onToggleBugAnimation}
         />
 
-        {showAutoRollSetting ? (
-          <ToggleSettingRow
-            title="Roll Dice Automatically"
-            hint="Trigger your roll shortly after your turn begins"
-            value={autoRollEnabled}
-            onValueChange={onToggleAutoRoll}
-          />
-        ) : null}
+        <ToggleSettingRow
+          title="Roll Dice Automatically"
+          hint="Trigger your roll shortly after your turn begins"
+          value={autoRollEnabled}
+          onValueChange={onToggleAutoRoll}
+        />
 
         <ToggleSettingRow
           title="Available Move Hint"
@@ -298,16 +292,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           />
         ) : null}
 
-        {showTimerDurationSetting ? (
-          <ChoiceSettingRow
-            title="Turn Timer Length"
-            hint="Choose how long the match countdown runs before timeout assistance steps in"
-            value={timerDurationSeconds}
-            valueLabel={`${timerDurationSeconds}s`}
-            options={TURN_TIMER_OPTIONS}
-            onValueChange={onSetTimerDuration}
-          />
-        ) : null}
+        <ChoiceSettingRow
+          title="Turn Timer Length"
+          hint="Choose how long the match countdown runs before timeout assistance steps in"
+          value={timerDurationSeconds}
+          valueLabel={`${timerDurationSeconds}s`}
+          options={TURN_TIMER_OPTIONS}
+          onValueChange={onSetTimerDuration}
+        />
 
         <ToggleSettingRow
           title="Announcement Cues"
