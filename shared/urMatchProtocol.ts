@@ -1,4 +1,4 @@
-import { GameState, MoveAction, PlayerColor } from "../logic/types";
+import { GamePhase, GameState, MoveAction, PlayerColor } from "../logic/types";
 import {
   EloRatingChangeNotificationPayload,
   isEloRatingChangeNotificationPayload,
@@ -30,12 +30,33 @@ export type MoveRequestPayload = {
 
 export type ClientMatchPayload = RollRequestPayload | MoveRequestPayload;
 
+export type MatchEndReason = "completed" | "forfeit_inactivity";
+
+export type MatchEndPayload = {
+  reason: MatchEndReason;
+  winnerUserId: string | null;
+  loserUserId: string | null;
+  forfeitingUserId?: string | null;
+  message?: string | null;
+};
+
 export type StateSnapshotPayload = {
   type: "state_snapshot";
   matchId: string;
   revision: number;
   gameState: GameState;
   assignments: Record<string, PlayerColor>;
+  serverTimeMs?: number;
+  turnDurationMs?: number;
+  turnStartedAtMs?: number | null;
+  turnDeadlineMs?: number | null;
+  turnRemainingMs?: number;
+  activeTimedPlayer?: string | null;
+  activeTimedPlayerColor?: PlayerColor | null;
+  activeTimedPhase?: GamePhase | null;
+  afkAccumulatedMs?: Partial<Record<PlayerColor, number>>;
+  afkRemainingMs?: number | null;
+  matchEnd?: MatchEndPayload | null;
 };
 
 export type ServerErrorCode =
@@ -61,6 +82,31 @@ export type ExtendedServerMatchPayload = ServerMatchPayload | MatchProgressionPa
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
+
+const isOptionalNumber = (value: unknown): value is number | undefined | null =>
+  value === undefined || value === null || (typeof value === "number" && Number.isFinite(value));
+
+const isOptionalString = (value: unknown): value is string | undefined | null =>
+  value === undefined || value === null || typeof value === "string";
+
+const isOptionalPlayerColor = (value: unknown): value is PlayerColor | undefined | null =>
+  value === undefined || value === null || value === "light" || value === "dark";
+
+const isOptionalGamePhase = (value: unknown): value is GamePhase | undefined | null =>
+  value === undefined || value === null || value === "rolling" || value === "moving" || value === "ended";
+
+const isMatchEndPayload = (value: unknown): value is MatchEndPayload =>
+  isRecord(value) &&
+  (value.reason === "completed" || value.reason === "forfeit_inactivity") &&
+  isOptionalString(value.winnerUserId) &&
+  isOptionalString(value.loserUserId) &&
+  isOptionalString(value.forfeitingUserId) &&
+  isOptionalString(value.message);
+
+const isAfkAccumulatedMs = (value: unknown): value is Partial<Record<PlayerColor, number>> =>
+  isRecord(value) &&
+  isOptionalNumber(value.light) &&
+  isOptionalNumber(value.dark);
 
 const isMoveAction = (value: unknown): value is MoveAction => {
   if (!isRecord(value)) {
@@ -91,7 +137,18 @@ export const isStateSnapshotPayload = (value: unknown): value is StateSnapshotPa
   typeof value.revision === "number" &&
   Number.isInteger(value.revision) &&
   isRecord(value.gameState) &&
-  isRecord(value.assignments);
+  isRecord(value.assignments) &&
+  isOptionalNumber(value.serverTimeMs) &&
+  isOptionalNumber(value.turnDurationMs) &&
+  isOptionalNumber(value.turnStartedAtMs) &&
+  isOptionalNumber(value.turnDeadlineMs) &&
+  isOptionalNumber(value.turnRemainingMs) &&
+  isOptionalString(value.activeTimedPlayer) &&
+  isOptionalPlayerColor(value.activeTimedPlayerColor) &&
+  isOptionalGamePhase(value.activeTimedPhase) &&
+  (value.afkAccumulatedMs === undefined || isAfkAccumulatedMs(value.afkAccumulatedMs)) &&
+  isOptionalNumber(value.afkRemainingMs) &&
+  (value.matchEnd === undefined || value.matchEnd === null || isMatchEndPayload(value.matchEnd));
 
 export const isServerErrorPayload = (value: unknown): value is ServerErrorPayload =>
   isRecord(value) &&

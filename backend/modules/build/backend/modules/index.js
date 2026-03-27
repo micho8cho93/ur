@@ -5301,6 +5301,8 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
 var TICK_RATE = 10;
 var MAX_PLAYERS = 2;
 var ONLINE_TTL_MS = 3e4;
+var ONLINE_TURN_DURATION_MS = 1e4;
+var ONLINE_AFK_FORFEIT_MS = 9e4;
 var SYSTEM_USER_ID4 = "00000000-0000-0000-0000-000000000000";
 var RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 var RPC_GET_PROGRESSION_NAME = RPC_GET_PROGRESSION;
@@ -5445,6 +5447,21 @@ var createMatchTelemetry = () => ({
     light: createPlayerTelemetry(),
     dark: createPlayerTelemetry()
   }
+});
+var createPlayerAfkState = () => ({
+  accumulatedMs: 0,
+  timeoutCount: 0,
+  lastMeaningfulActionAtMs: null,
+  lastTimeoutAtMs: null
+});
+var createMatchTimerState = () => ({
+  turnDurationMs: ONLINE_TURN_DURATION_MS,
+  turnStartedAtMs: null,
+  turnDeadlineMs: null,
+  activePlayerColor: null,
+  activePlayerUserId: null,
+  activePhase: null,
+  resetReason: null
 });
 var getPathCoord2 = (color, index) => {
   var _a, _b;
@@ -5656,7 +5673,109 @@ var removePresence = (state, presence) => {
     delete state.presences[userId];
   }
 };
-var isPrivateMatchReady = (state) => !state.privateMatch || getActiveUserCount(state) >= MAX_PLAYERS;
+var getUserIdForColor = (state, color) => {
+  var _a, _b;
+  return (_b = (_a = Object.entries(state.assignments).find(([, assignedColor]) => assignedColor === color)) == null ? void 0 : _a[0]) != null ? _b : null;
+};
+var getOtherPlayerColor = (color) => color === "light" ? "dark" : "light";
+var getActiveAssignedUserCount = (state) => Object.keys(state.assignments).filter((userId) => getUserPresenceTargets(state, userId).length > 0).length;
+var canStartMatch = (state) => Object.keys(state.assignments).length >= MAX_PLAYERS && getActiveAssignedUserCount(state) >= MAX_PLAYERS;
+var canRunAuthoritativeTurnTimer = (state) => state.started && !state.gameState.winner && state.gameState.phase !== "ended" && Boolean(getUserIdForColor(state, state.gameState.currentTurn));
+var clearTurnTimer = (state, reason = null) => {
+  state.timer.turnStartedAtMs = null;
+  state.timer.turnDeadlineMs = null;
+  state.timer.activePlayerColor = null;
+  state.timer.activePlayerUserId = null;
+  state.timer.activePhase = null;
+  state.timer.resetReason = reason;
+};
+var resetTurnTimerForCurrentState = (state, nowMs, reason) => {
+  if (!canRunAuthoritativeTurnTimer(state)) {
+    clearTurnTimer(state, reason);
+    return;
+  }
+  const activePlayerColor = state.gameState.currentTurn;
+  state.timer.turnStartedAtMs = nowMs;
+  state.timer.turnDeadlineMs = nowMs + state.timer.turnDurationMs;
+  state.timer.activePlayerColor = activePlayerColor;
+  state.timer.activePlayerUserId = getUserIdForColor(state, activePlayerColor);
+  state.timer.activePhase = state.gameState.phase;
+  state.timer.resetReason = reason;
+};
+var ensureTurnTimerForCurrentState = (state, nowMs) => {
+  if (!canRunAuthoritativeTurnTimer(state)) {
+    clearTurnTimer(state, "inactive");
+    return;
+  }
+  if (state.timer.turnDeadlineMs !== null && state.timer.activePlayerColor === state.gameState.currentTurn && state.timer.activePhase === state.gameState.phase) {
+    return;
+  }
+  resetTurnTimerForCurrentState(state, nowMs, "resynced");
+};
+var resetAfkOnMeaningfulAction = (state, playerColor, nowMs) => {
+  state.afk[playerColor] = {
+    accumulatedMs: 0,
+    timeoutCount: 0,
+    lastMeaningfulActionAtMs: nowMs,
+    lastTimeoutAtMs: state.afk[playerColor].lastTimeoutAtMs
+  };
+};
+var recordTimeoutWindow = (state, playerColor, nowMs) => {
+  const tracker = state.afk[playerColor];
+  tracker.accumulatedMs = Math.min(ONLINE_AFK_FORFEIT_MS, tracker.accumulatedMs + state.timer.turnDurationMs);
+  tracker.timeoutCount += 1;
+  tracker.lastTimeoutAtMs = nowMs;
+  return tracker.accumulatedMs;
+};
+var getAfkRemainingMs = (state, playerColor, nowMs) => {
+  const tracker = state.afk[playerColor];
+  let effectiveAccumulatedMs = tracker.accumulatedMs;
+  if (state.timer.activePlayerColor === playerColor && state.timer.turnStartedAtMs !== null && state.timer.turnDeadlineMs !== null && state.gameState.phase !== "ended" && !state.gameState.winner) {
+    effectiveAccumulatedMs += Math.max(0, nowMs - state.timer.turnStartedAtMs);
+  }
+  return Math.max(0, ONLINE_AFK_FORFEIT_MS - effectiveAccumulatedMs);
+};
+var buildMatchEndPayload = (state, reason, winnerColor, forfeitingColor) => {
+  const loserColor = getOtherPlayerColor(winnerColor);
+  return {
+    reason,
+    winnerUserId: getUserIdForColor(state, winnerColor),
+    loserUserId: getUserIdForColor(state, loserColor),
+    forfeitingUserId: forfeitingColor ? getUserIdForColor(state, forfeitingColor) : null,
+    message: null
+  };
+};
+var syncCompletedMatchEnd = (state) => {
+  var _a;
+  if (!state.gameState.winner) {
+    state.matchEnd = null;
+    return;
+  }
+  if (((_a = state.matchEnd) == null ? void 0 : _a.reason) === "forfeit_inactivity") {
+    return;
+  }
+  state.matchEnd = buildMatchEndPayload(state, "completed", state.gameState.winner);
+};
+var finalizeCompletedMatch = (logger, nk, dispatcher, state, matchId) => {
+  if (!state.gameState.winner || state.resultRecorded) {
+    return;
+  }
+  syncCompletedMatchEnd(state);
+  state.resultRecorded = true;
+  processCompletedMatchRatings(logger, nk, dispatcher, state, matchId);
+  awardWinnerProgression(logger, nk, dispatcher, state, matchId);
+  processCompletedTournamentMatch(logger, nk, state, matchId);
+  processCompletedMatchSummaries(logger, nk, state, matchId);
+};
+var markMatchStartedIfReady = (state, nowMs) => {
+  if (state.started || !canStartMatch(state)) {
+    return false;
+  }
+  state.started = true;
+  resetTurnTimerForCurrentState(state, nowMs, "match_started");
+  return true;
+};
+var isPrivateMatchReady = (state) => !state.privateMatch || state.started || getActiveUserCount(state) >= MAX_PLAYERS;
 var buildPrivateMatchRpcResponse = (matchId, modeId, privateCode, hasGuestJoined) => JSON.stringify(__spreadValues({
   matchId,
   modeId,
@@ -5971,6 +6090,7 @@ function matchInit(_ctx, _logger, _nk, params) {
     assignments,
     gameState: createInitialState(getMatchConfig(modeId)),
     revision: 0,
+    started: false,
     opponentType: "human",
     modeId,
     classification,
@@ -5981,7 +6101,14 @@ function matchInit(_ctx, _logger, _nk, params) {
     winRewardSource,
     allowsChallengeRewards,
     tournamentContext: resolveTournamentMatchContextFromParams(params),
-    telemetry: createMatchTelemetry()
+    telemetry: createMatchTelemetry(),
+    timer: createMatchTimerState(),
+    afk: {
+      light: createPlayerAfkState(),
+      dark: createPlayerAfkState()
+    },
+    matchEnd: null,
+    resultRecorded: false
   };
   return { state, tickRate: TICK_RATE, label: MATCH_HANDLER };
 }
@@ -6025,6 +6152,7 @@ function matchJoin(ctx, logger, _nk, dispatcher, _tick, state, presences) {
     upsertPresence(state, presence);
     ensureAssignment(state, userId);
   });
+  markMatchStartedIfReady(state, Date.now());
   broadcastSnapshot(dispatcher, state, getMatchId(ctx));
   return { state };
 }
@@ -6041,6 +6169,9 @@ function matchLeave(_ctx, logger, _nk, _dispatcher, _tick, state, presences) {
 }
 function matchLoop(ctx, logger, nk, dispatcher, _tick, state, messages) {
   const matchId = getMatchId(ctx);
+  const nowMs = Date.now();
+  markMatchStartedIfReady(state, nowMs);
+  ensureTurnTimerForCurrentState(state, nowMs);
   messages.forEach((message) => {
     const senderUserId = getSenderUserId(message.sender);
     if (!senderUserId) {
@@ -6084,6 +6215,11 @@ function matchLoop(ctx, logger, nk, dispatcher, _tick, state, messages) {
     }
     sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", `Unsupported opcode ${opCode}.`);
   });
+  ensureTurnTimerForCurrentState(state, Date.now());
+  const timerExpired = state.timer.turnDeadlineMs !== null && Date.now() >= state.timer.turnDeadlineMs && !state.gameState.winner && state.gameState.phase !== "ended";
+  if (timerExpired) {
+    applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, Date.now());
+  }
   return { state };
 }
 function matchTerminate(_ctx, _logger, _nk, _dispatcher, _tick, state, _graceSeconds) {
@@ -6108,6 +6244,108 @@ function ensureAssignment(state, userId) {
     state.assignments[userId] = "dark";
   }
 }
+function applyRollOutcome(state, playerColor, rollValue) {
+  if (rollValue === 4) {
+    state.telemetry.players[playerColor].maxRollCount += 1;
+  }
+  const rollingState = __spreadProps(__spreadValues({}, state.gameState), {
+    rollValue,
+    phase: "moving"
+  });
+  const validMoves = getValidMoves(rollingState, rollValue);
+  if (validMoves.length === 0) {
+    state.gameState = __spreadProps(__spreadValues({}, rollingState), {
+      currentTurn: getOtherPlayerColor(rollingState.currentTurn),
+      phase: "rolling",
+      rollValue: null,
+      history: [...rollingState.history, `${rollingState.currentTurn} rolled ${rollValue} but had no moves.`]
+    });
+    updateComebackTelemetry(state);
+    return [];
+  }
+  state.gameState = rollingState;
+  return validMoves;
+}
+function applyValidatedMove(state, playerColor, move) {
+  const didCapture = detectCaptureOnMove(state.gameState, move);
+  const targetCoord = getPathCoord2(playerColor, move.toIndex);
+  state.gameState = applyMove(state.gameState, move);
+  state.telemetry.totalMoves += 1;
+  state.telemetry.players[playerColor].playerMoveCount += 1;
+  if (didCapture) {
+    const opponentColor = getOtherPlayerColor(playerColor);
+    state.telemetry.players[playerColor].capturesMade += 1;
+    state.telemetry.players[opponentColor].capturesSuffered += 1;
+  }
+  if (targetCoord && isWarZone(targetCoord.row, targetCoord.col)) {
+    state.telemetry.players[playerColor].contestedTilesLandedCount += 1;
+  }
+  updateComebackTelemetry(state);
+}
+function forfeitPlayerForInactivity(logger, nk, dispatcher, state, matchId, forfeitingColor) {
+  const winnerColor = getOtherPlayerColor(forfeitingColor);
+  state.afk[forfeitingColor].accumulatedMs = ONLINE_AFK_FORFEIT_MS;
+  state.gameState = __spreadProps(__spreadValues({}, state.gameState), {
+    phase: "ended",
+    rollValue: null,
+    winner: winnerColor,
+    history: [...state.gameState.history, `${forfeitingColor} forfeited due to inactivity.`]
+  });
+  state.matchEnd = buildMatchEndPayload(state, "forfeit_inactivity", winnerColor, forfeitingColor);
+  clearTurnTimer(state, "forfeit_inactivity");
+  state.revision += 1;
+  logger.info(
+    "Forfeited %s for inactivity in match %s after %dms (revision %d)",
+    forfeitingColor,
+    matchId,
+    state.afk[forfeitingColor].accumulatedMs,
+    state.revision
+  );
+  broadcastSnapshot(dispatcher, state, matchId);
+  finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
+}
+function applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, nowMs) {
+  var _a;
+  const activePlayerColor = (_a = state.timer.activePlayerColor) != null ? _a : state.gameState.currentTurn;
+  if (!activePlayerColor || state.gameState.winner || state.gameState.phase === "ended") {
+    clearTurnTimer(state, "timeout_ignored");
+    return;
+  }
+  const accumulatedInactivityMs = recordTimeoutWindow(state, activePlayerColor, nowMs);
+  if (accumulatedInactivityMs >= ONLINE_AFK_FORFEIT_MS) {
+    forfeitPlayerForInactivity(logger, nk, dispatcher, state, matchId, activePlayerColor);
+    return;
+  }
+  if (state.gameState.phase === "rolling") {
+    const validMoves = applyRollOutcome(state, activePlayerColor, rollDice());
+    if (validMoves.length > 0) {
+      applyValidatedMove(state, activePlayerColor, validMoves[0]);
+    }
+  } else if (state.gameState.phase === "moving" && state.gameState.rollValue !== null) {
+    const validMoves = getValidMoves(state.gameState, state.gameState.rollValue);
+    if (validMoves.length > 0) {
+      applyValidatedMove(state, activePlayerColor, validMoves[0]);
+    } else {
+      state.gameState = __spreadProps(__spreadValues({}, state.gameState), {
+        currentTurn: getOtherPlayerColor(activePlayerColor),
+        phase: "rolling",
+        rollValue: null,
+        history: [...state.gameState.history, `${activePlayerColor} timed out with no valid move.`]
+      });
+      updateComebackTelemetry(state);
+    }
+  }
+  if (state.gameState.winner) {
+    syncCompletedMatchEnd(state);
+  } else {
+    state.matchEnd = null;
+  }
+  resetTurnTimerForCurrentState(state, nowMs, "timeout_autoplay");
+  state.revision += 1;
+  logger.debug("Applied authoritative timeout for %s (revision %d)", activePlayerColor, state.revision);
+  broadcastSnapshot(dispatcher, state, matchId);
+  finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
+}
 function applyRollRequest(logger, dispatcher, state, userId, playerColor, _payload, matchId) {
   if (state.gameState.winner) {
     sendError(dispatcher, state, userId, "INVALID_PHASE", "The match has already ended.");
@@ -6125,26 +6363,11 @@ function applyRollRequest(logger, dispatcher, state, userId, playerColor, _paylo
     sendError(dispatcher, state, userId, "INVALID_PHASE", "Roll is only valid during rolling phase.");
     return;
   }
-  const rollValue = rollDice();
-  if (rollValue === 4) {
-    state.telemetry.players[playerColor].maxRollCount += 1;
-  }
-  const rollingState = __spreadProps(__spreadValues({}, state.gameState), {
-    rollValue,
-    phase: "moving"
-  });
-  const validMoves = getValidMoves(rollingState, rollValue);
-  if (validMoves.length === 0) {
-    state.gameState = __spreadProps(__spreadValues({}, rollingState), {
-      currentTurn: rollingState.currentTurn === "light" ? "dark" : "light",
-      phase: "rolling",
-      rollValue: null,
-      history: [...rollingState.history, `${rollingState.currentTurn} rolled ${rollValue} but had no moves.`]
-    });
-    updateComebackTelemetry(state);
-  } else {
-    state.gameState = rollingState;
-  }
+  const nowMs = Date.now();
+  resetAfkOnMeaningfulAction(state, playerColor, nowMs);
+  applyRollOutcome(state, playerColor, rollDice());
+  state.matchEnd = null;
+  resetTurnTimerForCurrentState(state, nowMs, "player_roll");
   state.revision += 1;
   logger.debug("Applied roll for %s (revision %d)", userId, state.revision);
   broadcastSnapshot(dispatcher, state, matchId);
@@ -6174,29 +6397,15 @@ function applyMoveRequest(logger, nk, dispatcher, state, userId, playerColor, pa
     sendError(dispatcher, state, userId, "INVALID_MOVE", "Move is not valid for current state.");
     return;
   }
-  const didCapture = detectCaptureOnMove(state.gameState, payload.move);
-  const targetCoord = getPathCoord2(playerColor, payload.move.toIndex);
-  state.gameState = applyMove(state.gameState, payload.move);
-  state.telemetry.totalMoves += 1;
-  state.telemetry.players[playerColor].playerMoveCount += 1;
-  if (didCapture) {
-    const opponentColor = playerColor === "light" ? "dark" : "light";
-    state.telemetry.players[playerColor].capturesMade += 1;
-    state.telemetry.players[opponentColor].capturesSuffered += 1;
-  }
-  if (targetCoord && isWarZone(targetCoord.row, targetCoord.col)) {
-    state.telemetry.players[playerColor].contestedTilesLandedCount += 1;
-  }
-  updateComebackTelemetry(state);
+  const nowMs = Date.now();
+  resetAfkOnMeaningfulAction(state, playerColor, nowMs);
+  applyValidatedMove(state, playerColor, payload.move);
+  syncCompletedMatchEnd(state);
+  resetTurnTimerForCurrentState(state, nowMs, "player_move");
   state.revision += 1;
   logger.debug("Applied move for %s (revision %d)", userId, state.revision);
   broadcastSnapshot(dispatcher, state, matchId);
-  if (state.gameState.winner) {
-    processCompletedMatchRatings(logger, nk, dispatcher, state, matchId);
-    awardWinnerProgression(logger, nk, dispatcher, state, matchId);
-    processCompletedTournamentMatch(logger, nk, state, matchId);
-    processCompletedMatchSummaries(logger, nk, state, matchId);
-  }
+  finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
 }
 function processCompletedMatchRatings(logger, nk, dispatcher, state, matchId) {
   const winnerColor = state.gameState.winner;
@@ -6334,12 +6543,29 @@ function sendError(dispatcher, state, userId, code, message) {
   );
 }
 function broadcastSnapshot(dispatcher, state, matchId) {
+  const nowMs = Date.now();
+  const activeTimedPlayerColor = state.timer.activePlayerColor;
+  const turnRemainingMs = state.timer.turnDeadlineMs === null ? 0 : Math.max(0, state.timer.turnDeadlineMs - nowMs);
   const payload = {
     type: "state_snapshot",
     matchId,
     revision: state.revision,
     gameState: state.gameState,
-    assignments: state.assignments
+    assignments: state.assignments,
+    serverTimeMs: nowMs,
+    turnDurationMs: state.timer.turnDurationMs,
+    turnStartedAtMs: state.timer.turnStartedAtMs,
+    turnDeadlineMs: state.timer.turnDeadlineMs,
+    turnRemainingMs,
+    activeTimedPlayer: state.timer.activePlayerUserId,
+    activeTimedPlayerColor,
+    activeTimedPhase: state.timer.activePhase,
+    afkAccumulatedMs: {
+      light: state.afk.light.accumulatedMs,
+      dark: state.afk.dark.accumulatedMs
+    },
+    afkRemainingMs: activeTimedPlayerColor ? getAfkRemainingMs(state, activeTimedPlayerColor, nowMs) : null,
+    matchEnd: state.matchEnd
   };
   dispatcher.broadcastMessage(MatchOpCode.STATE_SNAPSHOT, encodePayload(payload));
 }

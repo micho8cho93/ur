@@ -687,7 +687,7 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByText('Opponent Joined')).toBeTruthy();
   });
 
-  it('shows Opponent Forfeit when a private opponent leaves mid-match', async () => {
+  it('shows Opponent Disconnected when a private opponent leaves mid-match', async () => {
     mockSearchParams.id = 'private-2';
     mockSearchParams.offline = '0';
     mockSearchParams.privateMatch = '1';
@@ -720,7 +720,7 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    expect(screen.queryByText('Opponent Forfeit')).toBeNull();
+    expect(screen.queryByText('Opponent Disconnected')).toBeNull();
 
     mockStoreState.matchPresences = ['self-user'];
 
@@ -729,7 +729,7 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Opponent Forfeit')).toBeTruthy();
+    expect(screen.getByText('Opponent Disconnected')).toBeTruthy();
     expect(screen.queryByText('Opponent Joined')).toBeNull();
   });
 });
