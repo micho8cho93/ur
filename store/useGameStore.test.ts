@@ -2,6 +2,7 @@ import { useGameStore } from './useGameStore';
 import * as engine from '@/logic/engine';
 import { getMatchConfig } from '@/logic/matchConfigs';
 import { GameState, MoveAction } from '@/logic/types';
+import { StateSnapshotPayload } from '@/shared/urMatchProtocol';
 
 jest.mock('@/logic/engine', () => {
   const actual = jest.requireActual('@/logic/engine');
@@ -20,6 +21,20 @@ const makeState = (overrides: Partial<GameState> = {}): GameState => {
     ...overrides,
   };
 };
+
+const makeSnapshot = (
+  overrides: Partial<StateSnapshotPayload> = {},
+): StateSnapshotPayload => ({
+  type: 'state_snapshot',
+  matchId: 'match-1',
+  revision: 1,
+  gameState: makeState(),
+  assignments: {
+    'light-user': 'light',
+    'dark-user': 'dark',
+  },
+  ...overrides,
+});
 
 describe('useGameStore', () => {
   beforeEach(() => {
@@ -89,6 +104,24 @@ describe('useGameStore', () => {
       socketState: 'connected',
       serverRevision: 12,
       playerColor: 'light',
+      authoritativeServerTimeMs: 5_000,
+      authoritativeTurnDurationMs: 10_000,
+      authoritativeTurnStartedAtMs: 1_000,
+      authoritativeTurnDeadlineMs: 11_000,
+      authoritativeTurnRemainingMs: 6_000,
+      authoritativeActiveTimedPlayer: 'light-user',
+      authoritativeActiveTimedPlayerColor: 'light',
+      authoritativeActiveTimedPhase: 'rolling',
+      authoritativeAfkAccumulatedMs: { light: 0, dark: 20_000 },
+      authoritativeAfkRemainingMs: 70_000,
+      authoritativeMatchEnd: {
+        reason: 'completed',
+        winnerUserId: 'light-user',
+        loserUserId: 'dark-user',
+        forfeitingUserId: null,
+        message: null,
+      },
+      authoritativeSnapshotReceivedAtMs: 9_000,
       rollCommandSender: jest.fn(),
       moveCommandSender: jest.fn(),
       gameState: makeState({ phase: 'moving', rollValue: 2 }),
@@ -101,6 +134,18 @@ describe('useGameStore', () => {
     expect(state.gameState).toEqual(engine.createInitialState());
     expect(state.validMoves).toEqual([]);
     expect(state.matchPresences).toEqual([]);
+    expect(state.authoritativeServerTimeMs).toBeNull();
+    expect(state.authoritativeTurnDurationMs).toBeNull();
+    expect(state.authoritativeTurnStartedAtMs).toBeNull();
+    expect(state.authoritativeTurnDeadlineMs).toBeNull();
+    expect(state.authoritativeTurnRemainingMs).toBeNull();
+    expect(state.authoritativeActiveTimedPlayer).toBeNull();
+    expect(state.authoritativeActiveTimedPlayerColor).toBeNull();
+    expect(state.authoritativeActiveTimedPhase).toBeNull();
+    expect(state.authoritativeAfkAccumulatedMs).toBeNull();
+    expect(state.authoritativeAfkRemainingMs).toBeNull();
+    expect(state.authoritativeMatchEnd).toBeNull();
+    expect(state.authoritativeSnapshotReceivedAtMs).toBeNull();
     expect(state.lastProgressionAward).toBeNull();
     expect(state.lastEloRatingChange).toBeNull();
     expect(state.socketState).toBe('idle');
@@ -149,24 +194,77 @@ describe('useGameStore', () => {
     expect(useGameStore.getState().validMoves).toEqual([]);
   });
 
-  it('applyServerSnapshot() ignores stale revisions and accepts newer ones', () => {
+  it('applyServerSnapshot() ignores stale revisions and accepts newer ones with authoritative timer metadata', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-27T12:00:00.000Z'));
     useGameStore.setState({ serverRevision: 3, matchId: 'keep-match' });
     const staleState = makeState({ phase: 'moving', rollValue: 1 });
 
-    useGameStore.getState().applyServerSnapshot(staleState, 2, 'stale-match');
+    useGameStore.getState().applyServerSnapshot(
+      makeSnapshot({
+        matchId: 'stale-match',
+        revision: 2,
+        gameState: staleState,
+        serverTimeMs: 1_000,
+        turnDurationMs: 10_000,
+        turnStartedAtMs: 500,
+        turnDeadlineMs: 10_500,
+        turnRemainingMs: 9_500,
+      }),
+    );
 
     expect(useGameStore.getState().serverRevision).toBe(3);
     expect(useGameStore.getState().matchId).toBe('keep-match');
     expect(useGameStore.getState().gameState).toEqual(engine.createInitialState());
 
     const newerState = makeState({ phase: 'moving', rollValue: 1 });
-    useGameStore.getState().applyServerSnapshot(newerState, 4, 'new-match');
+    useGameStore.getState().applyServerSnapshot(
+      makeSnapshot({
+        matchId: 'new-match',
+        revision: 4,
+        gameState: newerState,
+        serverTimeMs: 2_000,
+        turnDurationMs: 10_000,
+        turnStartedAtMs: 1_500,
+        turnDeadlineMs: 11_500,
+        turnRemainingMs: 9_500,
+        activeTimedPlayer: 'light-user',
+        activeTimedPlayerColor: 'light',
+        activeTimedPhase: 'moving',
+        afkAccumulatedMs: { light: 0, dark: 25_000 },
+        afkRemainingMs: 90_000,
+        matchEnd: {
+          reason: 'completed',
+          winnerUserId: 'light-user',
+          loserUserId: 'dark-user',
+          forfeitingUserId: null,
+          message: null,
+        },
+      }),
+    );
 
     const state = useGameStore.getState();
     expect(state.serverRevision).toBe(4);
     expect(state.matchId).toBe('new-match');
     expect(state.gameState).toEqual(newerState);
     expect(state.validMoves.length).toBeGreaterThan(0);
+    expect(state.authoritativeServerTimeMs).toBe(2_000);
+    expect(state.authoritativeTurnDurationMs).toBe(10_000);
+    expect(state.authoritativeTurnStartedAtMs).toBe(1_500);
+    expect(state.authoritativeTurnDeadlineMs).toBe(11_500);
+    expect(state.authoritativeTurnRemainingMs).toBe(9_500);
+    expect(state.authoritativeActiveTimedPlayer).toBe('light-user');
+    expect(state.authoritativeActiveTimedPlayerColor).toBe('light');
+    expect(state.authoritativeActiveTimedPhase).toBe('moving');
+    expect(state.authoritativeAfkAccumulatedMs).toEqual({ light: 0, dark: 25_000 });
+    expect(state.authoritativeAfkRemainingMs).toBe(90_000);
+    expect(state.authoritativeMatchEnd).toEqual({
+      reason: 'completed',
+      winnerUserId: 'light-user',
+      loserUserId: 'dark-user',
+      forfeitingUserId: null,
+      message: null,
+    });
+    expect(state.authoritativeSnapshotReceivedAtMs).toBe(new Date('2026-03-27T12:00:00.000Z').getTime());
   });
 
   it('offline roll() during rolling phase sets rollValue, moves to moving phase, and computes validMoves', () => {
@@ -349,6 +447,24 @@ describe('useGameStore', () => {
       botDifficulty: 'perfect',
       onlineMode: 'nakama',
       serverRevision: 9,
+      authoritativeServerTimeMs: 5_000,
+      authoritativeTurnDurationMs: 10_000,
+      authoritativeTurnStartedAtMs: 1_000,
+      authoritativeTurnDeadlineMs: 11_000,
+      authoritativeTurnRemainingMs: 6_000,
+      authoritativeActiveTimedPlayer: 'dark-user',
+      authoritativeActiveTimedPlayerColor: 'dark',
+      authoritativeActiveTimedPhase: 'moving',
+      authoritativeAfkAccumulatedMs: { light: 10_000, dark: 20_000 },
+      authoritativeAfkRemainingMs: 70_000,
+      authoritativeMatchEnd: {
+        reason: 'forfeit_inactivity',
+        winnerUserId: 'light-user',
+        loserUserId: 'dark-user',
+        forfeitingUserId: 'dark-user',
+        message: null,
+      },
+      authoritativeSnapshotReceivedAtMs: 9_000,
       nakamaSession: { token: 'token' } as never,
       userId: 'user-1',
       validMoves: [{ pieceId: 'light-1', fromIndex: -1, toIndex: 2 }],
@@ -361,6 +477,18 @@ describe('useGameStore', () => {
     expect(state.matchId).toBeNull();
     expect(state.matchToken).toBeNull();
     expect(state.matchPresences).toEqual([]);
+    expect(state.authoritativeServerTimeMs).toBeNull();
+    expect(state.authoritativeTurnDurationMs).toBeNull();
+    expect(state.authoritativeTurnStartedAtMs).toBeNull();
+    expect(state.authoritativeTurnDeadlineMs).toBeNull();
+    expect(state.authoritativeTurnRemainingMs).toBeNull();
+    expect(state.authoritativeActiveTimedPlayer).toBeNull();
+    expect(state.authoritativeActiveTimedPlayerColor).toBeNull();
+    expect(state.authoritativeActiveTimedPhase).toBeNull();
+    expect(state.authoritativeAfkAccumulatedMs).toBeNull();
+    expect(state.authoritativeAfkRemainingMs).toBeNull();
+    expect(state.authoritativeMatchEnd).toBeNull();
+    expect(state.authoritativeSnapshotReceivedAtMs).toBeNull();
     expect(state.lastProgressionAward).toBeNull();
     expect(state.lastEloRatingChange).toBeNull();
     expect(state.socketState).toBe('idle');

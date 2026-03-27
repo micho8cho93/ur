@@ -42,6 +42,7 @@ interface AudioSettingsModalProps {
   timerEnabled?: boolean;
   timerDurationSeconds: TurnTimerSeconds;
   showTimerToggle?: boolean;
+  showTimerDurationPicker?: boolean;
   onClose: () => void;
   onToggleAnnouncementCues: (enabled: boolean) => void;
   onToggleMusic: (enabled: boolean) => void;
@@ -166,6 +167,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   timerEnabled = true,
   timerDurationSeconds = DEFAULT_MATCH_PREFERENCES.timerDurationSeconds,
   showTimerToggle = false,
+  showTimerDurationPicker = true,
   onClose,
   onToggleAnnouncementCues,
   onToggleMusic,
@@ -292,14 +294,16 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           />
         ) : null}
 
-        <ChoiceSettingRow
-          title="Turn Timer Length"
-          hint="Choose how long the match countdown runs before timeout assistance steps in"
-          value={timerDurationSeconds}
-          valueLabel={`${timerDurationSeconds}s`}
-          options={TURN_TIMER_OPTIONS}
-          onValueChange={onSetTimerDuration}
-        />
+        {showTimerDurationPicker ? (
+          <ChoiceSettingRow
+            title="Turn Timer Length"
+            hint="Choose how long the match countdown runs before timeout assistance steps in"
+            value={timerDurationSeconds}
+            valueLabel={`${timerDurationSeconds}s`}
+            options={TURN_TIMER_OPTIONS}
+            onValueChange={onSetTimerDuration}
+          />
+        ) : null}
 
         <ToggleSettingRow
           title="Announcement Cues"

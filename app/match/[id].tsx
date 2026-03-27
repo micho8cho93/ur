@@ -314,6 +314,14 @@ export function GameRoom() {
   const storedMatchId = useGameStore((state) => state.matchId);
   const matchToken = useGameStore((state) => state.matchToken);
   const serverRevision = useGameStore((state) => state.serverRevision);
+  const authoritativeServerTimeMs = useGameStore((state) => state.authoritativeServerTimeMs);
+  const authoritativeTurnDurationMs = useGameStore((state) => state.authoritativeTurnDurationMs);
+  const authoritativeTurnDeadlineMs = useGameStore((state) => state.authoritativeTurnDeadlineMs);
+  const authoritativeTurnRemainingMs = useGameStore((state) => state.authoritativeTurnRemainingMs);
+  const authoritativeActiveTimedPlayerColor = useGameStore((state) => state.authoritativeActiveTimedPlayerColor);
+  const authoritativeActiveTimedPhase = useGameStore((state) => state.authoritativeActiveTimedPhase);
+  const authoritativeMatchEnd = useGameStore((state) => state.authoritativeMatchEnd);
+  const authoritativeSnapshotReceivedAtMs = useGameStore((state) => state.authoritativeSnapshotReceivedAtMs);
   const applyServerSnapshot = useGameStore((state) => state.applyServerSnapshot);
   const setGameStateFromServer = useGameStore((state) => state.setGameStateFromServer);
   const setPlayerColor = useGameStore((state) => state.setPlayerColor);
@@ -372,8 +380,15 @@ export function GameRoom() {
   const isMyTurn = hasAssignedColor && gameState.currentTurn === playerColor;
   const didPlayerWin =
     gameState.winner !== null && hasAssignedColor ? gameState.winner === playerColor : gameState.winner === 'light';
+  const onlineMatchEnd = isOffline ? null : authoritativeMatchEnd;
   const winModalTitle = didPlayerWin ? 'Victory' : 'Defeat';
-  const winModalMessage = didPlayerWin ? 'The royal path is yours.' : 'The opponent seized the final lane.';
+  const winModalMessage = useMemo(() => {
+    if (hasAssignedColor && onlineMatchEnd?.reason === 'forfeit_inactivity') {
+      return didPlayerWin ? 'Opponent forfeited due to inactivity.' : 'You forfeited due to inactivity.';
+    }
+
+    return didPlayerWin ? 'The royal path is yours.' : 'The opponent seized the final lane.';
+  }, [didPlayerWin, hasAssignedColor, onlineMatchEnd]);
   const joinedPlayerCount = useMemo(() => {
     if (isOffline) {
       return 0;
@@ -474,6 +489,7 @@ export function GameRoom() {
     SHOULD_BYPASS_CINEMATIC_INTROS ||
     (hasPlayedBoardDropIntro && (hasPlayedReserveCascadeIntro || shouldSkipReserveCascadeIntro));
   const [turnTimerCycleId, setTurnTimerCycleId] = React.useState(0);
+  const [onlineTimerNowMs, setOnlineTimerNowMs] = React.useState(() => Date.now());
   const [activeMatchCue, setActiveMatchCue] = React.useState<MatchMomentIndicatorCue | null>(null);
   const [mobileScoreRowHeight, setMobileScoreRowHeight] = React.useState(0);
   const [tutorialCoachPhase, setTutorialCoachPhase] = React.useState<TutorialCoachPhase>('idle');
@@ -561,6 +577,51 @@ export function GameRoom() {
     [diceAnimationSpeed],
   );
   const visualTurnTimerDurationMs = turnTimerSeconds * 1000;
+  const resolvedAuthoritativeServerTimeMs = useMemo(() => {
+    if (
+      isOffline ||
+      authoritativeServerTimeMs === null ||
+      authoritativeSnapshotReceivedAtMs === null
+    ) {
+      return null;
+    }
+
+    return authoritativeServerTimeMs + Math.max(0, onlineTimerNowMs - authoritativeSnapshotReceivedAtMs);
+  }, [
+    authoritativeServerTimeMs,
+    authoritativeSnapshotReceivedAtMs,
+    isOffline,
+    onlineTimerNowMs,
+  ]);
+  const onlineTurnTimerDurationMs = !isOffline && authoritativeTurnDeadlineMs !== null
+    ? (authoritativeTurnDurationMs ?? 10_000)
+    : undefined;
+  const onlineTurnTimerRemainingMs = useMemo(() => {
+    if (isOffline || onlineTurnTimerDurationMs === undefined) {
+      return undefined;
+    }
+
+    if (resolvedAuthoritativeServerTimeMs !== null && authoritativeTurnDeadlineMs !== null) {
+      return Math.max(0, authoritativeTurnDeadlineMs - resolvedAuthoritativeServerTimeMs);
+    }
+
+    if (authoritativeTurnRemainingMs !== null) {
+      return Math.max(0, authoritativeTurnRemainingMs);
+    }
+
+    return undefined;
+  }, [
+    authoritativeTurnDeadlineMs,
+    authoritativeTurnRemainingMs,
+    isOffline,
+    onlineTurnTimerDurationMs,
+    resolvedAuthoritativeServerTimeMs,
+  ]);
+  const resolvedTurnTimerDurationMs = isOffline ? visualTurnTimerDurationMs : onlineTurnTimerDurationMs;
+  const resolvedTurnTimerRemainingMs = isOffline ? undefined : onlineTurnTimerRemainingMs;
+  const resolvedTurnTimerKey = isOffline
+    ? turnTimerCycleId
+    : `${serverRevision}:${authoritativeTurnDeadlineMs ?? 'idle'}`;
 
   const clearRollTimer = React.useCallback(() => {
     if (rollTimerRef.current) {
@@ -1221,6 +1282,10 @@ export function GameRoom() {
     enqueueMatchCue('play');
   }, [cueSystemReady, enqueueMatchCue, gameState.history.length, gameState.phase, gameState.winner, hasAssignedColor, introsComplete, matchId]);
   useEffect(() => {
+    if (!isOffline) {
+      return;
+    }
+
     const previous = previousTurnTimerStateRef.current;
     const nextSnapshot = {
       matchId: matchId ?? null,
@@ -1234,13 +1299,44 @@ export function GameRoom() {
       (gameState.phase === 'rolling' &&
         (previous.currentTurn !== gameState.currentTurn || previous.phase !== 'rolling'));
 
-    // This app has no authoritative turn countdown yet, so the HUD timer resets only on turn boundaries.
     if (shouldResetVisualTimer) {
       setTurnTimerCycleId((current) => current + 1);
     }
 
     previousTurnTimerStateRef.current = nextSnapshot;
-  }, [gameState.currentTurn, gameState.phase, matchId]);
+  }, [gameState.currentTurn, gameState.phase, isOffline, matchId]);
+  useEffect(() => {
+    if (
+      isOffline ||
+      !introsComplete ||
+      isScriptedTutorialPhase ||
+      authoritativeTurnDeadlineMs === null ||
+      authoritativeServerTimeMs === null ||
+      authoritativeSnapshotReceivedAtMs === null ||
+      gameState.winner !== null ||
+      gameState.phase === 'ended'
+    ) {
+      return;
+    }
+
+    setOnlineTimerNowMs(Date.now());
+    const intervalId = setInterval(() => {
+      setOnlineTimerNowMs(Date.now());
+    }, 200);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [
+    authoritativeServerTimeMs,
+    authoritativeSnapshotReceivedAtMs,
+    authoritativeTurnDeadlineMs,
+    gameState.phase,
+    gameState.winner,
+    introsComplete,
+    isOffline,
+    isScriptedTutorialPhase,
+  ]);
   useEffect(() => {
     if (turnTimeoutTimerRef.current) {
       clearTimeout(turnTimeoutTimerRef.current);
@@ -1248,9 +1344,10 @@ export function GameRoom() {
     }
 
     if (
+      !isOffline ||
       !introsComplete ||
       isScriptedTutorialPhase ||
-      (isOffline && !botTimerEnabled) ||
+      !botTimerEnabled ||
       !isPrivateMatchReady ||
       !isMyTurn ||
       gameState.winner !== null ||
@@ -1354,7 +1451,7 @@ export function GameRoom() {
       return;
     }
 
-    if (!isPrivateMatchReady || !isMyTurn || gameState.winner !== null || gameState.phase === 'ended') {
+    if (!isOffline || !isPrivateMatchReady || !isMyTurn || gameState.winner !== null || gameState.phase === 'ended') {
       forceMoveAfterRollRef.current = false;
       return;
     }
@@ -1365,7 +1462,7 @@ export function GameRoom() {
 
     forceMoveAfterRollRef.current = false;
     makeMove(validMoves[0]);
-  }, [gameState.phase, gameState.winner, isMyTurn, isPrivateMatchReady, makeMove, validMoves]);
+  }, [gameState.phase, gameState.winner, isMyTurn, isOffline, isPrivateMatchReady, makeMove, validMoves]);
   useEffect(() => {
     if (!matchId) return;
     if (storedMatchId !== matchId) {
@@ -1455,7 +1552,7 @@ export function GameRoom() {
           lightFinished: payload.gameState.light.finishedCount,
           darkFinished: payload.gameState.dark.finishedCount,
         });
-        applyServerSnapshot(payload.gameState, payload.revision, payload.matchId);
+        applyServerSnapshot(payload);
         if (userId) {
           const assignedColor = assignedColorFromSnapshot;
           if (assignedColor) {
@@ -2265,7 +2362,17 @@ export function GameRoom() {
     hasMeasuredReserveTargets;
   const isTurnTimerEnabled = introsComplete && !isScriptedTutorialPhase && (!isOffline || botTimerEnabled);
   const isVisualTurnTimerRunning =
-    isTurnTimerEnabled && isPrivateMatchReady && gameState.phase !== 'ended' && gameState.winner === null;
+    isTurnTimerEnabled &&
+    isPrivateMatchReady &&
+    gameState.phase !== 'ended' &&
+    gameState.winner === null &&
+    (isOffline
+      ? true
+      : authoritativeTurnDeadlineMs !== null &&
+        authoritativeServerTimeMs !== null &&
+        authoritativeSnapshotReceivedAtMs !== null &&
+        authoritativeActiveTimedPlayerColor === gameState.currentTurn &&
+        authoritativeActiveTimedPhase === gameState.phase);
   const showPersistentDiceVisual = introsComplete && diceAnimationEnabled;
   const showDestinationHighlights = introsComplete && !rollingVisual && gameState.rollValue !== null;
   const displayedValidMoves = showDestinationHighlights && isPrivateMatchReady ? validMoves : [];
@@ -2848,9 +2955,10 @@ export function GameRoom() {
                   phase={gameState.phase}
                   compact
                   layout="inline"
-                  timerDurationMs={visualTurnTimerDurationMs}
+                  timerDurationMs={resolvedTurnTimerDurationMs}
+                  timerRemainingMs={resolvedTurnTimerRemainingMs}
                   timerIsRunning={isVisualTurnTimerRunning}
-                  timerKey={turnTimerCycleId}
+                  timerKey={resolvedTurnTimerKey}
                   timerWarningThreshold={VISUAL_TURN_TIMER_WARNING_THRESHOLD}
                   timerSize={30}
                 />
@@ -2927,9 +3035,10 @@ export function GameRoom() {
                     canRoll={canRoll}
                     phase={gameState.phase}
                     compact={compactSupportUi}
-                    timerDurationMs={visualTurnTimerDurationMs}
+                    timerDurationMs={resolvedTurnTimerDurationMs}
+                    timerRemainingMs={resolvedTurnTimerRemainingMs}
                     timerIsRunning={isVisualTurnTimerRunning}
-                    timerKey={turnTimerCycleId}
+                    timerKey={resolvedTurnTimerKey}
                     timerWarningThreshold={VISUAL_TURN_TIMER_WARNING_THRESHOLD}
                   />
                 ) : null}
@@ -2941,9 +3050,10 @@ export function GameRoom() {
                       phase={gameState.phase}
                       compact
                       layout="inline"
-                      timerDurationMs={visualTurnTimerDurationMs}
+                      timerDurationMs={resolvedTurnTimerDurationMs}
+                      timerRemainingMs={resolvedTurnTimerRemainingMs}
                       timerIsRunning={isVisualTurnTimerRunning}
-                      timerKey={turnTimerCycleId}
+                      timerKey={resolvedTurnTimerKey}
                       timerWarningThreshold={VISUAL_TURN_TIMER_WARNING_THRESHOLD}
                       timerSize={webHourglassSize}
                       countdownFontSize={webCountdownFontSize}
@@ -3361,6 +3471,7 @@ export function GameRoom() {
         timerEnabled={botTimerEnabled}
         timerDurationSeconds={turnTimerSeconds}
         showTimerToggle={isOffline}
+        showTimerDurationPicker={isOffline}
         onClose={() => setShowAudioSettings(false)}
         onToggleAnnouncementCues={(enabled) => {
           void handleToggleAnnouncementCues(enabled);

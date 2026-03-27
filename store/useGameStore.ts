@@ -4,6 +4,7 @@ import { DEFAULT_MATCH_CONFIG, type MatchConfig } from '@/logic/matchConfigs';
 import { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { EloRatingChangeNotificationPayload } from '@/shared/elo';
 import { ProgressionAwardResponse } from '@/shared/progression';
+import { MatchEndPayload, StateSnapshotPayload } from '@/shared/urMatchProtocol';
 import { createInitialState, getValidMoves, applyMove, rollDice } from '@/logic/engine';
 import { MatchPresenceEvent, Session } from '@heroiclabs/nakama-js';
 
@@ -25,6 +26,18 @@ interface GameStore {
   matchToken: string | null;
   validMoves: MoveAction[];
   matchPresences: string[];
+  authoritativeServerTimeMs: number | null;
+  authoritativeTurnDurationMs: number | null;
+  authoritativeTurnStartedAtMs: number | null;
+  authoritativeTurnDeadlineMs: number | null;
+  authoritativeTurnRemainingMs: number | null;
+  authoritativeActiveTimedPlayer: string | null;
+  authoritativeActiveTimedPlayerColor: PlayerColor | null;
+  authoritativeActiveTimedPhase: GameState['phase'] | null;
+  authoritativeAfkAccumulatedMs: Record<PlayerColor, number> | null;
+  authoritativeAfkRemainingMs: number | null;
+  authoritativeMatchEnd: MatchEndPayload | null;
+  authoritativeSnapshotReceivedAtMs: number | null;
   lastProgressionAward: ProgressionAwardResponse | null;
   lastEloRatingChange: EloRatingChangeNotificationPayload | null;
   socketState: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -41,7 +54,7 @@ interface GameStore {
   setPlayerColor: (color: PlayerColor | null) => void;
   setServerRevision: (revision: number) => void;
   setGameStateFromServer: (state: GameState) => void;
-  applyServerSnapshot: (state: GameState, revision: number, matchId?: string) => void;
+  applyServerSnapshot: (snapshot: StateSnapshotPayload) => void;
   setMatchPresences: (presences: string[]) => void;
   updateMatchPresences: (event: MatchPresenceEvent) => void;
   setLastProgressionAward: (award: ProgressionAwardResponse | null) => void;
@@ -53,6 +66,21 @@ interface GameStore {
   makeMove: (move: MoveAction) => void;
   reset: () => void;
 }
+
+const EMPTY_AUTHORITATIVE_ONLINE_STATE = {
+  authoritativeServerTimeMs: null,
+  authoritativeTurnDurationMs: null,
+  authoritativeTurnStartedAtMs: null,
+  authoritativeTurnDeadlineMs: null,
+  authoritativeTurnRemainingMs: null,
+  authoritativeActiveTimedPlayer: null,
+  authoritativeActiveTimedPlayerColor: null,
+  authoritativeActiveTimedPhase: null,
+  authoritativeAfkAccumulatedMs: null,
+  authoritativeAfkRemainingMs: null,
+  authoritativeMatchEnd: null,
+  authoritativeSnapshotReceivedAtMs: null,
+} as const;
 
 export const useGameStore = create<GameStore>((set, get) => ({
   gameState: createInitialState(),
@@ -67,6 +95,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   matchToken: null,
   validMoves: [],
   matchPresences: [],
+  ...EMPTY_AUTHORITATIVE_ONLINE_STATE,
   lastProgressionAward: null,
   lastEloRatingChange: null,
   socketState: 'idle',
@@ -81,6 +110,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       gameState: createInitialState(matchConfig),
       validMoves: [],
       matchPresences: [],
+      ...EMPTY_AUTHORITATIVE_ONLINE_STATE,
       lastProgressionAward: null,
       lastEloRatingChange: null,
       socketState: 'idle',
@@ -131,21 +161,36 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ gameState: state, validMoves });
   },
 
-  applyServerSnapshot: (state, revision, matchId) => {
+  applyServerSnapshot: (snapshot) => {
     set((current) => {
-      if (revision < current.serverRevision) {
+      if (snapshot.revision < current.serverRevision) {
         return {};
       }
 
-      const validMoves = state.rollValue !== null && state.phase === 'moving'
-        ? getValidMoves(state, state.rollValue)
+      const validMoves = snapshot.gameState.rollValue !== null && snapshot.gameState.phase === 'moving'
+        ? getValidMoves(snapshot.gameState, snapshot.gameState.rollValue)
         : [];
+      const receivedAtMs = Date.now();
 
       return {
-        gameState: state,
+        gameState: snapshot.gameState,
         validMoves,
-        serverRevision: revision,
-        ...(matchId ? { matchId } : {}),
+        serverRevision: snapshot.revision,
+        matchId: snapshot.matchId,
+        authoritativeServerTimeMs: snapshot.serverTimeMs ?? null,
+        authoritativeTurnDurationMs: snapshot.turnDurationMs ?? null,
+        authoritativeTurnStartedAtMs: snapshot.turnStartedAtMs ?? null,
+        authoritativeTurnDeadlineMs: snapshot.turnDeadlineMs ?? null,
+        authoritativeTurnRemainingMs: snapshot.turnRemainingMs ?? null,
+        authoritativeActiveTimedPlayer: snapshot.activeTimedPlayer ?? null,
+        authoritativeActiveTimedPlayerColor: snapshot.activeTimedPlayerColor ?? null,
+        authoritativeActiveTimedPhase: snapshot.activeTimedPhase ?? null,
+        authoritativeAfkAccumulatedMs: snapshot.afkAccumulatedMs
+          ? { light: snapshot.afkAccumulatedMs.light, dark: snapshot.afkAccumulatedMs.dark }
+          : null,
+        authoritativeAfkRemainingMs: snapshot.afkRemainingMs ?? null,
+        authoritativeMatchEnd: snapshot.matchEnd ?? null,
+        authoritativeSnapshotReceivedAtMs: receivedAtMs,
       };
     });
   },
@@ -190,6 +235,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       gameState: createInitialState(),
       validMoves: [],
       matchPresences: [],
+      ...EMPTY_AUTHORITATIVE_ONLINE_STATE,
       lastProgressionAward: null,
       lastEloRatingChange: null,
       socketState: 'idle',

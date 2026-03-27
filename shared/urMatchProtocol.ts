@@ -30,12 +30,33 @@ export type MoveRequestPayload = {
 
 export type ClientMatchPayload = RollRequestPayload | MoveRequestPayload;
 
+export type MatchEndReason = "completed" | "forfeit_inactivity";
+
+export type MatchEndPayload = {
+  reason: MatchEndReason;
+  winnerUserId: string | null;
+  loserUserId: string | null;
+  forfeitingUserId: string | null;
+  message?: string | null;
+};
+
 export type StateSnapshotPayload = {
   type: "state_snapshot";
   matchId: string;
   revision: number;
   gameState: GameState;
   assignments: Record<string, PlayerColor>;
+  serverTimeMs?: number;
+  turnDurationMs?: number;
+  turnStartedAtMs?: number | null;
+  turnDeadlineMs?: number | null;
+  turnRemainingMs?: number | null;
+  activeTimedPlayer?: string | null;
+  activeTimedPlayerColor?: PlayerColor | null;
+  activeTimedPhase?: GameState["phase"] | null;
+  afkAccumulatedMs?: Record<PlayerColor, number> | null;
+  afkRemainingMs?: number | null;
+  matchEnd?: MatchEndPayload | null;
 };
 
 export type ServerErrorCode =
@@ -61,6 +82,35 @@ export type ExtendedServerMatchPayload = ServerMatchPayload | MatchProgressionPa
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
+
+const isPlayerColor = (value: unknown): value is PlayerColor =>
+  value === "light" || value === "dark";
+
+const isGamePhase = (value: unknown): value is GameState["phase"] =>
+  value === "rolling" || value === "moving" || value === "ended";
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+const isNullableFiniteNumber = (value: unknown): value is number | null =>
+  value === null || isFiniteNumber(value);
+
+const isOptional = <T>(value: unknown, guard: (candidate: unknown) => candidate is T): value is T | undefined =>
+  typeof value === "undefined" || guard(value);
+
+const isAssignmentsRecord = (value: unknown): value is Record<string, PlayerColor> =>
+  isRecord(value) && Object.values(value).every(isPlayerColor);
+
+const isAfkAccumulatedPayload = (value: unknown): value is Record<PlayerColor, number> =>
+  isRecord(value) && isFiniteNumber(value.light) && isFiniteNumber(value.dark);
+
+export const isMatchEndPayload = (value: unknown): value is MatchEndPayload =>
+  isRecord(value) &&
+  (value.reason === "completed" || value.reason === "forfeit_inactivity") &&
+  (typeof value.winnerUserId === "string" || value.winnerUserId === null) &&
+  (typeof value.loserUserId === "string" || value.loserUserId === null) &&
+  (typeof value.forfeitingUserId === "string" || value.forfeitingUserId === null) &&
+  (typeof value.message === "undefined" || typeof value.message === "string" || value.message === null);
 
 const isMoveAction = (value: unknown): value is MoveAction => {
   if (!isRecord(value)) {
@@ -91,7 +141,26 @@ export const isStateSnapshotPayload = (value: unknown): value is StateSnapshotPa
   typeof value.revision === "number" &&
   Number.isInteger(value.revision) &&
   isRecord(value.gameState) &&
-  isRecord(value.assignments);
+  isAssignmentsRecord(value.assignments) &&
+  isOptional(value.serverTimeMs, isFiniteNumber) &&
+  isOptional(value.turnDurationMs, isFiniteNumber) &&
+  isOptional(value.turnStartedAtMs, isNullableFiniteNumber) &&
+  isOptional(value.turnDeadlineMs, isNullableFiniteNumber) &&
+  isOptional(value.turnRemainingMs, isNullableFiniteNumber) &&
+  (typeof value.activeTimedPlayer === "undefined" ||
+    typeof value.activeTimedPlayer === "string" ||
+    value.activeTimedPlayer === null) &&
+  (typeof value.activeTimedPlayerColor === "undefined" ||
+    isPlayerColor(value.activeTimedPlayerColor) ||
+    value.activeTimedPlayerColor === null) &&
+  (typeof value.activeTimedPhase === "undefined" ||
+    isGamePhase(value.activeTimedPhase) ||
+    value.activeTimedPhase === null) &&
+  (typeof value.afkAccumulatedMs === "undefined" ||
+    isAfkAccumulatedPayload(value.afkAccumulatedMs) ||
+    value.afkAccumulatedMs === null) &&
+  isOptional(value.afkRemainingMs, isNullableFiniteNumber) &&
+  (typeof value.matchEnd === "undefined" || isMatchEndPayload(value.matchEnd) || value.matchEnd === null);
 
 export const isServerErrorPayload = (value: unknown): value is ServerErrorPayload =>
   isRecord(value) &&

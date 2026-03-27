@@ -7,6 +7,39 @@ const mockMatchDiceRollStage = jest.fn(({ rolling, visible }: { rolling: boolean
   const { Text } = require('react-native');
   return <Text testID="match-dice-stage-playback">{`${visible ? 'visible' : 'hidden'}:${rolling ? 'rolling' : 'idle'}`}</Text>;
 });
+const mockGameStageHUD = jest.fn(() => {
+  const { View } = require('react-native');
+  return <View testID="mock-stage-hud" />;
+});
+const mockAudioSettingsModal = jest.fn(() => {
+  const { View } = require('react-native');
+  return <View testID="mock-audio-settings" />;
+});
+const mockModal = jest.fn(
+  ({
+    visible,
+    title,
+    message,
+    children,
+  }: {
+    visible?: boolean;
+    title?: string;
+    message?: string;
+    children?: React.ReactNode;
+  }) => {
+    const { Text, View } = require('react-native');
+    if (!visible) {
+      return null;
+    }
+    return (
+      <View testID="mock-modal">
+        {title ? <Text>{title}</Text> : null}
+        {message ? <Text>{message}</Text> : null}
+        {children}
+      </View>
+    );
+  },
+);
 
 const mockSlotDiceScene = jest.fn(() => {
   const { Text } = require('react-native');
@@ -39,6 +72,8 @@ const mockGetMatchPreferences = jest.fn();
 const mockUpdateMatchPreferences = jest.fn();
 const mockConnectSocketWithRetry = jest.fn();
 const mockDisconnectSocket = jest.fn();
+const mockRefreshProgression = jest.fn(() => Promise.resolve(null));
+const mockRefreshChallenges = jest.fn(() => Promise.resolve(null));
 const mockSocketJoinMatch = jest.fn();
 const mockSocketLeaveMatch = jest.fn();
 const mockSocketSendMatchState = jest.fn();
@@ -69,6 +104,18 @@ const mockStoreState = {
   matchId: 'local-1',
   matchPresences: [],
   matchToken: null,
+  authoritativeServerTimeMs: null,
+  authoritativeTurnDurationMs: null,
+  authoritativeTurnStartedAtMs: null,
+  authoritativeTurnDeadlineMs: null,
+  authoritativeTurnRemainingMs: null,
+  authoritativeActiveTimedPlayer: null,
+  authoritativeActiveTimedPlayerColor: null,
+  authoritativeActiveTimedPhase: null,
+  authoritativeAfkAccumulatedMs: null,
+  authoritativeAfkRemainingMs: null,
+  authoritativeMatchEnd: null,
+  authoritativeSnapshotReceivedAtMs: null,
   moveCommandSender: null,
   nakamaSession: null,
   onlineMode: 'offline' as const,
@@ -128,10 +175,8 @@ jest.mock('@/components/game/PieceRail', () => {
 });
 
 jest.mock('@/components/game/GameStageHUD', () => {
-  const React = require('react');
-  const { View } = require('react-native');
   return {
-    GameStageHUD: () => <View testID="mock-stage-hud" />,
+    GameStageHUD: (props: unknown) => mockGameStageHUD(props),
   };
 });
 
@@ -190,10 +235,8 @@ jest.mock('@/components/game/ReserveCascadeIntro', () => {
 });
 
 jest.mock('@/components/game/AudioSettingsModal', () => {
-  const React = require('react');
-  const { View } = require('react-native');
   return {
-    AudioSettingsModal: () => <View testID="mock-audio-settings" />,
+    AudioSettingsModal: (props: unknown) => mockAudioSettingsModal(props),
   };
 });
 
@@ -215,10 +258,8 @@ jest.mock('@/components/tutorial/PlayTutorialCoachModal', () => {
 });
 
 jest.mock('@/components/ui/Modal', () => {
-  const React = require('react');
-  const { View } = require('react-native');
   return {
-    Modal: () => <View testID="mock-modal" />,
+    Modal: (props: unknown) => mockModal(props as never),
   };
 });
 
@@ -246,7 +287,7 @@ jest.mock('@/hooks/useGameLoop', () => ({
 jest.mock('@/src/progression/useProgression', () => ({
   useProgression: () => ({
     progression: null,
-    refresh: jest.fn(),
+    refresh: mockRefreshProgression,
     errorMessage: null,
   }),
 }));
@@ -255,7 +296,7 @@ jest.mock('@/src/challenges/useChallenges', () => ({
   useChallenges: () => ({
     definitions: [],
     progress: [],
-    refresh: jest.fn(),
+    refresh: mockRefreshChallenges,
   }),
 }));
 
@@ -295,6 +336,7 @@ jest.mock('@/services/matchPreferences', () => ({
     bugAnimationEnabled: true,
     diceAnimationEnabled: true,
     diceAnimationSpeed: 0.5,
+    moveHintEnabled: true,
     timerDurationSeconds: 20,
     timerEnabled: true,
   },
@@ -346,6 +388,10 @@ jest.mock('@expo/vector-icons/MaterialIcons', () => {
   return MaterialIconsMock;
 });
 
+jest.mock('expo-font', () => ({
+  useFonts: () => [true, null],
+}));
+
 import { Platform } from 'react-native';
 import { GameRoom } from '@/app/match/[id]';
 
@@ -353,6 +399,7 @@ describe('GameRoom match dice stage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-03-27T12:00:00.000Z'));
     mockSearchParams.id = 'local-1';
     mockSearchParams.offline = '1';
     delete mockSearchParams.privateMatch;
@@ -366,6 +413,7 @@ describe('GameRoom match dice stage', () => {
       bugAnimationEnabled: true,
       diceAnimationEnabled: true,
       diceAnimationSpeed: 0.5,
+      moveHintEnabled: true,
       timerDurationSeconds: 20,
       timerEnabled: true,
     });
@@ -375,12 +423,15 @@ describe('GameRoom match dice stage', () => {
       bugAnimationEnabled: true,
       diceAnimationEnabled: true,
       diceAnimationSpeed: 0.5,
+      moveHintEnabled: true,
       timerDurationSeconds: 20,
       timerEnabled: true,
     });
     mockConnectSocketWithRetry.mockResolvedValue(mockSocket);
     mockHasNakamaConfig.mockReturnValue(false);
     mockIsNakamaEnabled.mockReturnValue(false);
+    mockRefreshProgression.mockImplementation(() => Promise.resolve(null));
+    mockRefreshChallenges.mockImplementation(() => Promise.resolve(null));
     mockSocketJoinMatch.mockResolvedValue({
       self: { user_id: 'self-user' },
       presences: [],
@@ -391,6 +442,25 @@ describe('GameRoom match dice stage', () => {
     mockSocket.onmatchdata = null;
     mockSocket.onmatchpresence = null;
     mockSocket.ondisconnect = null;
+    mockApplyServerSnapshot.mockImplementation((snapshot) => {
+      Object.assign(mockStoreState, {
+        gameState: snapshot.gameState,
+        serverRevision: snapshot.revision,
+        matchId: snapshot.matchId,
+        authoritativeServerTimeMs: snapshot.serverTimeMs ?? null,
+        authoritativeTurnDurationMs: snapshot.turnDurationMs ?? null,
+        authoritativeTurnStartedAtMs: snapshot.turnStartedAtMs ?? null,
+        authoritativeTurnDeadlineMs: snapshot.turnDeadlineMs ?? null,
+        authoritativeTurnRemainingMs: snapshot.turnRemainingMs ?? null,
+        authoritativeActiveTimedPlayer: snapshot.activeTimedPlayer ?? null,
+        authoritativeActiveTimedPlayerColor: snapshot.activeTimedPlayerColor ?? null,
+        authoritativeActiveTimedPhase: snapshot.activeTimedPhase ?? null,
+        authoritativeAfkAccumulatedMs: snapshot.afkAccumulatedMs ?? null,
+        authoritativeAfkRemainingMs: snapshot.afkRemainingMs ?? null,
+        authoritativeMatchEnd: snapshot.matchEnd ?? null,
+        authoritativeSnapshotReceivedAtMs: Date.now(),
+      });
+    });
     mockStoreState.gameState = {
       ...baseGameState,
     };
@@ -398,6 +468,20 @@ describe('GameRoom match dice stage', () => {
     mockStoreState.validMoves = [];
     mockStoreState.matchPresences = [];
     mockStoreState.userId = null;
+    mockStoreState.serverRevision = 0;
+    mockStoreState.playerColor = 'light';
+    mockStoreState.authoritativeServerTimeMs = null;
+    mockStoreState.authoritativeTurnDurationMs = null;
+    mockStoreState.authoritativeTurnStartedAtMs = null;
+    mockStoreState.authoritativeTurnDeadlineMs = null;
+    mockStoreState.authoritativeTurnRemainingMs = null;
+    mockStoreState.authoritativeActiveTimedPlayer = null;
+    mockStoreState.authoritativeActiveTimedPlayerColor = null;
+    mockStoreState.authoritativeActiveTimedPhase = null;
+    mockStoreState.authoritativeAfkAccumulatedMs = null;
+    mockStoreState.authoritativeAfkRemainingMs = null;
+    mockStoreState.authoritativeMatchEnd = null;
+    mockStoreState.authoritativeSnapshotReceivedAtMs = null;
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
       get: () => 'ios',
@@ -501,6 +585,7 @@ describe('GameRoom match dice stage', () => {
       bugAnimationEnabled: true,
       diceAnimationEnabled: true,
       diceAnimationSpeed: 1,
+      moveHintEnabled: true,
       timerDurationSeconds: 20,
       timerEnabled: true,
     });
@@ -731,5 +816,159 @@ describe('GameRoom match dice stage', () => {
 
     expect(screen.getByText('Opponent Forfeit')).toBeTruthy();
     expect(screen.queryByText('Opponent Joined')).toBeNull();
+  });
+
+  it('passes authoritative online timer props to the HUD from server snapshots', async () => {
+    mockSearchParams.id = 'online-1';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-1',
+    });
+    mockStoreState.matchId = 'online-1';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      mockSocket.onmatchdata?.({
+        match_id: 'online-1',
+        op_code: 100,
+        data: JSON.stringify({
+          type: 'state_snapshot',
+          matchId: 'online-1',
+          revision: 7,
+          gameState: {
+            ...baseGameState,
+            currentTurn: 'light',
+            phase: 'rolling',
+          },
+          assignments: {
+            'self-user': 'light',
+            'opponent-user': 'dark',
+          },
+          serverTimeMs: 5_000,
+          turnDurationMs: 10_000,
+          turnStartedAtMs: 5_000,
+          turnDeadlineMs: 15_000,
+          turnRemainingMs: 10_000,
+          activeTimedPlayer: 'self-user',
+          activeTimedPlayerColor: 'light',
+          activeTimedPhase: 'rolling',
+          afkAccumulatedMs: {
+            light: 0,
+            dark: 0,
+          },
+          afkRemainingMs: 90_000,
+          matchEnd: null,
+        }),
+      });
+      await Promise.resolve();
+      view.rerender(<GameRoom />);
+    });
+
+    expect(
+      mockGameStageHUD.mock.calls.some(
+        ([props]) =>
+          props.timerDurationMs === 10_000 &&
+          props.timerRemainingMs === 10_000 &&
+          props.timerKey === '7:15000' &&
+          props.timerIsRunning === true,
+      ),
+    ).toBe(true);
+  });
+
+  it('uses inactivity-forfeit copy when the local online player loses on timeout', () => {
+    mockSearchParams.id = 'online-2';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-2',
+    });
+    mockStoreState.matchId = 'online-2';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'dark',
+    };
+    mockStoreState.authoritativeMatchEnd = {
+      reason: 'forfeit_inactivity',
+      winnerUserId: 'opponent-user',
+      loserUserId: 'self-user',
+      forfeitingUserId: 'self-user',
+      message: null,
+    };
+    mockRefreshProgression.mockImplementation(() => new Promise(() => {}));
+    mockRefreshChallenges.mockImplementation(() => new Promise(() => {}));
+
+    render(<GameRoom />);
+
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(
+      mockModal.mock.calls.some(
+        ([props]) => props.visible === true && props.title === 'Defeat' && props.message === 'You forfeited due to inactivity.',
+      ),
+    ).toBe(true);
+  });
+
+  it('hides timer-length settings for online matches while leaving offline timer settings available', async () => {
+    mockSearchParams.id = 'online-3';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-3',
+    });
+    mockStoreState.matchId = 'online-3';
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      mockAudioSettingsModal.mock.calls.some(
+        ([props]) => props.showTimerToggle === false && props.showTimerDurationPicker === false,
+      ),
+    ).toBe(true);
+
+    mockSearchParams.id = 'local-2';
+    mockSearchParams.offline = '1';
+    mockStoreState.matchId = 'local-2';
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      mockAudioSettingsModal.mock.calls.some(
+        ([props]) => props.showTimerToggle === true && props.showTimerDurationPicker === true,
+      ),
+    ).toBe(true);
   });
 });
