@@ -1611,20 +1611,25 @@ export function GameRoom() {
       updateMatchPresences(matchPresence);
     };
 
+    const scheduleReconnect = () => {
+      if (reconnectTimerRef.current) {
+        return;
+      }
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        void connectAndJoin();
+      }, 1500);
+    };
+
     const attachSocketHandlers = (socket: Socket) => {
       socketRef.current = socket;
       socket.onmatchdata = handleMatchData;
       socket.onmatchpresence = handleMatchPresence;
       socket.ondisconnect = () => {
+        socketRef.current = null;
         nakamaService.disconnectSocket(false);
         setSocketState('disconnected');
-        if (reconnectTimerRef.current) {
-          return;
-        }
-        reconnectTimerRef.current = setTimeout(() => {
-          reconnectTimerRef.current = null;
-          void connectAndJoin();
-        }, 1500);
+        scheduleReconnect();
       };
     };
 
@@ -1641,14 +1646,30 @@ export function GameRoom() {
           ? await socket.joinMatch(matchId, effectiveMatchToken)
           : await socket.joinMatch(matchId);
         if (!isMounted) return;
+        const joinedPresenceUserIds = Array.isArray(match.presences)
+          ? match.presences
+            .map((presence) => presence?.user_id)
+            .filter((presenceUserId): presenceUserId is string => typeof presenceUserId === 'string')
+          : [];
+        const selfUserId = typeof match.self?.user_id === 'string' ? match.self.user_id : null;
+
+        if (!Array.isArray(match.presences)) {
+          console.warn('[Nakama][join]', {
+            matchId,
+            message: 'Join response omitted presences; continuing with available players.',
+          });
+        }
+
         setMatchPresences([
-          match.self.user_id,
-          ...match.presences.map((presence) => presence.user_id),
+          ...(selfUserId ? [selfUserId] : []),
+          ...joinedPresenceUserIds,
         ]);
         setMatchId(match.match_id);
         setSocketState('connected');
       } catch (error) {
         console.error(error);
+        socketRef.current = null;
+        nakamaService.disconnectSocket(false);
         setSocketState('error');
       }
     };
@@ -1668,6 +1689,7 @@ export function GameRoom() {
         socketRef.current.onmatchdata = () => { };
         socketRef.current.onmatchpresence = () => { };
         socketRef.current.ondisconnect = () => { };
+        socketRef.current = null;
       }
     };
   }, [
@@ -1702,7 +1724,17 @@ export function GameRoom() {
         revision: serverRevision,
         payload,
       });
-      await socket.sendMatchState(matchId, MatchOpCode.ROLL_REQUEST, encodePayload(payload));
+      try {
+        await socket.sendMatchState(matchId, MatchOpCode.ROLL_REQUEST, encodePayload(payload));
+      } catch (error) {
+        console.error('[Nakama][send_failed]', {
+          error,
+          eventType: payload.type,
+          matchId,
+          revision: serverRevision,
+        });
+        socket.ondisconnect({} as Event);
+      }
     };
 
     const sendMove = async (move: { pieceId: string; fromIndex: number; toIndex: number }) => {
@@ -1715,7 +1747,17 @@ export function GameRoom() {
         revision: serverRevision,
         payload,
       });
-      await socket.sendMatchState(matchId, MatchOpCode.MOVE_REQUEST, encodePayload(payload));
+      try {
+        await socket.sendMatchState(matchId, MatchOpCode.MOVE_REQUEST, encodePayload(payload));
+      } catch (error) {
+        console.error('[Nakama][send_failed]', {
+          error,
+          eventType: payload.type,
+          matchId,
+          revision: serverRevision,
+        });
+        socket.ondisconnect({} as Event);
+      }
     };
 
     setRollCommandSender(sendRoll);

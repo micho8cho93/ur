@@ -65,6 +65,7 @@ const mockApplyServerSnapshot = jest.fn();
 const mockSetPlayerColor = jest.fn();
 const mockSetOnlineMode = jest.fn();
 const mockUpdateMatchPresences = jest.fn();
+const mockSetMatchPresences = jest.fn();
 const mockSetSocketState = jest.fn();
 const mockSetRollCommandSender = jest.fn();
 const mockSetMoveCommandSender = jest.fn();
@@ -128,7 +129,7 @@ const mockStoreState = {
   setBotDifficulty: jest.fn(),
   setGameStateFromServer: jest.fn(),
   setMatchId: mockSetMatchId,
-  setMatchPresences: jest.fn(),
+  setMatchPresences: mockSetMatchPresences,
   setMatchToken: jest.fn(),
   setMoveCommandSender: mockSetMoveCommandSender,
   setNakamaSession: jest.fn(),
@@ -816,6 +817,83 @@ describe('GameRoom match dice stage', () => {
 
     expect(screen.getByText('Opponent Forfeit')).toBeTruthy();
     expect(screen.queryByText('Opponent Joined')).toBeNull();
+  });
+
+  it('tolerates join responses that omit presence lists during reconnects', async () => {
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+    mockSearchParams.id = 'online-reconnect-join';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      match_id: 'online-reconnect-join',
+    });
+    mockStoreState.matchId = 'online-reconnect-join';
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockSetMatchPresences).toHaveBeenCalledWith(['self-user']);
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      '[Nakama][join]',
+      expect.objectContaining({
+        matchId: 'online-reconnect-join',
+      }),
+    );
+
+    consoleWarnSpy.mockRestore();
+  });
+
+  it('treats rejected online sends as disconnects and retries the socket join', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+    mockSearchParams.id = 'online-send-retry';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-send-retry',
+    });
+    mockStoreState.matchId = 'online-send-retry';
+    mockStoreState.userId = 'self-user';
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const sendRoll = mockSetRollCommandSender.mock.calls.at(-1)?.[0] as (() => Promise<void>) | undefined;
+    expect(typeof sendRoll).toBe('function');
+
+    mockSocketSendMatchState.mockRejectedValueOnce(new Error('Socket connection has not been established yet.'));
+
+    await act(async () => {
+      await sendRoll?.();
+    });
+
+    expect(mockDisconnectSocket).toHaveBeenCalledWith(false);
+    expect(mockSetSocketState).toHaveBeenCalledWith('disconnected');
+
+    await act(async () => {
+      jest.advanceTimersByTime(1_500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockConnectSocketWithRetry).toHaveBeenCalledTimes(2);
+    expect(mockSocketJoinMatch).toHaveBeenCalledTimes(2);
+
+    consoleErrorSpy.mockRestore();
   });
 
   it('passes authoritative online timer props to the HUD from server snapshots', async () => {
