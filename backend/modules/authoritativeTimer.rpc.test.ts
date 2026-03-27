@@ -312,6 +312,93 @@ describe('authoritative online timer runtime', () => {
     expect(result.state.timer.turnDeadlineMs).toBe(22_001);
   });
 
+  it('resets the authoritative timer after a player move lands on a rosette', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const nowSpy = jest.spyOn(Date, 'now');
+    const { ctx, logger, nk, dispatcher, state } = initializeStartedMatch(runtime, nowSpy);
+    nowSpy.mockReturnValue(2_500);
+    dispatcher.broadcastMessage.mockClear();
+
+    state.gameState = createInitialState();
+    state.gameState.currentTurn = 'light';
+    state.gameState.phase = 'moving';
+    state.gameState.rollValue = 1;
+    state.gameState.light.pieces[0].position = 2;
+    state.timer.turnStartedAtMs = 2_000;
+    state.timer.turnDeadlineMs = 12_000;
+    state.timer.activePlayerColor = 'light';
+    state.timer.activePlayerUserId = 'light-user';
+    state.timer.activePhase = 'moving';
+
+    const rosetteMove = {
+      pieceId: state.gameState.light.pieces[0].id,
+      fromIndex: 2,
+      toIndex: 3,
+    };
+
+    const result = runtime.matchLoop(ctx, logger, nk, dispatcher, 1, state, [
+      {
+        sender: createPresence('light-user', 'light-session'),
+        opCode: 2,
+        data: JSON.stringify({ type: 'move_request', move: rosetteMove }),
+      },
+    ]);
+
+    expect(result.state.gameState.light.pieces[0].position).toBe(3);
+    expect(result.state.gameState.currentTurn).toBe('light');
+    expect(result.state.gameState.phase).toBe('rolling');
+    expect(result.state.timer.activePlayerColor).toBe('light');
+    expect(result.state.timer.activePhase).toBe('rolling');
+    expect(result.state.timer.turnStartedAtMs).toBe(2_500);
+    expect(result.state.timer.turnDeadlineMs).toBe(12_500);
+  });
+
+  it('keeps the match alive if broadcasting a rosette extra-turn snapshot throws', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const nowSpy = jest.spyOn(Date, 'now');
+    const { ctx, logger, nk, dispatcher, state } = initializeStartedMatch(runtime, nowSpy);
+    nowSpy.mockReturnValue(2_500);
+    dispatcher.broadcastMessage.mockClear();
+    dispatcher.broadcastMessage.mockImplementation(() => {
+      throw new Error('dispatcher failed');
+    });
+
+    state.gameState = createInitialState();
+    state.gameState.currentTurn = 'light';
+    state.gameState.phase = 'moving';
+    state.gameState.rollValue = 1;
+    state.gameState.light.pieces[0].position = 2;
+    state.timer.turnStartedAtMs = 2_000;
+    state.timer.turnDeadlineMs = 12_000;
+    state.timer.activePlayerColor = 'light';
+    state.timer.activePlayerUserId = 'light-user';
+    state.timer.activePhase = 'moving';
+
+    const rosetteMove = {
+      pieceId: state.gameState.light.pieces[0].id,
+      fromIndex: 2,
+      toIndex: 3,
+    };
+
+    expect(() =>
+      runtime.matchLoop(ctx, logger, nk, dispatcher, 1, state, [
+        {
+          sender: createPresence('light-user', 'light-session'),
+          opCode: 2,
+          data: JSON.stringify({ type: 'move_request', move: rosetteMove }),
+        },
+      ]),
+    ).not.toThrow();
+
+    expect(state.started).toBe(true);
+    expect(state.gameState.light.pieces[0].position).toBe(3);
+    expect(state.gameState.currentTurn).toBe('light');
+    expect(state.gameState.phase).toBe('rolling');
+    expect(state.timer.activePlayerColor).toBe('light');
+    expect(state.timer.activePhase).toBe('rolling');
+    expect(logger.error).toHaveBeenCalled();
+  });
+
   it('hands off the turn and resets the timer when a timeout roll has no legal moves', () => {
     const runtime = globalThis as RuntimeGlobals;
     const nowSpy = jest.spyOn(Date, 'now');

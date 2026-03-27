@@ -1392,6 +1392,24 @@ function matchLeave(
   return { state };
 }
 
+const logMatchLoopError = (
+  logger: nkruntime.Logger,
+  matchId: string,
+  state: MatchState,
+  context: string,
+  error: unknown
+): void => {
+  logger.error(
+    "Authoritative match error in %s during %s (revision %d, phase %s, turn %s): %s",
+    matchId,
+    context,
+    state.revision,
+    state.gameState.phase,
+    state.gameState.currentTurn,
+    error instanceof Error ? error.message : String(error)
+  );
+};
+
 function matchLoop(
   ctx: nkruntime.Context,
   logger: nkruntime.Logger,
@@ -1404,71 +1422,94 @@ function matchLoop(
   const matchId = getMatchId(ctx);
   const nowMs = Date.now();
 
-  markMatchStartedIfReady(state, nowMs);
-  ensureTurnTimerForCurrentState(state, nowMs);
+  try {
+    markMatchStartedIfReady(state, nowMs);
+    ensureTurnTimerForCurrentState(state, nowMs);
+  } catch (error) {
+    logMatchLoopError(logger, matchId, state, "timer_sync", error);
+    return { state };
+  }
 
   messages.forEach((message) => {
-    const senderUserId = getSenderUserId(message.sender);
-    if (!senderUserId) {
-      logger.warn("Ignoring message with missing sender user ID.");
-      return;
-    }
-
-    upsertPresence(state, message.sender);
-    const senderColor = state.assignments[senderUserId];
-
-    if (!senderColor) {
-      sendError(
-        dispatcher,
-        state,
-        senderUserId,
-        "UNAUTHORIZED_PLAYER",
-        "Only assigned players can send match commands."
-      );
-      return;
-    }
-
-    const opCode = getMessageOpCode(message);
-    if (opCode === null) {
-      sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", "Message opcode is missing.");
-      return;
-    }
-
-    const rawPayload = decodeMessageData(message.data, nk);
-    const decodedPayload = decodePayload(rawPayload);
-
-    if (opCode === MatchOpCode.ROLL_REQUEST) {
-      if (!isRollRequestPayload(decodedPayload)) {
-        sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Roll payload is invalid.");
+    try {
+      const senderUserId = getSenderUserId(message.sender);
+      if (!senderUserId) {
+        logger.warn("Ignoring message with missing sender user ID.");
         return;
       }
 
-      applyRollRequest(logger, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
-      return;
-    }
+      upsertPresence(state, message.sender);
+      const senderColor = state.assignments[senderUserId];
 
-    if (opCode === MatchOpCode.MOVE_REQUEST) {
-      if (!isMoveRequestPayload(decodedPayload)) {
-        sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Move payload is invalid.");
+      if (!senderColor) {
+        sendError(
+          dispatcher,
+          state,
+          senderUserId,
+          "UNAUTHORIZED_PLAYER",
+          "Only assigned players can send match commands."
+        );
         return;
       }
 
-      applyMoveRequest(logger, nk, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
-      return;
-    }
+      const opCode = getMessageOpCode(message);
+      if (opCode === null) {
+        sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", "Message opcode is missing.");
+        return;
+      }
 
-    sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", `Unsupported opcode ${opCode}.`);
+      const rawPayload = decodeMessageData(message.data, nk);
+      const decodedPayload = decodePayload(rawPayload);
+
+      if (opCode === MatchOpCode.ROLL_REQUEST) {
+        if (!isRollRequestPayload(decodedPayload)) {
+          sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Roll payload is invalid.");
+          return;
+        }
+
+        applyRollRequest(logger, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
+        return;
+      }
+
+      if (opCode === MatchOpCode.MOVE_REQUEST) {
+        if (!isMoveRequestPayload(decodedPayload)) {
+          sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Move payload is invalid.");
+          return;
+        }
+
+        applyMoveRequest(logger, nk, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
+        return;
+      }
+
+      sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", `Unsupported opcode ${opCode}.`);
+    } catch (error) {
+      logMatchLoopError(logger, matchId, state, "message_processing", error);
+      try {
+        broadcastSnapshot(dispatcher, state, matchId);
+      } catch (snapshotError) {
+        logMatchLoopError(logger, matchId, state, "message_recovery_snapshot", snapshotError);
+      }
+    }
   });
 
-  ensureTurnTimerForCurrentState(state, Date.now());
-  const timerExpired =
-    state.timer.turnDeadlineMs !== null &&
-    Date.now() >= state.timer.turnDeadlineMs &&
-    !state.gameState.winner &&
-    state.gameState.phase !== "ended";
+  try {
+    ensureTurnTimerForCurrentState(state, Date.now());
+    const timerExpired =
+      state.timer.turnDeadlineMs !== null &&
+      Date.now() >= state.timer.turnDeadlineMs &&
+      !state.gameState.winner &&
+      state.gameState.phase !== "ended";
 
-  if (timerExpired) {
-    applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, Date.now());
+    if (timerExpired) {
+      applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, Date.now());
+    }
+  } catch (error) {
+    logMatchLoopError(logger, matchId, state, "timeout_processing", error);
+    try {
+      broadcastSnapshot(dispatcher, state, matchId);
+    } catch (snapshotError) {
+      logMatchLoopError(logger, matchId, state, "timeout_recovery_snapshot", snapshotError);
+    }
   }
 
   return { state };

@@ -50,6 +50,9 @@ const mockMatchMomentIndicator = jest.fn(({ cue }: { cue: { message: string } | 
   const { Text } = require('react-native');
   return cue ? <Text testID="mock-match-cue">{cue.message}</Text> : null;
 });
+let mockUseRealBoard = false;
+let mockUseRealSlotDiceScene = false;
+let mockUseRealMatchMomentIndicator = false;
 
 const mockRouterReplace = jest.fn();
 const mockSearchParams = {
@@ -146,6 +149,10 @@ const mockStoreState = {
 };
 
 jest.mock('@/components/game/Board', () => {
+  if (mockUseRealBoard) {
+    return jest.requireActual('@/components/game/Board');
+  }
+
   const React = require('react');
   const { useEffect } = React;
   const { View } = require('react-native');
@@ -269,11 +276,30 @@ jest.mock('@/components/game/MatchDiceRollStage', () => ({
 }));
 
 jest.mock('@/components/game/MatchMomentIndicator', () => ({
-  MatchMomentIndicator: (props: { cue: { message: string } | null }) => mockMatchMomentIndicator(props),
+  MatchMomentIndicator: (props: {
+    cue: { message: string } | null;
+    fontFamily?: string;
+    supplementaryText?: string | null;
+    onHidden: (cueId: number) => void;
+  }) => {
+    if (mockUseRealMatchMomentIndicator) {
+      const actual = jest.requireActual('@/components/game/MatchMomentIndicator');
+      return actual.MatchMomentIndicator(props);
+    }
+
+    return mockMatchMomentIndicator(props);
+  },
 }));
 
 jest.mock('@/components/game/SlotDiceScene', () => ({
-  SlotDiceScene: () => mockSlotDiceScene(),
+  SlotDiceScene: (props: unknown) => {
+    if (mockUseRealSlotDiceScene) {
+      const actual = jest.requireActual('@/components/game/SlotDiceScene');
+      return actual.SlotDiceScene(props);
+    }
+
+    return mockSlotDiceScene();
+  },
 }));
 
 jest.mock('@/config/nakama', () => ({
@@ -443,6 +469,9 @@ describe('GameRoom match dice stage', () => {
     mockSocket.onmatchdata = null;
     mockSocket.onmatchpresence = null;
     mockSocket.ondisconnect = null;
+    mockUseRealBoard = false;
+    mockUseRealSlotDiceScene = false;
+    mockUseRealMatchMomentIndicator = false;
     mockApplyServerSnapshot.mockImplementation((snapshot) => {
       Object.assign(mockStoreState, {
         gameState: snapshot.gameState,
@@ -909,6 +938,279 @@ describe('GameRoom match dice stage', () => {
 
     expect(mockSocketLeaveMatch).not.toHaveBeenCalled();
     expect(mockDisconnectSocket).toHaveBeenCalledWith(false);
+  });
+
+  it('unlocks the local player for another online roll after a rosette extra turn snapshot', async () => {
+    mockSearchParams.id = 'online-rosette-extra-turn';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-rosette-extra-turn',
+    });
+    mockStoreState.matchId = 'online-rosette-extra-turn';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      currentTurn: 'light',
+      phase: 'rolling',
+      rollValue: null,
+      history: [],
+    };
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('dice-roll-button'));
+    });
+
+    expect(mockRoll).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      mockSocket.onmatchdata?.({
+        match_id: 'online-rosette-extra-turn',
+        op_code: 100,
+        data: JSON.stringify({
+          type: 'state_snapshot',
+          matchId: 'online-rosette-extra-turn',
+          revision: 1,
+          gameState: {
+            ...baseGameState,
+            currentTurn: 'light',
+            phase: 'moving',
+            rollValue: 1,
+            history: [],
+          },
+          assignments: {
+            'self-user': 'light',
+            'opponent-user': 'dark',
+          },
+          serverTimeMs: 1_000,
+          turnDurationMs: 10_000,
+          turnStartedAtMs: 1_000,
+          turnDeadlineMs: 11_000,
+          turnRemainingMs: 10_000,
+          activeTimedPlayer: 'self-user',
+          activeTimedPlayerColor: 'light',
+          activeTimedPhase: 'moving',
+          afkAccumulatedMs: {
+            light: 0,
+            dark: 0,
+          },
+          afkRemainingMs: 90_000,
+          matchEnd: null,
+        }),
+      });
+      await Promise.resolve();
+      view.rerender(<GameRoom />);
+    });
+
+    await act(async () => {
+      mockSocket.onmatchdata?.({
+        match_id: 'online-rosette-extra-turn',
+        op_code: 100,
+        data: JSON.stringify({
+          type: 'state_snapshot',
+          matchId: 'online-rosette-extra-turn',
+          revision: 2,
+          gameState: {
+            ...baseGameState,
+            currentTurn: 'light',
+            phase: 'rolling',
+            rollValue: null,
+            history: ['light moved to 3. Rosette: true'],
+          },
+          assignments: {
+            'self-user': 'light',
+            'opponent-user': 'dark',
+          },
+          serverTimeMs: 2_000,
+          turnDurationMs: 10_000,
+          turnStartedAtMs: 2_000,
+          turnDeadlineMs: 12_000,
+          turnRemainingMs: 10_000,
+          activeTimedPlayer: 'self-user',
+          activeTimedPlayerColor: 'light',
+          activeTimedPhase: 'rolling',
+          afkAccumulatedMs: {
+            light: 0,
+            dark: 0,
+          },
+          afkRemainingMs: 90_000,
+          matchEnd: null,
+        }),
+      });
+      await Promise.resolve();
+      view.rerender(<GameRoom />);
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('dice-roll-button'));
+    });
+
+    expect(mockRoll).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps online rosette extra turns rollable with the real cue and dice scene on web', async () => {
+    mockUseRealBoard = true;
+    mockUseRealSlotDiceScene = true;
+    mockUseRealMatchMomentIndicator = true;
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+    const previousWindow = global.window;
+    const mockWindow = {
+      ...previousWindow,
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      innerWidth: 1280,
+      innerHeight: 720,
+      visualViewport: {
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        width: 1280,
+        height: 720,
+      },
+    } as typeof window;
+    Object.defineProperty(global, 'window', {
+      configurable: true,
+      value: mockWindow,
+    });
+    mockSearchParams.id = 'online-rosette-live';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-rosette-live',
+    });
+    mockStoreState.matchId = 'online-rosette-live';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      currentTurn: 'light',
+      phase: 'rolling',
+      rollValue: null,
+      history: [],
+    };
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('dice-roll-button'));
+    });
+
+    expect(mockRoll).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      mockSocket.onmatchdata?.({
+        match_id: 'online-rosette-live',
+        op_code: 100,
+        data: JSON.stringify({
+          type: 'state_snapshot',
+          matchId: 'online-rosette-live',
+          revision: 1,
+          gameState: {
+            ...baseGameState,
+            currentTurn: 'light',
+            phase: 'moving',
+            rollValue: 1,
+            history: [],
+          },
+          assignments: {
+            'self-user': 'light',
+            'opponent-user': 'dark',
+          },
+          serverTimeMs: 1_000,
+          turnDurationMs: 10_000,
+          turnStartedAtMs: 1_000,
+          turnDeadlineMs: 11_000,
+          turnRemainingMs: 10_000,
+          activeTimedPlayer: 'self-user',
+          activeTimedPlayerColor: 'light',
+          activeTimedPhase: 'moving',
+          afkAccumulatedMs: {
+            light: 0,
+            dark: 0,
+          },
+          afkRemainingMs: 90_000,
+          matchEnd: null,
+        }),
+      });
+      await Promise.resolve();
+      view.rerender(<GameRoom />);
+    });
+
+    await act(async () => {
+      mockSocket.onmatchdata?.({
+        match_id: 'online-rosette-live',
+        op_code: 100,
+        data: JSON.stringify({
+          type: 'state_snapshot',
+          matchId: 'online-rosette-live',
+          revision: 2,
+          gameState: {
+            ...baseGameState,
+            currentTurn: 'light',
+            phase: 'rolling',
+            rollValue: null,
+            history: ['light moved to 3. Rosette: true'],
+          },
+          assignments: {
+            'self-user': 'light',
+            'opponent-user': 'dark',
+          },
+          serverTimeMs: 2_000,
+          turnDurationMs: 10_000,
+          turnStartedAtMs: 2_000,
+          turnDeadlineMs: 12_000,
+          turnRemainingMs: 10_000,
+          activeTimedPlayer: 'self-user',
+          activeTimedPlayerColor: 'light',
+          activeTimedPhase: 'rolling',
+          afkAccumulatedMs: {
+            light: 0,
+            dark: 0,
+          },
+          afkRemainingMs: 90_000,
+          matchEnd: null,
+        }),
+      });
+      await Promise.resolve();
+      view.rerender(<GameRoom />);
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(50);
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('dice-roll-button'));
+    });
+
+    expect(mockRoll).toHaveBeenCalledTimes(2);
+    Object.defineProperty(global, 'window', {
+      configurable: true,
+      value: previousWindow,
+    });
   });
 
   it('treats rejected online sends as disconnects and retries the socket join', async () => {

@@ -296,14 +296,22 @@ export function GameRoom() {
 
     syncVisualViewport();
 
-    window.addEventListener('resize', syncVisualViewport);
-    window.visualViewport?.addEventListener('resize', syncVisualViewport);
-    window.visualViewport?.addEventListener('scroll', syncVisualViewport);
+    if (typeof window.addEventListener === 'function') {
+      window.addEventListener('resize', syncVisualViewport);
+    }
+    if (typeof window.visualViewport?.addEventListener === 'function') {
+      window.visualViewport.addEventListener('resize', syncVisualViewport);
+      window.visualViewport.addEventListener('scroll', syncVisualViewport);
+    }
 
     return () => {
-      window.removeEventListener('resize', syncVisualViewport);
-      window.visualViewport?.removeEventListener('resize', syncVisualViewport);
-      window.visualViewport?.removeEventListener('scroll', syncVisualViewport);
+      if (typeof window.removeEventListener === 'function') {
+        window.removeEventListener('resize', syncVisualViewport);
+      }
+      if (typeof window.visualViewport?.removeEventListener === 'function') {
+        window.visualViewport.removeEventListener('resize', syncVisualViewport);
+        window.visualViewport.removeEventListener('scroll', syncVisualViewport);
+      }
     };
   }, [height, width]);
   const { width: viewportWidth, height: viewportHeight } = useMemo(
