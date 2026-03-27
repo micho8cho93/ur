@@ -3600,6 +3600,7 @@ var RPC_ADMIN_LIST_TOURNAMENTS = "rpc_admin_list_tournaments";
 var RPC_ADMIN_GET_TOURNAMENT_RUN = "rpc_admin_get_tournament_run";
 var RPC_ADMIN_CREATE_TOURNAMENT_RUN = "rpc_admin_create_tournament_run";
 var RPC_ADMIN_OPEN_TOURNAMENT = "rpc_admin_open_tournament";
+var RPC_ADMIN_DELETE_TOURNAMENT = "rpc_admin_delete_tournament";
 var RPC_ADMIN_CLOSE_TOURNAMENT = "rpc_admin_close_tournament";
 var RPC_ADMIN_FINALIZE_TOURNAMENT = "rpc_admin_finalize_tournament";
 var RPC_ADMIN_GET_TOURNAMENT_STANDINGS = "rpc_admin_get_tournament_standings";
@@ -3613,6 +3614,8 @@ var DEFAULT_MAX_NUM_SCORE = 3;
 var DEFAULT_STANDINGS_LIMIT = 100;
 var MAX_STANDINGS_LIMIT = 1e4;
 var MAX_RUN_LIST_LIMIT = 100;
+var TOURNAMENT_MATCH_QUEUE_COLLECTION = "tournament_match_queue";
+var SYSTEM_USER_ID3 = "00000000-0000-0000-0000-000000000000";
 var readBooleanField4 = (value, keys) => {
   const record = asRecord(value);
   if (!record) {
@@ -3820,6 +3823,17 @@ var writeRun = (nk, run, version) => {
     }, version)
   ]);
 };
+var writeRunIndex = (nk, index, version) => {
+  nk.storageWrite([
+    maybeSetStorageVersion({
+      collection: RUNS_COLLECTION,
+      key: RUNS_INDEX_KEY,
+      value: index,
+      permissionRead: STORAGE_PERMISSION_NONE,
+      permissionWrite: STORAGE_PERMISSION_NONE
+    }, version)
+  ]);
+};
 var updateRunWithRetry = (nk, logger, runId, updater) => {
   var _a, _b;
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
@@ -3940,6 +3954,40 @@ var buildRunResponse = (run, nakamaTournament) => ({
   run,
   nakamaTournament
 });
+var deleteRunWithRetry = (nk, logger, run) => {
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const indexState = readRunIndexState(nk);
+    const nextIndex = {
+      runIds: indexState.index.runIds.filter((entry) => entry !== run.runId),
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    try {
+      nk.storageDelete([
+        {
+          collection: RUNS_COLLECTION,
+          key: run.runId
+        },
+        {
+          collection: TOURNAMENT_MATCH_QUEUE_COLLECTION,
+          key: run.runId,
+          userId: SYSTEM_USER_ID3
+        }
+      ]);
+      writeRunIndex(nk, nextIndex, getStorageObjectVersion(indexState.object));
+      return run;
+    } catch (error) {
+      if (attempt === MAX_WRITE_ATTEMPTS) {
+        throw error;
+      }
+      logger.warn(
+        "Retrying tournament run delete for %s after storage conflict: %s",
+        run.runId,
+        getErrorMessage(error)
+      );
+    }
+  }
+  throw new Error(`Unable to delete tournament run '${run.runId}'.`);
+};
 var rpcAdminListTournaments = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
@@ -4153,6 +4201,48 @@ var rpcAdminOpenTournament = (ctx, logger, nk, payload) => {
     },
     {
       action: RPC_ADMIN_OPEN_TOURNAMENT
+    },
+    ctx,
+    logger,
+    nk,
+    payload
+  );
+};
+var rpcAdminDeleteTournament = (ctx, logger, nk, payload) => {
+  return runAuditedAdminRpc(
+    (_ctx, _logger, _nk, _payload) => {
+      assertAdmin(_ctx, "admin", _nk);
+      const parsed = parseJsonPayload(_payload);
+      const runId = readStringField5(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      if (!runId) {
+        throw new Error("runId is required.");
+      }
+      const run = readRunOrThrow(_nk, runId);
+      let deletedNakamaTournament = false;
+      if (getNakamaTournamentById(_nk, run.tournamentId)) {
+        try {
+          _nk.tournamentDelete(run.tournamentId);
+          deletedNakamaTournament = true;
+        } catch (error) {
+          _logger.warn(
+            "Unable to delete Nakama tournament %s for run %s: %s",
+            run.tournamentId,
+            run.runId,
+            getErrorMessage(error)
+          );
+        }
+      }
+      deleteRunWithRetry(_nk, _logger, run);
+      return JSON.stringify({
+        ok: true,
+        deleted: true,
+        deletedNakamaTournament,
+        run,
+        nakamaTournament: null
+      });
+    },
+    {
+      action: RPC_ADMIN_DELETE_TOURNAMENT
     },
     ctx,
     logger,
@@ -4416,11 +4506,11 @@ var rpcJoinTournament = (ctx, logger, nk, payload) => {
 
 // backend/modules/tournaments/public.ts
 var TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION = "tournament_run_memberships";
-var TOURNAMENT_MATCH_QUEUE_COLLECTION = "tournament_match_queue";
+var TOURNAMENT_MATCH_QUEUE_COLLECTION2 = "tournament_match_queue";
 var DEFAULT_PUBLIC_LIST_LIMIT = 50;
 var DEFAULT_PUBLIC_STANDINGS_LIMIT = 256;
 var TOURNAMENT_QUEUE_TTL_SECONDS = 300;
-var SYSTEM_USER_ID3 = "00000000-0000-0000-0000-000000000000";
+var SYSTEM_USER_ID4 = "00000000-0000-0000-0000-000000000000";
 var RPC_LIST_PUBLIC_TOURNAMENTS = "list_public_tournaments";
 var RPC_GET_PUBLIC_TOURNAMENT = "get_public_tournament";
 var RPC_GET_PUBLIC_TOURNAMENT_STANDINGS = "get_public_tournament_standings";
@@ -4653,12 +4743,12 @@ var readQueueState = (nk, runId) => {
   var _a;
   const objects = nk.storageRead([
     {
-      collection: TOURNAMENT_MATCH_QUEUE_COLLECTION,
+      collection: TOURNAMENT_MATCH_QUEUE_COLLECTION2,
       key: runId,
-      userId: SYSTEM_USER_ID3
+      userId: SYSTEM_USER_ID4
     }
   ]);
-  const object = findStorageObject(objects, TOURNAMENT_MATCH_QUEUE_COLLECTION, runId, SYSTEM_USER_ID3);
+  const object = findStorageObject(objects, TOURNAMENT_MATCH_QUEUE_COLLECTION2, runId, SYSTEM_USER_ID4);
   return {
     object,
     queue: normalizeMatchQueueRecord((_a = object == null ? void 0 : object.value) != null ? _a : null, runId)
@@ -4842,9 +4932,9 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
       try {
         nk.storageWrite([
           maybeSetStorageVersion({
-            collection: TOURNAMENT_MATCH_QUEUE_COLLECTION,
+            collection: TOURNAMENT_MATCH_QUEUE_COLLECTION2,
             key: run.runId,
-            userId: SYSTEM_USER_ID3,
+            userId: SYSTEM_USER_ID4,
             value: claimedQueue,
             permissionRead: STORAGE_PERMISSION_NONE,
             permissionWrite: STORAGE_PERMISSION_NONE
@@ -4903,9 +4993,9 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
     try {
       nk.storageWrite([
         maybeSetStorageVersion({
-          collection: TOURNAMENT_MATCH_QUEUE_COLLECTION,
+          collection: TOURNAMENT_MATCH_QUEUE_COLLECTION2,
           key: run.runId,
-          userId: SYSTEM_USER_ID3,
+          userId: SYSTEM_USER_ID4,
           value: nextQueue,
           permissionRead: STORAGE_PERMISSION_NONE,
           permissionWrite: STORAGE_PERMISSION_NONE
@@ -5328,7 +5418,7 @@ var MAX_PLAYERS = 2;
 var ONLINE_TTL_MS = 3e4;
 var ONLINE_TURN_DURATION_MS = 1e4;
 var ONLINE_AFK_FORFEIT_MS = 9e4;
-var SYSTEM_USER_ID4 = "00000000-0000-0000-0000-000000000000";
+var SYSTEM_USER_ID5 = "00000000-0000-0000-0000-000000000000";
 var RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 var RPC_GET_PROGRESSION_NAME = RPC_GET_PROGRESSION;
 var RPC_GET_USER_XP_PROGRESS_NAME = RPC_GET_USER_XP_PROGRESS;
@@ -5568,10 +5658,10 @@ var readPrivateMatchCodeObject = (nk, code) => {
     {
       collection: PRIVATE_MATCH_CODE_COLLECTION,
       key: normalizedCode,
-      userId: SYSTEM_USER_ID4
+      userId: SYSTEM_USER_ID5
     }
   ]);
-  const object = findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode, SYSTEM_USER_ID4);
+  const object = findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode, SYSTEM_USER_ID5);
   return {
     object,
     record: normalizePrivateMatchCodeRecord(object == null ? void 0 : object.value)
@@ -5925,6 +6015,7 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_RUN, rpcAdminGetTournamentRun);
   initializer.registerRpc(RPC_ADMIN_CREATE_TOURNAMENT_RUN, rpcAdminCreateTournamentRun);
   initializer.registerRpc(RPC_ADMIN_OPEN_TOURNAMENT, rpcAdminOpenTournament);
+  initializer.registerRpc(RPC_ADMIN_DELETE_TOURNAMENT, rpcAdminDeleteTournament);
   initializer.registerRpc(RPC_ADMIN_CLOSE_TOURNAMENT, rpcAdminCloseTournament);
   initializer.registerRpc(RPC_ADMIN_FINALIZE_TOURNAMENT, rpcAdminFinalizeTournament);
   initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_STANDINGS, rpcAdminGetTournamentStandings);
