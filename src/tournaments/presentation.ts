@@ -13,8 +13,27 @@ const safeParseTime = (value: string): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const safeParseOptionalTime = (value: string | null): number | null => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 export const hasTournamentStarted = (tournament: Pick<PublicTournamentSummary, 'startAt'>, now = Date.now()): boolean =>
   safeParseTime(tournament.startAt) <= now;
+
+export const hasTournamentEnded = (tournament: Pick<PublicTournamentSummary, 'endAt'>, now = Date.now()): boolean => {
+  const endAt = safeParseOptionalTime(tournament.endAt);
+  return endAt !== null && endAt <= now;
+};
+
+export const isTournamentVisibleForPlay = (
+  tournament: Pick<PublicTournamentSummary, 'lifecycle' | 'endAt'>,
+  now = Date.now(),
+): boolean => tournament.lifecycle === 'open' && !hasTournamentEnded(tournament, now);
 
 export const isTournamentFull = (tournament: Pick<PublicTournamentSummary, 'entrants' | 'maxEntrants'>): boolean =>
   tournament.maxEntrants > 0 && tournament.entrants >= tournament.maxEntrants;

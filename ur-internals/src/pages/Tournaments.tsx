@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
-import { listTournaments, openTournament } from '../api/tournaments'
+import { deleteTournament, listTournaments, openTournament } from '../api/tournaments'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
 import type { Tournament } from '../types/tournament'
@@ -14,11 +14,13 @@ function formatDateTime(value: string) {
 }
 
 export function TournamentsPage() {
-  const { sessionToken } = useSession()
+  const { adminIdentity, sessionToken } = useSession()
   const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [openingRunId, setOpeningRunId] = useState<string | null>(null)
+  const [deletingRunId, setDeletingRunId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const canDeleteTournaments = adminIdentity?.role === 'admin'
 
   useEffect(() => {
     let active = true
@@ -72,6 +74,32 @@ export function TournamentsPage() {
       setError(message)
     } finally {
       setOpeningRunId((current) => (current === runId ? null : current))
+    }
+  }
+
+  async function handleDeleteTournament(runId: string, name: string) {
+    const confirmed =
+      typeof window === 'undefined' ||
+      window.confirm(
+        `Delete "${name}"? This permanently removes the tournament run from ur-internals and public tournament listings.`,
+      )
+
+    if (!confirmed) {
+      return
+    }
+
+    setError(null)
+    setDeletingRunId(runId)
+
+    try {
+      await deleteTournament(runId)
+      setTournaments((current) => current.filter((tournament) => tournament.id !== runId))
+    } catch (deleteError) {
+      const message =
+        deleteError instanceof Error ? deleteError.message : 'Unable to delete tournament.'
+      setError(message)
+    } finally {
+      setDeletingRunId((current) => (current === runId ? null : current))
     }
   }
 
@@ -141,12 +169,24 @@ export function TournamentsPage() {
                           <button
                             className="button button--primary"
                             type="button"
-                            disabled={openingRunId === tournament.id}
+                            disabled={openingRunId === tournament.id || deletingRunId === tournament.id}
                             onClick={() => {
                               void handleOpenTournament(tournament.id)
                             }}
                           >
                             {openingRunId === tournament.id ? 'Opening...' : 'Open'}
+                          </button>
+                        ) : null}
+                        {canDeleteTournaments ? (
+                          <button
+                            className="button button--danger"
+                            type="button"
+                            disabled={deletingRunId === tournament.id || openingRunId === tournament.id}
+                            onClick={() => {
+                              void handleDeleteTournament(tournament.id, tournament.name)
+                            }}
+                          >
+                            {deletingRunId === tournament.id ? 'Deleting...' : 'Delete'}
                           </button>
                         ) : null}
                       </div>

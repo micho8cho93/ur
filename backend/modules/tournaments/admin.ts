@@ -78,6 +78,7 @@ export const RPC_ADMIN_LIST_TOURNAMENTS = "rpc_admin_list_tournaments";
 export const RPC_ADMIN_GET_TOURNAMENT_RUN = "rpc_admin_get_tournament_run";
 export const RPC_ADMIN_CREATE_TOURNAMENT_RUN = "rpc_admin_create_tournament_run";
 export const RPC_ADMIN_OPEN_TOURNAMENT = "rpc_admin_open_tournament";
+export const RPC_ADMIN_DELETE_TOURNAMENT = "rpc_admin_delete_tournament";
 export const RPC_ADMIN_CLOSE_TOURNAMENT = "rpc_admin_close_tournament";
 export const RPC_ADMIN_FINALIZE_TOURNAMENT = "rpc_admin_finalize_tournament";
 export const RPC_ADMIN_GET_TOURNAMENT_STANDINGS = "rpc_admin_get_tournament_standings";
@@ -92,6 +93,8 @@ const DEFAULT_MAX_NUM_SCORE = 3;
 const DEFAULT_STANDINGS_LIMIT = 100;
 export const MAX_STANDINGS_LIMIT = 10000;
 const MAX_RUN_LIST_LIMIT = 100;
+const TOURNAMENT_MATCH_QUEUE_COLLECTION = "tournament_match_queue";
+const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 const readBooleanField = (value: unknown, keys: string[]): boolean | null => {
   const record = asRecord(value);
@@ -497,6 +500,48 @@ const buildRunResponse = (run: TournamentRunRecord, nakamaTournament: Record<str
   nakamaTournament,
 });
 
+const deleteRunWithRetry = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  run: TournamentRunRecord,
+): TournamentRunRecord => {
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const indexState = readRunIndexState(nk);
+    const nextIndex: TournamentRunIndexRecord = {
+      runIds: indexState.index.runIds.filter((entry) => entry !== run.runId),
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      nk.storageDelete([
+        {
+          collection: RUNS_COLLECTION,
+          key: run.runId,
+        },
+        {
+          collection: TOURNAMENT_MATCH_QUEUE_COLLECTION,
+          key: run.runId,
+          userId: SYSTEM_USER_ID,
+        },
+      ]);
+      writeRunIndex(nk, nextIndex, getStorageObjectVersion(indexState.object));
+      return run;
+    } catch (error) {
+      if (attempt === MAX_WRITE_ATTEMPTS) {
+        throw error;
+      }
+
+      logger.warn(
+        "Retrying tournament run delete for %s after storage conflict: %s",
+        run.runId,
+        getErrorMessage(error),
+      );
+    }
+  }
+
+  throw new Error(`Unable to delete tournament run '${run.runId}'.`);
+};
+
 export const rpcAdminListTournaments = (
   ctx: RuntimeContext,
   logger: RuntimeLogger,
@@ -750,6 +795,59 @@ export const rpcAdminOpenTournament = (
     },
     {
       action: RPC_ADMIN_OPEN_TOURNAMENT,
+    },
+    ctx,
+    logger,
+    nk,
+    payload,
+  );
+};
+
+export const rpcAdminDeleteTournament = (
+  ctx: RuntimeContext,
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  payload: string,
+): string => {
+  return runAuditedAdminRpc(
+    (_ctx, _logger, _nk, _payload) => {
+      assertAdmin(_ctx, "admin", _nk);
+      const parsed = parseJsonPayload(_payload);
+      const runId = readStringField(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+
+      if (!runId) {
+        throw new Error("runId is required.");
+      }
+
+      const run = readRunOrThrow(_nk, runId);
+      let deletedNakamaTournament = false;
+
+      if (getNakamaTournamentById(_nk, run.tournamentId)) {
+        try {
+          _nk.tournamentDelete(run.tournamentId);
+          deletedNakamaTournament = true;
+        } catch (error) {
+          _logger.warn(
+            "Unable to delete Nakama tournament %s for run %s: %s",
+            run.tournamentId,
+            run.runId,
+            getErrorMessage(error),
+          );
+        }
+      }
+
+      deleteRunWithRetry(_nk, _logger, run);
+
+      return JSON.stringify({
+        ok: true,
+        deleted: true,
+        deletedNakamaTournament,
+        run,
+        nakamaTournament: null,
+      });
+    },
+    {
+      action: RPC_ADMIN_DELETE_TOURNAMENT,
     },
     ctx,
     logger,

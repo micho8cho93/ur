@@ -2,6 +2,8 @@ import {
   getTournamentCardPrimaryState,
   getTournamentDetailPrimaryState,
   getTournamentChipState,
+  hasTournamentEnded,
+  isTournamentVisibleForPlay,
 } from '@/src/tournaments/presentation';
 import type { PublicTournamentSummary } from '@/src/tournaments/types';
 
@@ -31,7 +33,7 @@ describe('tournament presentation helpers', () => {
     const now = Date.parse('2026-03-27T12:00:00.000Z');
     const startingSoon = {
       ...baseTournament,
-      startAt: '2026-03-27T14:00:00.000Z',
+      startAt: '2999-03-27T14:00:00.000Z',
     };
     const joined = {
       ...baseTournament,
@@ -73,7 +75,7 @@ describe('tournament presentation helpers', () => {
       disabled: false,
       intent: 'play',
     });
-    expect(getTournamentDetailPrimaryState({ ...joined, startAt: '2026-03-27T14:00:00.000Z' })).toEqual({
+    expect(getTournamentDetailPrimaryState({ ...joined, startAt: '2999-03-27T14:00:00.000Z' })).toEqual({
       label: 'Play Tournament Match',
       disabled: true,
       intent: 'none',
@@ -82,5 +84,48 @@ describe('tournament presentation helpers', () => {
       label: 'Starting soon',
       tone: 'info',
     });
+  });
+
+  it('treats only open, non-expired tournaments as visible in public play', () => {
+    const now = Date.parse('2026-03-27T12:00:00.000Z');
+
+    expect(
+      hasTournamentEnded(
+        {
+          endAt: '2026-03-27T11:59:59.000Z',
+        },
+        now,
+      ),
+    ).toBe(true);
+
+    expect(
+      isTournamentVisibleForPlay(
+        {
+          lifecycle: 'open',
+          endAt: '2026-03-27T12:30:00.000Z',
+        },
+        now,
+      ),
+    ).toBe(true);
+
+    expect(
+      isTournamentVisibleForPlay(
+        {
+          lifecycle: 'closed',
+          endAt: '2026-03-27T12:30:00.000Z',
+        },
+        now,
+      ),
+    ).toBe(false);
+
+    expect(
+      isTournamentVisibleForPlay(
+        {
+          lifecycle: 'open',
+          endAt: '2026-03-27T12:00:00.000Z',
+        },
+        now,
+      ),
+    ).toBe(false);
   });
 });

@@ -4537,6 +4537,21 @@ var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
     membership: buildMembershipState(membership)
   };
 };
+var getRunEndTimeMs = (run, nakamaTournament) => {
+  var _a;
+  const endTimeSeconds = (_a = readNumberField3(nakamaTournament, ["endTime", "end_time"])) != null ? _a : run.endTime;
+  if (typeof endTimeSeconds !== "number" || !Number.isFinite(endTimeSeconds) || endTimeSeconds <= 0) {
+    return null;
+  }
+  return Math.floor(endTimeSeconds * 1e3);
+};
+var isPublicRunActive = (run, nakamaTournament, nowMs = Date.now()) => {
+  if (run.lifecycle !== "open" || !nakamaTournament) {
+    return false;
+  }
+  const endTimeMs = getRunEndTimeMs(run, nakamaTournament);
+  return endTimeMs === null || endTimeMs > nowMs;
+};
 var comparePublicTournamentOrder = (left, right) => {
   const nowMs = Date.now();
   const leftStartMs = Date.parse(left.startAt);
@@ -4559,8 +4574,8 @@ var comparePublicTournamentOrder = (left, right) => {
   }
   return left.runId.localeCompare(right.runId);
 };
-var assertPublicRunVisible = (run) => {
-  if (run.lifecycle !== "open") {
+var assertPublicRunVisible = (run, nakamaTournament, nowMs = Date.now()) => {
+  if (!isPublicRunActive(run, nakamaTournament, nowMs)) {
     throw new Error("This tournament is not available in public play.");
   }
 };
@@ -4658,7 +4673,7 @@ var isQueueExpired = (queue, nowMs = Date.now()) => {
 };
 var listPublicRuns = (nk) => {
   const indexState = readRunIndexState(nk);
-  return readRunsByIds(nk, indexState.index.runIds).filter((run) => run.lifecycle === "open");
+  return readRunsByIds(nk, indexState.index.runIds);
 };
 var rpcListPublicTournaments = (ctx, _logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
@@ -4674,7 +4689,14 @@ var rpcListPublicTournaments = (ctx, _logger, nk, payload) => {
     runs.map((run) => run.runId),
     userId
   );
-  const tournaments = runs.map(
+  const nowMs = Date.now();
+  const visibleRuns = runs.filter(
+    (run) => {
+      var _a;
+      return isPublicRunActive(run, (_a = tournamentsById[run.tournamentId]) != null ? _a : null, nowMs);
+    }
+  );
+  const tournaments = visibleRuns.map(
     (run) => {
       var _a, _b;
       return buildPublicTournamentResponse(
@@ -4687,7 +4709,7 @@ var rpcListPublicTournaments = (ctx, _logger, nk, payload) => {
   return JSON.stringify({
     ok: true,
     tournaments,
-    totalCount: runs.length
+    totalCount: visibleRuns.length
   });
 };
 var rpcGetPublicTournament = (ctx, _logger, nk, payload) => {
@@ -4698,12 +4720,13 @@ var rpcGetPublicTournament = (ctx, _logger, nk, payload) => {
     throw new Error("runId is required.");
   }
   const run = readRunOrThrow(nk, runId);
-  assertPublicRunVisible(run);
+  const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
+  assertPublicRunVisible(run, nakamaTournament);
   return JSON.stringify({
     ok: true,
     tournament: buildPublicTournamentResponse(
       run,
-      getNakamaTournamentById(nk, run.tournamentId),
+      nakamaTournament,
       readMembership(nk, run.runId, userId)
     )
   });
@@ -4717,7 +4740,8 @@ var rpcGetPublicTournamentStandings = (ctx, _logger, nk, payload) => {
     throw new Error("runId is required.");
   }
   const run = readRunOrThrow(nk, runId);
-  assertPublicRunVisible(run);
+  const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
+  assertPublicRunVisible(run, nakamaTournament);
   const limit = clampInteger(
     (_a = parsed.limit) != null ? _a : run.maxSize,
     Math.max(DEFAULT_PUBLIC_STANDINGS_LIMIT, run.maxSize),
@@ -4742,12 +4766,12 @@ var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
     throw new Error("runId is required.");
   }
   const run = readRunOrThrow(nk, runId);
-  assertPublicRunVisible(run);
+  const nakamaTournamentBeforeJoin = getNakamaTournamentById(nk, run.tournamentId);
+  assertPublicRunVisible(run, nakamaTournamentBeforeJoin);
   const existingMembership = readMembership(nk, run.runId, userId);
   const displayName = getActorLabel(ctx);
   let joined = false;
   if (!existingMembership) {
-    const nakamaTournamentBeforeJoin = getNakamaTournamentById(nk, run.tournamentId);
     const entrantsBeforeJoin = Math.max(0, Math.floor((_a = readNumberField3(nakamaTournamentBeforeJoin, ["size"])) != null ? _a : 0));
     const maxEntrants = Math.max(
       0,
@@ -4784,7 +4808,8 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
     throw new Error("runId is required.");
   }
   const run = readRunOrThrow(nk, runId);
-  assertPublicRunVisible(run);
+  const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
+  assertPublicRunVisible(run, nakamaTournament);
   const membership = readMembership(nk, run.runId, userId);
   if (!membership) {
     throw new Error("Join this tournament before launching a match.");

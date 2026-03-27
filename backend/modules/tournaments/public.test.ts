@@ -38,7 +38,16 @@ const createLogger = () => ({
 const createNakama = () => {
   const storage = new Map<string, StoredObject>();
   let versionCounter = 1;
-  let entrantCount = 4;
+  const entrantCounts = new Map<string, number>();
+  const nakamaTournaments = new Map<
+    string,
+    {
+      id: string;
+      startTime: number;
+      endTime: number;
+      maxSize: number;
+    }
+  >();
 
   const storageRead = jest.fn((requests: StorageReadRequest[]) =>
     requests
@@ -70,57 +79,103 @@ const createNakama = () => {
     });
   });
 
-  const tournamentsGetId = jest.fn(() => [
-    {
-      id: 'tour-1',
-      startTime: Math.floor(Date.parse('2020-03-27T10:00:00.000Z') / 1000),
-      endTime: Math.floor(Date.parse('2020-03-27T12:00:00.000Z') / 1000),
-      size: entrantCount,
-      maxSize: 16,
-    },
-  ]);
+  const tournamentsGetId = jest.fn((ids: string[]) =>
+    ids
+      .map((id) => {
+        const tournament = nakamaTournaments.get(id);
+        if (!tournament) {
+          return null;
+        }
+
+        return {
+          ...tournament,
+          size: entrantCounts.get(id) ?? 0,
+        };
+      })
+      .filter(
+        (
+          entry,
+        ): entry is {
+          id: string;
+          startTime: number;
+          endTime: number;
+          maxSize: number;
+          size: number;
+        } => Boolean(entry),
+      ),
+  );
 
   return {
     storage,
+    entrantCounts,
+    nakamaTournaments,
     storageRead,
     storageWrite,
     tournamentsGetId,
     tournamentRecordsList: jest.fn(() => ({
       records: [],
       owner_records: [],
-      rank_count: entrantCount,
+      rank_count: 4,
     })),
-    tournamentJoin: jest.fn(() => {
-      entrantCount += 1;
+    tournamentJoin: jest.fn((tournamentId: string) => {
+      entrantCounts.set(tournamentId, (entrantCounts.get(tournamentId) ?? 0) + 1);
     }),
     matchCreate: jest.fn(() => 'match-tournament-1'),
   };
 };
 
-const seedOpenRun = (nk: ReturnType<typeof createNakama>) => {
+const seedOpenRun = (
+  nk: ReturnType<typeof createNakama>,
+  overrides: Partial<{
+    runId: string;
+    tournamentId: string;
+    title: string;
+    description: string;
+    lifecycle: string;
+    entrants: number;
+    maxSize: number;
+    startTime: number;
+    endTime: number;
+  }> = {},
+) => {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const runId = overrides.runId ?? 'run-1';
+  const tournamentId = overrides.tournamentId ?? 'tour-1';
+  const startTime = overrides.startTime ?? nowSeconds - 3600;
+  const endTime = overrides.endTime ?? nowSeconds + 3600;
+  const maxSize = overrides.maxSize ?? 16;
+
+  nk.entrantCounts.set(tournamentId, overrides.entrants ?? 4);
+  nk.nakamaTournaments.set(tournamentId, {
+    id: tournamentId,
+    startTime,
+    endTime,
+    maxSize,
+  });
+
   nk.storage.set(buildStorageKey('tournament_runs', 'index'), {
     collection: 'tournament_runs',
     key: 'index',
     value: {
-      runIds: ['run-1'],
+      runIds: [runId],
       updatedAt: '2026-03-27T09:00:00.000Z',
     },
     version: 'index-v1',
   });
 
-  nk.storage.set(buildStorageKey('tournament_runs', 'run-1'), {
+  nk.storage.set(buildStorageKey('tournament_runs', runId), {
     collection: 'tournament_runs',
-    key: 'run-1',
+    key: runId,
     value: {
-      runId: 'run-1',
-      tournamentId: 'tour-1',
-      title: 'Spring Open',
-      description: 'A live public run.',
-      lifecycle: 'open',
-      startTime: Math.floor(Date.parse('2020-03-27T10:00:00.000Z') / 1000),
-      endTime: Math.floor(Date.parse('2020-03-27T12:00:00.000Z') / 1000),
+      runId,
+      tournamentId,
+      title: overrides.title ?? 'Spring Open',
+      description: overrides.description ?? 'A live public run.',
+      lifecycle: overrides.lifecycle ?? 'open',
+      startTime,
+      endTime,
       duration: 7200,
-      maxSize: 16,
+      maxSize,
       maxNumScore: 3,
       joinRequired: true,
       enableRanks: true,
@@ -230,5 +285,46 @@ describe('public tournament rpc flow', () => {
       }),
     );
     expect(nk.matchCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides expired runs from the public list and rejects new joins', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    const nowSeconds = Math.floor(Date.now() / 1000);
+
+    seedOpenRun(nk, {
+      runId: 'expired-run',
+      tournamentId: 'tour-expired',
+      title: 'Expired Run',
+      startTime: nowSeconds - 7200,
+      endTime: nowSeconds - 60,
+    });
+
+    const listResponse = JSON.parse(
+      rpcListPublicTournaments(
+        { userId: 'user-1' },
+        logger,
+        nk,
+        JSON.stringify({ limit: 10 }),
+      ),
+    ) as {
+      tournaments: Array<{ runId: string }>;
+      totalCount: number;
+    };
+
+    expect(listResponse).toEqual({
+      tournaments: [],
+      totalCount: 0,
+      ok: true,
+    });
+
+    expect(() =>
+      rpcJoinPublicTournament(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'expired-run' }),
+      ),
+    ).toThrow('This tournament is not available in public play.');
   });
 });

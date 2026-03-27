@@ -211,6 +211,31 @@ const buildPublicTournamentResponse = (
   };
 };
 
+const getRunEndTimeMs = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+): number | null => {
+  const endTimeSeconds = readNumberField(nakamaTournament, ["endTime", "end_time"]) ?? run.endTime;
+  if (typeof endTimeSeconds !== "number" || !Number.isFinite(endTimeSeconds) || endTimeSeconds <= 0) {
+    return null;
+  }
+
+  return Math.floor(endTimeSeconds * 1000);
+};
+
+const isPublicRunActive = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+  nowMs = Date.now(),
+): boolean => {
+  if (run.lifecycle !== "open" || !nakamaTournament) {
+    return false;
+  }
+
+  const endTimeMs = getRunEndTimeMs(run, nakamaTournament);
+  return endTimeMs === null || endTimeMs > nowMs;
+};
+
 const comparePublicTournamentOrder = (left: PublicTournamentResponse, right: PublicTournamentResponse): number => {
   const nowMs = Date.now();
   const leftStartMs = Date.parse(left.startAt);
@@ -238,8 +263,12 @@ const comparePublicTournamentOrder = (left: PublicTournamentResponse, right: Pub
   return left.runId.localeCompare(right.runId);
 };
 
-const assertPublicRunVisible = (run: TournamentRunRecord): void => {
-  if (run.lifecycle !== "open") {
+const assertPublicRunVisible = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+  nowMs = Date.now(),
+): void => {
+  if (!isPublicRunActive(run, nakamaTournament, nowMs)) {
     throw new Error("This tournament is not available in public play.");
   }
 };
@@ -359,7 +388,7 @@ const isQueueExpired = (queue: TournamentMatchQueueRecord | null, nowMs = Date.n
 
 const listPublicRuns = (nk: RuntimeNakama): TournamentRunRecord[] => {
   const indexState = readRunIndexState(nk);
-  return readRunsByIds(nk, indexState.index.runIds).filter((run) => run.lifecycle === "open");
+  return readRunsByIds(nk, indexState.index.runIds);
 };
 
 export const rpcListPublicTournaments = (
@@ -381,7 +410,11 @@ export const rpcListPublicTournaments = (
     runs.map((run) => run.runId),
     userId,
   );
-  const tournaments = runs
+  const nowMs = Date.now();
+  const visibleRuns = runs.filter((run) =>
+    isPublicRunActive(run, tournamentsById[run.tournamentId] ?? null, nowMs),
+  );
+  const tournaments = visibleRuns
     .map((run) =>
       buildPublicTournamentResponse(
         run,
@@ -395,7 +428,7 @@ export const rpcListPublicTournaments = (
   return JSON.stringify({
     ok: true,
     tournaments,
-    totalCount: runs.length,
+    totalCount: visibleRuns.length,
   });
 };
 
@@ -414,13 +447,14 @@ export const rpcGetPublicTournament = (
   }
 
   const run = readRunOrThrow(nk, runId);
-  assertPublicRunVisible(run);
+  const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
+  assertPublicRunVisible(run, nakamaTournament);
 
   return JSON.stringify({
     ok: true,
     tournament: buildPublicTournamentResponse(
       run,
-      getNakamaTournamentById(nk, run.tournamentId),
+      nakamaTournament,
       readMembership(nk, run.runId, userId),
     ),
   });
@@ -441,7 +475,8 @@ export const rpcGetPublicTournamentStandings = (
   }
 
   const run = readRunOrThrow(nk, runId);
-  assertPublicRunVisible(run);
+  const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
+  assertPublicRunVisible(run, nakamaTournament);
   const limit = clampInteger(
     parsed.limit ?? run.maxSize,
     Math.max(DEFAULT_PUBLIC_STANDINGS_LIMIT, run.maxSize),
@@ -474,14 +509,14 @@ export const rpcJoinPublicTournament = (
   }
 
   const run = readRunOrThrow(nk, runId);
-  assertPublicRunVisible(run);
+  const nakamaTournamentBeforeJoin = getNakamaTournamentById(nk, run.tournamentId);
+  assertPublicRunVisible(run, nakamaTournamentBeforeJoin);
 
   const existingMembership = readMembership(nk, run.runId, userId);
   const displayName = getActorLabel(ctx);
   let joined = false;
 
   if (!existingMembership) {
-    const nakamaTournamentBeforeJoin = getNakamaTournamentById(nk, run.tournamentId);
     const entrantsBeforeJoin = Math.max(0, Math.floor(readNumberField(nakamaTournamentBeforeJoin, ["size"]) ?? 0));
     const maxEntrants = Math.max(
       0,
@@ -529,7 +564,8 @@ export const rpcLaunchTournamentMatch = (
   }
 
   const run = readRunOrThrow(nk, runId);
-  assertPublicRunVisible(run);
+  const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
+  assertPublicRunVisible(run, nakamaTournament);
 
   const membership = readMembership(nk, run.runId, userId);
   if (!membership) {

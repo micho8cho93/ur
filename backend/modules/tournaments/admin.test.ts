@@ -1,4 +1,5 @@
 import {
+  rpcAdminDeleteTournament,
   rpcAdminCreateTournamentRun,
   rpcAdminGetTournamentRun,
   rpcAdminListTournaments,
@@ -31,8 +32,16 @@ type StorageWriteRequest = {
   version?: string;
 };
 
+type StorageDeleteRequest = {
+  collection: string;
+  key: string;
+  userId?: string;
+};
+
 const buildStorageKey = (collection: string, key: string, userId = ""): string =>
   `${collection}:${key}:${userId}`;
+
+const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 const createLogger = () => ({
   info: jest.fn(),
@@ -87,12 +96,20 @@ const createNakama = () => {
     });
   });
 
+  const storageDelete = jest.fn((deletes: StorageDeleteRequest[]) => {
+    deletes.forEach((entry) => {
+      storage.delete(buildStorageKey(entry.collection, entry.key, entry.userId ?? ""));
+    });
+  });
+
   return {
     storage,
     storageRead,
     storageWrite,
+    storageDelete,
     tournamentsGetId: jest.fn(() => []),
     tournamentCreate: jest.fn(),
+    tournamentDelete: jest.fn(),
   };
 };
 
@@ -392,5 +409,114 @@ describe("admin tournament run creation", () => {
       true,
       true,
     );
+  });
+
+  it("deletes a run, removes it from the index, and deletes the backing Nakama tournament", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk, "admin-1", "admin");
+
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, RUNS_INDEX_KEY), {
+      collection: RUNS_COLLECTION,
+      key: RUNS_INDEX_KEY,
+      value: {
+        runIds: ["test-tournament"],
+        updatedAt: "2026-03-27T10:00:00.000Z",
+      },
+      version: "index-v1",
+    });
+
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, "test-tournament"), {
+      collection: RUNS_COLLECTION,
+      key: "test-tournament",
+      value: {
+        runId: "test-tournament",
+        tournamentId: "test-tournament",
+        title: "Test Tournament",
+        description: "Saved open run",
+        category: 0,
+        authoritative: true,
+        sortOrder: "desc",
+        operator: "incr",
+        resetSchedule: "",
+        metadata: {
+          gameMode: "Classic ladder",
+          region: "Global",
+          buyIn: "Free",
+        },
+        startTime: 1_774_572_800,
+        endTime: 1_774_580_000,
+        duration: 7_200,
+        maxSize: 32,
+        maxNumScore: 7,
+        joinRequired: true,
+        enableRanks: true,
+        lifecycle: "open",
+        createdAt: "2026-03-27T10:00:00.000Z",
+        updatedAt: "2026-03-27T10:00:00.000Z",
+        createdByUserId: "admin-1",
+        createdByLabel: "Admin",
+        openedAt: "2026-03-27T10:05:00.000Z",
+        closedAt: null,
+        finalizedAt: null,
+        finalSnapshot: null,
+      },
+      version: "run-v1",
+    });
+
+    nk.storage.set(buildStorageKey("tournament_match_queue", "test-tournament", SYSTEM_USER_ID), {
+      collection: "tournament_match_queue",
+      key: "test-tournament",
+      userId: SYSTEM_USER_ID,
+      value: {
+        runId: "test-tournament",
+        tournamentId: "test-tournament",
+        matchId: "match-1",
+      },
+      version: "queue-v1",
+    });
+
+    nk.tournamentsGetId.mockImplementation((ids: string[]) =>
+      ids.includes("test-tournament") ? [{ id: "test-tournament" }] : [],
+    );
+
+    const response = JSON.parse(
+      rpcAdminDeleteTournament(
+        {
+          userId: "admin-1",
+          username: "Admin",
+        },
+        logger,
+        nk,
+        JSON.stringify({
+          runId: "test-tournament",
+        }),
+      ),
+    ) as {
+      deleted: boolean;
+      deletedNakamaTournament: boolean;
+      run: { runId: string };
+    };
+
+    expect(response).toEqual(
+      expect.objectContaining({
+        deleted: true,
+        deletedNakamaTournament: true,
+        run: expect.objectContaining({
+          runId: "test-tournament",
+        }),
+      }),
+    );
+
+    expect(nk.storage.get(buildStorageKey(RUNS_COLLECTION, "test-tournament"))).toBeUndefined();
+    expect(
+      nk.storage.get(buildStorageKey("tournament_match_queue", "test-tournament", SYSTEM_USER_ID)),
+    ).toBeUndefined();
+    expect(nk.storage.get(buildStorageKey(RUNS_COLLECTION, RUNS_INDEX_KEY))?.value).toEqual(
+      expect.objectContaining({
+        runIds: [],
+      }),
+    );
+    expect(nk.tournamentDelete).toHaveBeenCalledWith("test-tournament");
   });
 });

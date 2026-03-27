@@ -1,6 +1,7 @@
 import {
   RPC_ADMIN_CLOSE_TOURNAMENT,
   RPC_ADMIN_CREATE_TOURNAMENT_RUN,
+  RPC_ADMIN_DELETE_TOURNAMENT,
   RPC_ADMIN_FINALIZE_TOURNAMENT,
   RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG,
   RPC_ADMIN_GET_TOURNAMENT_RUN,
@@ -9,6 +10,7 @@ import {
   RPC_ADMIN_OPEN_TOURNAMENT,
   rpcAdminCloseTournament,
   rpcAdminCreateTournamentRun,
+  rpcAdminDeleteTournament,
   rpcAdminFinalizeTournament,
   rpcAdminGetTournamentAuditLog,
   rpcAdminGetTournamentRun,
@@ -39,6 +41,7 @@ export const registerTournamentRpcs = (initializer: RuntimeInitializer): void =>
   initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_RUN, rpcAdminGetTournamentRun);
   initializer.registerRpc(RPC_ADMIN_CREATE_TOURNAMENT_RUN, rpcAdminCreateTournamentRun);
   initializer.registerRpc(RPC_ADMIN_OPEN_TOURNAMENT, rpcAdminOpenTournament);
+  initializer.registerRpc(RPC_ADMIN_DELETE_TOURNAMENT, rpcAdminDeleteTournament);
   initializer.registerRpc(RPC_ADMIN_CLOSE_TOURNAMENT, rpcAdminCloseTournament);
   initializer.registerRpc(RPC_ADMIN_FINALIZE_TOURNAMENT, rpcAdminFinalizeTournament);
   initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_STANDINGS, rpcAdminGetTournamentStandings);

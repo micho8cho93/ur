@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { getTournamentAuditLog } from '../api/auditLog'
-import { getTournament, getTournamentStandings, openTournament } from '../api/tournaments'
+import {
+  deleteTournament,
+  getTournament,
+  getTournamentStandings,
+  openTournament,
+} from '../api/tournaments'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
 import type { AuditLogEntry } from '../types/audit'
@@ -36,14 +41,17 @@ const emptyStandings: TournamentStandings = {
 }
 
 export function TournamentDetailPage() {
-  const { sessionToken } = useSession()
+  const { adminIdentity, sessionToken } = useSession()
   const { tournamentId } = useParams()
+  const navigate = useNavigate()
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [standings, setStandings] = useState<TournamentStandings>(emptyStandings)
   const [auditEntries, setAuditEntries] = useState<AuditLogEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isOpening, setIsOpening] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const canDeleteTournaments = adminIdentity?.role === 'admin'
 
   useEffect(() => {
     let active = true
@@ -135,6 +143,35 @@ export function TournamentDetailPage() {
     }
   }
 
+  async function handleDeleteTournament() {
+    if (!tournament) {
+      return
+    }
+
+    const confirmed =
+      typeof window === 'undefined' ||
+      window.confirm(
+        `Delete "${tournament.name}"? This permanently removes the tournament run from ur-internals and public tournament listings.`,
+      )
+
+    if (!confirmed) {
+      return
+    }
+
+    setError(null)
+    setIsDeleting(true)
+
+    try {
+      await deleteTournament(tournament.id)
+      navigate('/tournaments')
+    } catch (deleteError) {
+      const message =
+        deleteError instanceof Error ? deleteError.message : 'Unable to delete tournament.'
+      setError(message)
+      setIsDeleting(false)
+    }
+  }
+
   if (isLoading) {
     return <div className="empty-state">Loading tournament detail...</div>
   }
@@ -172,12 +209,24 @@ export function TournamentDetailPage() {
               <button
                 className="button button--primary"
                 type="button"
-                disabled={isOpening}
+                disabled={isOpening || isDeleting}
                 onClick={() => {
                   void handleOpenTournament()
                 }}
               >
                 {isOpening ? 'Opening...' : 'Open tournament'}
+              </button>
+            ) : null}
+            {canDeleteTournaments ? (
+              <button
+                className="button button--danger"
+                type="button"
+                disabled={isDeleting || isOpening}
+                onClick={() => {
+                  void handleDeleteTournament()
+                }}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete tournament'}
               </button>
             ) : null}
             <Link to="/tournaments" className="button">

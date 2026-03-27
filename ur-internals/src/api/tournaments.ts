@@ -21,6 +21,7 @@ const RPC_ADMIN_LIST_TOURNAMENTS = 'rpc_admin_list_tournaments'
 const RPC_ADMIN_GET_TOURNAMENT_RUN = 'rpc_admin_get_tournament_run'
 const RPC_ADMIN_CREATE_TOURNAMENT_RUN = 'rpc_admin_create_tournament_run'
 const RPC_ADMIN_OPEN_TOURNAMENT = 'rpc_admin_open_tournament'
+const RPC_ADMIN_DELETE_TOURNAMENT = 'rpc_admin_delete_tournament'
 const RPC_ADMIN_GET_TOURNAMENT_STANDINGS = 'rpc_admin_get_tournament_standings'
 
 async function wait(ms: number) {
@@ -304,6 +305,32 @@ export async function openTournament(runId: string): Promise<Tournament> {
 
   const response = await callRpc<{ run?: unknown; nakamaTournament?: unknown }>(
     RPC_ADMIN_OPEN_TOURNAMENT,
+    {
+      runId,
+    },
+  )
+
+  return normalizeTournament(asRecord(response)?.run, asRecord(response)?.nakamaTournament)
+}
+
+export async function deleteTournament(runId: string): Promise<Tournament> {
+  if (env.useMockData) {
+    await wait(180)
+    const tournamentIndex = mockTournaments.findIndex((entry) => entry.id === runId)
+
+    if (tournamentIndex < 0) {
+      throw new Error(`Tournament run '${runId}' was not found.`)
+    }
+
+    const [deletedTournament] = mockTournaments.splice(tournamentIndex, 1)
+    return {
+      ...deletedTournament,
+      updatedAt: new Date().toISOString(),
+    }
+  }
+
+  const response = await callRpc<{ run?: unknown; nakamaTournament?: unknown }>(
+    RPC_ADMIN_DELETE_TOURNAMENT,
     {
       runId,
     },

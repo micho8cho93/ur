@@ -2,7 +2,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { joinPublicTournament, listPublicTournaments } from '@/services/tournaments';
-import { sortPublicTournamentsForPlay } from '@/src/tournaments/presentation';
+import {
+  isTournamentVisibleForPlay,
+  sortPublicTournamentsForPlay,
+} from '@/src/tournaments/presentation';
 import { useTournamentUiStore } from '@/src/tournaments/store';
 import { useTournamentMatchLauncher } from '@/src/tournaments/useTournamentMatchLauncher';
 import type { PublicTournamentSummary } from '@/src/tournaments/types';
@@ -14,6 +17,7 @@ type UseTournamentListOptions = {
 
 export const useTournamentList = ({ featured = false, limit = 50 }: UseTournamentListOptions = {}) => {
   const [tournaments, setTournaments] = useState<PublicTournamentSummary[]>([]);
+  const [now, setNow] = useState(() => Date.now());
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -28,7 +32,8 @@ export const useTournamentList = ({ featured = false, limit = 50 }: UseTournamen
 
     try {
       const nextTournaments = await listPublicTournaments(limit);
-      setTournaments(sortPublicTournamentsForPlay(nextTournaments));
+      setNow(Date.now());
+      setTournaments(nextTournaments);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to load tournaments.');
     } finally {
@@ -46,6 +51,42 @@ export const useTournamentList = ({ featured = false, limit = 50 }: UseTournamen
       void refresh();
     }, [refresh]),
   );
+
+  useEffect(() => {
+    const nextExpiry = tournaments
+      .map((tournament) => {
+        if (tournament.lifecycle !== 'open' || !tournament.endAt) {
+          return null;
+        }
+
+        const parsed = Date.parse(tournament.endAt);
+        return Number.isFinite(parsed) && parsed > now ? parsed : null;
+      })
+      .reduce<number | null>((soonest, current) => {
+        if (current === null) {
+          return soonest;
+        }
+
+        if (soonest === null) {
+          return current;
+        }
+
+        return Math.min(soonest, current);
+      }, null);
+
+    if (nextExpiry === null) {
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setNow(Date.now());
+      void refresh();
+    }, Math.max(0, nextExpiry - Date.now() + 250));
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [now, refresh, tournaments]);
 
   const joinTournament = useCallback(
     async (runId: string) => {
@@ -71,8 +112,13 @@ export const useTournamentList = ({ featured = false, limit = 50 }: UseTournamen
   );
 
   const displayedTournaments = useMemo(
-    () => (featured ? tournaments.slice(0, 3) : tournaments),
-    [featured, tournaments],
+    () => {
+      const visibleTournaments = sortPublicTournamentsForPlay(
+        tournaments.filter((tournament) => isTournamentVisibleForPlay(tournament, now)),
+      );
+      return featured ? visibleTournaments.slice(0, 3) : visibleTournaments;
+    },
+    [featured, now, tournaments],
   );
 
   return {
