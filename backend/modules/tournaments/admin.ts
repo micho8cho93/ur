@@ -16,6 +16,7 @@ import {
   findStorageObject,
   getErrorMessage,
   getStorageObjectVersion,
+  maybeSetStorageVersion,
 } from "../progression";
 import type { RuntimeContext, RuntimeLogger, RuntimeMetadata, RuntimeNakama } from "./types";
 
@@ -319,29 +320,27 @@ export const readRunsByIds = (nk: RuntimeNakama, runIds: string[]): TournamentRu
     .filter((run): run is TournamentRunRecord => Boolean(run));
 };
 
-const writeRun = (nk: RuntimeNakama, run: TournamentRunRecord, version: string): void => {
+const writeRun = (nk: RuntimeNakama, run: TournamentRunRecord, version?: string | null): void => {
   nk.storageWrite([
-    {
+    maybeSetStorageVersion({
       collection: RUNS_COLLECTION,
       key: run.runId,
       value: run,
-      version,
       permissionRead: STORAGE_PERMISSION_NONE,
       permissionWrite: STORAGE_PERMISSION_NONE,
-    },
+    }, version),
   ]);
 };
 
-const writeRunIndex = (nk: RuntimeNakama, index: TournamentRunIndexRecord, version: string): void => {
+const writeRunIndex = (nk: RuntimeNakama, index: TournamentRunIndexRecord, version?: string | null): void => {
   nk.storageWrite([
-    {
+    maybeSetStorageVersion({
       collection: RUNS_COLLECTION,
       key: RUNS_INDEX_KEY,
       value: index,
-      version,
       permissionRead: STORAGE_PERMISSION_NONE,
       permissionWrite: STORAGE_PERMISSION_NONE,
-    },
+    }, version),
   ]);
 };
 
@@ -640,22 +639,20 @@ export const rpcAdminCreateTournamentRun = (
 
         try {
           _nk.storageWrite([
-            {
+            maybeSetStorageVersion({
               collection: RUNS_COLLECTION,
               key: run.runId,
               value: run,
-              version: "",
               permissionRead: STORAGE_PERMISSION_NONE,
               permissionWrite: STORAGE_PERMISSION_NONE,
-            },
-            {
+            }),
+            maybeSetStorageVersion({
               collection: RUNS_COLLECTION,
               key: RUNS_INDEX_KEY,
               value: nextIndex,
-              version: getStorageObjectVersion(indexState.object) ?? "",
               permissionRead: STORAGE_PERMISSION_NONE,
               permissionWrite: STORAGE_PERMISSION_NONE,
-            },
+            }, getStorageObjectVersion(indexState.object)),
           ]);
 
           return JSON.stringify(buildRunResponse(run, null));

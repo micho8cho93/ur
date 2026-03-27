@@ -12,7 +12,15 @@ import {
   requireAuthenticatedUserId,
 } from "./definitions";
 import { assertAdmin } from "./auth";
-import { RuntimeStorageObject, STORAGE_PERMISSION_NONE, asRecord, findStorageObject, getErrorMessage, getStorageObjectVersion } from "../progression";
+import {
+  RuntimeStorageObject,
+  STORAGE_PERMISSION_NONE,
+  asRecord,
+  findStorageObject,
+  getErrorMessage,
+  getStorageObjectVersion,
+  maybeSetStorageVersion,
+} from "../progression";
 import type {
   RuntimeContext,
   RuntimeLogger,
@@ -183,16 +191,15 @@ const readAuditLogState = (
   };
 };
 
-const writeAuditLogState = (nk: RuntimeNakama, log: TournamentAuditLogRecord, version: string): void => {
+const writeAuditLogState = (nk: RuntimeNakama, log: TournamentAuditLogRecord, version?: string | null): void => {
   nk.storageWrite([
-    {
+    maybeSetStorageVersion({
       collection: TOURNAMENT_AUDIT_COLLECTION,
       key: TOURNAMENT_AUDIT_LOG_KEY,
       value: log,
-      version,
       permissionRead: STORAGE_PERMISSION_NONE,
       permissionWrite: STORAGE_PERMISSION_NONE,
-    },
+    }, version),
   ]);
 };
 
@@ -245,7 +252,7 @@ export const appendTournamentAuditEntry = (
       updatedAt: entry.timestamp,
     };
 
-    writeAuditLogState(nk, nextLog, getStorageObjectVersion(currentState.object) ?? "");
+    writeAuditLogState(nk, nextLog, getStorageObjectVersion(currentState.object));
   } catch (error) {
     logger.warn("Unable to append tournament audit entry for %s: %s", target.id, getErrorMessage(error));
   }

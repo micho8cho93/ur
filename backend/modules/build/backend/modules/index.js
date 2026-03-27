@@ -516,6 +516,7 @@ var getStorageObjectValue = (object) => {
   return (_a = object == null ? void 0 : object.value) != null ? _a : null;
 };
 var getStorageObjectVersion = (object) => readStringField(object, ["version"]);
+var maybeSetStorageVersion = (write, version) => typeof version === "string" && version.length > 0 ? __spreadProps(__spreadValues({}, write), { version }) : write;
 var getErrorMessage = (error) => error instanceof Error ? error.message : String(error);
 var findStorageObject = (objects, collection, key, userId) => {
   var _a;
@@ -3448,14 +3449,13 @@ var readAuditLogState = (nk) => {
 };
 var writeAuditLogState = (nk, log, version) => {
   nk.storageWrite([
-    {
+    maybeSetStorageVersion({
       collection: TOURNAMENT_AUDIT_COLLECTION,
       key: TOURNAMENT_AUDIT_LOG_KEY,
       value: log,
-      version,
       permissionRead: STORAGE_PERMISSION_NONE,
       permissionWrite: STORAGE_PERMISSION_NONE
-    }
+    }, version)
   ]);
 };
 var buildAuditEntryId = (targetId, timestamp, action) => {
@@ -3484,7 +3484,6 @@ var buildAuditEntry = (ctx, target, action, payloadSummary) => {
   };
 };
 var appendTournamentAuditEntry = (ctx, logger, nk, target, action, payloadSummary) => {
-  var _a;
   const entry = buildAuditEntry(ctx, target, action, payloadSummary);
   try {
     const currentState = readAuditLogState(nk);
@@ -3492,7 +3491,7 @@ var appendTournamentAuditEntry = (ctx, logger, nk, target, action, payloadSummar
       entries: [entry].concat(currentState.log.entries).slice(0, MAX_AUDIT_LOG_ENTRIES),
       updatedAt: entry.timestamp
     };
-    writeAuditLogState(nk, nextLog, (_a = getStorageObjectVersion(currentState.object)) != null ? _a : "");
+    writeAuditLogState(nk, nextLog, getStorageObjectVersion(currentState.object));
   } catch (error) {
     logger.warn("Unable to append tournament audit entry for %s: %s", target.id, getErrorMessage(error));
   }
@@ -3811,14 +3810,13 @@ var readRunsByIds = (nk, runIds) => {
 };
 var writeRun = (nk, run, version) => {
   nk.storageWrite([
-    {
+    maybeSetStorageVersion({
       collection: RUNS_COLLECTION,
       key: run.runId,
       value: run,
-      version,
       permissionRead: STORAGE_PERMISSION_NONE,
       permissionWrite: STORAGE_PERMISSION_NONE
-    }
+    }, version)
   ]);
 };
 var updateRunWithRetry = (nk, logger, runId, updater) => {
@@ -4004,7 +4002,7 @@ var rpcAdminGetTournamentRun = (ctx, logger, nk, payload) => {
 var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
-      var _a, _b, _c, _d, _e, _f;
+      var _a, _b, _c, _d, _e;
       assertAdmin(_ctx, "operator", _nk);
       const parsed = parseJsonPayload(_payload);
       const title = readStringField5(parsed, ["title"]);
@@ -4058,22 +4056,20 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
         };
         try {
           _nk.storageWrite([
-            {
+            maybeSetStorageVersion({
               collection: RUNS_COLLECTION,
               key: run.runId,
               value: run,
-              version: "",
               permissionRead: STORAGE_PERMISSION_NONE,
               permissionWrite: STORAGE_PERMISSION_NONE
-            },
-            {
+            }),
+            maybeSetStorageVersion({
               collection: RUNS_COLLECTION,
               key: RUNS_INDEX_KEY,
               value: nextIndex,
-              version: (_f = getStorageObjectVersion(indexState.object)) != null ? _f : "",
               permissionRead: STORAGE_PERMISSION_NONE,
               permissionWrite: STORAGE_PERMISSION_NONE
-            }
+            }, getStorageObjectVersion(indexState.object))
           ]);
           return JSON.stringify(buildRunResponse(run, null));
         } catch (error) {
@@ -4409,6 +4405,503 @@ var rpcJoinTournament = (ctx, logger, nk, payload) => {
   return JSON.stringify(response);
 };
 
+// backend/modules/tournaments/public.ts
+var TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION = "tournament_run_memberships";
+var TOURNAMENT_MATCH_QUEUE_COLLECTION = "tournament_match_queue";
+var DEFAULT_PUBLIC_LIST_LIMIT = 50;
+var DEFAULT_PUBLIC_STANDINGS_LIMIT = 256;
+var TOURNAMENT_QUEUE_TTL_SECONDS = 300;
+var SYSTEM_USER_ID3 = "00000000-0000-0000-0000-000000000000";
+var RPC_LIST_PUBLIC_TOURNAMENTS = "list_public_tournaments";
+var RPC_GET_PUBLIC_TOURNAMENT = "get_public_tournament";
+var RPC_GET_PUBLIC_TOURNAMENT_STANDINGS = "get_public_tournament_standings";
+var RPC_JOIN_PUBLIC_TOURNAMENT = "join_public_tournament";
+var RPC_LAUNCH_TOURNAMENT_MATCH = "launch_tournament_match";
+var normalizeMembershipRecord = (value, fallbackRunId, fallbackUserId) => {
+  var _a, _b, _c, _d;
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+  const runId = (_a = readStringField5(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
+  const tournamentId = (_b = readStringField5(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
+  const userId = (_c = readStringField5(record, ["userId", "user_id"])) != null ? _c : fallbackUserId;
+  const displayName = readStringField5(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField5(record, ["joinedAt", "joined_at"]);
+  const updatedAt = (_d = readStringField5(record, ["updatedAt", "updated_at"])) != null ? _d : joinedAt;
+  if (!runId || !tournamentId || !userId || !displayName || !joinedAt || !updatedAt) {
+    return null;
+  }
+  return {
+    runId,
+    tournamentId,
+    userId,
+    displayName,
+    joinedAt,
+    updatedAt
+  };
+};
+var normalizeMatchQueueRecord = (value, fallbackRunId) => {
+  var _a, _b, _c, _d;
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+  const runId = (_a = readStringField5(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
+  const tournamentId = (_b = readStringField5(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
+  const matchId = readStringField5(record, ["matchId", "match_id"]);
+  const hostUserId = readStringField5(record, ["hostUserId", "host_user_id"]);
+  const modeId = (_c = readStringField5(record, ["modeId", "mode_id"])) != null ? _c : "standard";
+  const createdAt = readStringField5(record, ["createdAt", "created_at"]);
+  const updatedAt = (_d = readStringField5(record, ["updatedAt", "updated_at"])) != null ? _d : createdAt;
+  const expiresAt = readStringField5(record, ["expiresAt", "expires_at"]);
+  if (!runId || !tournamentId || !matchId || !hostUserId || !createdAt || !updatedAt || !expiresAt) {
+    return null;
+  }
+  return {
+    runId,
+    tournamentId,
+    matchId,
+    hostUserId,
+    modeId,
+    createdAt,
+    updatedAt,
+    expiresAt,
+    claimedByUserId: readStringField5(record, ["claimedByUserId", "claimed_by_user_id"]),
+    claimedAt: readStringField5(record, ["claimedAt", "claimed_at"])
+  };
+};
+var toIsoFromUnixSeconds = (seconds, fallback) => {
+  if (typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0) {
+    return new Date(seconds * 1e3).toISOString();
+  }
+  return fallback;
+};
+var readMetadata = (run) => {
+  var _a;
+  return (_a = asRecord(run.metadata)) != null ? _a : {};
+};
+var formatPrizeLabel = (metadata) => {
+  var _a;
+  const explicitPrize = readStringField5(metadata, ["prizePool", "prize_pool", "prizeLabel", "prize_label"]);
+  if (explicitPrize) {
+    return explicitPrize;
+  }
+  const buyIn = (_a = readStringField5(metadata, ["buyIn", "buy_in"])) != null ? _a : "Free";
+  return buyIn === "Free" ? "No prize listed" : `${buyIn} buy-in`;
+};
+var buildMembershipState = (membership) => {
+  var _a;
+  return {
+    isJoined: Boolean(membership),
+    joinedAt: (_a = membership == null ? void 0 : membership.joinedAt) != null ? _a : null
+  };
+};
+var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
+  var _a, _b, _c, _d, _e, _f, _g, _h;
+  const metadata = readMetadata(run);
+  const createdAt = run.createdAt;
+  return {
+    runId: run.runId,
+    tournamentId: run.tournamentId,
+    name: run.title,
+    description: run.description || "No description configured.",
+    lifecycle: run.lifecycle,
+    startAt: (_b = toIsoFromUnixSeconds(
+      (_a = readNumberField3(nakamaTournament, ["startTime", "start_time"])) != null ? _a : run.startTime,
+      createdAt
+    )) != null ? _b : createdAt,
+    endAt: toIsoFromUnixSeconds(
+      (_c = readNumberField3(nakamaTournament, ["endTime", "end_time"])) != null ? _c : run.endTime,
+      null
+    ),
+    updatedAt: run.updatedAt,
+    entrants: Math.max(0, Math.floor((_d = readNumberField3(nakamaTournament, ["size"])) != null ? _d : 0)),
+    maxEntrants: Math.max(
+      0,
+      Math.floor((_e = readNumberField3(nakamaTournament, ["maxSize", "max_size"])) != null ? _e : run.maxSize)
+    ),
+    gameMode: (_f = readStringField5(metadata, ["gameMode", "game_mode"])) != null ? _f : "standard",
+    region: (_g = readStringField5(metadata, ["region"])) != null ? _g : "Global",
+    buyInLabel: (_h = readStringField5(metadata, ["buyIn", "buy_in"])) != null ? _h : "Free",
+    prizeLabel: formatPrizeLabel(metadata),
+    membership: buildMembershipState(membership)
+  };
+};
+var comparePublicTournamentOrder = (left, right) => {
+  const nowMs = Date.now();
+  const leftStartMs = Date.parse(left.startAt);
+  const rightStartMs = Date.parse(right.startAt);
+  const leftStarted = Number.isFinite(leftStartMs) && leftStartMs <= nowMs;
+  const rightStarted = Number.isFinite(rightStartMs) && rightStartMs <= nowMs;
+  if (leftStarted !== rightStarted) {
+    return leftStarted ? -1 : 1;
+  }
+  if (leftStarted && rightStarted) {
+    if (leftStartMs !== rightStartMs) {
+      return rightStartMs - leftStartMs;
+    }
+  } else if (leftStartMs !== rightStartMs) {
+    return leftStartMs - rightStartMs;
+  }
+  const updatedCompare = right.updatedAt.localeCompare(left.updatedAt);
+  if (updatedCompare !== 0) {
+    return updatedCompare;
+  }
+  return left.runId.localeCompare(right.runId);
+};
+var assertPublicRunVisible = (run) => {
+  if (run.lifecycle !== "open") {
+    throw new Error("This tournament is not available in public play.");
+  }
+};
+var readMembershipObject = (nk, runId, userId) => {
+  const objects = nk.storageRead([
+    {
+      collection: TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION,
+      key: runId,
+      userId
+    }
+  ]);
+  return findStorageObject(objects, TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION, runId, userId);
+};
+var readMembership = (nk, runId, userId) => {
+  var _a, _b;
+  return normalizeMembershipRecord((_b = (_a = readMembershipObject(nk, runId, userId)) == null ? void 0 : _a.value) != null ? _b : null, runId, userId);
+};
+var readMembershipsByRunId = (nk, runIds, userId) => {
+  const filteredRunIds = Array.from(new Set(runIds.filter((runId) => runId.trim().length > 0)));
+  if (filteredRunIds.length === 0) {
+    return {};
+  }
+  const objects = nk.storageRead(
+    filteredRunIds.map((runId) => ({
+      collection: TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION,
+      key: runId,
+      userId
+    }))
+  );
+  return filteredRunIds.reduce(
+    (accumulator, runId) => {
+      var _a;
+      const object = findStorageObject(objects, TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION, runId, userId);
+      accumulator[runId] = normalizeMembershipRecord((_a = object == null ? void 0 : object.value) != null ? _a : null, runId, userId);
+      return accumulator;
+    },
+    {}
+  );
+};
+var writeMembership = (nk, run, userId, displayName) => {
+  var _a, _b;
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const existingObject = readMembershipObject(nk, run.runId, userId);
+    const existing = normalizeMembershipRecord((_a = existingObject == null ? void 0 : existingObject.value) != null ? _a : null, run.runId, userId);
+    const joinedAt = (_b = existing == null ? void 0 : existing.joinedAt) != null ? _b : (/* @__PURE__ */ new Date()).toISOString();
+    const record = {
+      runId: run.runId,
+      tournamentId: run.tournamentId,
+      userId,
+      displayName,
+      joinedAt,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    try {
+      nk.storageWrite([
+        maybeSetStorageVersion({
+          collection: TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION,
+          key: run.runId,
+          userId,
+          value: record,
+          permissionRead: STORAGE_PERMISSION_NONE,
+          permissionWrite: STORAGE_PERMISSION_NONE
+        }, getStorageObjectVersion(existingObject))
+      ]);
+      return record;
+    } catch (error) {
+      if (attempt === MAX_WRITE_ATTEMPTS) {
+        throw error;
+      }
+    }
+  }
+  throw new Error(`Unable to store membership for tournament '${run.runId}'.`);
+};
+var readQueueState = (nk, runId) => {
+  var _a;
+  const objects = nk.storageRead([
+    {
+      collection: TOURNAMENT_MATCH_QUEUE_COLLECTION,
+      key: runId,
+      userId: SYSTEM_USER_ID3
+    }
+  ]);
+  const object = findStorageObject(objects, TOURNAMENT_MATCH_QUEUE_COLLECTION, runId, SYSTEM_USER_ID3);
+  return {
+    object,
+    queue: normalizeMatchQueueRecord((_a = object == null ? void 0 : object.value) != null ? _a : null, runId)
+  };
+};
+var isQueueExpired = (queue, nowMs = Date.now()) => {
+  if (!queue) {
+    return true;
+  }
+  const expiresAtMs = Date.parse(queue.expiresAt);
+  return !Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs;
+};
+var listPublicRuns = (nk) => {
+  const indexState = readRunIndexState(nk);
+  return readRunsByIds(nk, indexState.index.runIds).filter((run) => run.lifecycle === "open");
+};
+var rpcListPublicTournaments = (ctx, _logger, nk, payload) => {
+  const userId = requireAuthenticatedUserId(ctx);
+  const parsed = parseJsonPayload(payload);
+  const limit = clampInteger(parsed.limit, DEFAULT_PUBLIC_LIST_LIMIT, 1, 100);
+  const runs = listPublicRuns(nk);
+  const tournamentsById = getNakamaTournamentsById(
+    nk,
+    runs.map((run) => run.tournamentId)
+  );
+  const membershipsByRunId = readMembershipsByRunId(
+    nk,
+    runs.map((run) => run.runId),
+    userId
+  );
+  const tournaments = runs.map(
+    (run) => {
+      var _a, _b;
+      return buildPublicTournamentResponse(
+        run,
+        (_a = tournamentsById[run.tournamentId]) != null ? _a : null,
+        (_b = membershipsByRunId[run.runId]) != null ? _b : null
+      );
+    }
+  ).sort(comparePublicTournamentOrder).slice(0, limit);
+  return JSON.stringify({
+    ok: true,
+    tournaments,
+    totalCount: runs.length
+  });
+};
+var rpcGetPublicTournament = (ctx, _logger, nk, payload) => {
+  const userId = requireAuthenticatedUserId(ctx);
+  const parsed = parseJsonPayload(payload);
+  const runId = readStringField5(parsed, ["runId", "run_id", "tournamentRunId", "tournament_run_id", "tournamentId", "tournament_id"]);
+  if (!runId) {
+    throw new Error("runId is required.");
+  }
+  const run = readRunOrThrow(nk, runId);
+  assertPublicRunVisible(run);
+  return JSON.stringify({
+    ok: true,
+    tournament: buildPublicTournamentResponse(
+      run,
+      getNakamaTournamentById(nk, run.tournamentId),
+      readMembership(nk, run.runId, userId)
+    )
+  });
+};
+var rpcGetPublicTournamentStandings = (ctx, _logger, nk, payload) => {
+  var _a;
+  requireAuthenticatedUserId(ctx);
+  const parsed = parseJsonPayload(payload);
+  const runId = readStringField5(parsed, ["runId", "run_id", "tournamentRunId", "tournament_run_id", "tournamentId", "tournament_id"]);
+  if (!runId) {
+    throw new Error("runId is required.");
+  }
+  const run = readRunOrThrow(nk, runId);
+  assertPublicRunVisible(run);
+  const limit = clampInteger(
+    (_a = parsed.limit) != null ? _a : run.maxSize,
+    Math.max(DEFAULT_PUBLIC_STANDINGS_LIMIT, run.maxSize),
+    1,
+    MAX_STANDINGS_LIMIT
+  );
+  const standings = buildStandingsSnapshot(nk, run.tournamentId, limit, 0);
+  return JSON.stringify({
+    ok: true,
+    tournamentRunId: run.runId,
+    tournamentId: run.tournamentId,
+    standings
+  });
+};
+var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
+  var _a, _b;
+  const userId = requireAuthenticatedUserId(ctx);
+  requireCompletedUsernameOnboarding(nk, userId);
+  const parsed = parseJsonPayload(payload);
+  const runId = readStringField5(parsed, ["runId", "run_id", "tournamentRunId", "tournament_run_id", "tournamentId", "tournament_id"]);
+  if (!runId) {
+    throw new Error("runId is required.");
+  }
+  const run = readRunOrThrow(nk, runId);
+  assertPublicRunVisible(run);
+  const existingMembership = readMembership(nk, run.runId, userId);
+  const displayName = getActorLabel(ctx);
+  let joined = false;
+  if (!existingMembership) {
+    const nakamaTournamentBeforeJoin = getNakamaTournamentById(nk, run.tournamentId);
+    const entrantsBeforeJoin = Math.max(0, Math.floor((_a = readNumberField3(nakamaTournamentBeforeJoin, ["size"])) != null ? _a : 0));
+    const maxEntrants = Math.max(
+      0,
+      Math.floor((_b = readNumberField3(nakamaTournamentBeforeJoin, ["maxSize", "max_size"])) != null ? _b : run.maxSize)
+    );
+    if (maxEntrants > 0 && entrantsBeforeJoin >= maxEntrants) {
+      throw new Error("This tournament is already full.");
+    }
+    nk.tournamentJoin(run.tournamentId, userId, displayName);
+    writeMembership(nk, run, userId, displayName);
+    joined = true;
+    appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.public_joined", {
+      joinedUserId: userId,
+      displayName
+    });
+  }
+  return JSON.stringify({
+    ok: true,
+    joined,
+    tournament: buildPublicTournamentResponse(
+      run,
+      getNakamaTournamentById(nk, run.tournamentId),
+      readMembership(nk, run.runId, userId)
+    )
+  });
+};
+var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
+  var _a;
+  const userId = requireAuthenticatedUserId(ctx);
+  requireCompletedUsernameOnboarding(nk, userId);
+  const parsed = parseJsonPayload(payload);
+  const runId = readStringField5(parsed, ["runId", "run_id", "tournamentRunId", "tournament_run_id", "tournamentId", "tournament_id"]);
+  if (!runId) {
+    throw new Error("runId is required.");
+  }
+  const run = readRunOrThrow(nk, runId);
+  assertPublicRunVisible(run);
+  const membership = readMembership(nk, run.runId, userId);
+  if (!membership) {
+    throw new Error("Join this tournament before launching a match.");
+  }
+  const nowMs = Date.now();
+  const startAtMs = run.startTime > 0 ? run.startTime * 1e3 : 0;
+  if (startAtMs > nowMs) {
+    throw new Error("This tournament has not started yet.");
+  }
+  const metadata = readMetadata(run);
+  const modeId = (_a = readStringField5(metadata, ["gameMode", "game_mode"])) != null ? _a : "standard";
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const queueState = readQueueState(nk, run.runId);
+    const activeQueue = queueState.queue && !queueState.queue.claimedByUserId && !isQueueExpired(queueState.queue, nowMs) ? queueState.queue : null;
+    if (activeQueue && activeQueue.hostUserId === userId) {
+      return JSON.stringify({
+        ok: true,
+        matchId: activeQueue.matchId,
+        matchToken: null,
+        tournamentRunId: run.runId,
+        tournamentId: run.tournamentId
+      });
+    }
+    if (activeQueue && activeQueue.hostUserId !== userId) {
+      const claimedQueue = __spreadProps(__spreadValues({}, activeQueue), {
+        updatedAt: new Date(nowMs).toISOString(),
+        claimedByUserId: userId,
+        claimedAt: new Date(nowMs).toISOString()
+      });
+      try {
+        nk.storageWrite([
+          maybeSetStorageVersion({
+            collection: TOURNAMENT_MATCH_QUEUE_COLLECTION,
+            key: run.runId,
+            userId: SYSTEM_USER_ID3,
+            value: claimedQueue,
+            permissionRead: STORAGE_PERMISSION_NONE,
+            permissionWrite: STORAGE_PERMISSION_NONE
+          }, getStorageObjectVersion(queueState.object))
+        ]);
+        appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.match_launch.claimed", {
+          matchId: activeQueue.matchId,
+          hostUserId: activeQueue.hostUserId,
+          guestUserId: userId
+        });
+        return JSON.stringify({
+          ok: true,
+          matchId: activeQueue.matchId,
+          matchToken: null,
+          tournamentRunId: run.runId,
+          tournamentId: run.tournamentId
+        });
+      } catch (error) {
+        if (attempt === MAX_WRITE_ATTEMPTS) {
+          throw error;
+        }
+        logger.warn(
+          "Retrying tournament queue claim for %s after storage conflict: %s",
+          run.runId,
+          getErrorMessage(error)
+        );
+        continue;
+      }
+    }
+    const createdAt = new Date(nowMs).toISOString();
+    const expiresAt = new Date(nowMs + TOURNAMENT_QUEUE_TTL_SECONDS * 1e3).toISOString();
+    const matchId = nk.matchCreate("authoritative_match", {
+      playerIds: [userId],
+      modeId,
+      rankedMatch: true,
+      casualMatch: false,
+      botMatch: false,
+      privateMatch: false,
+      winRewardSource: "pvp_win",
+      allowsChallengeRewards: true,
+      tournamentRunId: run.runId,
+      tournamentId: run.tournamentId
+    });
+    const nextQueue = {
+      runId: run.runId,
+      tournamentId: run.tournamentId,
+      matchId,
+      hostUserId: userId,
+      modeId,
+      createdAt,
+      updatedAt: createdAt,
+      expiresAt,
+      claimedByUserId: null,
+      claimedAt: null
+    };
+    try {
+      nk.storageWrite([
+        maybeSetStorageVersion({
+          collection: TOURNAMENT_MATCH_QUEUE_COLLECTION,
+          key: run.runId,
+          userId: SYSTEM_USER_ID3,
+          value: nextQueue,
+          permissionRead: STORAGE_PERMISSION_NONE,
+          permissionWrite: STORAGE_PERMISSION_NONE
+        }, getStorageObjectVersion(queueState.object))
+      ]);
+      appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.match_launch.created", {
+        matchId,
+        hostUserId: userId
+      });
+      return JSON.stringify({
+        ok: true,
+        matchId,
+        matchToken: null,
+        tournamentRunId: run.runId,
+        tournamentId: run.tournamentId
+      });
+    } catch (error) {
+      if (attempt === MAX_WRITE_ATTEMPTS) {
+        throw error;
+      }
+      logger.warn(
+        "Retrying tournament queue create for %s after storage conflict: %s",
+        run.runId,
+        getErrorMessage(error)
+      );
+    }
+  }
+  throw new Error("Unable to launch a tournament match right now.");
+};
+
 // backend/modules/tournaments/matchResults.ts
 var TOURNAMENT_RUNS_COLLECTION = "tournament_runs";
 var TOURNAMENT_MATCH_RESULTS_COLLECTION = "tournament_match_results";
@@ -4617,18 +5110,17 @@ var submitTournamentScores = (nk, run, completion, usernames) => {
 };
 var writeTournamentMatchResultRecord = (nk, record) => {
   nk.storageWrite([
-    {
+    maybeSetStorageVersion({
       collection: TOURNAMENT_MATCH_RESULTS_COLLECTION,
       key: record.resultId,
       value: record,
-      version: "",
       permissionRead: STORAGE_PERMISSION_NONE,
       permissionWrite: STORAGE_PERMISSION_NONE
-    }
+    })
   ]);
 };
 var updateTournamentRunMetadata = (nk, logger, runId, result) => {
-  var _a, _b, _c;
+  var _a, _b;
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const currentState = readTournamentRunState(nk, runId);
     if (!currentState.object || !currentState.value) {
@@ -4654,14 +5146,13 @@ var updateTournamentRunMetadata = (nk, logger, runId, result) => {
     });
     try {
       nk.storageWrite([
-        {
+        maybeSetStorageVersion({
           collection: TOURNAMENT_RUNS_COLLECTION,
           key: runId,
           value: nextValue,
-          version: (_c = getStorageObjectVersion(currentState.object)) != null ? _c : "",
           permissionRead: STORAGE_PERMISSION_NONE,
           permissionWrite: STORAGE_PERMISSION_NONE
-        }
+        }, getStorageObjectVersion(currentState.object))
       ]);
       return;
     } catch (error) {
@@ -4801,7 +5292,7 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
 var TICK_RATE = 10;
 var MAX_PLAYERS = 2;
 var ONLINE_TTL_MS = 3e4;
-var SYSTEM_USER_ID3 = "00000000-0000-0000-0000-000000000000";
+var SYSTEM_USER_ID4 = "00000000-0000-0000-0000-000000000000";
 var RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 var RPC_GET_PROGRESSION_NAME = RPC_GET_PROGRESSION;
 var RPC_GET_USER_XP_PROGRESS_NAME = RPC_GET_USER_XP_PROGRESS;
@@ -5026,10 +5517,10 @@ var readPrivateMatchCodeObject = (nk, code) => {
     {
       collection: PRIVATE_MATCH_CODE_COLLECTION,
       key: normalizedCode,
-      userId: SYSTEM_USER_ID3
+      userId: SYSTEM_USER_ID4
     }
   ]);
-  const object = findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode, SYSTEM_USER_ID3);
+  const object = findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode, SYSTEM_USER_ID4);
   return {
     object,
     record: normalizePrivateMatchCodeRecord(object == null ? void 0 : object.value)
@@ -5286,6 +5777,11 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_STANDINGS, rpcAdminGetTournamentStandings);
   initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG, rpcAdminGetTournamentAuditLog);
   initializer.registerRpc(RPC_TOURNAMENT_JOIN, rpcJoinTournament);
+  initializer.registerRpc(RPC_LIST_PUBLIC_TOURNAMENTS, rpcListPublicTournaments);
+  initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT, rpcGetPublicTournament);
+  initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT_STANDINGS, rpcGetPublicTournamentStandings);
+  initializer.registerRpc(RPC_JOIN_PUBLIC_TOURNAMENT, rpcJoinPublicTournament);
+  initializer.registerRpc(RPC_LAUNCH_TOURNAMENT_MATCH, rpcLaunchTournamentMatch);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,

@@ -28,6 +28,7 @@ import {
   findStorageObject,
   getErrorMessage,
   getStorageObjectVersion,
+  maybeSetStorageVersion,
 } from "../progression";
 
 const TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION = "tournament_run_memberships";
@@ -307,15 +308,14 @@ const writeMembership = (
 
     try {
       nk.storageWrite([
-        {
+        maybeSetStorageVersion({
           collection: TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION,
           key: run.runId,
           userId,
           value: record,
-          version: getStorageObjectVersion(existingObject) ?? "",
           permissionRead: STORAGE_PERMISSION_NONE,
           permissionWrite: STORAGE_PERMISSION_NONE,
-        },
+        }, getStorageObjectVersion(existingObject)),
       ]);
 
       return record;
@@ -572,15 +572,14 @@ export const rpcLaunchTournamentMatch = (
 
       try {
         nk.storageWrite([
-          {
+          maybeSetStorageVersion({
             collection: TOURNAMENT_MATCH_QUEUE_COLLECTION,
             key: run.runId,
             userId: SYSTEM_USER_ID,
             value: claimedQueue,
-            version: getStorageObjectVersion(queueState.object) ?? "",
             permissionRead: STORAGE_PERMISSION_NONE,
             permissionWrite: STORAGE_PERMISSION_NONE,
-          },
+          }, getStorageObjectVersion(queueState.object)),
         ]);
 
         appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.match_launch.claimed", {
@@ -639,15 +638,14 @@ export const rpcLaunchTournamentMatch = (
 
     try {
       nk.storageWrite([
-        {
+        maybeSetStorageVersion({
           collection: TOURNAMENT_MATCH_QUEUE_COLLECTION,
           key: run.runId,
           userId: SYSTEM_USER_ID,
           value: nextQueue,
-          version: getStorageObjectVersion(queueState.object) ?? "",
           permissionRead: STORAGE_PERMISSION_NONE,
           permissionWrite: STORAGE_PERMISSION_NONE,
-        },
+        }, getStorageObjectVersion(queueState.object)),
       ]);
 
       appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.match_launch.created", {
@@ -677,4 +675,3 @@ export const rpcLaunchTournamentMatch = (
 
   throw new Error("Unable to launch a tournament match right now.");
 };
-

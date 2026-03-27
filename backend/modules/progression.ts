@@ -116,6 +116,12 @@ export const getStorageObjectValue = (object: RuntimeStorageObject | null): unkn
 export const getStorageObjectVersion = (object: RuntimeStorageObject | null): string | null =>
   readStringField(object, ["version"]);
 
+export const maybeSetStorageVersion = <T extends RuntimeRecord>(
+  write: T,
+  version: string | null | undefined
+): T & { version?: string } =>
+  typeof version === "string" && version.length > 0 ? { ...write, version } : write;
+
 export const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 

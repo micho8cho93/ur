@@ -8,6 +8,7 @@ import {
   findStorageObject,
   getErrorMessage,
   getStorageObjectVersion,
+  maybeSetStorageVersion,
 } from "../progression";
 import { readNumberField, readStringField } from "./definitions";
 import type { RuntimeLogger, RuntimeMetadata, RuntimeNakama } from "./types";
@@ -382,14 +383,13 @@ const writeTournamentMatchResultRecord = (
   record: TournamentMatchResultRecord,
 ): void => {
   nk.storageWrite([
-    {
+    maybeSetStorageVersion({
       collection: TOURNAMENT_MATCH_RESULTS_COLLECTION,
       key: record.resultId,
       value: record,
-      version: "",
       permissionRead: STORAGE_PERMISSION_NONE,
       permissionWrite: STORAGE_PERMISSION_NONE,
-    },
+    }),
   ]);
 };
 
@@ -428,14 +428,13 @@ const updateTournamentRunMetadata = (
 
     try {
       nk.storageWrite([
-        {
+        maybeSetStorageVersion({
           collection: TOURNAMENT_RUNS_COLLECTION,
           key: runId,
           value: nextValue,
-          version: getStorageObjectVersion(currentState.object) ?? "",
           permissionRead: STORAGE_PERMISSION_NONE,
           permissionWrite: STORAGE_PERMISSION_NONE,
-        },
+        }, getStorageObjectVersion(currentState.object)),
       ]);
       return;
     } catch (error) {
