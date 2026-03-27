@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
-import { listTournaments } from '../api/tournaments'
+import { listTournaments, openTournament } from '../api/tournaments'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
 import type { Tournament } from '../types/tournament'
@@ -17,6 +17,7 @@ export function TournamentsPage() {
   const { sessionToken } = useSession()
   const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [openingRunId, setOpeningRunId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -56,6 +57,24 @@ export function TournamentsPage() {
     }
   }, [sessionToken])
 
+  async function handleOpenTournament(runId: string) {
+    setError(null)
+    setOpeningRunId(runId)
+
+    try {
+      const openedTournament = await openTournament(runId)
+      setTournaments((current) =>
+        current.map((tournament) => (tournament.id === runId ? openedTournament : tournament)),
+      )
+    } catch (openError) {
+      const message =
+        openError instanceof Error ? openError.message : 'Unable to open tournament.'
+      setError(message)
+    } finally {
+      setOpeningRunId((current) => (current === runId ? null : current))
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -94,7 +113,7 @@ export function TournamentsPage() {
                   <th>Start</th>
                   <th>Entries</th>
                   <th>Region</th>
-                  <th>Open</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -116,7 +135,21 @@ export function TournamentsPage() {
                     </td>
                     <td>{tournament.region}</td>
                     <td>
-                      <Link to={`/tournaments/${tournament.id}`}>Details</Link>
+                      <div className="table__actions">
+                        <Link to={`/tournaments/${tournament.id}`}>Details</Link>
+                        {tournament.status === 'Draft' ? (
+                          <button
+                            className="button button--primary"
+                            type="button"
+                            disabled={openingRunId === tournament.id}
+                            onClick={() => {
+                              void handleOpenTournament(tournament.id)
+                            }}
+                          >
+                            {openingRunId === tournament.id ? 'Opening...' : 'Open'}
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}

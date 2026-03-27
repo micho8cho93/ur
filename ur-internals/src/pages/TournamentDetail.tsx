@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { getTournamentAuditLog } from '../api/auditLog'
-import { getTournament, getTournamentStandings } from '../api/tournaments'
+import { getTournament, getTournamentStandings, openTournament } from '../api/tournaments'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
 import type { AuditLogEntry } from '../types/audit'
@@ -42,6 +42,7 @@ export function TournamentDetailPage() {
   const [standings, setStandings] = useState<TournamentStandings>(emptyStandings)
   const [auditEntries, setAuditEntries] = useState<AuditLogEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isOpening, setIsOpening] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -107,6 +108,33 @@ export function TournamentDetailPage() {
     }
   }, [sessionToken, tournamentId])
 
+  async function handleOpenTournament() {
+    if (!tournament) {
+      return
+    }
+
+    setError(null)
+    setIsOpening(true)
+
+    try {
+      const openedTournament = await openTournament(tournament.id)
+      const [nextStandings, nextAuditLog] = await Promise.all([
+        getTournamentStandings(openedTournament.id, 100),
+        getTournamentAuditLog(openedTournament.id, 50),
+      ])
+
+      setTournament(openedTournament)
+      setStandings(nextStandings)
+      setAuditEntries(nextAuditLog)
+    } catch (openError) {
+      const message =
+        openError instanceof Error ? openError.message : 'Unable to open tournament.'
+      setError(message)
+    } finally {
+      setIsOpening(false)
+    }
+  }
+
   if (isLoading) {
     return <div className="empty-state">Loading tournament detail...</div>
   }
@@ -139,9 +167,23 @@ export function TournamentDetailPage() {
         title={tournament.name}
         description="Run configuration, standings records, and audit trail for a single tournament run."
         actions={
-          <Link to="/tournaments" className="button">
-            Back to tournaments
-          </Link>
+          <div className="page-header__actions">
+            {tournament.status === 'Draft' ? (
+              <button
+                className="button button--primary"
+                type="button"
+                disabled={isOpening}
+                onClick={() => {
+                  void handleOpenTournament()
+                }}
+              >
+                {isOpening ? 'Opening...' : 'Open tournament'}
+              </button>
+            ) : null}
+            <Link to="/tournaments" className="button">
+              Back to tournaments
+            </Link>
+          </div>
         }
       />
 
@@ -224,7 +266,7 @@ export function TournamentDetailPage() {
           {standings.entries.length === 0 ? (
             <div className="empty-state">
               {tournament.status === 'Draft'
-                ? 'Standings are available after the run is opened and begins recording scores.'
+                ? 'Draft runs stay hidden from public players until you open the tournament.'
                 : 'No standings entries returned for this run.'}
             </div>
           ) : (

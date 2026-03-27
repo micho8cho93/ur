@@ -312,6 +312,14 @@ button {
   gap: 18px;
 }
 
+.page-header__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .page-header h2 {
   margin: 6px 0 0;
   font-size: clamp(1.8rem, 2vw, 2.35rem);
@@ -465,6 +473,14 @@ button {
 .table td:last-child,
 .table th:last-child {
   text-align: right;
+}
+
+.table__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .status-badge {

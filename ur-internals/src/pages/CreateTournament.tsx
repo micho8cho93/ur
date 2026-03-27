@@ -121,7 +121,7 @@ export function CreateTournamentPage() {
       <PageHeader
         eyebrow="CreateTournament"
         title="Create a tournament run"
-        description="Submits directly to the Nakama admin create-run RPC and stores metadata for game mode, region, and buy-in."
+        description="Creates a draft tournament run in Nakama. Drafts stay hidden from public players until you open them from the admin dashboard."
         actions={
           <Link to="/tournaments" className="button">
             Cancel
@@ -282,7 +282,7 @@ export function CreateTournamentPage() {
               {isSaving ? 'Creating...' : 'Create tournament'}
             </button>
             <span className="muted">
-              Runs are created in draft mode and use incremental scoring for match-based standings.
+              After creation, open the run from internals to make it visible on `urgame.live`.
             </span>
           </div>
         </form>
