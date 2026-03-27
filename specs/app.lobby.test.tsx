@@ -3,17 +3,24 @@ import React from 'react';
 import Lobby from '@/app/(game)/lobby';
 
 const mockUseMatchmaking = jest.fn();
+const mockUseTournamentList = jest.fn();
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 const mockJoinPrivateMatchByCode = jest.fn();
 
 jest.mock('@/hooks/useMatchmaking', () => ({
   useMatchmaking: (...args: unknown[]) => mockUseMatchmaking(...args),
 }));
 
+jest.mock('@/src/tournaments/useTournamentList', () => ({
+  useTournamentList: (...args: unknown[]) => mockUseTournamentList(...args),
+}));
+
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ mode: 'online' }),
   useRouter: () => ({
     replace: mockReplace,
+    push: mockPush,
   }),
 }));
 
@@ -64,6 +71,36 @@ describe('Lobby private game join input', () => {
       pendingPrivateMode: null,
       createdPrivateMatch: null,
     });
+    mockUseTournamentList.mockReturnValue({
+      tournaments: [
+        {
+          runId: 'spring-open',
+          tournamentId: 'spring-open',
+          name: 'Spring Open',
+          description: 'A live public bracket with full standings.',
+          lifecycle: 'open',
+          startAt: '2026-03-27T10:00:00.000Z',
+          endAt: null,
+          updatedAt: '2026-03-27T10:00:00.000Z',
+          entrants: 8,
+          maxEntrants: 16,
+          gameMode: 'standard',
+          region: 'Global',
+          buyInLabel: 'Free',
+          prizeLabel: 'No prize listed',
+          membership: {
+            isJoined: false,
+            joinedAt: null,
+          },
+        },
+      ],
+      isLoading: false,
+      errorMessage: null,
+      joinTournament: jest.fn(),
+      launchMatch: jest.fn(),
+      joiningRunId: null,
+      launchingRunId: null,
+    });
   });
 
   it('accepts a private code and joins with the normalized value', () => {
@@ -93,5 +130,15 @@ describe('Lobby private game join input', () => {
       view.queryByText('Choose a ruleset, generate a short code, and invite a friend. Private wins award reduced XP.'),
     ).toBeNull();
     expect(view.queryByText('Enter the short code your friend shared with you.')).toBeNull();
+  });
+
+  it('renders featured tournaments above the existing matchmaking cards', () => {
+    const view = render(<Lobby />);
+
+    expect(view.getByText('Featured Tournaments')).toBeTruthy();
+    expect(view.getByText('Spring Open')).toBeTruthy();
+    expect(view.getAllByText('Find Opponent').length).toBeGreaterThan(0);
+    expect(view.getByText('Create Private Game')).toBeTruthy();
+    expect(view.getByText('Enter Private Game Code')).toBeTruthy();
   });
 });

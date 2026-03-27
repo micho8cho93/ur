@@ -1,3 +1,4 @@
+import { TournamentCard } from '@/components/tournaments/TournamentCard';
 import { XpRewardBadge } from '@/components/progression/XpRewardBadge';
 import { Button } from '@/components/ui/Button';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
@@ -8,6 +9,7 @@ import { LobbyMode, useMatchmaking } from '@/hooks/useMatchmaking';
 import { PRIVATE_MATCH_OPTIONS } from '@/logic/matchConfigs';
 import { getXpAwardAmount } from '@/shared/progression';
 import { PRIVATE_MATCH_CODE_LENGTH, isPrivateMatchCode, normalizePrivateMatchCodeInput } from '@/shared/privateMatchCode';
+import { useTournamentList } from '@/src/tournaments/useTournamentList';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -45,6 +47,15 @@ export default function Lobby() {
     pendingPrivateMode,
     createdPrivateMatch,
   } = useMatchmaking(mode);
+  const {
+    tournaments: featuredTournaments,
+    isLoading: isLoadingFeaturedTournaments,
+    errorMessage: tournamentErrorMessage,
+    joinTournament,
+    launchMatch,
+    joiningRunId,
+    launchingRunId,
+  } = useTournamentList({ featured: true, limit: 12 });
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
 
@@ -211,6 +222,72 @@ export default function Lobby() {
               <Text style={styles.errorBannerText}>{errorMessage}</Text>
             </View>
           ) : null}
+        </View>
+
+        <View style={styles.featuredSection}>
+          <View style={styles.featuredHeader}>
+            <View style={styles.featuredHeaderCopy}>
+              <Text style={styles.featuredEyebrow}>Featured Tournaments</Text>
+              <Text style={styles.featuredTitle}>Open runs ready for public play</Text>
+              <Text style={styles.featuredSubtitle}>
+                Inspect the standings before you commit, then join or launch a tournament match without disturbing the usual public and private queue flows.
+              </Text>
+            </View>
+            <Button
+              title="See all tournaments"
+              variant="outline"
+              style={styles.featuredHeaderButton}
+              onPress={() => router.push('/tournaments' as never)}
+            />
+          </View>
+
+          {tournamentErrorMessage ? (
+            <View style={styles.featuredErrorBanner}>
+              <Text style={styles.errorBannerText}>{tournamentErrorMessage}</Text>
+            </View>
+          ) : null}
+
+          {isLoadingFeaturedTournaments ? (
+            <View style={styles.featuredEmptyState}>
+              <Text style={styles.featuredEmptyTitle}>Loading featured tournaments...</Text>
+              <Text style={styles.featuredEmptyText}>Checking the current public runs from the tournament archive.</Text>
+            </View>
+          ) : featuredTournaments.length === 0 ? (
+            <View style={styles.featuredEmptyState}>
+              <Text style={styles.featuredEmptyTitle}>No featured tournaments yet</Text>
+              <Text style={styles.featuredEmptyText}>
+                Public tournament runs will appear here as soon as operators open them for play.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.featuredGrid}>
+              {featuredTournaments.map((tournament) => (
+                <View key={tournament.runId} style={styles.featuredCardCell}>
+                  <TournamentCard
+                    tournament={tournament}
+                    joining={joiningRunId === tournament.runId}
+                    launching={launchingRunId === tournament.runId}
+                    onJoin={(selected) => {
+                      void joinTournament(selected.runId);
+                    }}
+                    onLaunch={(selected) => {
+                      void launchMatch(selected);
+                    }}
+                    onViewStandings={(selected) => {
+                      router.push(
+                        {
+                          pathname: '/tournaments/[runId]',
+                          params: {
+                            runId: selected.runId,
+                          },
+                        } as never,
+                      );
+                    }}
+                  />
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         <View style={styles.cardGrid}>
@@ -415,6 +492,85 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: urTheme.spacing.md,
+  },
+  featuredSection: {
+    width: '100%',
+    maxWidth: 1080,
+    marginBottom: urTheme.spacing.lg,
+    gap: urTheme.spacing.md,
+  },
+  featuredHeader: {
+    gap: urTheme.spacing.md,
+  },
+  featuredHeaderCopy: {
+    gap: 4,
+  },
+  featuredEyebrow: {
+    ...urTypography.label,
+    color: urTheme.colors.goldBright,
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  featuredTitle: {
+    ...urTypography.title,
+    color: urTheme.colors.parchment,
+    fontSize: 28,
+    lineHeight: 32,
+    textAlign: 'center',
+  },
+  featuredSubtitle: {
+    color: 'rgba(238, 223, 197, 0.82)',
+    textAlign: 'center',
+    lineHeight: 21,
+    maxWidth: 840,
+    alignSelf: 'center',
+  },
+  featuredHeaderButton: {
+    alignSelf: 'center',
+  },
+  featuredErrorBanner: {
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.sm,
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(246, 170, 162, 0.4)',
+    backgroundColor: 'rgba(80, 22, 18, 0.54)',
+  },
+  featuredGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: urTheme.spacing.md,
+  },
+  featuredCardCell: {
+    flexBasis: 320,
+    flexGrow: 1,
+  },
+  featuredEmptyState: {
+    borderRadius: urTheme.radii.lg,
+    borderWidth: 1.4,
+    borderColor: 'rgba(217, 164, 65, 0.74)',
+    padding: urTheme.spacing.lg,
+    backgroundColor: 'rgba(13, 15, 18, 0.56)',
+    alignItems: 'center',
+    ...boxShadow({
+      color: '#000',
+      opacity: 0.22,
+      offset: { width: 0, height: 8 },
+      blurRadius: 12,
+      elevation: 6,
+    }),
+  },
+  featuredEmptyTitle: {
+    ...urTypography.title,
+    color: urTheme.colors.parchment,
+    fontSize: 24,
+    textAlign: 'center',
+    marginBottom: urTheme.spacing.xs,
+  },
+  featuredEmptyText: {
+    color: 'rgba(238, 223, 197, 0.8)',
+    textAlign: 'center',
+    lineHeight: 21,
   },
   card: {
     width: '100%',

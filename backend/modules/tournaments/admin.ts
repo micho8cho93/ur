@@ -21,9 +21,9 @@ import type { RuntimeContext, RuntimeLogger, RuntimeMetadata, RuntimeNakama } fr
 
 type SortOrder = "asc" | "desc";
 type Operator = "best" | "set" | "incr";
-type RunLifecycle = "draft" | "open" | "closed" | "finalized";
+export type RunLifecycle = "draft" | "open" | "closed" | "finalized";
 
-type TournamentRunRecord = {
+export type TournamentRunRecord = {
   runId: string;
   tournamentId: string;
   title: string;
@@ -57,7 +57,7 @@ type TournamentRunIndexRecord = {
   updatedAt: string;
 };
 
-type TournamentStandingsSnapshot = {
+export type TournamentStandingsSnapshot = {
   generatedAt: string;
   overrideExpiry: number;
   rankCount: number | null;
@@ -70,8 +70,8 @@ type TournamentRunListItem = TournamentRunRecord & {
   nakamaTournament: Record<string, unknown> | null;
 };
 
-const RUNS_COLLECTION = "tournament_runs";
-const RUNS_INDEX_KEY = "index";
+export const RUNS_COLLECTION = "tournament_runs";
+export const RUNS_INDEX_KEY = "index";
 
 export const RPC_ADMIN_LIST_TOURNAMENTS = "rpc_admin_list_tournaments";
 export const RPC_ADMIN_GET_TOURNAMENT_RUN = "rpc_admin_get_tournament_run";
@@ -89,7 +89,7 @@ const DEFAULT_DURATION_SECONDS = 3600;
 const DEFAULT_MAX_SIZE = 1024;
 const DEFAULT_MAX_NUM_SCORE = 3;
 const DEFAULT_STANDINGS_LIMIT = 100;
-const MAX_STANDINGS_LIMIT = 10000;
+export const MAX_STANDINGS_LIMIT = 10000;
 const MAX_RUN_LIST_LIMIT = 100;
 
 const readBooleanField = (value: unknown, keys: string[]): boolean | null => {
@@ -148,7 +148,7 @@ const normalizeRunLifecycle = (value: unknown): RunLifecycle => {
   return "draft";
 };
 
-const clampInteger = (value: unknown, fallback: number, minimum: number, maximum: number): number => {
+export const clampInteger = (value: unknown, fallback: number, minimum: number, maximum: number): number => {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   if (!Number.isFinite(parsed)) {
     return fallback;
@@ -195,7 +195,7 @@ const normalizeStandingsSnapshot = (value: unknown): TournamentStandingsSnapshot
   };
 };
 
-const normalizeRunRecord = (value: unknown, fallbackId?: string): TournamentRunRecord | null => {
+export const normalizeRunRecord = (value: unknown, fallbackId?: string): TournamentRunRecord | null => {
   const record = asRecord(value);
   if (!record) {
     return null;
@@ -260,7 +260,7 @@ const normalizeRunIndex = (value: unknown): TournamentRunIndexRecord => {
   };
 };
 
-const readRunIndexState = (
+export const readRunIndexState = (
   nk: RuntimeNakama,
 ): { object: RuntimeStorageObject | null; index: TournamentRunIndexRecord } => {
   const objects = nk.storageRead([
@@ -277,7 +277,7 @@ const readRunIndexState = (
   };
 };
 
-const readRunObject = (nk: RuntimeNakama, runId: string): RuntimeStorageObject | null => {
+export const readRunObject = (nk: RuntimeNakama, runId: string): RuntimeStorageObject | null => {
   const objects = nk.storageRead([
     {
       collection: RUNS_COLLECTION,
@@ -288,7 +288,7 @@ const readRunObject = (nk: RuntimeNakama, runId: string): RuntimeStorageObject |
   return findStorageObject(objects, RUNS_COLLECTION, runId);
 };
 
-const readRunOrThrow = (nk: RuntimeNakama, runId: string): TournamentRunRecord => {
+export const readRunOrThrow = (nk: RuntimeNakama, runId: string): TournamentRunRecord => {
   const object = readRunObject(nk, runId);
   const run = normalizeRunRecord(object?.value ?? null, runId);
 
@@ -299,7 +299,7 @@ const readRunOrThrow = (nk: RuntimeNakama, runId: string): TournamentRunRecord =
   return run;
 };
 
-const readRunsByIds = (nk: RuntimeNakama, runIds: string[]): TournamentRunRecord[] => {
+export const readRunsByIds = (nk: RuntimeNakama, runIds: string[]): TournamentRunRecord[] => {
   if (runIds.length === 0) {
     return [];
   }
@@ -391,7 +391,7 @@ const readTournamentArray = (value: unknown): Record<string, unknown>[] => {
 };
 
 const mapTournamentsById = (value: unknown): Record<string, Record<string, unknown>> => {
-  return readTournamentArray(value).reduce(
+  return readTournamentArray(value).reduce<Record<string, Record<string, unknown>>>(
     (accumulator, tournament) => {
       const tournamentId = readStringField(tournament, ["id"]);
       if (tournamentId) {
@@ -403,12 +403,12 @@ const mapTournamentsById = (value: unknown): Record<string, Record<string, unkno
   );
 };
 
-const getNakamaTournamentById = (nk: RuntimeNakama, tournamentId: string): Record<string, unknown> | null => {
+export const getNakamaTournamentById = (nk: RuntimeNakama, tournamentId: string): Record<string, unknown> | null => {
   const tournaments = readTournamentArray(nk.tournamentsGetId([tournamentId]));
   return tournaments.length > 0 ? tournaments[0] : null;
 };
 
-const getNakamaTournamentsById = (
+export const getNakamaTournamentsById = (
   nk: RuntimeNakama,
   tournamentIds: string[],
 ): Record<string, Record<string, unknown>> => {
@@ -420,7 +420,7 @@ const getNakamaTournamentsById = (
   return mapTournamentsById(nk.tournamentsGetId(filteredIds));
 };
 
-const readTournamentRecordList = (value: unknown): {
+export const readTournamentRecordList = (value: unknown): {
   records: Record<string, unknown>[];
   ownerRecords: Record<string, unknown>[];
   prevCursor: string | null;
@@ -447,7 +447,7 @@ const readTournamentRecordList = (value: unknown): {
   };
 };
 
-const resolveOverrideExpiry = (overrideExpiry: number | null, tournament: Record<string, unknown> | null): number => {
+export const resolveOverrideExpiry = (overrideExpiry: number | null, tournament: Record<string, unknown> | null): number => {
   if (typeof overrideExpiry === "number" && Number.isFinite(overrideExpiry) && overrideExpiry >= 0) {
     return Math.floor(overrideExpiry);
   }
@@ -462,7 +462,7 @@ const resolveOverrideExpiry = (overrideExpiry: number | null, tournament: Record
   return 0;
 };
 
-const buildStandingsSnapshot = (
+export const buildStandingsSnapshot = (
   nk: RuntimeNakama,
   tournamentId: string,
   limit: number,
@@ -482,7 +482,7 @@ const buildStandingsSnapshot = (
   };
 };
 
-const sortRuns = (runs: TournamentRunRecord[]): TournamentRunRecord[] =>
+export const sortRuns = (runs: TournamentRunRecord[]): TournamentRunRecord[] =>
   runs.slice().sort((left, right) => {
     const updatedCompare = right.updatedAt.localeCompare(left.updatedAt);
     if (updatedCompare !== 0) {

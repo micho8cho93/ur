@@ -73,6 +73,11 @@ import {
   RPC_ADMIN_GET_TOURNAMENT_STANDINGS,
   RPC_ADMIN_LIST_TOURNAMENTS,
   RPC_ADMIN_OPEN_TOURNAMENT,
+  RPC_GET_PUBLIC_TOURNAMENT,
+  RPC_GET_PUBLIC_TOURNAMENT_STANDINGS,
+  RPC_JOIN_PUBLIC_TOURNAMENT,
+  RPC_LAUNCH_TOURNAMENT_MATCH,
+  RPC_LIST_PUBLIC_TOURNAMENTS,
   RPC_ADMIN_WHOAMI,
   RPC_TOURNAMENT_JOIN,
   rpcAdminCloseTournament,
@@ -84,7 +89,12 @@ import {
   rpcAdminListTournaments,
   rpcAdminOpenTournament,
   rpcAdminWhoAmI,
+  rpcGetPublicTournament,
+  rpcGetPublicTournamentStandings,
   rpcJoinTournament,
+  rpcJoinPublicTournament,
+  rpcLaunchTournamentMatch,
+  rpcListPublicTournaments,
 } from "./tournaments";
 import {
   processCompletedAuthoritativeTournamentMatch,
@@ -792,6 +802,11 @@ function InitModule(
   initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_STANDINGS, rpcAdminGetTournamentStandings);
   initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG, rpcAdminGetTournamentAuditLog);
   initializer.registerRpc(RPC_TOURNAMENT_JOIN, rpcJoinTournament);
+  initializer.registerRpc(RPC_LIST_PUBLIC_TOURNAMENTS, rpcListPublicTournaments);
+  initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT, rpcGetPublicTournament);
+  initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT_STANDINGS, rpcGetPublicTournamentStandings);
+  initializer.registerRpc(RPC_JOIN_PUBLIC_TOURNAMENT, rpcJoinPublicTournament);
+  initializer.registerRpc(RPC_LAUNCH_TOURNAMENT_MATCH, rpcLaunchTournamentMatch);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,

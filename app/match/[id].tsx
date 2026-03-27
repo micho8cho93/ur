@@ -22,6 +22,7 @@ import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/gam
 import { DEFAULT_DICE_ROLL_DURATION_MS } from '@/components/game/slotDiceShared';
 import { ProgressionAwardSummary } from '@/components/progression/ProgressionAwardSummary';
 import { PlayTutorialCoachModal } from '@/components/tutorial/PlayTutorialCoachModal';
+import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { boxShadow, textShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
@@ -159,7 +160,20 @@ const isMoveMatch = (left: MoveAction, right: MoveAction) =>
   left.pieceId === right.pieceId && left.fromIndex === right.fromIndex && left.toIndex === right.toIndex;
 
 export function GameRoom() {
-  const { id, offline, botDifficulty, tutorial, modeId, privateMatch, privateHost, privateCode } = useLocalSearchParams<{
+  const {
+    id,
+    offline,
+    botDifficulty,
+    tutorial,
+    modeId,
+    privateMatch,
+    privateHost,
+    privateCode,
+    tournamentRunId,
+    tournamentId,
+    tournamentName,
+    tournamentReturnTarget,
+  } = useLocalSearchParams<{
     id?: string | string[];
     offline?: string | string[];
     botDifficulty?: string | string[];
@@ -168,6 +182,10 @@ export function GameRoom() {
     privateMatch?: string | string[];
     privateHost?: string | string[];
     privateCode?: string | string[];
+    tournamentRunId?: string | string[];
+    tournamentId?: string | string[];
+    tournamentName?: string | string[];
+    tournamentReturnTarget?: string | string[];
   }>();
   const router = useRouter();
   const { width, height } = useWindowDimensions();
@@ -198,6 +216,22 @@ export function GameRoom() {
   const privateCodeParam = useMemo(
     () => (Array.isArray(privateCode) ? privateCode[0] : privateCode),
     [privateCode],
+  );
+  const tournamentRunIdParam = useMemo(
+    () => (Array.isArray(tournamentRunId) ? tournamentRunId[0] : tournamentRunId),
+    [tournamentRunId],
+  );
+  const tournamentIdParam = useMemo(
+    () => (Array.isArray(tournamentId) ? tournamentId[0] : tournamentId),
+    [tournamentId],
+  );
+  const tournamentNameParam = useMemo(
+    () => (Array.isArray(tournamentName) ? tournamentName[0] : tournamentName),
+    [tournamentName],
+  );
+  const tournamentReturnTargetParam = useMemo(
+    () => (Array.isArray(tournamentReturnTarget) ? tournamentReturnTarget[0] : tournamentReturnTarget),
+    [tournamentReturnTarget],
   );
   const resolvedBotDifficulty = useMemo(
     () => (isBotDifficulty(botDifficultyParam) ? botDifficultyParam : DEFAULT_BOT_DIFFICULTY),
@@ -302,6 +336,8 @@ export function GameRoom() {
   const isPrivateMatch = privateMatchParam === '1';
   const isPrivateMatchHost = privateHostParam === '1';
   const privateMatchCode = privateCodeParam ?? null;
+  const isTournamentMatch = Boolean(tournamentRunIdParam && tournamentIdParam);
+  const tournamentDisplayName = tournamentNameParam ?? 'Tournament Match';
   const pieceCountPerSide = effectiveMatchConfig.pieceCountPerSide;
   const isPracticeModeMatch = effectiveMatchConfig.isPracticeMode;
   const offlineBotRewardMode: CompletedBotMatchRewardMode | undefined =
@@ -1836,15 +1872,40 @@ export function GameRoom() {
     await updateMatchPreferences({ timerDurationSeconds: seconds });
   };
 
-  const handleExit = () => {
-    setShowTopMenu(false);
+  const leaveCurrentMatch = () => {
     if (!isOffline && socketRef.current && matchId) {
       void socketRef.current.leaveMatch(matchId).catch(() => { });
       nakamaService.disconnectSocket(true);
     }
+  };
+
+  const handleExit = () => {
+    setShowTopMenu(false);
+    leaveCurrentMatch();
     setShowWinModal(false);
     reset();
     router.replace('/');
+  };
+
+  const handleReturnToTournament = () => {
+    if (!tournamentRunIdParam || tournamentReturnTargetParam !== 'detail') {
+      handleExit();
+      return;
+    }
+
+    setShowTopMenu(false);
+    leaveCurrentMatch();
+    setShowWinModal(false);
+    reset();
+    router.replace(
+      {
+        pathname: '/tournaments/[runId]',
+        params: {
+          runId: tournamentRunIdParam,
+          refreshedAt: String(Date.now()),
+        },
+      } as never,
+    );
   };
 
   const lightReserve = gameState.light.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
@@ -1852,6 +1913,8 @@ export function GameRoom() {
   const normalizedMatchNumber = matchId ? matchId.replace(/^local-/, '') : null;
   const matchTitle = isPlaythroughTutorialMatch
     ? 'Play Tutorial'
+    : isTournamentMatch
+      ? 'Tournament Match'
     : isPrivateMatch
       ? 'Private Match'
       : isPracticeModeMatch
@@ -2716,6 +2779,15 @@ export function GameRoom() {
               {privateMatchStatusText ? <Text style={styles.privateStatusText}>{privateMatchStatusText}</Text> : null}
             </View>
           ) : null}
+          {isTournamentMatch ? (
+            <View pointerEvents="none" style={styles.tournamentStatusBanner}>
+              <Text style={styles.tournamentStatusEyebrow}>Tournament Match</Text>
+              <Text numberOfLines={1} style={styles.tournamentStatusName}>
+                {tournamentDisplayName}
+              </Text>
+              <Text style={styles.tournamentStatusText}>Standings update back on the tournament detail screen after this game concludes.</Text>
+            </View>
+          ) : null}
           {tutorialObjectiveBanner ? (
             <View pointerEvents="none" style={styles.tutorialObjectiveBanner}>
               <Text style={styles.tutorialObjectiveText}>{tutorialObjectiveBanner}</Text>
@@ -3196,6 +3268,14 @@ export function GameRoom() {
         onAction={handleExit}
         maxWidth={520}
       >
+        {isTournamentMatch ? (
+          <Button
+            title="Back to Standings"
+            variant="outline"
+            style={styles.tournamentReturnButton}
+            onPress={handleReturnToTournament}
+          />
+        ) : null}
         {didPlayerWin && isPracticeModeMatch && !isPrivateMatch && canSyncOfflineBotRewards && practiceModeRewardLabel ? (
           <View style={styles.practiceRewardLabel}>
             <Text style={styles.practiceRewardLabelText}>{practiceModeRewardLabel}</Text>
@@ -3352,6 +3432,42 @@ const styles = StyleSheet.create({
   },
   privateStatusText: {
     color: 'rgba(247, 229, 203, 0.82)',
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
+  tournamentStatusBanner: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 620,
+    marginTop: 4,
+    marginBottom: urTheme.spacing.xs,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.sm,
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(137, 193, 255, 0.32)',
+    backgroundColor: 'rgba(9, 24, 41, 0.84)',
+    zIndex: 6,
+  },
+  tournamentStatusEyebrow: {
+    ...urTypography.label,
+    color: 'rgba(216, 232, 251, 0.9)',
+    fontSize: 11,
+    letterSpacing: 0.8,
+    textAlign: 'center',
+    marginBottom: urTheme.spacing.xs,
+  },
+  tournamentStatusName: {
+    color: urTheme.colors.parchment,
+    fontSize: 20,
+    lineHeight: 24,
+    textAlign: 'center',
+    fontWeight: '700',
+    marginBottom: urTheme.spacing.xs,
+  },
+  tournamentStatusText: {
+    color: 'rgba(216, 232, 251, 0.82)',
     fontSize: 11,
     lineHeight: 17,
     textAlign: 'center',
@@ -3565,6 +3681,10 @@ const styles = StyleSheet.create({
     color: 'rgba(216, 232, 251, 0.96)',
     fontSize: 11,
     textAlign: 'center',
+  },
+  tournamentReturnButton: {
+    width: '100%',
+    marginBottom: urTheme.spacing.sm,
   },
   scoreTimerSlot: {
     flex: 1,
