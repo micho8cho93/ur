@@ -132,14 +132,32 @@ describe('playthrough tutorial continuous script', () => {
     });
   });
 
-  it('makes the rosette lesson keep Light on turn for the next scripted roll', () => {
+  it('keeps only one active light piece on the board throughout the guided sequence', () => {
+    PLAYTHROUGH_TUTORIAL_FRAMES.forEach((frame) => {
+      expect(frame.gameState.light.pieces.filter((piece) => !piece.isFinished && piece.position >= 0).length).toBeLessThanOrEqual(1);
+    });
+  });
+
+  it('makes the rosette lesson keep Light on turn and protects the shared rosette from capture', () => {
     const rosetteLesson = PLAYTHROUGH_TUTORIAL_LESSONS[2];
     const captureLesson = PLAYTHROUGH_TUTORIAL_LESSONS[3];
     const resultFrame = PLAYTHROUGH_TUTORIAL_FRAMES[rosetteLesson.moveStepIndex + 1];
+    const threatenedState: GameState = {
+      ...resultFrame.gameState,
+      currentTurn: 'dark',
+      phase: 'moving',
+      rollValue: 4,
+    };
 
     expect(resultFrame.gameState.currentTurn).toBe('light');
     expect(resultFrame.gameState.phase).toBe('rolling');
-    expect(resultFrame.displayRollValue).toBeNull();
+    expect(resultFrame.gameState.light.pieces[0]?.position).toBe(7);
+    expect(resultFrame.gameState.dark.pieces[0]?.position).toBe(3);
+    expect(getValidMoves(threatenedState, 4)).not.toContainEqual({
+      pieceId: 'dark-0',
+      fromIndex: 3,
+      toIndex: 7,
+    });
     expect(captureLesson.startFrameIndex).toBe(rosetteLesson.moveStepIndex + 1);
   });
 
@@ -153,32 +171,11 @@ describe('playthrough tutorial continuous script', () => {
       captureLesson.expectedMove.toIndex,
     );
 
-    expect(startFrame.gameState.dark.pieces[0]?.position).toBe(8);
+    expect(startFrame.gameState.dark.pieces.find((piece) => piece.id === 'dark-1')?.position).toBe(8);
     expect(captureCoord?.row).toBe(1);
     expect(resultFrame.gameState.light.capturedCount).toBe(1);
-    expect(resultFrame.gameState.dark.pieces[0]?.position).toBe(-1);
+    expect(resultFrame.gameState.dark.pieces.find((piece) => piece.id === 'dark-1')?.position).toBe(-1);
     expect(resultFrame.gameState.light.pieces[0]?.position).toBe(8);
-  });
-
-  it('shows that the shared rosette cannot be captured', () => {
-    const safeRosetteLesson = PLAYTHROUGH_TUTORIAL_LESSONS[4];
-    const startState = getPlaythroughTutorialLessonState(4);
-    const rolledState: GameState = {
-      ...startState,
-      phase: 'moving',
-      rollValue: safeRosetteLesson.forcedRoll,
-    };
-    const moves = getValidMoves(rolledState, safeRosetteLesson.forcedRoll);
-
-    expect(startState.light.pieces[0]?.position).toBe(8);
-    expect(startState.light.pieces[1]?.position).toBe(5);
-    expect(startState.dark.pieces[0]?.position).toBe(7);
-    expect(moves).not.toContainEqual({
-      pieceId: 'light-1',
-      fromIndex: 5,
-      toIndex: 7,
-    });
-    expect(moves).toContainEqual(safeRosetteLesson.expectedMove);
   });
 
   it('ends the final lesson with exactly one light piece scored', () => {
@@ -191,8 +188,8 @@ describe('playthrough tutorial continuous script', () => {
     expect(finalFrame.gameState.currentTurn).toBe('dark');
   });
 
-  it('numbers the lessons exactly 1 through 6 with no duplicates', () => {
-    expect(PLAYTHROUGH_TUTORIAL_LESSONS.map((lesson) => lesson.lessonNumber)).toEqual([1, 2, 3, 4, 5, 6]);
+  it('numbers the lessons exactly 1 through 5 with no duplicates', () => {
+    expect(PLAYTHROUGH_TUTORIAL_LESSONS.map((lesson) => lesson.lessonNumber)).toEqual([1, 2, 3, 4, 5]);
   });
 
   it('derives the exported frame timeline only by applying the next scripted step', () => {

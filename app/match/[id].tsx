@@ -30,7 +30,7 @@ import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
 import { useGameLoop } from '@/hooks/useGameLoop';
 import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty } from '@/logic/bot/types';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
-import { applyMove as applyEngineMove } from '@/logic/engine';
+import { applyMove as applyEngineMove, getValidMoves } from '@/logic/engine';
 import {
   getMatchConfig,
   getPracticeModeRewardLabel,
@@ -64,6 +64,7 @@ import {
   PLAYTHROUGH_TUTORIAL_ID,
   PLAYTHROUGH_TUTORIAL_LESSON_COUNT,
   PLAYTHROUGH_TUTORIAL_LESSONS,
+  PLAYTHROUGH_TUTORIAL_SCRIPT,
   getPlaythroughTutorialLessonState,
   isPlaythroughTutorialId,
 } from '@/tutorials/playthroughTutorial';
@@ -150,6 +151,7 @@ type TutorialCoachPhase =
   | 'lesson_intro'
   | 'lesson_play'
   | 'lesson_result'
+  | 'lesson_transition'
   | 'freeplay';
 
 const MATCH_MOMENT_CUES: Record<MatchMomentCueKind, Omit<MatchMomentIndicatorCue, 'id'>> = {
@@ -558,6 +560,7 @@ export function GameRoom() {
   const autoRollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turnTimeoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tutorialTransitionTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const forceMoveAfterRollRef = useRef(false);
   const activeMatchCueRef = useRef<MatchMomentIndicatorCue | null>(null);
   const queuedMatchCuesRef = useRef<MatchMomentIndicatorCue[]>([]);
@@ -678,6 +681,11 @@ export function GameRoom() {
     }
   }, []);
 
+  const clearTutorialTransitionTimers = React.useCallback(() => {
+    tutorialTransitionTimersRef.current.forEach((timer) => clearTimeout(timer));
+    tutorialTransitionTimersRef.current = [];
+  }, []);
+
   const scheduleRollVisualFallback = React.useCallback(() => {
     clearRollTimer();
     rollTimerRef.current = setTimeout(() => {
@@ -697,6 +705,137 @@ export function GameRoom() {
       setGameStateFromServer(nextState);
     },
     [setGameStateFromServer],
+  );
+
+  const animateTutorialTransition = React.useCallback(
+    (fromLessonIndex: number, toLessonIndex: number) => {
+      const fromLesson = PLAYTHROUGH_TUTORIAL_LESSONS[fromLessonIndex];
+      const toLesson = PLAYTHROUGH_TUTORIAL_LESSONS[toLessonIndex];
+
+      if (!fromLesson || !toLesson) {
+        return;
+      }
+
+      const transitionSteps = PLAYTHROUGH_TUTORIAL_SCRIPT.slice(
+        fromLesson.moveStepIndex + 1,
+        toLesson.startFrameIndex,
+      );
+
+      if (transitionSteps.length === 0) {
+        setTutorialLessonIndex(toLessonIndex);
+        setTutorialCoachPhase('lesson_intro');
+        return;
+      }
+
+      clearTutorialTransitionTimers();
+      clearRollTimer();
+      setRollingVisual(false);
+      setTutorialCoachPhase('lesson_transition');
+
+      let previewState = gameState;
+      let delayMs = 0;
+      const rollRevealDelayMs = diceAnimationEnabled ? Math.min(700, diceAnimationDurationMs) : 150;
+      const rollSettleDelayMs = 190;
+      const noMoveDelayMs = 260;
+      const moveLeadDelayMs = 150;
+      const moveSettleDelayMs = 220;
+
+      const scheduleTransition = (stepDelayMs: number, callback: () => void) => {
+        const timer = setTimeout(callback, stepDelayMs);
+        tutorialTransitionTimersRef.current.push(timer);
+      };
+
+      transitionSteps.forEach((step) => {
+        if (step.kind === 'ROLL') {
+          const rolledState: GameState = {
+            ...previewState,
+            phase: 'moving',
+            rollValue: step.value,
+          };
+          const validMoves = getValidMoves(rolledState, step.value);
+
+          scheduleTransition(delayMs, () => {
+            clearRollTimer();
+            if (diceAnimationEnabled) {
+              setRollingVisual(true);
+            }
+            void gameAudio.play('roll');
+          });
+
+          scheduleTransition(delayMs + rollRevealDelayMs, () => {
+            setGameStateFromServer(rolledState);
+          });
+
+          if (validMoves.length === 0) {
+            const skippedState: GameState = {
+              ...rolledState,
+              currentTurn: rolledState.currentTurn === 'light' ? 'dark' : 'light',
+              phase: 'rolling',
+              rollValue: null,
+              history: [...rolledState.history, `${step.player} rolled ${step.value} but had no moves.`],
+            };
+
+            scheduleTransition(delayMs + rollRevealDelayMs + 20, () => {
+              setRollingVisual(false);
+            });
+            scheduleTransition(delayMs + rollRevealDelayMs + noMoveDelayMs, () => {
+              setGameStateFromServer(skippedState);
+            });
+
+            previewState = skippedState;
+            delayMs += rollRevealDelayMs + noMoveDelayMs + rollSettleDelayMs;
+            return;
+          }
+
+          scheduleTransition(delayMs + rollRevealDelayMs + 20, () => {
+            setRollingVisual(false);
+          });
+          previewState = rolledState;
+          delayMs += rollRevealDelayMs + rollSettleDelayMs;
+          return;
+        }
+
+        if (step.kind !== 'MOVE') {
+          return;
+        }
+
+        const move = getValidMoves(previewState, previewState.rollValue ?? 0).find(
+          (candidate) =>
+            candidate.pieceId === step.pieceId &&
+            candidate.fromIndex === step.fromIndex &&
+            candidate.toIndex === step.toIndex,
+        );
+
+        if (!move) {
+          throw new Error(`Illegal tutorial transition move ${step.id}`);
+        }
+
+        const nextState = applyEngineMove(previewState, move);
+
+        scheduleTransition(delayMs + moveLeadDelayMs, () => {
+          setGameStateFromServer(nextState);
+        });
+
+        previewState = nextState;
+        delayMs += moveLeadDelayMs + moveSettleDelayMs;
+      });
+
+      scheduleTransition(delayMs, () => {
+        clearTutorialTransitionTimers();
+        clearRollTimer();
+        setRollingVisual(false);
+        setTutorialLessonIndex(toLessonIndex);
+        setTutorialCoachPhase('lesson_intro');
+      });
+    },
+    [
+      clearRollTimer,
+      clearTutorialTransitionTimers,
+      diceAnimationDurationMs,
+      diceAnimationEnabled,
+      gameState,
+      setGameStateFromServer,
+    ],
   );
 
   const triggerTutorialRoll = React.useCallback(
@@ -768,15 +907,13 @@ export function GameRoom() {
       const nextIndex = tutorialLessonIndex + 1;
 
       if (nextIndex < PLAYTHROUGH_TUTORIAL_LESSONS.length) {
-        setTutorialLessonIndex(nextIndex);
-        applyTutorialSnapshot(getPlaythroughTutorialLessonState(nextIndex));
-        setTutorialCoachPhase('lesson_intro');
+        animateTutorialTransition(tutorialLessonIndex, nextIndex);
         return;
       }
 
       setTutorialCoachPhase('freeplay');
     }
-  }, [applyTutorialSnapshot, tutorialCoachPhase, tutorialLessonIndex]);
+  }, [animateTutorialTransition, tutorialCoachPhase, tutorialLessonIndex]);
 
   const triggerLocalRoll = React.useCallback(() => {
     if (!introsComplete || !canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
@@ -1215,6 +1352,7 @@ export function GameRoom() {
     localRollAudioPendingRef.current = false;
     rollButtonRequestRef.current = null;
     clearRollTimer();
+    clearTutorialTransitionTimers();
     if (autoRollTimerRef.current) {
       clearTimeout(autoRollTimerRef.current);
       autoRollTimerRef.current = null;
@@ -1242,7 +1380,11 @@ export function GameRoom() {
     setTutorialLessonIndex(0);
     setTutorialCoachPhase('idle');
     setLiveMatchCue(null);
-  }, [clearRollTimer, matchId, setLiveMatchCue]);
+  }, [clearRollTimer, clearTutorialTransitionTimers, matchId, setLiveMatchCue]);
+  useEffect(() => () => {
+    clearRollTimer();
+    clearTutorialTransitionTimers();
+  }, [clearRollTimer, clearTutorialTransitionTimers]);
   useEffect(() => {
     if (rollButtonLatchPhase === 'idle') {
       rollButtonRequestRef.current = null;

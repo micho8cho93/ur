@@ -3,7 +3,7 @@ import { buildTutorialFrames } from './tutorialEngine';
 import type { TutorialRollStep, TutorialRollValue, TutorialStep } from './tutorialTypes';
 
 export const PLAYTHROUGH_TUTORIAL_ID = 'playthrough' as const;
-export const PLAYTHROUGH_TUTORIAL_LESSON_COUNT = 6 as const;
+export const PLAYTHROUGH_TUTORIAL_LESSON_COUNT = 5 as const;
 
 type PlaythroughTutorialLessonSpec = {
   id: string;
@@ -74,14 +74,18 @@ export const PLAYTHROUGH_TUTORIAL_SCRIPT: readonly TutorialStep[] = [
   rollStep('roll-light-enter-war-zone', 'light', 1),
   moveStep('move-light-enter-war-zone', 'light', 'light-0', 3, 4),
 
-  rollStep('roll-dark-enter-lane', 'dark', 2),
-  moveStep('move-dark-enter-lane', 'dark', 'dark-0', -1, 1),
-  rollStep('roll-light-pass-before-dark-race', 'light', 0, true),
-  rollStep('roll-dark-advance-lane', 'dark', 4),
-  moveStep('move-dark-advance-lane', 'dark', 'dark-0', 1, 5),
-  rollStep('roll-light-pass-before-rosette-run', 'light', 0, true),
+  rollStep('roll-dark-shared-rosette-threat', 'dark', 4),
+  moveStep('move-dark-shared-rosette-threat', 'dark', 'dark-0', -1, 3),
+  rollStep('roll-dark-threat-fizzles', 'dark', 0, true),
+  rollStep('roll-light-pass-before-capture-setup-1', 'light', 0, true),
+  rollStep('roll-dark-enter-capture-runner', 'dark', 2),
+  moveStep('move-dark-enter-capture-runner', 'dark', 'dark-1', -1, 1),
+  rollStep('roll-light-pass-before-capture-setup-2', 'light', 0, true),
+  rollStep('roll-dark-advance-capture-runner', 'dark', 4),
+  moveStep('move-dark-advance-capture-runner', 'dark', 'dark-1', 1, 5),
+  rollStep('roll-light-pass-before-capture-setup-3', 'light', 0, true),
   rollStep('roll-dark-set-capture-target', 'dark', 3),
-  moveStep('move-dark-set-capture-target', 'dark', 'dark-0', 5, 8),
+  moveStep('move-dark-set-capture-target', 'dark', 'dark-1', 5, 8),
 
   rollStep('roll-light-shared-rosette', 'light', 3),
   moveStep('move-light-shared-rosette', 'light', 'light-0', 4, 7),
@@ -90,23 +94,11 @@ export const PLAYTHROUGH_TUTORIAL_SCRIPT: readonly TutorialStep[] = [
   moveStep('move-light-capture', 'light', 'light-0', 7, 8),
 
   rollStep('roll-dark-pass-after-capture', 'dark', 0, true),
-  rollStep('roll-light-helper-enter', 'light', 4),
-  moveStep('move-light-helper-enter', 'light', 'light-1', -1, 3),
-  rollStep('roll-light-helper-advance', 'light', 2),
-  moveStep('move-light-helper-advance', 'light', 'light-1', 3, 5),
-  rollStep('roll-dark-reenter', 'dark', 4),
-  moveStep('move-dark-reenter', 'dark', 'dark-0', -1, 3),
-  rollStep('roll-dark-shared-rosette', 'dark', 4),
-  moveStep('move-dark-shared-rosette', 'dark', 'dark-0', 3, 7),
-  rollStep('roll-dark-extra-turn-fizzles', 'dark', 0, true),
-
-  rollStep('roll-light-safe-rosette-proof', 'light', 2),
-  moveStep('move-light-safe-rosette-proof', 'light', 'light-0', 8, 10),
-
-  rollStep('roll-dark-leave-rosette', 'dark', 1),
-  moveStep('move-dark-leave-rosette', 'dark', 'dark-0', 7, 8),
-  rollStep('roll-light-home-rosette', 'light', 3),
-  moveStep('move-light-home-rosette', 'light', 'light-0', 10, 13),
+  rollStep('roll-light-home-stretch', 'light', 3),
+  moveStep('move-light-home-stretch', 'light', 'light-0', 8, 11),
+  rollStep('roll-dark-pass-before-score-setup', 'dark', 0, true),
+  rollStep('roll-light-home-rosette', 'light', 2),
+  moveStep('move-light-home-rosette', 'light', 'light-0', 11, 13),
 
   rollStep('roll-light-score', 'light', 1),
   moveStep('move-light-score', 'light', 'light-0', 13, 14),
@@ -132,11 +124,11 @@ const PLAYTHROUGH_TUTORIAL_LESSON_SPECS: readonly PlaythroughTutorialLessonSpec[
     moveStepId: 'move-light-enter-war-zone',
   },
   {
-    id: 'rosette-extra-roll',
+    id: 'shared-rosette-bonus-and-safety',
     lessonNumber: 3,
-    title: 'Rosettes Keep Your Turn',
-    objective: 'Land your lead runner on the shared rosette.',
-    implication: 'Rosettes grant another roll, so your turn continues immediately instead of passing to Dark.',
+    title: 'Rosettes Give Tempo And Safety',
+    objective: 'Land your runner on the shared rosette.',
+    implication: 'Rosettes grant another roll, and the shared rosette is also safe from capture even with Dark waiting behind you.',
     rollStepId: 'roll-light-shared-rosette',
     moveStepId: 'move-light-shared-rosette',
   },
@@ -150,17 +142,8 @@ const PLAYTHROUGH_TUTORIAL_LESSON_SPECS: readonly PlaythroughTutorialLessonSpec[
     moveStepId: 'move-light-capture',
   },
   {
-    id: 'shared-rosette-safety',
-    lessonNumber: 5,
-    title: 'The Shared Rosette Is Safe',
-    objective: 'Notice the protected dark piece on the shared rosette, then keep racing with your lead runner.',
-    implication: 'Your helper piece is in range, but the shared rosette cannot be captured, so that tempting attack is not legal.',
-    rollStepId: 'roll-light-safe-rosette-proof',
-    moveStepId: 'move-light-safe-rosette-proof',
-  },
-  {
     id: 'score-first-piece',
-    lessonNumber: 6,
+    lessonNumber: 5,
     title: 'Score Your First Piece',
     objective: 'Use the exact roll and the SCORE button to bear off your lead runner.',
     implication: 'Bearing off removes the piece from the board and gives Light the first point of the tutorial run.',
