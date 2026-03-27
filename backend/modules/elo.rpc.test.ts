@@ -206,22 +206,32 @@ const createRuntime = () => {
         };
       },
     ),
-    leaderboardRecordsHaystack: jest.fn((leaderboardId: string, ownerId: string, limit = 11) => {
-      const ranked = buildRankedRecords(leaderboardId);
-      const ownerIndex = ranked.findIndex((record) => record.ownerId === ownerId);
-      if (ownerIndex < 0) {
-        return { records: [] };
-      }
+    leaderboardRecordsHaystack: jest.fn(
+      (leaderboardId: string, ownerId: string, limit = 11, cursor = '', expiry = 0) => {
+        if (typeof cursor !== 'string') {
+          throw new Error('"expects string"');
+        }
 
-      const half = Math.floor(limit / 2);
-      let start = Math.max(0, ownerIndex - half);
-      let end = Math.min(ranked.length, start + limit);
-      start = Math.max(0, end - limit);
+        if (typeof expiry !== 'number') {
+          throw new Error('"expects number"');
+        }
 
-      return {
-        records: ranked.slice(start, end).map((record) => buildLeaderboardRecord(leaderboardId, record)),
-      };
-    }),
+        const ranked = buildRankedRecords(leaderboardId);
+        const ownerIndex = ranked.findIndex((record) => record.ownerId === ownerId);
+        if (ownerIndex < 0) {
+          return { records: [] };
+        }
+
+        const half = Math.floor(limit / 2);
+        let start = Math.max(0, ownerIndex - half);
+        let end = Math.min(ranked.length, start + limit);
+        start = Math.max(0, end - limit);
+
+        return {
+          records: ranked.slice(start, end).map((record) => buildLeaderboardRecord(leaderboardId, record)),
+        };
+      },
+    ),
   };
 
   return {
@@ -407,5 +417,6 @@ describe('backend Elo runtime', () => {
     );
     expect(topResponse.records).toHaveLength(3);
     expect(aroundMeResponse.records.some((entry: { userId: string }) => entry.userId === 'user-2')).toBe(true);
+    expect(nk.leaderboardRecordsHaystack).toHaveBeenCalledWith('elo_global', 'user-2', 3, '', 0);
   });
 });

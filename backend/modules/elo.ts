@@ -971,7 +971,7 @@ export const rpcGetEloLeaderboardAroundMe = (
     ownerRecord = readOwnerLeaderboardRecord(nk, ctx.userId);
   }
 
-  const rawResult = nk.leaderboardRecordsHaystack(ELO_LEADERBOARD_ID, ctx.userId, limit, 0);
+  const rawResult = nk.leaderboardRecordsHaystack(ELO_LEADERBOARD_ID, ctx.userId, limit, "", 0);
   const { records } = normalizeLeaderboardListResponse(rawResult);
   const profilesByUserId = readEloProfilesByUserId(
     nk,
