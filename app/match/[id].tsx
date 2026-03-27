@@ -569,6 +569,14 @@ export function GameRoom() {
     }
   }, []);
 
+  const scheduleRollVisualFallback = React.useCallback(() => {
+    clearRollTimer();
+    rollTimerRef.current = setTimeout(() => {
+      rollTimerRef.current = null;
+      setRollingVisual(false);
+    }, diceAnimationDurationMs + 180);
+  }, [clearRollTimer, diceAnimationDurationMs]);
+
   const handleRollResultShown = React.useCallback(() => {
     clearRollTimer();
     setRollingVisual(false);
@@ -598,7 +606,7 @@ export function GameRoom() {
 
       if (diceAnimationEnabled) {
         setRollingVisual(true);
-        clearRollTimer();
+        scheduleRollVisualFallback();
       } else {
         clearRollTimer();
         setRollingVisual(false);
@@ -617,6 +625,7 @@ export function GameRoom() {
       canRoll,
       clearRollTimer,
       diceAnimationEnabled,
+      scheduleRollVisualFallback,
       gameState,
       rollButtonLatchPhase,
       rollingVisual,
@@ -675,7 +684,7 @@ export function GameRoom() {
 
     if (diceAnimationEnabled) {
       setRollingVisual(true);
-      clearRollTimer();
+      scheduleRollVisualFallback();
     } else {
       clearRollTimer();
       setRollingVisual(false);
@@ -687,6 +696,7 @@ export function GameRoom() {
     canRoll,
     clearRollTimer,
     diceAnimationEnabled,
+    scheduleRollVisualFallback,
     gameState.currentTurn,
     gameState.history.length,
     roll,
@@ -1178,6 +1188,22 @@ export function GameRoom() {
     clearRollTimer();
     setRollingVisual(false);
   }, [clearRollTimer, diceAnimationEnabled]);
+  useEffect(() => {
+    if (!rollingVisual) {
+      return;
+    }
+
+    if (
+      rollButtonLatchPhase !== 'idle' ||
+      gameState.phase !== 'rolling' ||
+      gameState.rollValue !== null
+    ) {
+      return;
+    }
+
+    clearRollTimer();
+    setRollingVisual(false);
+  }, [clearRollTimer, gameState.phase, gameState.rollValue, rollButtonLatchPhase, rollingVisual]);
   useEffect(() => {
     if (!cueSystemReady || !matchId || !hasAssignedColor || !introsComplete) {
       return;

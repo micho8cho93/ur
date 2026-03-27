@@ -526,6 +526,58 @@ describe('GameRoom match dice stage', () => {
     expect(mockRoll).toHaveBeenCalledTimes(1);
   });
 
+  it('releases the live roll animation when a no-move turn snaps back to rolling', async () => {
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('dice-roll-button'));
+    });
+
+    expect(mockMatchDiceRollStage.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        rolling: true,
+        visible: true,
+      }),
+    );
+
+    mockStoreState.gameState = {
+      ...baseGameState,
+      currentTurn: 'dark',
+      phase: 'rolling',
+      rollValue: null,
+      history: ['light rolled 0 but had no moves.'],
+    };
+    mockStoreState.serverRevision = 1;
+
+    await act(async () => {
+      view.rerender(<GameRoom />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(1_500);
+    });
+
+    expect(mockMatchDiceRollStage.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        rolling: false,
+        visible: true,
+      }),
+    );
+  });
+
   it('shows only settings in the in-game top menu', async () => {
     render(<GameRoom />);
 
