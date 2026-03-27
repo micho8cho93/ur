@@ -17,6 +17,10 @@ const mockMatchMomentIndicator = jest.fn(({ cue }: { cue: { message: string } | 
   const { Text } = require('react-native');
   return cue ? <Text testID="mock-match-cue">{cue.message}</Text> : null;
 });
+const mockGameStageHUD = jest.fn(() => {
+  const { View } = require('react-native');
+  return <View testID="mock-stage-hud" />;
+});
 
 const mockRouterReplace = jest.fn();
 const mockSearchParams = {
@@ -128,10 +132,8 @@ jest.mock('@/components/game/PieceRail', () => {
 });
 
 jest.mock('@/components/game/GameStageHUD', () => {
-  const React = require('react');
-  const { View } = require('react-native');
   return {
-    GameStageHUD: () => <View testID="mock-stage-hud" />,
+    GameStageHUD: (props: unknown) => mockGameStageHUD(props),
   };
 });
 
@@ -524,6 +526,45 @@ describe('GameRoom match dice stage', () => {
     });
 
     expect(mockRoll).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not auto-roll online matches even when the saved preference is enabled', async () => {
+    jest.useFakeTimers();
+
+    mockSearchParams.id = 'online-1';
+    delete mockSearchParams.offline;
+    mockGetMatchPreferences.mockResolvedValue({
+      announcementCuesEnabled: true,
+      autoRollEnabled: true,
+      bugAnimationEnabled: true,
+      diceAnimationEnabled: true,
+      diceAnimationSpeed: 1,
+      timerDurationSeconds: 20,
+      timerEnabled: true,
+    });
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockStoreState.matchId = 'online-1';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.matchPresences = ['self-user', 'opponent-user'];
+    mockStoreState.gameState = {
+      ...baseGameState,
+      history: ['light opened the match.'],
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(2_000);
+    });
+
+    expect(mockRoll).not.toHaveBeenCalled();
   });
 
   it('releases the live roll animation when a no-move turn snaps back to rolling', async () => {

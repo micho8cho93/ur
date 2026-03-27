@@ -1411,6 +1411,7 @@ export function GameRoom() {
     }
 
     if (
+      !isOffline ||
       !introsComplete ||
       !autoRollEnabled ||
       isScriptedTutorialPhase ||
@@ -1439,6 +1440,7 @@ export function GameRoom() {
     autoRollEnabled,
     canRoll,
     introsComplete,
+    isOffline,
     isScriptedTutorialPhase,
     rollButtonLatchPhase,
     rollingVisual,
@@ -3526,6 +3528,7 @@ export function GameRoom() {
         moveHintEnabled={moveHintEnabled}
         timerEnabled={botTimerEnabled}
         timerDurationSeconds={turnTimerSeconds}
+        showAutoRollSetting={isOffline}
         showTimerToggle={isOffline}
         showTimerDurationSetting={isOffline}
         onClose={() => setShowAudioSettings(false)}

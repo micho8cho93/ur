@@ -41,6 +41,7 @@ interface AudioSettingsModalProps {
   moveHintEnabled: boolean;
   timerEnabled?: boolean;
   timerDurationSeconds: TurnTimerSeconds;
+  showAutoRollSetting?: boolean;
   showTimerToggle?: boolean;
   showTimerDurationSetting?: boolean;
   onClose: () => void;
@@ -166,6 +167,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   moveHintEnabled,
   timerEnabled = true,
   timerDurationSeconds = DEFAULT_MATCH_PREFERENCES.timerDurationSeconds,
+  showAutoRollSetting = true,
   showTimerToggle = false,
   showTimerDurationSetting = true,
   onClose,
@@ -271,12 +273,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           onValueChange={onToggleBugAnimation}
         />
 
-        <ToggleSettingRow
-          title="Roll Dice Automatically"
-          hint="Trigger your roll shortly after your turn begins"
-          value={autoRollEnabled}
-          onValueChange={onToggleAutoRoll}
-        />
+        {showAutoRollSetting ? (
+          <ToggleSettingRow
+            title="Roll Dice Automatically"
+            hint="Trigger your roll shortly after your turn begins"
+            value={autoRollEnabled}
+            onValueChange={onToggleAutoRoll}
+          />
+        ) : null}
 
         <ToggleSettingRow
           title="Available Move Hint"
