@@ -63,7 +63,8 @@ import { resolveVisibleViewportSize } from '@/src/layout/matchViewport';
 import {
   PLAYTHROUGH_TUTORIAL_ID,
   PLAYTHROUGH_TUTORIAL_LESSON_COUNT,
-  PLAYTHROUGH_TUTORIAL_SEGMENTS,
+  PLAYTHROUGH_TUTORIAL_LESSONS,
+  getPlaythroughTutorialLessonState,
   isPlaythroughTutorialId,
 } from '@/tutorials/playthroughTutorial';
 import type { CompletedBotMatchRewardMode } from '@/shared/challenges';
@@ -540,7 +541,7 @@ export function GameRoom() {
   const [activeMatchCue, setActiveMatchCue] = React.useState<MatchMomentIndicatorCue | null>(null);
   const [mobileScoreRowHeight, setMobileScoreRowHeight] = React.useState(0);
   const [tutorialCoachPhase, setTutorialCoachPhase] = React.useState<TutorialCoachPhase>('idle');
-  const [tutorialSegmentIndex, setTutorialSegmentIndex] = React.useState(0);
+  const [tutorialLessonIndex, setTutorialLessonIndex] = React.useState(0);
   const isScriptedTutorialPhase =
     isPlaythroughTutorialMatch &&
     tutorialCoachPhase !== 'idle' &&
@@ -582,37 +583,37 @@ export function GameRoom() {
   } | null>(null);
   const previousJoinedPlayerCountRef = useRef(0);
 
-  const tutorialSegment =
-    tutorialSegmentIndex < PLAYTHROUGH_TUTORIAL_SEGMENTS.length
-      ? PLAYTHROUGH_TUTORIAL_SEGMENTS[tutorialSegmentIndex]
+  const tutorialLesson =
+    tutorialLessonIndex < PLAYTHROUGH_TUTORIAL_LESSONS.length
+      ? PLAYTHROUGH_TUTORIAL_LESSONS[tutorialLessonIndex]
       : null;
   const tutorialCoachVisible =
     tutorialCoachPhase === 'lesson_intro' || tutorialCoachPhase === 'lesson_result';
   const tutorialCoachEyebrow =
-    tutorialCoachPhase === 'lesson_intro' && tutorialSegment
-      ? `Lesson ${tutorialSegment.lessonNumber} of ${PLAYTHROUGH_TUTORIAL_LESSON_COUNT}`
+    tutorialCoachPhase === 'lesson_intro' && tutorialLesson
+      ? `Lesson ${tutorialLesson.lessonNumber} of ${PLAYTHROUGH_TUTORIAL_LESSON_COUNT}`
       : tutorialCoachPhase === 'lesson_result'
         ? 'What this means'
         : undefined;
   const tutorialCoachTitle =
-    tutorialCoachPhase === 'lesson_intro' && tutorialSegment
-      ? tutorialSegment.title
-      : tutorialCoachPhase === 'lesson_result' && tutorialSegment
-        ? tutorialSegment.title
+    tutorialCoachPhase === 'lesson_intro' && tutorialLesson
+      ? tutorialLesson.title
+      : tutorialCoachPhase === 'lesson_result' && tutorialLesson
+        ? tutorialLesson.title
         : '';
   const tutorialCoachBody =
-    tutorialCoachPhase === 'lesson_intro' && tutorialSegment
-      ? tutorialSegment.objective
-      : tutorialCoachPhase === 'lesson_result' && tutorialSegment
-        ? tutorialSegment.implication
+    tutorialCoachPhase === 'lesson_intro' && tutorialLesson
+      ? tutorialLesson.objective
+      : tutorialCoachPhase === 'lesson_result' && tutorialLesson
+        ? tutorialLesson.implication
         : '';
   const tutorialCoachActionLabel =
-    tutorialCoachPhase === 'lesson_result' && tutorialSegmentIndex === PLAYTHROUGH_TUTORIAL_SEGMENTS.length - 1
+    tutorialCoachPhase === 'lesson_result' && tutorialLessonIndex === PLAYTHROUGH_TUTORIAL_LESSONS.length - 1
       ? 'Play On'
       : 'Continue';
   const tutorialObjectiveBanner =
-    tutorialCoachPhase === 'lesson_play' && tutorialSegment
-      ? `Lesson ${tutorialSegment.lessonNumber}/${PLAYTHROUGH_TUTORIAL_LESSON_COUNT}: ${tutorialSegment.objective}`
+    tutorialCoachPhase === 'lesson_play' && tutorialLesson
+      ? `Lesson ${tutorialLesson.lessonNumber}/${PLAYTHROUGH_TUTORIAL_LESSON_COUNT}: ${tutorialLesson.objective}`
       : null;
 
   const cueSystemReady = ancientCueFontLoaded || Boolean(ancientCueFontError);
@@ -745,8 +746,8 @@ export function GameRoom() {
 
   const handleTutorialMove = React.useCallback(
     (move: MoveAction) => {
-      if (tutorialCoachPhase === 'lesson_play' && tutorialSegment) {
-        if (!isMoveMatch(move, tutorialSegment.expectedMove)) {
+      if (tutorialCoachPhase === 'lesson_play' && tutorialLesson) {
+        if (!isMoveMatch(move, tutorialLesson.expectedMove)) {
           return;
         }
 
@@ -754,7 +755,7 @@ export function GameRoom() {
         setTutorialCoachPhase('lesson_result');
       }
     },
-    [gameState, setGameStateFromServer, tutorialCoachPhase, tutorialSegment],
+    [gameState, setGameStateFromServer, tutorialCoachPhase, tutorialLesson],
   );
 
   const handleContinueTutorialCoach = React.useCallback(() => {
@@ -764,18 +765,18 @@ export function GameRoom() {
     }
 
     if (tutorialCoachPhase === 'lesson_result') {
-      const nextIndex = tutorialSegmentIndex + 1;
+      const nextIndex = tutorialLessonIndex + 1;
 
-      if (nextIndex < PLAYTHROUGH_TUTORIAL_SEGMENTS.length) {
-        setTutorialSegmentIndex(nextIndex);
-        applyTutorialSnapshot(PLAYTHROUGH_TUTORIAL_SEGMENTS[nextIndex].snapshot);
+      if (nextIndex < PLAYTHROUGH_TUTORIAL_LESSONS.length) {
+        setTutorialLessonIndex(nextIndex);
+        applyTutorialSnapshot(getPlaythroughTutorialLessonState(nextIndex));
         setTutorialCoachPhase('lesson_intro');
         return;
       }
 
       setTutorialCoachPhase('freeplay');
     }
-  }, [applyTutorialSnapshot, tutorialCoachPhase, tutorialSegmentIndex]);
+  }, [applyTutorialSnapshot, tutorialCoachPhase, tutorialLessonIndex]);
 
   const triggerLocalRoll = React.useCallback(() => {
     if (!introsComplete || !canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
@@ -1238,7 +1239,7 @@ export function GameRoom() {
     hasShownOpeningCueRef.current = null;
     matchCueIdRef.current = 0;
     previousJoinedPlayerCountRef.current = 0;
-    setTutorialSegmentIndex(0);
+    setTutorialLessonIndex(0);
     setTutorialCoachPhase('idle');
     setLiveMatchCue(null);
   }, [clearRollTimer, matchId, setLiveMatchCue]);
@@ -1523,8 +1524,8 @@ export function GameRoom() {
       return;
     }
 
-    setTutorialSegmentIndex(0);
-    applyTutorialSnapshot(PLAYTHROUGH_TUTORIAL_SEGMENTS[0].snapshot);
+    setTutorialLessonIndex(0);
+    applyTutorialSnapshot(getPlaythroughTutorialLessonState(0));
     setTutorialCoachPhase('lesson_intro');
   }, [applyTutorialSnapshot, isPlaythroughTutorialMatch, matchId]);
 
@@ -2030,8 +2031,8 @@ export function GameRoom() {
     resumeAnnouncementCuesFromInteraction();
 
     if (isScriptedTutorialPhase) {
-      if (tutorialCoachPhase === 'lesson_play' && tutorialSegment) {
-        triggerTutorialRoll(tutorialSegment.forcedRoll);
+      if (tutorialCoachPhase === 'lesson_play' && tutorialLesson) {
+        triggerTutorialRoll(tutorialLesson.forcedRoll);
       }
       return;
     }
@@ -2043,7 +2044,7 @@ export function GameRoom() {
     triggerLocalRoll,
     triggerTutorialRoll,
     tutorialCoachPhase,
-    tutorialSegment,
+    tutorialLesson,
   ]);
 
   const handleToggleMusic = async (enabled: boolean) => {
