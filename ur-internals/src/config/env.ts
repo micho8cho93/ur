@@ -1,6 +1,17 @@
 const DEFAULT_NAKAMA_BASE_URL = 'https://nakama.urgame.live'
 const DEFAULT_NAKAMA_SERVER_KEY = 'defaultkey'
 
+function readEnvValue(...keys: string[]) {
+  for (const key of keys) {
+    const value = import.meta.env[key]
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim()
+    }
+  }
+
+  return null
+}
+
 function parseNakamaEndpoint(baseUrl: string) {
   try {
     const url = new URL(baseUrl)
@@ -25,7 +36,12 @@ const nakamaBaseUrl = import.meta.env.VITE_NAKAMA_BASE_URL?.trim() || DEFAULT_NA
 const requestTimeoutMs = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? '10000')
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true'
 const nakamaServerKey =
-  import.meta.env.VITE_NAKAMA_SERVER_KEY?.trim() || DEFAULT_NAKAMA_SERVER_KEY
+  readEnvValue(
+    'VITE_NAKAMA_SERVER_KEY',
+    'VITE_NAKAMA_SOCKET_SERVER_KEY',
+    'EXPO_PUBLIC_NAKAMA_SOCKET_SERVER_KEY',
+    'EXPO_PUBLIC_NAKAMA_SERVER_KEY',
+  ) || DEFAULT_NAKAMA_SERVER_KEY
 const endpoint = parseNakamaEndpoint(nakamaBaseUrl)
 
 const env = {
