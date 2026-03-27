@@ -1,5 +1,6 @@
 import {
   getPublicTournament,
+  getPublicTournamentStatus,
   getPublicTournamentStandings,
   joinPublicTournament,
   launchTournamentMatch,
@@ -142,6 +143,14 @@ describe('tournament rpc parsing', () => {
           matchId: 'match-99',
           tournamentRunId: 'spring-open',
           tournamentId: 'spring-open',
+          tournamentRound: 3,
+          tournamentEntryId: 'quarter-final-2',
+          playerState: 'advancing',
+          nextRoundReady: true,
+          status: {
+            queueStatus: 'matched',
+            statusMessage: 'Opponent found.',
+          },
         }),
       });
 
@@ -177,9 +186,80 @@ describe('tournament rpc parsing', () => {
         matchId: 'match-99',
         tournamentRunId: 'spring-open',
         tournamentId: 'spring-open',
+        tournamentRound: 3,
+        tournamentEntryId: 'quarter-final-2',
+        playerState: 'advancing',
+        nextRoundReady: true,
+        queueStatus: 'matched',
+        statusMessage: 'Opponent found.',
         userId: 'user-1',
       }),
     );
+  });
+
+  it('fetches tournament detail and standings together through the combined helper', async () => {
+    mockRpc
+      .mockResolvedValueOnce({
+        payload: {
+          tournament: {
+            runId: 'spring-open',
+            tournamentId: 'spring-open',
+            name: 'Spring Open',
+            description: 'A public run.',
+            lifecycle: 'open',
+            startAt: '2026-03-27T10:00:00.000Z',
+            updatedAt: '2026-03-27T10:00:00.000Z',
+            entrants: 8,
+            maxEntrants: 16,
+            gameMode: 'standard',
+            region: 'Global',
+            buyInLabel: 'Free',
+            prizeLabel: 'No prize listed',
+            membership: {
+              isJoined: true,
+              joinedAt: '2026-03-27T10:10:00.000Z',
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        payload: JSON.stringify({
+          standings: {
+            records: [
+              {
+                rank: 4,
+                ownerId: 'user-1',
+                username: 'Michel',
+                score: 4,
+                subscore: 1,
+                numScore: 2,
+                maxNumScore: 3,
+                metadata: {
+                  matchId: 'match-44',
+                  round: 2,
+                  result: 'win',
+                },
+              },
+            ],
+          },
+        }),
+      });
+
+    await expect(getPublicTournamentStatus('spring-open')).resolves.toEqual({
+      tournament: expect.objectContaining({
+        runId: 'spring-open',
+        membership: expect.objectContaining({
+          isJoined: true,
+        }),
+      }),
+      standings: [
+        expect.objectContaining({
+          ownerId: 'user-1',
+          matchId: 'match-44',
+          round: 2,
+        }),
+      ],
+    });
   });
 
   it('surfaces backend messages for tournament rpc failures', async () => {

@@ -4,6 +4,7 @@ import { useSession } from '../auth/useSession'
 import { deleteTournament, listTournaments, openTournament } from '../api/tournaments'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
+import { getTournamentStructureLabel } from '../tournamentStructure'
 import type { Tournament } from '../types/tournament'
 
 function formatDateTime(value: string) {
@@ -137,10 +138,9 @@ export function TournamentsPage() {
                 <tr>
                   <th>Name</th>
                   <th>Status</th>
-                  <th>Mode</th>
+                  <th>Structure</th>
                   <th>Start</th>
                   <th>Entries</th>
-                  <th>Region</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -156,12 +156,11 @@ export function TournamentsPage() {
                     <td>
                       <StatusBadge status={tournament.status} />
                     </td>
-                    <td>{tournament.gameMode}</td>
+                    <td>{getTournamentStructureLabel(tournament.gameMode)}</td>
                     <td>{formatDateTime(tournament.startAt)}</td>
                     <td>
                       {tournament.entrants}/{tournament.maxEntrants}
                     </td>
-                    <td>{tournament.region}</td>
                     <td>
                       <div className="table__actions">
                         <Link to={`/tournaments/${tournament.id}`}>Details</Link>

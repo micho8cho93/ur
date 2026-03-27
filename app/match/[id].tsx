@@ -7,9 +7,6 @@ import {
 import { AudioSettingsModal } from '@/components/game/AudioSettingsModal';
 import { AmbientBackgroundEffects } from '@/components/game/AmbientBackgroundEffects';
 import { BoardDropIntro } from '@/components/game/BoardDropIntro';
-import { MatchChallengeRewardsPanel } from '@/components/challenges/MatchChallengeRewardsPanel';
-import { EloMatchSummaryPanel } from '@/components/elo/EloMatchSummaryPanel';
-import { XPDisplay } from '@/components/challenges/XPDisplay';
 import { Dice, DiceStageVisual } from '@/components/game/Dice';
 import { EdgeScore } from '@/components/game/EdgeScore';
 import { GameStageHUD } from '@/components/game/GameStageHUD';
@@ -17,10 +14,11 @@ import { computeBoardGapControlLayout } from '@/components/game/matchDiceStageLa
 import { MatchDiceRollStage } from '@/components/game/MatchDiceRollStage';
 import { MatchMomentIndicator } from '@/components/game/MatchMomentIndicator';
 import type { MatchMomentIndicatorCue } from '@/components/game/MatchMomentIndicator';
+import { MatchResultSummaryContent } from '@/components/match/MatchResultSummaryContent';
 import { PieceRail, PieceRailFrameMeasurement, ReserveSlotMeasurement } from '@/components/game/PieceRail';
 import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
 import { DEFAULT_DICE_ROLL_DURATION_MS } from '@/components/game/slotDiceShared';
-import { ProgressionAwardSummary } from '@/components/progression/ProgressionAwardSummary';
+import { TournamentWaitingRoom } from '@/components/tournaments/TournamentWaitingRoom';
 import { PlayTutorialCoachModal } from '@/components/tutorial/PlayTutorialCoachModal';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -58,6 +56,7 @@ import {
   recordOfflineRoll,
 } from '@/src/offlineMatch/offlineMatchRewards';
 import { useProgression } from '@/src/progression/useProgression';
+import { useTournamentAdvanceFlow } from '@/src/tournaments/useTournamentAdvanceFlow';
 import { useGameStore } from '@/store/useGameStore';
 import { resolveVisibleViewportSize } from '@/src/layout/matchViewport';
 import {
@@ -212,6 +211,7 @@ export function GameRoom() {
     tournamentRunId,
     tournamentId,
     tournamentName,
+    tournamentRound,
     tournamentReturnTarget,
   } = useLocalSearchParams<{
     id?: string | string[];
@@ -225,6 +225,7 @@ export function GameRoom() {
     tournamentRunId?: string | string[];
     tournamentId?: string | string[];
     tournamentName?: string | string[];
+    tournamentRound?: string | string[];
     tournamentReturnTarget?: string | string[];
   }>();
   const router = useRouter();
@@ -268,6 +269,10 @@ export function GameRoom() {
   const tournamentNameParam = useMemo(
     () => (Array.isArray(tournamentName) ? tournamentName[0] : tournamentName),
     [tournamentName],
+  );
+  const tournamentRoundParam = useMemo(
+    () => (Array.isArray(tournamentRound) ? tournamentRound[0] : tournamentRound),
+    [tournamentRound],
   );
   const tournamentReturnTargetParam = useMemo(
     () => (Array.isArray(tournamentReturnTarget) ? tournamentReturnTarget[0] : tournamentReturnTarget),
@@ -429,6 +434,15 @@ export function GameRoom() {
   const isMyTurn = hasAssignedColor && gameState.currentTurn === playerColor;
   const didPlayerWin =
     gameState.winner !== null && hasAssignedColor ? gameState.winner === playerColor : gameState.winner === 'light';
+  const tournamentPlayerUserId = userId ?? user?.nakamaUserId ?? user?.id ?? null;
+  const initialTournamentRound = useMemo(() => {
+    if (!tournamentRoundParam) {
+      return null;
+    }
+
+    const parsed = Number(tournamentRoundParam);
+    return Number.isFinite(parsed) ? Math.max(1, Math.floor(parsed)) : null;
+  }, [tournamentRoundParam]);
   const onlineMatchEnd = isOffline ? null : authoritativeMatchEnd;
   const winModalTitle = didPlayerWin ? 'Victory' : 'Defeat';
   const winModalMessage = useMemo(() => {
@@ -544,6 +558,8 @@ export function GameRoom() {
   const [mobileScoreRowHeight, setMobileScoreRowHeight] = React.useState(0);
   const [tutorialCoachPhase, setTutorialCoachPhase] = React.useState<TutorialCoachPhase>('idle');
   const [tutorialLessonIndex, setTutorialLessonIndex] = React.useState(0);
+  const showTournamentWaitingRoom = showWinModal && isTournamentMatch && didPlayerWin;
+  const shouldRenderResultModal = showWinModal && !showTournamentWaitingRoom;
   const isScriptedTutorialPhase =
     isPlaythroughTutorialMatch &&
     tutorialCoachPhase !== 'idle' &&
@@ -618,6 +634,16 @@ export function GameRoom() {
     tutorialCoachPhase === 'lesson_play' && tutorialLesson
       ? `Lesson ${tutorialLesson.lessonNumber}/${PLAYTHROUGH_TUTORIAL_LESSON_COUNT}: ${tutorialLesson.objective}`
       : null;
+  const tournamentAdvanceFlow = useTournamentAdvanceFlow({
+    enabled: showTournamentWaitingRoom,
+    runId: tournamentRunIdParam ?? null,
+    tournamentId: tournamentIdParam ?? null,
+    tournamentName: tournamentDisplayName,
+    gameMode: effectiveMatchConfig.modeId,
+    playerUserId: tournamentPlayerUserId,
+    finishedMatchId: matchId ?? null,
+    initialRound: initialTournamentRound,
+  });
 
   const cueSystemReady = ancientCueFontLoaded || Boolean(ancientCueFontError);
   const cueFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : undefined;
@@ -2292,6 +2318,27 @@ export function GameRoom() {
       } as never,
     );
   };
+  const renderSharedResultSummary = () => (
+    <MatchResultSummaryContent
+      didPlayerWin={didPlayerWin}
+      isPracticeModeMatch={isPracticeModeMatch}
+      isPrivateMatch={isPrivateMatch}
+      canSyncOfflineBotRewards={canSyncOfflineBotRewards}
+      practiceModeRewardLabel={practiceModeRewardLabel}
+      isPlaythroughTutorialMatch={isPlaythroughTutorialMatch}
+      isRankedHumanMatch={isRankedHumanMatch}
+      lastEloRatingChange={lastEloRatingChange}
+      eloUnchangedReason={eloUnchangedReason}
+      shouldShowAccountRewards={shouldShowAccountRewards}
+      progression={progression}
+      isRefreshingMatchRewards={isRefreshingMatchRewards}
+      progressionError={progressionError}
+      lastProgressionAward={lastProgressionAward}
+      shouldShowChallengeRewards={shouldShowChallengeRewards}
+      matchChallengeSummary={matchChallengeSummary}
+      matchRewardsErrorMessage={matchRewardsErrorMessage}
+    />
+  );
 
   const lightReserve = gameState.light.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
   const darkReserve = gameState.dark.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
@@ -3181,7 +3228,7 @@ export function GameRoom() {
               <Text numberOfLines={1} style={styles.tournamentStatusName}>
                 {tournamentDisplayName}
               </Text>
-              <Text style={styles.tournamentStatusText}>Standings update back on the tournament detail screen after this game concludes.</Text>
+              <Text style={styles.tournamentStatusText}>Advance here after a win, or return to the standings if your run ends.</Text>
             </View>
           ) : null}
           {tutorialObjectiveBanner ? (
@@ -3660,7 +3707,7 @@ export function GameRoom() {
       ) : null}
 
       <Modal
-        visible={showWinModal}
+        visible={shouldRenderResultModal}
         title={winModalTitle}
         message={winModalMessage}
         actionLabel="Return to Menu"
@@ -3675,49 +3722,26 @@ export function GameRoom() {
             onPress={handleReturnToTournament}
           />
         ) : null}
-        {didPlayerWin && isPracticeModeMatch && !isPrivateMatch && canSyncOfflineBotRewards && practiceModeRewardLabel ? (
-          <View style={styles.practiceRewardLabel}>
-            <Text style={styles.practiceRewardLabelText}>{practiceModeRewardLabel}</Text>
-          </View>
-        ) : null}
-        {didPlayerWin && isPrivateMatch ? (
-          <View style={styles.privateRewardLabel}>
-            <Text style={styles.privateRewardLabelText}>Private Match: Reduced XP Reward</Text>
-          </View>
-        ) : null}
-        {!isPlaythroughTutorialMatch ? (
-          <EloMatchSummaryPanel
-            result={isRankedHumanMatch ? lastEloRatingChange : null}
-            pending={isRankedHumanMatch && !lastEloRatingChange}
-            unchangedReason={!isRankedHumanMatch ? eloUnchangedReason : null}
-          />
-        ) : null}
-        {shouldShowAccountRewards ? (
-          <>
-            <XPDisplay
-              progression={progression}
-              isLoading={isRefreshingMatchRewards && !progression}
-              errorMessage={progressionError}
-              compact
-              style={styles.matchRewardsXpDisplay}
-            />
-            {didPlayerWin ? (
-              <ProgressionAwardSummary
-                progression={progression}
-                award={lastProgressionAward}
-                pending={!lastProgressionAward}
-              />
-            ) : null}
-            {shouldShowChallengeRewards ? (
-              <MatchChallengeRewardsPanel
-                summary={matchChallengeSummary}
-                loading={isRefreshingMatchRewards && !matchChallengeSummary}
-                errorMessage={matchRewardsErrorMessage}
-              />
-            ) : null}
-          </>
-        ) : null}
+        {renderSharedResultSummary()}
       </Modal>
+
+      <TournamentWaitingRoom
+        visible={showTournamentWaitingRoom}
+        phase={tournamentAdvanceFlow.phase}
+        tournamentName={tournamentDisplayName}
+        derivedRound={tournamentAdvanceFlow.derivedRound}
+        statusText={tournamentAdvanceFlow.statusText}
+        subtleStatusText={tournamentAdvanceFlow.subtleStatusText}
+        retryMessage={tournamentAdvanceFlow.retryMessage}
+        standings={tournamentAdvanceFlow.standings}
+        currentStanding={tournamentAdvanceFlow.currentStanding}
+        highlightOwnerId={tournamentPlayerUserId}
+        finalPlacement={tournamentAdvanceFlow.finalPlacement}
+        isChampion={tournamentAdvanceFlow.isChampion}
+        onBackToStandings={handleReturnToTournament}
+      >
+        {renderSharedResultSummary()}
+      </TournamentWaitingRoom>
 
       <AudioSettingsModal
         visible={showAudioSettings}

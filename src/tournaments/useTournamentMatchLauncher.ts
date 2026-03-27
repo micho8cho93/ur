@@ -1,15 +1,23 @@
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
+import { Session } from '@heroiclabs/nakama-js';
 
 import { getMatchConfig } from '@/logic/matchConfigs';
 import { launchTournamentMatch } from '@/services/tournaments';
-import type { PublicTournamentSummary } from '@/src/tournaments/types';
+import type { PublicTournamentSummary, TournamentMatchLaunchResult } from '@/src/tournaments/types';
 import { useGameStore } from '@/store/useGameStore';
 
 type TournamentLaunchable = Pick<
   PublicTournamentSummary,
   'runId' | 'tournamentId' | 'gameMode' | 'name'
 >;
+
+type TournamentLaunchNavigationMode = 'push' | 'replace';
+
+type FinalizeMatchLaunchOptions = {
+  navigationMode?: TournamentLaunchNavigationMode;
+  returnTarget?: string;
+};
 
 export const useTournamentMatchLauncher = () => {
   const router = useRouter();
@@ -22,41 +30,43 @@ export const useTournamentMatchLauncher = () => {
   const setOnlineMode = useGameStore((state) => state.setOnlineMode);
   const setPlayerColor = useGameStore((state) => state.setPlayerColor);
 
-  const launchMatch = useCallback(
-    async (tournament: TournamentLaunchable) => {
-      setLaunchingRunId(tournament.runId);
+  const finalizeMatchLaunch = useCallback(
+    (
+      tournament: TournamentLaunchable,
+      result: TournamentMatchLaunchResult & { session: Session; userId: string },
+      options?: FinalizeMatchLaunchOptions,
+    ) => {
+      const navigationMode = options?.navigationMode ?? 'push';
+      const navigate = navigationMode === 'replace' ? router.replace : router.push;
 
-      try {
-        const result = await launchTournamentMatch(tournament.runId);
+      setNakamaSession(result.session);
+      setUserId(result.userId);
+      setMatchToken(result.matchToken ?? null);
+      setOnlineMode('nakama');
+      setPlayerColor(null);
+      initGame(result.matchId, {
+        matchConfig: getMatchConfig(tournament.gameMode),
+      });
+      setSocketState('idle');
 
-        setNakamaSession(result.session);
-        setUserId(result.userId);
-        setMatchToken(result.matchToken ?? null);
-        setOnlineMode('nakama');
-        setPlayerColor(null);
-        initGame(result.matchId, {
-          matchConfig: getMatchConfig(tournament.gameMode),
-        });
-        setSocketState('idle');
-
-        router.push({
-          pathname: '/match/[id]',
-          params: {
-            id: result.matchId,
-            modeId: tournament.gameMode,
-            tournamentRunId: result.tournamentRunId,
-            tournamentId: result.tournamentId,
-            tournamentName: tournament.name,
-            tournamentReturnTarget: 'detail',
-          },
-        });
-      } finally {
-        setLaunchingRunId((current) => (current === tournament.runId ? null : current));
-      }
+      navigate({
+        pathname: '/match/[id]',
+        params: {
+          id: result.matchId,
+          modeId: tournament.gameMode,
+          tournamentRunId: result.tournamentRunId,
+          tournamentId: result.tournamentId,
+          tournamentName: tournament.name,
+          tournamentReturnTarget: options?.returnTarget ?? 'detail',
+          ...(typeof result.tournamentRound === 'number' ? { tournamentRound: String(result.tournamentRound) } : {}),
+          ...(result.tournamentEntryId ? { tournamentEntryId: result.tournamentEntryId } : {}),
+        },
+      });
     },
     [
       initGame,
-      router,
+      router.push,
+      router.replace,
       setMatchToken,
       setNakamaSession,
       setOnlineMode,
@@ -66,8 +76,26 @@ export const useTournamentMatchLauncher = () => {
     ],
   );
 
+  const launchMatch = useCallback(
+    async (tournament: TournamentLaunchable) => {
+      setLaunchingRunId(tournament.runId);
+
+      try {
+        const result = await launchTournamentMatch(tournament.runId);
+        finalizeMatchLaunch(tournament, result, {
+          navigationMode: 'push',
+          returnTarget: 'detail',
+        });
+      } finally {
+        setLaunchingRunId((current) => (current === tournament.runId ? null : current));
+      }
+    },
+    [finalizeMatchLaunch],
+  );
+
   return {
     launchingRunId,
+    finalizeMatchLaunch,
     launchMatch,
   };
 };

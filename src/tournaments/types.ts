@@ -43,4 +43,16 @@ export type TournamentMatchLaunchResult = {
   matchToken: string | null;
   tournamentRunId: string;
   tournamentId: string;
+  tournamentRound: number | null;
+  tournamentEntryId: string | null;
+  playerState: string | null;
+  nextRoundReady: boolean | null;
+  statusMessage: string | null;
+  queueStatus: string | null;
+  statusMetadata: Record<string, unknown>;
+};
+
+export type PublicTournamentStatusSnapshot = {
+  tournament: PublicTournamentDetail;
+  standings: PublicTournamentStanding[];
 };

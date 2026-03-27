@@ -4,6 +4,7 @@ import { nakamaService } from '@/services/nakama';
 import type {
   PublicTournamentDetail,
   PublicTournamentStanding,
+  PublicTournamentStatusSnapshot,
   PublicTournamentSummary,
   TournamentMatchLaunchResult,
   TournamentMembershipState,
@@ -94,6 +95,38 @@ const readNumberField = (value: unknown, keys: string[]): number | null => {
   for (const key of keys) {
     const field = record[key];
     if (typeof field === 'number' && Number.isFinite(field)) {
+      return field;
+    }
+  }
+
+  return null;
+};
+
+const readBooleanField = (value: unknown, keys: string[]): boolean | null => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === 'boolean') {
+      return field;
+    }
+  }
+
+  return null;
+};
+
+const readRecordField = (value: unknown, keys: string[]): RpcPayloadRecord | null => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const field = asRecord(record[key]);
+    if (field) {
       return field;
     }
   }
@@ -215,6 +248,21 @@ export const getPublicTournamentStandings = async (
   return readArrayField(standings, ['records']).map((entry) => normalizeTournamentStanding(entry));
 };
 
+export const getPublicTournamentStatus = async (
+  runId: string,
+  limit?: number,
+): Promise<PublicTournamentStatusSnapshot> => {
+  const [tournament, standings] = await Promise.all([
+    getPublicTournament(runId),
+    getPublicTournamentStandings(runId, limit),
+  ]);
+
+  return {
+    tournament,
+    standings,
+  };
+};
+
 export const joinPublicTournament = async (
   runId: string,
 ): Promise<{ tournament: PublicTournamentDetail; joined: boolean }> => {
@@ -232,6 +280,10 @@ export const launchTournamentMatch = async (runId: string): Promise<TournamentMa
   try {
     const response = await client.rpc(session, RPC_LAUNCH_TOURNAMENT_MATCH, { runId });
     const payload = normalizeRpcPayload(response.payload);
+    const statusMetadata = {
+      ...(readRecordField(payload, ['statusMetadata', 'status_metadata']) ?? {}),
+      ...(readRecordField(payload, ['status', 'status_info', 'statusInfo']) ?? {}),
+    };
 
     if (!session.user_id) {
       throw new Error('Authenticated session is missing user ID.');
@@ -245,6 +297,25 @@ export const launchTournamentMatch = async (runId: string): Promise<TournamentMa
         readStringField(payload, ['runId', 'run_id']) ??
         runId,
       tournamentId: readStringField(payload, ['tournamentId', 'tournament_id']) ?? runId,
+      tournamentRound:
+        readNumberField(payload, ['tournamentRound', 'tournament_round', 'round']) ??
+        readNumberField(statusMetadata, ['tournamentRound', 'tournament_round', 'round']),
+      tournamentEntryId:
+        readStringField(payload, ['tournamentEntryId', 'tournament_entry_id', 'entryId', 'entry_id']) ??
+        readStringField(statusMetadata, ['tournamentEntryId', 'tournament_entry_id', 'entryId', 'entry_id']),
+      playerState:
+        readStringField(payload, ['playerState', 'player_state']) ??
+        readStringField(statusMetadata, ['playerState', 'player_state']),
+      nextRoundReady:
+        readBooleanField(payload, ['nextRoundReady', 'next_round_ready']) ??
+        readBooleanField(statusMetadata, ['nextRoundReady', 'next_round_ready']),
+      statusMessage:
+        readStringField(payload, ['statusMessage', 'status_message', 'message']) ??
+        readStringField(statusMetadata, ['statusMessage', 'status_message', 'message']),
+      queueStatus:
+        readStringField(payload, ['queueStatus', 'queue_status']) ??
+        readStringField(statusMetadata, ['queueStatus', 'queue_status']),
+      statusMetadata,
       session,
       userId: session.user_id,
     };

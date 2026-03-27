@@ -79,6 +79,25 @@ const mockConnectSocketWithRetry = jest.fn();
 const mockDisconnectSocket = jest.fn();
 const mockRefreshProgression = jest.fn(() => Promise.resolve(null));
 const mockRefreshChallenges = jest.fn(() => Promise.resolve(null));
+const mockGetPublicTournamentStatus = jest.fn();
+const mockLaunchTournamentMatch = jest.fn();
+const mockFinalizeTournamentMatch = jest.fn();
+const mockTournamentMatchLauncher = {
+  finalizeMatchLaunch: (...args: unknown[]) => mockFinalizeTournamentMatch(...args),
+};
+let mockTournamentAdvanceFlowState = {
+  phase: 'waiting',
+  derivedRound: 2,
+  statusText: 'Recording your victory in the standings...',
+  subtleStatusText: null as string | null,
+  retryMessage: null as string | null,
+  standings: [] as unknown[],
+  currentStanding: null as unknown,
+  finalPlacement: null as number | null,
+  isChampion: false,
+};
+let mockTournamentAdvanceFlowShouldFinalize = false;
+let mockTournamentAdvanceFlowDidFinalize = false;
 const mockSocketJoinMatch = jest.fn();
 const mockSocketLeaveMatch = jest.fn();
 const mockSocketSendMatchState = jest.fn();
@@ -275,6 +294,36 @@ jest.mock('@/components/tutorial/PlayTutorialCoachModal', () => {
   };
 });
 
+jest.mock('@/components/match/MatchResultSummaryContent', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    MatchResultSummaryContent: () => <View testID="mock-match-result-summary" />,
+  };
+});
+
+jest.mock('@/components/tournaments/TournamentWaitingRoom', () => {
+  const React = require('react');
+  const { Text, View } = require('react-native');
+  return {
+    TournamentWaitingRoom: ({
+      visible,
+      statusText,
+      children,
+    }: {
+      visible?: boolean;
+      statusText?: string;
+      children?: React.ReactNode;
+    }) =>
+      visible ? (
+        <View testID="mock-tournament-waiting-room">
+          {statusText ? <Text>{statusText}</Text> : null}
+          {children}
+        </View>
+      ) : null,
+  };
+});
+
 jest.mock('@/components/ui/Modal', () => {
   return {
     Modal: (props: unknown) => mockModal(props as never),
@@ -366,6 +415,11 @@ jest.mock('@/services/audio', () => ({
   },
 }));
 
+jest.mock('@/services/tournaments', () => ({
+  getPublicTournamentStatus: (...args: unknown[]) => mockGetPublicTournamentStatus(...args),
+  launchTournamentMatch: (...args: unknown[]) => mockLaunchTournamentMatch(...args),
+}));
+
 jest.mock('@/services/matchPreferences', () => ({
   DEFAULT_MATCH_PREFERENCES: {
     announcementCuesEnabled: true,
@@ -379,6 +433,36 @@ jest.mock('@/services/matchPreferences', () => ({
   },
   getMatchPreferences: (...args: unknown[]) => mockGetMatchPreferences(...args),
   updateMatchPreferences: (...args: unknown[]) => mockUpdateMatchPreferences(...args),
+}));
+
+jest.mock('@/src/tournaments/useTournamentMatchLauncher', () => ({
+  useTournamentMatchLauncher: () => mockTournamentMatchLauncher,
+}));
+
+jest.mock('@/src/tournaments/useTournamentAdvanceFlow', () => ({
+  useTournamentAdvanceFlow: (options: { enabled: boolean; runId: string | null; tournamentId: string | null }) => {
+    if (options.enabled && mockTournamentAdvanceFlowShouldFinalize && !mockTournamentAdvanceFlowDidFinalize) {
+      mockTournamentAdvanceFlowDidFinalize = true;
+      mockFinalizeTournamentMatch(
+        {
+          runId: options.runId,
+          tournamentId: options.tournamentId,
+        },
+        {
+          matchId: 'match-next',
+        },
+        {
+          navigationMode: 'replace',
+        },
+      );
+    }
+
+    return {
+      isActive: options.enabled,
+      tournament: null,
+      ...mockTournamentAdvanceFlowState,
+    };
+  },
 }));
 
 jest.mock('@/services/nakama', () => ({
@@ -444,6 +528,11 @@ describe('GameRoom match dice stage', () => {
     delete mockSearchParams.privateCode;
     delete mockSearchParams.tutorial;
     delete mockSearchParams.botDifficulty;
+    delete mockSearchParams.tournamentRunId;
+    delete mockSearchParams.tournamentId;
+    delete mockSearchParams.tournamentName;
+    delete mockSearchParams.tournamentRound;
+    delete mockSearchParams.tournamentReturnTarget;
     mockGetMatchPreferences.mockResolvedValue({
       announcementCuesEnabled: true,
       autoRollEnabled: false,
@@ -469,6 +558,57 @@ describe('GameRoom match dice stage', () => {
     mockIsNakamaEnabled.mockReturnValue(false);
     mockRefreshProgression.mockImplementation(() => Promise.resolve(null));
     mockRefreshChallenges.mockImplementation(() => Promise.resolve(null));
+    mockGetPublicTournamentStatus.mockResolvedValue({
+      tournament: {
+        runId: 'run-1',
+        tournamentId: 'tournament-1',
+        name: 'Spring Open',
+        description: 'A public run.',
+        lifecycle: 'open',
+        startAt: '2026-03-27T09:00:00.000Z',
+        endAt: null,
+        updatedAt: '2026-03-27T10:00:00.000Z',
+        entrants: 8,
+        maxEntrants: 16,
+        gameMode: 'standard',
+        region: 'Global',
+        buyInLabel: 'Free',
+        prizeLabel: 'No prize listed',
+        membership: {
+          isJoined: true,
+          joinedAt: '2026-03-27T09:00:00.000Z',
+        },
+      },
+      standings: [],
+    });
+    mockLaunchTournamentMatch.mockResolvedValue({
+      matchId: 'match-next',
+      matchToken: null,
+      tournamentRunId: 'run-1',
+      tournamentId: 'tournament-1',
+      tournamentRound: 2,
+      tournamentEntryId: 'entry-2',
+      playerState: 'advancing',
+      nextRoundReady: true,
+      statusMessage: 'Opponent found.',
+      queueStatus: 'matched',
+      statusMetadata: {},
+      session: { token: 'session-token' },
+      userId: 'self-user',
+    });
+    mockTournamentAdvanceFlowState = {
+      phase: 'waiting',
+      derivedRound: 2,
+      statusText: 'Recording your victory in the standings...',
+      subtleStatusText: null,
+      retryMessage: null,
+      standings: [],
+      currentStanding: null,
+      finalPlacement: null,
+      isChampion: false,
+    };
+    mockTournamentAdvanceFlowShouldFinalize = false;
+    mockTournamentAdvanceFlowDidFinalize = false;
     mockSocketJoinMatch.mockResolvedValue({
       self: { user_id: 'self-user' },
       presences: [],
@@ -1424,6 +1564,138 @@ describe('GameRoom match dice stage', () => {
         ([props]) => props.visible === true && props.title === 'Defeat' && props.message === 'You forfeited due to inactivity.',
       ),
     ).toBe(true);
+  });
+
+  it('keeps the existing tournament loss modal with Back to Standings', () => {
+    mockSearchParams.id = 'tournament-loss';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockStoreState.matchId = 'tournament-loss';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'dark',
+    };
+    mockRefreshProgression.mockImplementation(() => new Promise(() => {}));
+    mockRefreshChallenges.mockImplementation(() => new Promise(() => {}));
+
+    render(<GameRoom />);
+
+    expect(screen.getByText('Back to Standings')).toBeTruthy();
+    expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
+  });
+
+  it('enters the tournament waiting room after a tournament win instead of showing the old modal path', () => {
+    mockSearchParams.id = 'tournament-win';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockStoreState.matchId = 'tournament-win';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockRefreshProgression.mockImplementation(() => new Promise(() => {}));
+    mockRefreshChallenges.mockImplementation(() => new Promise(() => {}));
+    mockTournamentAdvanceFlowState = {
+      ...mockTournamentAdvanceFlowState,
+      phase: 'waiting',
+      statusText: 'Recording your victory in the standings...',
+    };
+
+    render(<GameRoom />);
+
+    expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
+    expect(screen.getByText('Recording your victory in the standings...')).toBeTruthy();
+    expect(screen.queryByText('Victory')).toBeNull();
+  });
+
+  it('uses route replacement when tournament auto-advance succeeds', () => {
+    mockSearchParams.id = 'tournament-auto-next';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockStoreState.matchId = 'tournament-auto-next';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockRefreshProgression.mockImplementation(() => new Promise(() => {}));
+    mockRefreshChallenges.mockImplementation(() => new Promise(() => {}));
+    mockTournamentAdvanceFlowState = {
+      ...mockTournamentAdvanceFlowState,
+      phase: 'launching',
+      statusText: 'Joining next match...',
+    };
+    mockTournamentAdvanceFlowShouldFinalize = true;
+
+    render(<GameRoom />);
+
+    expect(mockFinalizeTournamentMatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: 'run-1',
+        tournamentId: 'tournament-1',
+      }),
+      expect.objectContaining({
+        matchId: 'match-next',
+      }),
+      expect.objectContaining({
+        navigationMode: 'replace',
+      }),
+    );
+  });
+
+  it('returns to waiting/retry when tournament auto-launch fails instead of hard-failing', () => {
+    mockSearchParams.id = 'tournament-auto-retry';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockStoreState.matchId = 'tournament-auto-retry';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockRefreshProgression.mockImplementation(() => new Promise(() => {}));
+    mockRefreshChallenges.mockImplementation(() => new Promise(() => {}));
+    mockTournamentAdvanceFlowState = {
+      ...mockTournamentAdvanceFlowState,
+      phase: 'retrying',
+      statusText: 'Rechecking for the next round...',
+    };
+
+    render(<GameRoom />);
+
+    expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
+    expect(screen.getByText('Rechecking for the next round...')).toBeTruthy();
+    expect(mockFinalizeTournamentMatch).not.toHaveBeenCalled();
   });
 
   it('hides timer-length settings for online matches while leaving offline timer settings available', async () => {

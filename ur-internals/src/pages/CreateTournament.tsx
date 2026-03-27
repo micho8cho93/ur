@@ -2,6 +2,10 @@ import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createTournament } from '../api/tournaments'
 import { PageHeader } from '../components/PageHeader'
+import {
+  getTournamentStructureDescription,
+  TOURNAMENT_STRUCTURE_OPTIONS,
+} from '../tournamentStructure'
 
 type FormState = {
   runId: string
@@ -10,8 +14,6 @@ type FormState = {
   entrants: string
   startAt: string
   durationMinutes: string
-  buyIn: string
-  region: string
   maxNumScore: string
   joinRequired: boolean
   enableRanks: boolean
@@ -21,12 +23,10 @@ type FormState = {
 const initialState: FormState = {
   runId: '',
   name: '',
-  gameMode: 'Classic ladder',
+  gameMode: 'standard',
   entrants: '32',
   startAt: '',
   durationMinutes: '120',
-  buyIn: 'Free',
-  region: 'Global',
   maxNumScore: '7',
   joinRequired: true,
   enableRanks: true,
@@ -84,7 +84,7 @@ export function CreateTournamentPage() {
     }
 
     if (!Number.isFinite(maxNumScore) || maxNumScore < 1) {
-      setError('Max score writes must be at least 1.')
+      setError('Counted matches per player must be at least 1.')
       return
     }
 
@@ -99,8 +99,6 @@ export function CreateTournamentPage() {
         entrants,
         startAt: new Date(form.startAt).toISOString(),
         durationMinutes,
-        buyIn: form.buyIn,
-        region: form.region,
         maxNumScore,
         joinRequired: form.joinRequired,
         enableRanks: form.enableRanks,
@@ -158,18 +156,20 @@ export function CreateTournamentPage() {
             </div>
 
             <div className="field">
-              <label htmlFor="gameMode">Game mode</label>
+              <label htmlFor="gameMode">Game structure</label>
               <select
                 id="gameMode"
                 name="gameMode"
                 value={form.gameMode}
                 onChange={(event) => updateField('gameMode', event)}
               >
-                <option>Classic ladder</option>
-                <option>Swiss</option>
-                <option>Double elimination</option>
-                <option>Teams</option>
+                {TOURNAMENT_STRUCTURE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
+              <span className="muted">{getTournamentStructureDescription(form.gameMode)}</span>
             </div>
 
             <div className="field">
@@ -211,29 +211,7 @@ export function CreateTournamentPage() {
             </div>
 
             <div className="field">
-              <label htmlFor="buyIn">Buy-in</label>
-              <input
-                id="buyIn"
-                name="buyIn"
-                value={form.buyIn}
-                onChange={(event) => updateField('buyIn', event)}
-                placeholder="Free"
-              />
-            </div>
-
-            <div className="field">
-              <label htmlFor="region">Region</label>
-              <input
-                id="region"
-                name="region"
-                value={form.region}
-                onChange={(event) => updateField('region', event)}
-                placeholder="Global"
-              />
-            </div>
-
-            <div className="field">
-              <label htmlFor="maxNumScore">Max score writes</label>
+              <label htmlFor="maxNumScore">Counted matches per player</label>
               <input
                 id="maxNumScore"
                 name="maxNumScore"
@@ -243,6 +221,9 @@ export function CreateTournamentPage() {
                 onChange={(event) => updateField('maxNumScore', event)}
                 required
               />
+              <span className="muted">
+                One counted tournament result is written for each completed tournament match by a player.
+              </span>
             </div>
 
             <div className="field field--full field--checkboxes">
@@ -252,7 +233,7 @@ export function CreateTournamentPage() {
                   checked={form.joinRequired}
                   onChange={(event) => updateField('joinRequired', event)}
                 />
-                <span>Require tournament join before score writes</span>
+                <span>Require tournament join before counted matches are recorded</span>
               </label>
 
               <label className="checkbox">

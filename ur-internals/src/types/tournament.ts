@@ -56,8 +56,6 @@ export interface CreateTournamentInput {
   entrants: number
   startAt: string
   durationMinutes: number
-  buyIn: string
-  region: string
   maxNumScore: number
   joinRequired: boolean
   enableRanks: boolean

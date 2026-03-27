@@ -10,6 +10,7 @@ import {
 } from '../api/tournaments'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
+import { getTournamentStructureLabel } from '../tournamentStructure'
 import type { AuditLogEntry } from '../types/audit'
 import type { Tournament, TournamentEntry, TournamentStandings } from '../types/tournament'
 
@@ -239,8 +240,7 @@ export function TournamentDetailPage() {
       <section className="panel detail-hero">
         <div className="detail-hero__meta">
           <StatusBadge status={tournament.status} />
-          <span className="button">{tournament.gameMode}</span>
-          <span className="button">{tournament.region}</span>
+          <span className="button">{getTournamentStructureLabel(tournament.gameMode)}</span>
           <span className="button">{tournament.operator.toUpperCase()}</span>
         </div>
         <p className="detail-hero__summary">{tournament.description}</p>
@@ -257,7 +257,7 @@ export function TournamentDetailPage() {
             </strong>
           </div>
           <div className="metric-card">
-            <span className="meta-label">Max score writes</span>
+            <span className="meta-label">Counted matches per player</span>
             <strong>{tournament.maxNumScore}</strong>
           </div>
         </div>
@@ -286,8 +286,8 @@ export function TournamentDetailPage() {
               <strong>{tournament.createdBy}</strong>
             </div>
             <div className="metric-card">
-              <span className="meta-label">Buy-in</span>
-              <strong>{tournament.buyIn}</strong>
+              <span className="meta-label">Structure</span>
+              <strong>{getTournamentStructureLabel(tournament.gameMode)}</strong>
             </div>
             <div className="metric-card">
               <span className="meta-label">Join required</span>
@@ -327,7 +327,7 @@ export function TournamentDetailPage() {
                     <th>Player</th>
                     <th>Score</th>
                     <th>Subscore</th>
-                    <th>Writes</th>
+                    <th>Counted Matches</th>
                   </tr>
                 </thead>
                 <tbody>

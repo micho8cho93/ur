@@ -2,8 +2,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
-  getPublicTournament,
-  getPublicTournamentStandings,
+  getPublicTournamentStatus,
   joinPublicTournament,
 } from '@/services/tournaments';
 import { useTournamentUiStore } from '@/src/tournaments/store';
@@ -37,13 +36,9 @@ export const useTournamentDetail = (runId: string | null) => {
     setErrorMessage(null);
 
     try {
-      const [nextTournament, nextStandings] = await Promise.all([
-        getPublicTournament(runId),
-        getPublicTournamentStandings(runId),
-      ]);
-
-      setTournament(nextTournament);
-      setStandings(nextStandings);
+      const snapshot = await getPublicTournamentStatus(runId);
+      setTournament(snapshot.tournament);
+      setStandings(snapshot.standings);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to load tournament detail.');
     } finally {
