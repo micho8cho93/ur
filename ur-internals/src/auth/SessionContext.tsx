@@ -3,10 +3,8 @@ import type { Session } from '@heroiclabs/nakama-js'
 import { getAdminWhoAmI } from '../api/auth'
 import type { AdminIdentity } from '../types/auth'
 import {
-  authenticateWithEmail,
-  authenticateWithGoogleIdToken,
+  authenticateWithUsername,
   clearNakamaSession,
-  requestGoogleIdToken,
   restoreStoredNakamaSession,
 } from './nakama'
 import { SessionContext } from './sessionContext'
@@ -100,32 +98,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  async function loginWithEmail(email: string, password: string) {
+  async function loginWithUsername(username: string, password: string) {
     setIsAuthenticating(true)
     setAuthError(null)
 
     try {
-      const session = await authenticateWithEmail(email, password)
-      return await verifyAdminSession(session)
-    } catch (error) {
-      const message = await resetSessionWithError(error)
-      throw new Error(message)
-    } finally {
-      setIsAuthenticating(false)
-    }
-  }
-
-  async function loginWithGoogle() {
-    setIsAuthenticating(true)
-    setAuthError(null)
-
-    try {
-      const idToken = await requestGoogleIdToken()
-      if (!idToken) {
-        return null
-      }
-
-      const session = await authenticateWithGoogleIdToken(idToken)
+      const session = await authenticateWithUsername(username, password)
       return await verifyAdminSession(session)
     } catch (error) {
       const message = await resetSessionWithError(error)
@@ -156,8 +134,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         isAuthenticated: Boolean(sessionToken && adminIdentity),
         adminIdentity,
         authError,
-        loginWithEmail,
-        loginWithGoogle,
+        loginWithUsername,
         logout,
         clearAuthError,
       }}

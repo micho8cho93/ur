@@ -25,38 +25,23 @@ function getTargetLabel() {
 export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { authError, clearAuthError, isAuthenticating, loginWithEmail, loginWithGoogle } =
-    useSession()
-  const [email, setEmail] = useState('')
+  const { authError, clearAuthError, isAuthenticating, loginWithUsername } = useSession()
+  const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
   const redirectTo = resolveRedirectTo(location.state)
   const errorMessage = localError ?? authError
 
-  async function handleEmailLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleUsernameLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setLocalError(null)
     clearAuthError()
 
     try {
-      await loginWithEmail(email, password)
+      await loginWithUsername(username, password)
       void navigate(redirectTo, { replace: true })
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : 'Unable to sign in.')
-    }
-  }
-
-  async function handleGoogleLogin() {
-    setLocalError(null)
-    clearAuthError()
-
-    try {
-      const admin = await loginWithGoogle()
-      if (admin) {
-        void navigate(redirectTo, { replace: true })
-      }
-    } catch (error) {
-      setLocalError(error instanceof Error ? error.message : 'Unable to sign in with Google.')
     }
   }
 
@@ -67,8 +52,8 @@ export function LoginPage() {
           <p className="meta-label">Ur Game Internals</p>
           <h1>Admin sign-in</h1>
           <p className="auth-copy">
-            Authenticate with Nakama, verify admin access through <code>rpc_admin_whoami</code>,
-            and only then enter the dashboard.
+            Sign in with the admin test account, verify access through{' '}
+            <code>rpc_admin_whoami</code>, and then enter the dashboard.
           </p>
         </div>
 
@@ -79,23 +64,23 @@ export function LoginPage() {
           </div>
           <div className="metric-card">
             <span className="meta-label">Access</span>
-            <strong>Viewer, operator, or admin</strong>
+            <strong>Test admin account</strong>
           </div>
         </div>
 
         {errorMessage ? <div className="alert alert--error">{errorMessage}</div> : null}
 
-        <form className="form auth-form" onSubmit={handleEmailLogin}>
+        <form className="form auth-form" onSubmit={handleUsernameLogin}>
           <div className="field">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="username">Username</label>
             <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="admin@urgame.live"
+              id="username"
+              name="username"
+              type="text"
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="admin"
               required
             />
           </div>
@@ -115,26 +100,13 @@ export function LoginPage() {
           </div>
 
           <button className="button button--primary auth-button" type="submit" disabled={isAuthenticating}>
-            {isAuthenticating ? 'Signing in...' : 'Sign in with email'}
+            {isAuthenticating ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
 
-        <div className="auth-divider" role="separator" aria-label="Alternative sign-in methods">
-          <span>or</span>
-        </div>
-
-        <button
-          className="button auth-button"
-          type="button"
-          onClick={handleGoogleLogin}
-          disabled={isAuthenticating || env.googleWebClientId.length === 0}
-        >
-          {env.googleWebClientId.length === 0 ? 'Google SSO not configured' : 'Continue with Google'}
-        </button>
-
         <p className="muted auth-footnote">
-          Successful sign-in stores the Nakama session token locally and refreshes it on reload when
-          possible.
+          Quick test credentials: <code>admin</code> / <code>password</code>. Successful sign-in
+          stores the Nakama session token locally and refreshes it on reload when possible.
         </p>
       </section>
     </div>

@@ -26,7 +26,6 @@ const requestTimeoutMs = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? '10000')
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true'
 const nakamaServerKey =
   import.meta.env.VITE_NAKAMA_SERVER_KEY?.trim() || DEFAULT_NAKAMA_SERVER_KEY
-const googleWebClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID?.trim() || ''
 const endpoint = parseNakamaEndpoint(nakamaBaseUrl)
 
 const env = {
@@ -35,7 +34,6 @@ const env = {
   nakamaPort: endpoint.port,
   nakamaUseSSL: endpoint.useSSL,
   nakamaServerKey,
-  googleWebClientId,
   requestTimeoutMs: Number.isFinite(requestTimeoutMs) ? requestTimeoutMs : 10000,
   useMockData,
 }

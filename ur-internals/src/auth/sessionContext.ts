@@ -9,8 +9,7 @@ export interface SessionContextValue {
   isAuthenticated: boolean
   adminIdentity: AdminIdentity | null
   authError: string | null
-  loginWithEmail: (email: string, password: string) => Promise<AdminIdentity>
-  loginWithGoogle: () => Promise<AdminIdentity | null>
+  loginWithUsername: (username: string, password: string) => Promise<AdminIdentity>
   logout: () => Promise<void>
   clearAuthError: () => void
 }
