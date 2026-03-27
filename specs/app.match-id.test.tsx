@@ -850,6 +850,67 @@ describe('GameRoom match dice stage', () => {
     consoleWarnSpy.mockRestore();
   });
 
+  it('stops retrying when the server reports that the online match no longer exists', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+    mockSearchParams.id = 'online-missing-match';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockRejectedValue({
+      code: 4,
+      message: 'Match not found',
+    });
+    mockStoreState.matchId = 'online-missing-match';
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockSetSocketState).toHaveBeenCalledWith('error');
+    expect(mockDisconnectSocket).toHaveBeenCalledWith(false);
+
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockConnectSocketWithRetry).toHaveBeenCalledTimes(1);
+    expect(mockSocketJoinMatch).toHaveBeenCalledTimes(1);
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('does not explicitly leave an online match during internal cleanup', async () => {
+    mockSearchParams.id = 'online-cleanup';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-cleanup',
+    });
+    mockStoreState.matchId = 'online-cleanup';
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    view.unmount();
+
+    expect(mockSocketLeaveMatch).not.toHaveBeenCalled();
+    expect(mockDisconnectSocket).toHaveBeenCalledWith(false);
+  });
+
   it('treats rejected online sends as disconnects and retries the socket join', async () => {
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
     mockSearchParams.id = 'online-send-retry';

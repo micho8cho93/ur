@@ -37,6 +37,21 @@ const RESERVE_PIECE_SIZE_BOOST = 1;
 const MOBILE_VERTICAL_TRAY_ART_SCALE = 2;
 const MOBILE_VERTICAL_RESERVE_PIECE_FIT = 0.74;
 
+const measureViewInWindow = (
+  view: View | null,
+  onMeasured: (x: number, y: number, width: number, height: number) => void,
+): void => {
+  if (!view) {
+    return;
+  }
+
+  try {
+    view.measureInWindow(onMeasured);
+  } catch {
+    // Ignore stale-node layout probes during fast remounts.
+  }
+};
+
 const TRAY_ART_FIT = {
   // Artwork-only fit tuning; does not affect piece coordinates or hitboxes.
   // Increase current tray display size by 15%.
@@ -311,7 +326,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
           return;
         }
 
-        slotRef.measureInWindow((x, y, width, height) => {
+        measureViewInWindow(slotRef, (x, y, width, height) => {
           measuredSlots[renderIndex] = {
             color,
             index: slotIndex,
@@ -342,7 +357,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
     }
 
     requestAnimationFrame(() => {
-      railRef.current?.measureInWindow((x, y, width, height) => {
+      measureViewInWindow(railRef.current, (x, y, width, height) => {
         const nextFrame = {
           color,
           x,

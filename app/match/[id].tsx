@@ -105,6 +105,30 @@ const AUTO_ROLL_DELAY_MS = 550;
 const BOARD_INTRO_FALLBACK_DELAY_MS = 400;
 const SHOULD_BYPASS_CINEMATIC_INTROS = process.env.NODE_ENV === 'test';
 
+const measureViewInWindow = (
+  view: View | null,
+  onMeasured: (x: number, y: number, width: number, height: number) => void,
+): void => {
+  if (!view) {
+    return;
+  }
+
+  try {
+    view.measureInWindow(onMeasured);
+  } catch {
+    // Ignore stale-node layout probes during web reflows/unmounts.
+  }
+};
+
+const isMatchNotFoundSocketError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const record = error as Record<string, unknown>;
+  return record.code === 4 && typeof record.message === 'string' && /match not found/i.test(record.message);
+};
+
 type MatchMomentCueKind = 'play' | 'rosette' | 'opponentJoined' | 'opponentForfeit';
 type RollButtonLatchPhase = 'idle' | 'awaitingOutcome' | 'awaitingTurnReset';
 type TutorialCoachPhase =
@@ -868,7 +892,7 @@ export function GameRoom() {
     }
 
     requestAnimationFrame(() => {
-      boardNode.measureInWindow((x, y) => {
+      measureViewInWindow(boardNode, (x, y) => {
         const nextFrame = {
           x: x + boardImageLayout.x,
           y: y + boardImageLayout.y,
@@ -906,7 +930,7 @@ export function GameRoom() {
     }
 
     requestAnimationFrame(() => {
-      boardNode.measureInWindow((x, y, width, height) => {
+      measureViewInWindow(boardNode, (x, y, width, height) => {
         const nextFrame = { x, y, width, height };
 
         setBoardDropTargetFrame((previous) =>
@@ -1507,9 +1531,11 @@ export function GameRoom() {
 
   const socketRef = useRef<Socket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressReconnectRef = useRef(false);
   useEffect(() => {
     if (!matchId) return;
     if (isOffline) {
+      suppressReconnectRef.current = true;
       setOnlineMode('offline');
       setMatchPresences([]);
       setPlayerColor('light');
@@ -1517,6 +1543,7 @@ export function GameRoom() {
       return;
     }
 
+    suppressReconnectRef.current = false;
     setOnlineMode('nakama');
 
     let isMounted = true;
@@ -1611,8 +1638,22 @@ export function GameRoom() {
       updateMatchPresences(matchPresence);
     };
 
+    const disposeSocket = (socket: Socket | null) => {
+      if (!socket) {
+        return;
+      }
+
+      socket.onmatchdata = () => { };
+      socket.onmatchpresence = () => { };
+      socket.ondisconnect = () => { };
+
+      if (socketRef.current === socket) {
+        socketRef.current = null;
+      }
+    };
+
     const scheduleReconnect = () => {
-      if (reconnectTimerRef.current) {
+      if (!isMounted || suppressReconnectRef.current || reconnectTimerRef.current) {
         return;
       }
       reconnectTimerRef.current = setTimeout(() => {
@@ -1668,7 +1709,8 @@ export function GameRoom() {
         setSocketState('connected');
       } catch (error) {
         console.error(error);
-        socketRef.current = null;
+        suppressReconnectRef.current = isMatchNotFoundSocketError(error);
+        disposeSocket(socketRef.current);
         nakamaService.disconnectSocket(false);
         setSocketState('error');
       }
@@ -1678,18 +1720,15 @@ export function GameRoom() {
 
     return () => {
       isMounted = false;
+      suppressReconnectRef.current = true;
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
       }
-      if (!isOffline && socketRef.current && matchId) {
-        void socketRef.current.leaveMatch(matchId).catch(() => { });
-      }
-      if (socketRef.current) {
-        socketRef.current.onmatchdata = () => { };
-        socketRef.current.onmatchpresence = () => { };
-        socketRef.current.ondisconnect = () => { };
-        socketRef.current = null;
+      if (!isOffline) {
+        const currentSocket = socketRef.current;
+        disposeSocket(currentSocket);
+        nakamaService.disconnectSocket(false);
       }
     };
   }, [
@@ -1698,6 +1737,7 @@ export function GameRoom() {
     matchId,
     effectiveMatchToken,
     setMatchId,
+    setLastEloRatingChange,
     setLastProgressionAward,
     setOnlineMode,
     setPlayerColor,
@@ -2039,6 +2079,7 @@ export function GameRoom() {
 
   const leaveCurrentMatch = () => {
     if (!isOffline && socketRef.current && matchId) {
+      suppressReconnectRef.current = true;
       void socketRef.current.leaveMatch(matchId).catch(() => { });
       nakamaService.disconnectSocket(true);
     }

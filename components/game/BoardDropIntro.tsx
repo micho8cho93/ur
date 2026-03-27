@@ -50,6 +50,21 @@ interface DustPuffConfig {
   opacity: number;
 }
 
+const measureViewInWindow = (
+  view: View | null,
+  onMeasured: (x: number, y: number, width: number, height: number) => void,
+): void => {
+  if (!view) {
+    return;
+  }
+
+  try {
+    view.measureInWindow(onMeasured);
+  } catch {
+    // Ignore stale-node layout probes during fast remounts.
+  }
+};
+
 const DUST_PUFFS: DustPuffConfig[] = [
   {
     anchorX: 0.06,
@@ -402,7 +417,7 @@ export const BoardDropIntro: React.FC<BoardDropIntroProps> = ({
 
   const syncOverlayOrigin = () => {
     requestAnimationFrame(() => {
-      overlayRef.current?.measureInWindow((x, y) => {
+      measureViewInWindow(overlayRef.current, (x, y) => {
         setOverlayOrigin((previous) =>
           previous.x === x && previous.y === y ? previous : { x, y },
         );
