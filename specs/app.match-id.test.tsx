@@ -1,12 +1,13 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { createInitialState } from '@/logic/engine';
+import { createInitialState, getValidMoves } from '@/logic/engine';
 import type { GameState, MoveAction } from '@/logic/types';
 
 const mockMatchDiceRollStage = jest.fn(({ rolling, visible }: { rolling: boolean; visible: boolean }) => {
   const { Text } = require('react-native');
   return <Text testID="match-dice-stage-playback">{`${visible ? 'visible' : 'hidden'}:${rolling ? 'rolling' : 'idle'}`}</Text>;
 });
+const mockBoard = jest.fn();
 const mockGameStageHUD = jest.fn(() => {
   const { View } = require('react-native');
   return <View testID="mock-stage-hud" />;
@@ -156,9 +157,14 @@ jest.mock('@/components/game/Board', () => {
   const React = require('react');
   const { useEffect } = React;
   const { View } = require('react-native');
-  return {
-    BOARD_IMAGE_SOURCE: 1,
-    Board: ({ onBoardImageLayout }: { onBoardImageLayout?: (layout: { x: number; y: number; width: number; height: number }) => void }) => {
+  const MockBoard = (props: {
+    allowInteraction?: boolean;
+    onBoardImageLayout?: (layout: { x: number; y: number; width: number; height: number }) => void;
+    onMakeMoveOverride?: (move: unknown) => void;
+  }) => {
+      mockBoard(props);
+      const { onBoardImageLayout } = props;
+      
       useEffect(() => {
         onBoardImageLayout?.({
           x: 0,
@@ -169,7 +175,11 @@ jest.mock('@/components/game/Board', () => {
       }, [onBoardImageLayout]);
 
       return <View testID="mock-board" />;
-    },
+    };
+
+  return {
+    BOARD_IMAGE_SOURCE: 1,
+    Board: MockBoard,
     getBoardPiecePixelSize: () => 28,
   };
 });
@@ -500,6 +510,7 @@ describe('GameRoom match dice stage', () => {
     mockStoreState.userId = null;
     mockStoreState.serverRevision = 0;
     mockStoreState.playerColor = 'light';
+    mockStoreState.socketState = 'connected';
     mockStoreState.authoritativeServerTimeMs = null;
     mockStoreState.authoritativeTurnDurationMs = null;
     mockStoreState.authoritativeTurnStartedAtMs = null;
@@ -1211,6 +1222,51 @@ describe('GameRoom match dice stage', () => {
       configurable: true,
       value: previousWindow,
     });
+  });
+
+  it('disables online board interaction when the socket is not connected', async () => {
+    mockSearchParams.id = 'online-input-locked';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-input-locked',
+    });
+    mockStoreState.matchId = 'online-input-locked';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.socketState = 'error';
+
+    const movingState = createInitialState();
+    movingState.currentTurn = 'light';
+    movingState.phase = 'moving';
+    movingState.rollValue = 1;
+    movingState.light.pieces[0].position = 2;
+    mockStoreState.gameState = movingState;
+    mockStoreState.validMoves = getValidMoves(movingState, 1);
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const latestBoardProps = mockBoard.mock.calls.at(-1)?.[0] as {
+      allowInteraction?: boolean;
+      onMakeMoveOverride?: (move: MoveAction) => void;
+    };
+
+    expect(latestBoardProps.allowInteraction).toBe(false);
+
+    await act(async () => {
+      latestBoardProps.onMakeMoveOverride?.(mockStoreState.validMoves[0]);
+    });
+
+    expect(mockMakeMove).not.toHaveBeenCalled();
   });
 
   it('treats rejected online sends as disconnects and retries the socket join', async () => {

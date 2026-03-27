@@ -129,6 +129,19 @@ const isMatchNotFoundSocketError = (error: unknown): boolean => {
   return record.code === 4 && typeof record.message === 'string' && /match not found/i.test(record.message);
 };
 
+const isUnauthorizedNakamaError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const record = error as Record<string, unknown>;
+  if (record.status === 401 || record.statusCode === 401 || record.code === 401) {
+    return true;
+  }
+
+  return typeof record.message === 'string' && /unauthorized|expired|token/i.test(record.message);
+};
+
 type MatchMomentCueKind = 'play' | 'rosette' | 'opponentJoined' | 'opponentForfeit';
 type RollButtonLatchPhase = 'idle' | 'awaitingOutcome' | 'awaitingTurnReset';
 type TutorialCoachPhase =
@@ -363,6 +376,7 @@ export function GameRoom() {
   const setLastProgressionAward = useGameStore((state) => state.setLastProgressionAward);
   const setLastEloRatingChange = useGameStore((state) => state.setLastEloRatingChange);
   const setSocketState = useGameStore((state) => state.setSocketState);
+  const socketState = useGameStore((state) => state.socketState);
   const setRollCommandSender = useGameStore((state) => state.setRollCommandSender);
   const setMoveCommandSender = useGameStore((state) => state.setMoveCommandSender);
   const { progression, refresh: refreshProgression, errorMessage: progressionError } = useProgression();
@@ -434,7 +448,8 @@ export function GameRoom() {
     return presenceIds.size;
   }, [isOffline, matchPresences, userId]);
   const isPrivateMatchReady = !isPrivateMatch || joinedPlayerCount >= 2 || gameState.winner !== null;
-  const canRoll = isMyTurn && gameState.phase === 'rolling' && isPrivateMatchReady;
+  const isOnlineInteractionReady = isOffline || socketState === 'connected';
+  const canRoll = isMyTurn && gameState.phase === 'rolling' && isPrivateMatchReady && isOnlineInteractionReady;
   const privateMatchStatusText = useMemo(() => {
     if (!isPrivateMatch) {
       return null;
@@ -1717,7 +1732,7 @@ export function GameRoom() {
         setSocketState('connected');
       } catch (error) {
         console.error(error);
-        suppressReconnectRef.current = isMatchNotFoundSocketError(error);
+        suppressReconnectRef.current = isMatchNotFoundSocketError(error) || isUnauthorizedNakamaError(error);
         disposeSocket(socketRef.current);
         nakamaService.disconnectSocket(false);
         setSocketState('error');
@@ -1775,6 +1790,7 @@ export function GameRoom() {
       try {
         await socket.sendMatchState(matchId, MatchOpCode.ROLL_REQUEST, encodePayload(payload));
       } catch (error) {
+        suppressReconnectRef.current = isUnauthorizedNakamaError(error);
         console.error('[Nakama][send_failed]', {
           error,
           eventType: payload.type,
@@ -1798,6 +1814,7 @@ export function GameRoom() {
       try {
         await socket.sendMatchState(matchId, MatchOpCode.MOVE_REQUEST, encodePayload(payload));
       } catch (error) {
+        suppressReconnectRef.current = isUnauthorizedNakamaError(error);
         console.error('[Nakama][send_failed]', {
           error,
           eventType: payload.type,
@@ -1984,6 +2001,10 @@ export function GameRoom() {
     (move: MoveAction) => {
       resumeAnnouncementCuesFromInteraction();
 
+      if (!isOnlineInteractionReady) {
+        return;
+      }
+
       if (!isPrivateMatchReady) {
         return;
       }
@@ -1995,7 +2016,14 @@ export function GameRoom() {
 
       makeMove(move);
     },
-    [handleTutorialMove, isPrivateMatchReady, isScriptedTutorialPhase, makeMove, resumeAnnouncementCuesFromInteraction],
+    [
+      handleTutorialMove,
+      isOnlineInteractionReady,
+      isPrivateMatchReady,
+      isScriptedTutorialPhase,
+      makeMove,
+      resumeAnnouncementCuesFromInteraction,
+    ],
   );
 
   const handleRoll = React.useCallback(() => {
@@ -2629,6 +2657,7 @@ export function GameRoom() {
           validMovesOverride={displayedValidMoves}
           onMakeMoveOverride={handleBoardMove}
           onInteraction={resumeAnnouncementCuesFromInteraction}
+          allowInteraction={isOnlineInteractionReady}
           boardScale={boardScale}
           orientation="vertical"
           onBoardImageLayout={handleLiveBoardImageLayout}

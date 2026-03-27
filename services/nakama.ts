@@ -22,6 +22,25 @@ const delay = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+const isUnauthorizedError = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as {
+    code?: unknown;
+    message?: unknown;
+    status?: unknown;
+    statusCode?: unknown;
+  };
+
+  if (candidate.status === 401 || candidate.statusCode === 401 || candidate.code === 401) {
+    return true;
+  }
+
+  return typeof candidate.message === "string" && /unauthorized|expired|token/i.test(candidate.message);
+};
+
 export class NakamaService {
   private client: Client | null = null;
   private session: Session | null = null;
@@ -90,7 +109,28 @@ export class NakamaService {
 
   async loadSession(): Promise<Session | null> {
     if (this.session) {
-      return this.session;
+      if (!this.session.isexpired(Date.now() / 1000)) {
+        return this.session;
+      }
+
+      if (!this.session.refresh_token) {
+        await this.clearSession();
+        return null;
+      }
+
+      try {
+        const refreshed = await this.getClient().sessionRefresh(this.session);
+        this.session = refreshed;
+        await this.persistSession(refreshed);
+        return refreshed;
+      } catch (error) {
+        if (isUnauthorizedError(error)) {
+          await this.clearSession();
+          return null;
+        }
+
+        throw error;
+      }
     }
 
     const rawSession = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
@@ -106,10 +146,24 @@ export class NakamaService {
 
       const restored = Session.restore(stored.token, stored.refreshToken);
       if (restored.isexpired(Date.now() / 1000) && restored.refresh_token) {
-        const refreshed = await this.getClient().sessionRefresh(restored);
-        this.session = refreshed;
-        await this.persistSession(refreshed);
-        return refreshed;
+        try {
+          const refreshed = await this.getClient().sessionRefresh(restored);
+          this.session = refreshed;
+          await this.persistSession(refreshed);
+          return refreshed;
+        } catch (error) {
+          if (isUnauthorizedError(error)) {
+            await this.clearSession();
+            return null;
+          }
+
+          throw error;
+        }
+      }
+
+      if (restored.isexpired(Date.now() / 1000) && !restored.refresh_token) {
+        await this.clearSession();
+        return null;
       }
 
       this.session = restored;
