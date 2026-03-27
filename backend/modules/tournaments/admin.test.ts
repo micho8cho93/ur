@@ -2,6 +2,7 @@ import {
   rpcAdminCreateTournamentRun,
   rpcAdminGetTournamentRun,
   rpcAdminListTournaments,
+  rpcAdminOpenTournament,
   RUNS_COLLECTION,
   RUNS_INDEX_KEY,
 } from "./admin";
@@ -91,6 +92,7 @@ const createNakama = () => {
     storageRead,
     storageWrite,
     tournamentsGetId: jest.fn(() => []),
+    tournamentCreate: jest.fn(),
   };
 };
 
@@ -298,6 +300,97 @@ describe("admin tournament run creation", () => {
       expect.objectContaining({
         runId: "test-tournament",
       }),
+    );
+  });
+
+  it("opens a draft run and creates the Nakama tournament with the runtime argument order", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk, "admin-1", "operator");
+
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, "test-tournament"), {
+      collection: RUNS_COLLECTION,
+      key: "test-tournament",
+      value: {
+        runId: "test-tournament",
+        tournamentId: "test-tournament",
+        title: "Test Tournament",
+        description: "Saved draft",
+        category: 3,
+        authoritative: true,
+        sortOrder: "desc",
+        operator: "incr",
+        resetSchedule: "",
+        metadata: {
+          gameMode: "Classic ladder",
+          region: "Global",
+          buyIn: "Free",
+        },
+        startTime: 1_774_572_800,
+        endTime: 1_774_580_000,
+        duration: 7_200,
+        maxSize: 32,
+        maxNumScore: 7,
+        joinRequired: true,
+        enableRanks: true,
+        lifecycle: "draft",
+        createdAt: "2026-03-27T10:00:00.000Z",
+        updatedAt: "2026-03-27T10:00:00.000Z",
+        createdByUserId: "admin-1",
+        createdByLabel: "Operator",
+        openedAt: null,
+        closedAt: null,
+        finalizedAt: null,
+        finalSnapshot: null,
+      },
+      version: "run-v1",
+    });
+
+    const response = JSON.parse(
+      rpcAdminOpenTournament(
+        {
+          userId: "admin-1",
+          username: "Operator",
+        },
+        logger,
+        nk,
+        JSON.stringify({ runId: "test-tournament" }),
+      ),
+    ) as {
+      run: {
+        runId: string;
+        lifecycle: string;
+      };
+    };
+
+    expect(response.run).toEqual(
+      expect.objectContaining({
+        runId: "test-tournament",
+        lifecycle: "open",
+      }),
+    );
+
+    expect(nk.tournamentCreate).toHaveBeenCalledWith(
+      "test-tournament",
+      true,
+      "desc",
+      "incr",
+      7_200,
+      "",
+      {
+        gameMode: "Classic ladder",
+        region: "Global",
+        buyIn: "Free",
+      },
+      "Test Tournament",
+      "Saved draft",
+      3,
+      1_774_572_800,
+      1_774_580_000,
+      32,
+      7,
+      true,
+      true,
     );
   });
 });
