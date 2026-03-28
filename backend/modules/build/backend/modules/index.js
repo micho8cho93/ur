@@ -152,6 +152,10 @@ var XP_SOURCE_CONFIG = {
     amount: 100,
     description: "Authoritative PvP win reward."
   },
+  tournament_champion: {
+    amount: 250,
+    description: "Tournament champion reward."
+  },
   private_pvp_win: {
     amount: 25,
     description: "Private PvP win reward."
@@ -871,9 +875,23 @@ var awardXpForMatchWin = (nk, logger, params) => {
       source,
       sourceId: params.matchId,
       matchId: params.matchId,
-      awardedXp: getXpAwardAmount(source)
+      awardedXp: typeof params.awardedXp === "number" && Number.isFinite(params.awardedXp) ? params.awardedXp : getXpAwardAmount(source)
     })
   );
+};
+var awardXpForTournamentChampion = (nk, logger, params) => {
+  var _a;
+  const runId = (_a = params.runId) == null ? void 0 : _a.trim();
+  if (!runId) {
+    throw new Error("Cannot award tournament champion XP without a run ID.");
+  }
+  return awardXp(nk, logger, {
+    userId: params.userId,
+    ledgerKey: `tournament_champion:${runId}`,
+    source: "tournament_champion",
+    sourceId: runId,
+    awardedXp: typeof params.awardedXp === "number" && Number.isFinite(params.awardedXp) ? params.awardedXp : getXpAwardAmount("tournament_champion")
+  });
 };
 var createProgressionAwardNotification = (response) => __spreadValues({
   type: "progression_award"
@@ -3586,6 +3604,8 @@ var DEFAULT_TOURNAMENT_SCORING = {
   lossPoints: 0,
   allowDraws: true
 };
+var DEFAULT_TOURNAMENT_XP_PER_MATCH_WIN = getXpAwardAmount("pvp_win");
+var DEFAULT_TOURNAMENT_XP_FOR_CHAMPION = getXpAwardAmount("tournament_champion");
 var TOURNAMENT_STATUSES = [
   "draft",
   "scheduled",
@@ -3708,6 +3728,13 @@ var clampPositiveInteger = (value, fallback, max) => {
   }
   return Math.min(max, floored);
 };
+var clampNonNegativeInteger2 = (value, fallback, max) => {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(max, Math.floor(parsed)));
+};
 var normalizeCurrency = (value) => {
   if (typeof value !== "string") {
     return null;
@@ -3722,6 +3749,32 @@ var normalizeRewardPoolAmount = (value) => {
   }
   return Math.round(parsed * 100) / 100;
 };
+var resolveTournamentXpRewardSettings = (value) => ({
+  xpPerMatchWin: clampNonNegativeInteger2(
+    readNumberField4(value, [
+      "xpPerMatchWin",
+      "xp_per_match_win",
+      "matchWinXp",
+      "match_win_xp",
+      "tournamentMatchWinXp",
+      "tournament_match_win_xp"
+    ]),
+    DEFAULT_TOURNAMENT_XP_PER_MATCH_WIN,
+    1e6
+  ),
+  xpForTournamentChampion: clampNonNegativeInteger2(
+    readNumberField4(value, [
+      "xpForTournamentChampion",
+      "xp_for_tournament_champion",
+      "championXp",
+      "champion_xp",
+      "tournamentChampionXp",
+      "tournament_champion_xp"
+    ]),
+    DEFAULT_TOURNAMENT_XP_FOR_CHAMPION,
+    1e6
+  )
+});
 var slugify = (value) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 var normalizeParticipant = (value) => {
   const record = asRecord(value);
@@ -4654,6 +4707,23 @@ var buildStandingsSnapshot = (nk, tournamentId, limit, overrideExpiry) => {
     nextCursor: result.nextCursor
   };
 };
+var readStandingsRecordRank = (record) => {
+  const rank = readNumberField4(record, ["rank"]);
+  return typeof rank === "number" && Number.isFinite(rank) ? rank : null;
+};
+var readStandingsRecordOwnerId = (record) => readStringField6(record, ["ownerId", "owner_id"]);
+var resolveChampionUserId = (snapshot) => {
+  var _a, _b, _c, _d;
+  if (snapshot.records.length === 0) {
+    return null;
+  }
+  const rankedRecords = snapshot.records.map((record) => ({
+    record,
+    rank: readStandingsRecordRank(record)
+  })).filter((entry) => entry.rank !== null);
+  const championRecord = (_d = (_c = (_a = rankedRecords.find((entry) => entry.rank === 1)) == null ? void 0 : _a.record) != null ? _c : (_b = rankedRecords.slice().sort((left, right) => left.rank - right.rank)[0]) == null ? void 0 : _b.record) != null ? _d : snapshot.records[0];
+  return championRecord ? readStandingsRecordOwnerId(championRecord) : null;
+};
 var sortRuns = (runs) => runs.slice().sort((left, right) => {
   const updatedCompare = right.updatedAt.localeCompare(left.updatedAt);
   if (updatedCompare !== 0) {
@@ -4831,7 +4901,7 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
               value: run,
               permissionRead: STORAGE_PERMISSION_NONE,
               permissionWrite: STORAGE_PERMISSION_NONE
-            }),
+            }, null),
             maybeSetStorageVersion({
               collection: RUNS_COLLECTION,
               key: RUNS_INDEX_KEY,
@@ -5031,6 +5101,38 @@ var rpcAdminFinalizeTournament = (ctx, logger, nk, payload) => {
           finalSnapshot
         });
       });
+      const championUserId = resolveChampionUserId(finalSnapshot);
+      if (championUserId) {
+        const rewardSettings = resolveTournamentXpRewardSettings(run.metadata);
+        if (rewardSettings.xpForTournamentChampion <= 0) {
+          _logger.info("Skipping tournament champion XP for %s because the configured reward is zero.", run.runId);
+        } else {
+          try {
+            const rewardResult = awardXpForTournamentChampion(_nk, _logger, {
+              userId: championUserId,
+              runId: run.runId,
+              awardedXp: rewardSettings.xpForTournamentChampion
+            });
+            if (!rewardResult.duplicate) {
+              _logger.info(
+                "Awarded tournament champion XP to %s for run %s. total=%d",
+                championUserId,
+                run.runId,
+                rewardResult.newTotalXp
+              );
+            }
+          } catch (error) {
+            _logger.warn(
+              "Unable to award tournament champion XP for %s to %s: %s",
+              run.runId,
+              championUserId,
+              getErrorMessage(error)
+            );
+          }
+        }
+      } else if (finalSnapshot.records.length > 0) {
+        _logger.warn("Unable to resolve champion user ID for finalized tournament %s.", run.runId);
+      }
       return JSON.stringify({
         ok: true,
         run,
@@ -5623,6 +5725,7 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
   }
   const metadata = readMetadata(run);
   const modeId = (_a = readStringField6(metadata, ["gameMode", "game_mode"])) != null ? _a : "standard";
+  const rewardSettings = resolveTournamentXpRewardSettings(metadata);
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const queueState = readQueueState(nk, run.runId);
     const activeQueue = queueState.queue && !queueState.queue.claimedByUserId && !isQueueExpired(queueState.queue, nowMs) ? queueState.queue : null;
@@ -5632,7 +5735,11 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
         matchId: activeQueue.matchId,
         matchToken: null,
         tournamentRunId: run.runId,
-        tournamentId: run.tournamentId
+        tournamentId: run.tournamentId,
+        playerState: "waiting",
+        nextRoundReady: false,
+        queueStatus: "waiting_for_opponent",
+        statusMessage: "Waiting for opponent to join."
       });
     }
     if (activeQueue && activeQueue.hostUserId !== userId) {
@@ -5662,7 +5769,11 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
           matchId: activeQueue.matchId,
           matchToken: null,
           tournamentRunId: run.runId,
-          tournamentId: run.tournamentId
+          tournamentId: run.tournamentId,
+          playerState: "matched",
+          nextRoundReady: true,
+          queueStatus: "matched",
+          statusMessage: "Opponent found."
         });
       } catch (error) {
         if (attempt === MAX_WRITE_ATTEMPTS) {
@@ -5689,6 +5800,8 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
       allowsChallengeRewards: true,
       tournamentRunId: run.runId,
       tournamentId: run.tournamentId,
+      tournamentMatchWinXp: rewardSettings.xpPerMatchWin,
+      tournamentChampionXp: rewardSettings.xpForTournamentChampion,
       // Current public tournaments operate as elimination runs: a loss ends the player's run.
       tournamentEliminationRisk: true
     });
@@ -5724,7 +5837,11 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
         matchId,
         matchToken: null,
         tournamentRunId: run.runId,
-        tournamentId: run.tournamentId
+        tournamentId: run.tournamentId,
+        playerState: "waiting",
+        nextRoundReady: false,
+        queueStatus: "waiting_for_opponent",
+        statusMessage: "Waiting for opponent to join."
       });
     } catch (error) {
       if (attempt === MAX_WRITE_ATTEMPTS) {
@@ -5954,7 +6071,7 @@ var writeTournamentMatchResultRecord = (nk, record) => {
       value: record,
       permissionRead: STORAGE_PERMISSION_NONE,
       permissionWrite: STORAGE_PERMISSION_NONE
-    })
+    }, null)
   ]);
 };
 var updateTournamentRunMetadata = (nk, logger, runId, result) => {
@@ -6234,6 +6351,12 @@ var getMatchId = (ctx) => {
 var getMessageOpCode = (message) => readNumberField5(message, ["opCode", "op_code"]);
 var getContextUserId2 = (ctx) => readStringField8(ctx, ["userId", "user_id"]);
 var resolveMatchModeId = (value) => isMatchModeId(value) ? value : "standard";
+var resolveConfiguredRewardXp = (value) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.max(0, Math.floor(value));
+};
 var buildMatchClassification = (params, modeId) => {
   const config = getMatchConfig(modeId);
   const privateMatch = params.privateMatch === true;
@@ -7008,6 +7131,9 @@ function matchInit(_ctx, _logger, _nk, params) {
   const privateCreatorUserId = typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
   const winRewardSource = params.winRewardSource === "private_pvp_win" ? "private_pvp_win" : "pvp_win";
   const allowsChallengeRewards = params.allowsChallengeRewards !== false;
+  const tournamentMatchWinXp = resolveConfiguredRewardXp(
+    readNumberField5(params, ["tournamentMatchWinXp", "tournament_match_win_xp"])
+  );
   const assignments = {};
   if (playerIds[0]) {
     assignments[playerIds[0]] = "light";
@@ -7031,6 +7157,7 @@ function matchInit(_ctx, _logger, _nk, params) {
     winRewardSource,
     allowsChallengeRewards,
     tournamentContext: resolveTournamentMatchContextFromParams(params),
+    tournamentMatchWinXp,
     telemetry: createMatchTelemetry(),
     timer: createMatchTimerState(),
     afk: {
@@ -7440,12 +7567,16 @@ function awardWinnerProgression(logger, nk, dispatcher, state, matchId) {
     return;
   }
   const [winnerUserId] = winnerEntry;
+  const configuredTournamentMatchWinXp = state.tournamentContext && typeof state.tournamentMatchWinXp === "number" ? state.tournamentMatchWinXp : null;
+  if (configuredTournamentMatchWinXp !== null && configuredTournamentMatchWinXp <= 0) {
+    return;
+  }
   try {
-    const awardResponse = awardXpForMatchWin(nk, logger, {
+    const awardResponse = awardXpForMatchWin(nk, logger, __spreadValues({
       userId: winnerUserId,
       matchId,
       source: state.winRewardSource
-    });
+    }, configuredTournamentMatchWinXp !== null ? { awardedXp: configuredTournamentMatchWinXp } : {}));
     if (awardResponse.duplicate) {
       return;
     }

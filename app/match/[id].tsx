@@ -470,9 +470,12 @@ export function GameRoom() {
 
     return presenceIds.size;
   }, [isOffline, matchPresences, userId]);
-  const isPrivateMatchReady = !isPrivateMatch || joinedPlayerCount >= 2 || gameState.winner !== null;
+  const requiresOpponentPresence = isPrivateMatch || isTournamentMatch;
+  const isOpponentReadyToPlay = !requiresOpponentPresence || joinedPlayerCount >= 2 || gameState.winner !== null;
+  const isPrivateMatchReady = !isPrivateMatch || isOpponentReadyToPlay;
+  const isTournamentMatchReady = !isTournamentMatch || isOpponentReadyToPlay;
   const isOnlineInteractionReady = isOffline || socketState === 'connected';
-  const canRoll = isMyTurn && gameState.phase === 'rolling' && isPrivateMatchReady && isOnlineInteractionReady;
+  const canRoll = isMyTurn && gameState.phase === 'rolling' && isOpponentReadyToPlay && isOnlineInteractionReady;
   const privateMatchStatusText = useMemo(() => {
     if (!isPrivateMatch) {
       return null;
@@ -488,6 +491,17 @@ export function GameRoom() {
       ? 'Opponent connected. Your private board is unlocked.'
       : 'Host connected. Your private board is unlocked.';
   }, [isPrivateMatch, isPrivateMatchHost, isPrivateMatchReady]);
+  const tournamentStatusText = useMemo(() => {
+    if (!isTournamentMatch) {
+      return null;
+    }
+
+    if (!isTournamentMatchReady) {
+      return 'Waiting for opponent to join. The board stays locked until they do.';
+    }
+
+    return 'Opponent joined. Finish the match here, then return to the standings or advance automatically.';
+  }, [isTournamentMatch, isTournamentMatchReady]);
 
   const handleCopyPrivateCode = React.useCallback(async () => {
     if (!privateMatchCode) {
@@ -1628,7 +1642,7 @@ export function GameRoom() {
       !introsComplete ||
       isScriptedTutorialPhase ||
       !botTimerEnabled ||
-      !isPrivateMatchReady ||
+      !isOpponentReadyToPlay ||
       !isMyTurn ||
       gameState.winner !== null ||
       gameState.phase === 'ended'
@@ -1674,7 +1688,7 @@ export function GameRoom() {
     botTimerEnabled,
     gameState.phase,
     gameState.winner,
-    isPrivateMatchReady,
+    isOpponentReadyToPlay,
     isMyTurn,
     isOffline,
     isScriptedTutorialPhase,
@@ -1731,7 +1745,7 @@ export function GameRoom() {
       return;
     }
 
-    if (!isOffline || !isPrivateMatchReady || !isMyTurn || gameState.winner !== null || gameState.phase === 'ended') {
+    if (!isOffline || !isOpponentReadyToPlay || !isMyTurn || gameState.winner !== null || gameState.phase === 'ended') {
       forceMoveAfterRollRef.current = false;
       return;
     }
@@ -1742,7 +1756,7 @@ export function GameRoom() {
 
     forceMoveAfterRollRef.current = false;
     makeMove(validMoves[0]);
-  }, [gameState.phase, gameState.winner, isMyTurn, isOffline, isPrivateMatchReady, makeMove, validMoves]);
+  }, [gameState.phase, gameState.winner, isMyTurn, isOffline, isOpponentReadyToPlay, makeMove, validMoves]);
   useEffect(() => {
     if (!matchId) return;
     if (storedMatchId !== matchId) {
@@ -1762,7 +1776,7 @@ export function GameRoom() {
   }, [applyTutorialSnapshot, isPlaythroughTutorialMatch, matchId]);
 
   useEffect(() => {
-    if (!isPrivateMatch) {
+    if (!requiresOpponentPresence) {
       previousJoinedPlayerCountRef.current = joinedPlayerCount;
       return;
     }
@@ -1783,7 +1797,7 @@ export function GameRoom() {
     }
 
     previousJoinedPlayerCountRef.current = joinedPlayerCount;
-  }, [enqueueMatchCue, gameState.phase, gameState.winner, isPrivateMatch, joinedPlayerCount, replaceMatchCue]);
+  }, [enqueueMatchCue, gameState.phase, gameState.winner, joinedPlayerCount, replaceMatchCue, requiresOpponentPresence]);
 
   const socketRef = useRef<Socket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2250,7 +2264,7 @@ export function GameRoom() {
         return;
       }
 
-      if (!isPrivateMatchReady) {
+      if (!isOpponentReadyToPlay) {
         return;
       }
 
@@ -2264,7 +2278,7 @@ export function GameRoom() {
     [
       handleTutorialMove,
       isOnlineInteractionReady,
-      isPrivateMatchReady,
+      isOpponentReadyToPlay,
       isScriptedTutorialPhase,
       makeMove,
       resumeAnnouncementCuesFromInteraction,
@@ -2748,7 +2762,7 @@ export function GameRoom() {
   const isTurnTimerEnabled = introsComplete && !isScriptedTutorialPhase && (!isOffline || botTimerEnabled);
   const isVisualTurnTimerRunning =
     isTurnTimerEnabled &&
-    isPrivateMatchReady &&
+    isOpponentReadyToPlay &&
     gameState.phase !== 'ended' &&
     gameState.winner === null &&
     (isOffline
@@ -2760,7 +2774,7 @@ export function GameRoom() {
         authoritativeActiveTimedPhase === gameState.phase);
   const showPersistentDiceVisual = introsComplete && diceAnimationEnabled;
   const showDestinationHighlights = introsComplete && !rollingVisual && gameState.rollValue !== null;
-  const displayedValidMoves = showDestinationHighlights && isPrivateMatchReady ? validMoves : [];
+  const displayedValidMoves = showDestinationHighlights && isOpponentReadyToPlay ? validMoves : [];
   const displayedRollValue = gameState.rollValue ?? heldRollResult;
   const showMobileRollResult =
     introsComplete &&
@@ -3304,7 +3318,7 @@ export function GameRoom() {
               <Text numberOfLines={1} style={styles.tournamentStatusName}>
                 {tournamentDisplayName}
               </Text>
-              <Text style={styles.tournamentStatusText}>Advance here after a win, or return to the standings if your run ends.</Text>
+              {tournamentStatusText ? <Text style={styles.tournamentStatusText}>{tournamentStatusText}</Text> : null}
             </View>
           ) : null}
           {tutorialObjectiveBanner ? (

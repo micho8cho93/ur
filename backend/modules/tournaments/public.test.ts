@@ -136,6 +136,7 @@ const seedOpenRun = (
     maxSize: number;
     startTime: number;
     endTime: number;
+    metadata: Record<string, unknown>;
   }> = {},
 ) => {
   const nowSeconds = Math.floor(Date.now() / 1000);
@@ -179,11 +180,12 @@ const seedOpenRun = (
       maxNumScore: 3,
       joinRequired: true,
       enableRanks: true,
-      metadata: {
-        gameMode: 'standard',
-        region: 'Global',
-        buyIn: 'Free',
-      },
+      metadata:
+        overrides.metadata ?? {
+          gameMode: 'standard',
+          region: 'Global',
+          buyIn: 'Free',
+        },
       createdAt: '2026-03-27T09:00:00.000Z',
       updatedAt: '2026-03-27T09:00:00.000Z',
       createdByUserId: 'admin-1',
@@ -197,7 +199,15 @@ describe('public tournament rpc flow', () => {
   it('lists public runs and supports joining plus queue-based launch', () => {
     const nk = createNakama();
     const logger = createLogger();
-    seedOpenRun(nk);
+    seedOpenRun(nk, {
+      metadata: {
+        gameMode: 'standard',
+        region: 'Global',
+        buyIn: 'Free',
+        xpPerMatchWin: 180,
+        xpForTournamentChampion: 420,
+      },
+    });
 
     const listResponse = JSON.parse(
       rpcListPublicTournaments(
@@ -252,13 +262,25 @@ describe('public tournament rpc flow', () => {
         nk,
         JSON.stringify({ runId: 'run-1' }),
       ),
-    ) as { matchId: string; tournamentRunId: string; tournamentId: string };
+    ) as {
+      matchId: string;
+      tournamentRunId: string;
+      tournamentId: string;
+      queueStatus: string;
+      statusMessage: string;
+      playerState: string;
+      nextRoundReady: boolean;
+    };
 
     expect(hostLaunch).toEqual(
       expect.objectContaining({
         matchId: 'match-tournament-1',
         tournamentRunId: 'run-1',
         tournamentId: 'tour-1',
+        queueStatus: 'waiting_for_opponent',
+        statusMessage: 'Waiting for opponent to join.',
+        playerState: 'waiting',
+        nextRoundReady: false,
       }),
     );
 
@@ -275,16 +297,35 @@ describe('public tournament rpc flow', () => {
         nk,
         JSON.stringify({ runId: 'run-1' }),
       ),
-    ) as { matchId: string; tournamentRunId: string; tournamentId: string };
+    ) as {
+      matchId: string;
+      tournamentRunId: string;
+      tournamentId: string;
+      queueStatus: string;
+      statusMessage: string;
+      playerState: string;
+      nextRoundReady: boolean;
+    };
 
     expect(guestLaunch).toEqual(
       expect.objectContaining({
         matchId: 'match-tournament-1',
         tournamentRunId: 'run-1',
         tournamentId: 'tour-1',
+        queueStatus: 'matched',
+        statusMessage: 'Opponent found.',
+        playerState: 'matched',
+        nextRoundReady: true,
       }),
     );
     expect(nk.matchCreate).toHaveBeenCalledTimes(1);
+    expect(nk.matchCreate).toHaveBeenCalledWith(
+      'authoritative_match',
+      expect.objectContaining({
+        tournamentMatchWinXp: 180,
+        tournamentChampionXp: 420,
+      }),
+    );
   });
 
   it('hides expired runs from the public list and rejects new joins', () => {

@@ -26,6 +26,8 @@ export const mockTournaments: Tournament[] = [
     operator: 'incr',
     durationSeconds: 7200,
     maxNumScore: 7,
+    xpPerMatchWin: 100,
+    xpForTournamentChampion: 250,
   },
   {
     id: 'guild-clash-april',
@@ -51,6 +53,8 @@ export const mockTournaments: Tournament[] = [
     operator: 'incr',
     durationSeconds: 7200,
     maxNumScore: 7,
+    xpPerMatchWin: 125,
+    xpForTournamentChampion: 400,
   },
   {
     id: 'winter-finals-archive',
@@ -76,6 +80,8 @@ export const mockTournaments: Tournament[] = [
     operator: 'incr',
     durationSeconds: 9000,
     maxNumScore: 7,
+    xpPerMatchWin: 150,
+    xpForTournamentChampion: 500,
   },
 ]
 

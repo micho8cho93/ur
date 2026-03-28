@@ -24,6 +24,9 @@ const RPC_ADMIN_OPEN_TOURNAMENT = 'rpc_admin_open_tournament'
 const RPC_ADMIN_DELETE_TOURNAMENT = 'rpc_admin_delete_tournament'
 const RPC_ADMIN_GET_TOURNAMENT_STANDINGS = 'rpc_admin_get_tournament_standings'
 
+const DEFAULT_TOURNAMENT_MATCH_WIN_XP = 100
+const DEFAULT_TOURNAMENT_CHAMPION_XP = 250
+
 async function wait(ms: number) {
   await new Promise((resolve) => window.setTimeout(resolve, ms))
 }
@@ -126,6 +129,32 @@ function normalizeTournament(runValue: unknown, nakamaTournamentValue: unknown):
     operator: mapOperator(readStringField(run, ['operator'])),
     durationSeconds: Math.max(0, Math.floor(readNumberField(run, ['duration']) ?? 0)),
     maxNumScore: Math.max(0, Math.floor(readNumberField(run, ['maxNumScore', 'max_num_score']) ?? 0)),
+    xpPerMatchWin: Math.max(
+      0,
+      Math.floor(
+        readNumberField(metadata, [
+          'xpPerMatchWin',
+          'xp_per_match_win',
+          'matchWinXp',
+          'match_win_xp',
+          'tournamentMatchWinXp',
+          'tournament_match_win_xp',
+        ]) ?? DEFAULT_TOURNAMENT_MATCH_WIN_XP,
+      ),
+    ),
+    xpForTournamentChampion: Math.max(
+      0,
+      Math.floor(
+        readNumberField(metadata, [
+          'xpForTournamentChampion',
+          'xp_for_tournament_champion',
+          'championXp',
+          'champion_xp',
+          'tournamentChampionXp',
+          'tournament_champion_xp',
+        ]) ?? DEFAULT_TOURNAMENT_CHAMPION_XP,
+      ),
+    ),
   }
 }
 
@@ -252,6 +281,8 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
       operator: 'incr',
       durationSeconds: input.durationMinutes * 60,
       maxNumScore: input.maxNumScore,
+      xpPerMatchWin: input.xpPerMatchWin,
+      xpForTournamentChampion: input.xpForTournamentChampion,
     }
   }
 
@@ -271,6 +302,8 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
       resetSchedule: '',
       metadata: {
         gameMode: input.gameMode,
+        xpPerMatchWin: input.xpPerMatchWin,
+        xpForTournamentChampion: input.xpForTournamentChampion,
       },
       startTime,
       endTime: startTime + durationSeconds,

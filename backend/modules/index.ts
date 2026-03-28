@@ -146,6 +146,7 @@ type MatchState = {
   winRewardSource: XpSource;
   allowsChallengeRewards: boolean;
   tournamentContext: TournamentMatchContext | null;
+  tournamentMatchWinXp: number | null;
   telemetry: MatchTelemetry;
   timer: MatchTimerState;
   afk: Record<PlayerColor, PlayerAfkState>;
@@ -371,6 +372,14 @@ const getContextUserId = (ctx: nkruntime.Context): string | null =>
 
 const resolveMatchModeId = (value: unknown): MatchModeId =>
   isMatchModeId(value) ? value : "standard";
+
+const resolveConfiguredRewardXp = (value: unknown): number | null => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return Math.max(0, Math.floor(value));
+};
 
 const buildMatchClassification = (params: Record<string, unknown>, modeId: MatchModeId): MatchClassification => {
   const config = getMatchConfig(modeId);
@@ -1410,6 +1419,9 @@ function matchInit(
     typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
   const winRewardSource = params.winRewardSource === "private_pvp_win" ? "private_pvp_win" : "pvp_win";
   const allowsChallengeRewards = params.allowsChallengeRewards !== false;
+  const tournamentMatchWinXp = resolveConfiguredRewardXp(
+    readNumberField(params, ["tournamentMatchWinXp", "tournament_match_win_xp"]),
+  );
 
   const assignments: Record<string, PlayerColor> = {};
   if (playerIds[0]) {
@@ -1435,6 +1447,7 @@ function matchInit(
     winRewardSource,
     allowsChallengeRewards,
     tournamentContext: resolveTournamentMatchContextFromParams(params),
+    tournamentMatchWinXp,
     telemetry: createMatchTelemetry(),
     timer: createMatchTimerState(),
     afk: {
@@ -2024,12 +2037,19 @@ function awardWinnerProgression(
   }
 
   const [winnerUserId] = winnerEntry;
+  const configuredTournamentMatchWinXp =
+    state.tournamentContext && typeof state.tournamentMatchWinXp === "number" ? state.tournamentMatchWinXp : null;
+
+  if (configuredTournamentMatchWinXp !== null && configuredTournamentMatchWinXp <= 0) {
+    return;
+  }
 
   try {
     const awardResponse = awardXpForMatchWin(nk, logger, {
       userId: winnerUserId,
       matchId,
       source: state.winRewardSource,
+      ...(configuredTournamentMatchWinXp !== null ? { awardedXp: configuredTournamentMatchWinXp } : {}),
     });
 
     if (awardResponse.duplicate) {

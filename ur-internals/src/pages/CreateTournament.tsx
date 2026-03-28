@@ -17,6 +17,8 @@ type FormState = {
   maxNumScore: string
   joinRequired: boolean
   enableRanks: boolean
+  xpPerMatchWin: string
+  xpForTournamentChampion: string
   description: string
 }
 
@@ -30,6 +32,8 @@ const initialState: FormState = {
   maxNumScore: '7',
   joinRequired: true,
   enableRanks: true,
+  xpPerMatchWin: '100',
+  xpForTournamentChampion: '250',
   description: '',
 }
 
@@ -62,6 +66,8 @@ export function CreateTournamentPage() {
     const entrants = Number(form.entrants)
     const durationMinutes = Number(form.durationMinutes)
     const maxNumScore = Number(form.maxNumScore)
+    const xpPerMatchWin = Number(form.xpPerMatchWin)
+    const xpForTournamentChampion = Number(form.xpForTournamentChampion)
 
     if (!form.name.trim()) {
       setError('Tournament name is required.')
@@ -88,6 +94,16 @@ export function CreateTournamentPage() {
       return
     }
 
+    if (!Number.isFinite(xpPerMatchWin) || xpPerMatchWin < 0) {
+      setError('Tournament match win XP must be 0 or greater.')
+      return
+    }
+
+    if (!Number.isFinite(xpForTournamentChampion) || xpForTournamentChampion < 0) {
+      setError('Tournament champion XP must be 0 or greater.')
+      return
+    }
+
     try {
       setIsSaving(true)
 
@@ -102,6 +118,8 @@ export function CreateTournamentPage() {
         maxNumScore,
         joinRequired: form.joinRequired,
         enableRanks: form.enableRanks,
+        xpPerMatchWin: Math.floor(xpPerMatchWin),
+        xpForTournamentChampion: Math.floor(xpForTournamentChampion),
       })
 
       void navigate(`/tournaments/${tournament.id}`)
@@ -224,6 +242,34 @@ export function CreateTournamentPage() {
               <span className="muted">
                 One counted tournament result is written for each completed tournament match by a player.
               </span>
+            </div>
+
+            <div className="field">
+              <label htmlFor="xpPerMatchWin">XP per tournament game win</label>
+              <input
+                id="xpPerMatchWin"
+                name="xpPerMatchWin"
+                type="number"
+                min="0"
+                value={form.xpPerMatchWin}
+                onChange={(event) => updateField('xpPerMatchWin', event)}
+                required
+              />
+              <span className="muted">Set to 0 if this tournament should not award XP for individual match wins.</span>
+            </div>
+
+            <div className="field">
+              <label htmlFor="xpForTournamentChampion">XP for winning the tournament</label>
+              <input
+                id="xpForTournamentChampion"
+                name="xpForTournamentChampion"
+                type="number"
+                min="0"
+                value={form.xpForTournamentChampion}
+                onChange={(event) => updateField('xpForTournamentChampion', event)}
+                required
+              />
+              <span className="muted">This champion bonus is awarded once when the run is finalized.</span>
             </div>
 
             <div className="field field--full field--checkboxes">

@@ -15,7 +15,6 @@ import {
   PROGRESSION_PROFILE_KEY,
   XP_REWARD_LEDGER_COLLECTION,
 } from "../progression";
-import { getXpAwardAmount } from "../../../shared/progression";
 
 type StoredObject = {
   collection: string;
@@ -114,13 +113,13 @@ const createNakama = () => {
     storageRead,
     storageWrite,
     storageDelete,
-    tournamentsGetId: jest.fn(() => []),
+    tournamentsGetId: jest.fn((_ids: string[]) => [] as Array<{ id: string }>),
     tournamentCreate: jest.fn(),
     tournamentDelete: jest.fn(),
     tournamentRanksDisable: jest.fn(),
     tournamentRecordsList: jest.fn(() => ({
-      records: [],
-      owner_records: [],
+      records: [] as Array<Record<string, unknown>>,
+      owner_records: [] as Array<Record<string, unknown>>,
       rank_count: 0,
     })),
   };
@@ -555,6 +554,7 @@ describe("admin tournament run creation", () => {
           gameMode: "Classic ladder",
           region: "Global",
           buyIn: "Free",
+          xpForTournamentChampion: 400,
         },
         startTime: 1_774_572_800,
         endTime: 1_774_580_000,
@@ -635,12 +635,12 @@ describe("admin tournament run creation", () => {
 
     expect(championProfile).toEqual(
       expect.objectContaining({
-        totalXp: getXpAwardAmount("tournament_champion"),
+        totalXp: 400,
       }),
     );
     expect(championLedger).toEqual(
       expect.objectContaining({
-        awardedXp: getXpAwardAmount("tournament_champion"),
+        awardedXp: 400,
         source: "tournament_champion",
         sourceId: "test-tournament",
       }),
@@ -671,7 +671,7 @@ describe("admin tournament run creation", () => {
       ),
     );
 
-    expect(championProfileAfterRetry?.totalXp).toBe(getXpAwardAmount("tournament_champion"));
+    expect(championProfileAfterRetry?.totalXp).toBe(400);
     expect(championLedgerEntries).toHaveLength(1);
   });
 });

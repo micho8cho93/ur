@@ -567,6 +567,7 @@ export const awardXpForMatchWin = (
     userId: string;
     matchId: string;
     source?: XpSource;
+    awardedXp?: number;
   }
 ): ProgressionAwardResponse => {
   const source = params.source ?? "pvp_win";
@@ -578,7 +579,10 @@ export const awardXpForMatchWin = (
       source,
       sourceId: params.matchId,
       matchId: params.matchId,
-      awardedXp: getXpAwardAmount(source),
+      awardedXp:
+        typeof params.awardedXp === "number" && Number.isFinite(params.awardedXp)
+          ? params.awardedXp
+          : getXpAwardAmount(source),
     }) as XpRewardResult & { source: XpSource }
   );
 };
@@ -589,6 +593,7 @@ export const awardXpForTournamentChampion = (
   params: {
     userId: string;
     runId: string;
+    awardedXp?: number;
   }
 ): XpRewardResult & { source: "tournament_champion" } => {
   const runId = params.runId?.trim();
@@ -602,7 +607,10 @@ export const awardXpForTournamentChampion = (
     ledgerKey: `tournament_champion:${runId}`,
     source: "tournament_champion",
     sourceId: runId,
-    awardedXp: getXpAwardAmount("tournament_champion"),
+    awardedXp:
+      typeof params.awardedXp === "number" && Number.isFinite(params.awardedXp)
+        ? params.awardedXp
+        : getXpAwardAmount("tournament_champion"),
   }) as XpRewardResult & { source: "tournament_champion" };
 };
 

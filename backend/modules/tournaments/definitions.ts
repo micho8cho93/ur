@@ -21,6 +21,7 @@ import type {
   TournamentStatus,
   TournamentSummary,
 } from "./types";
+import { getXpAwardAmount } from "../../../shared/progression";
 
 export { MAX_WRITE_ATTEMPTS, STORAGE_PERMISSION_NONE };
 
@@ -60,6 +61,14 @@ export const DEFAULT_REWARD_TIERS = [
   { rank: 2, title: "Finalist", percentage: 0.3 },
   { rank: 3, title: "Semifinalist", percentage: 0.2 },
 ] as const;
+
+export type TournamentXpRewardSettings = {
+  xpPerMatchWin: number;
+  xpForTournamentChampion: number;
+};
+
+export const DEFAULT_TOURNAMENT_XP_PER_MATCH_WIN = getXpAwardAmount("pvp_win");
+export const DEFAULT_TOURNAMENT_XP_FOR_CHAMPION = getXpAwardAmount("tournament_champion");
 
 const TOURNAMENT_STATUSES: TournamentStatus[] = [
   "draft",
@@ -230,6 +239,15 @@ const clampPositiveInteger = (value: unknown, fallback: number, max: number): nu
   return Math.min(max, floored);
 };
 
+const clampNonNegativeInteger = (value: unknown, fallback: number, max: number): number => {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.min(max, Math.floor(parsed)));
+};
+
 const normalizeCurrency = (value: unknown): string | null => {
   if (typeof value !== "string") {
     return null;
@@ -247,6 +265,33 @@ const normalizeRewardPoolAmount = (value: unknown): number | null => {
 
   return Math.round(parsed * 100) / 100;
 };
+
+export const resolveTournamentXpRewardSettings = (value: unknown): TournamentXpRewardSettings => ({
+  xpPerMatchWin: clampNonNegativeInteger(
+    readNumberField(value, [
+      "xpPerMatchWin",
+      "xp_per_match_win",
+      "matchWinXp",
+      "match_win_xp",
+      "tournamentMatchWinXp",
+      "tournament_match_win_xp",
+    ]),
+    DEFAULT_TOURNAMENT_XP_PER_MATCH_WIN,
+    1_000_000,
+  ),
+  xpForTournamentChampion: clampNonNegativeInteger(
+    readNumberField(value, [
+      "xpForTournamentChampion",
+      "xp_for_tournament_champion",
+      "championXp",
+      "champion_xp",
+      "tournamentChampionXp",
+      "tournament_champion_xp",
+    ]),
+    DEFAULT_TOURNAMENT_XP_FOR_CHAMPION,
+    1_000_000,
+  ),
+});
 
 export const slugify = (value: string): string =>
   value

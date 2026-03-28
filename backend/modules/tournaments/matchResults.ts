@@ -390,7 +390,7 @@ const writeTournamentMatchResultRecord = (
       value: record,
       permissionRead: STORAGE_PERMISSION_NONE,
       permissionWrite: STORAGE_PERMISSION_NONE,
-    }),
+    }, null),
   ]);
 };
 

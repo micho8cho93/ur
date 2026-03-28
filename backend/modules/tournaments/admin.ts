@@ -4,6 +4,7 @@ import {
   getActorLabel,
   parseJsonPayload,
   readNumberField,
+  resolveTournamentXpRewardSettings,
   readStringField,
   requireAuthenticatedUserId,
   slugify,
@@ -727,7 +728,7 @@ export const rpcAdminCreateTournamentRun = (
               value: run,
               permissionRead: STORAGE_PERMISSION_NONE,
               permissionWrite: STORAGE_PERMISSION_NONE,
-            }),
+            }, null),
             maybeSetStorageVersion({
               collection: RUNS_COLLECTION,
               key: RUNS_INDEX_KEY,
@@ -975,27 +976,34 @@ export const rpcAdminFinalizeTournament = (
 
       const championUserId = resolveChampionUserId(finalSnapshot);
       if (championUserId) {
-        try {
-          const rewardResult = awardXpForTournamentChampion(_nk, _logger, {
-            userId: championUserId,
-            runId: run.runId,
-          });
+        const rewardSettings = resolveTournamentXpRewardSettings(run.metadata);
 
-          if (!rewardResult.duplicate) {
-            _logger.info(
-              "Awarded tournament champion XP to %s for run %s. total=%d",
-              championUserId,
+        if (rewardSettings.xpForTournamentChampion <= 0) {
+          _logger.info("Skipping tournament champion XP for %s because the configured reward is zero.", run.runId);
+        } else {
+          try {
+            const rewardResult = awardXpForTournamentChampion(_nk, _logger, {
+              userId: championUserId,
+              runId: run.runId,
+              awardedXp: rewardSettings.xpForTournamentChampion,
+            });
+
+            if (!rewardResult.duplicate) {
+              _logger.info(
+                "Awarded tournament champion XP to %s for run %s. total=%d",
+                championUserId,
+                run.runId,
+                rewardResult.newTotalXp,
+              );
+            }
+          } catch (error) {
+            _logger.warn(
+              "Unable to award tournament champion XP for %s to %s: %s",
               run.runId,
-              rewardResult.newTotalXp,
+              championUserId,
+              getErrorMessage(error),
             );
           }
-        } catch (error) {
-          _logger.warn(
-            "Unable to award tournament champion XP for %s to %s: %s",
-            run.runId,
-            championUserId,
-            getErrorMessage(error),
-          );
         }
       } else if (finalSnapshot.records.length > 0) {
         _logger.warn("Unable to resolve champion user ID for finalized tournament %s.", run.runId);

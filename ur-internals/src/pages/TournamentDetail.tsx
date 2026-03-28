@@ -260,6 +260,14 @@ export function TournamentDetailPage() {
             <span className="meta-label">Counted matches per player</span>
             <strong>{tournament.maxNumScore}</strong>
           </div>
+          <div className="metric-card">
+            <span className="meta-label">XP per match win</span>
+            <strong>{tournament.xpPerMatchWin}</strong>
+          </div>
+          <div className="metric-card">
+            <span className="meta-label">Champion XP</span>
+            <strong>{tournament.xpForTournamentChampion}</strong>
+          </div>
         </div>
       </section>
 
@@ -292,6 +300,14 @@ export function TournamentDetailPage() {
             <div className="metric-card">
               <span className="meta-label">Join required</span>
               <strong>{tournament.joinRequired ? 'Yes' : 'No'}</strong>
+            </div>
+            <div className="metric-card">
+              <span className="meta-label">XP per match win</span>
+              <strong>{tournament.xpPerMatchWin}</strong>
+            </div>
+            <div className="metric-card">
+              <span className="meta-label">Champion XP</span>
+              <strong>{tournament.xpForTournamentChampion}</strong>
             </div>
             <div className="metric-card">
               <span className="meta-label">End time</span>

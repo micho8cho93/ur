@@ -15,6 +15,7 @@ import {
   getActorLabel,
   parseJsonPayload,
   readNumberField,
+  resolveTournamentXpRewardSettings,
   readStringField,
   requireAuthenticatedUserId,
 } from "./definitions";
@@ -580,6 +581,7 @@ export const rpcLaunchTournamentMatch = (
 
   const metadata = readMetadata(run);
   const modeId = readStringField(metadata, ["gameMode", "game_mode"]) ?? "standard";
+  const rewardSettings = resolveTournamentXpRewardSettings(metadata);
 
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const queueState = readQueueState(nk, run.runId);
@@ -595,6 +597,10 @@ export const rpcLaunchTournamentMatch = (
         matchToken: null,
         tournamentRunId: run.runId,
         tournamentId: run.tournamentId,
+        playerState: "waiting",
+        nextRoundReady: false,
+        queueStatus: "waiting_for_opponent",
+        statusMessage: "Waiting for opponent to join.",
       });
     }
 
@@ -630,6 +636,10 @@ export const rpcLaunchTournamentMatch = (
           matchToken: null,
           tournamentRunId: run.runId,
           tournamentId: run.tournamentId,
+          playerState: "matched",
+          nextRoundReady: true,
+          queueStatus: "matched",
+          statusMessage: "Opponent found.",
         });
       } catch (error) {
         if (attempt === MAX_WRITE_ATTEMPTS) {
@@ -658,6 +668,8 @@ export const rpcLaunchTournamentMatch = (
       allowsChallengeRewards: true,
       tournamentRunId: run.runId,
       tournamentId: run.tournamentId,
+      tournamentMatchWinXp: rewardSettings.xpPerMatchWin,
+      tournamentChampionXp: rewardSettings.xpForTournamentChampion,
       // Current public tournaments operate as elimination runs: a loss ends the player's run.
       tournamentEliminationRisk: true,
     });
@@ -697,6 +709,10 @@ export const rpcLaunchTournamentMatch = (
         matchToken: null,
         tournamentRunId: run.runId,
         tournamentId: run.tournamentId,
+        playerState: "waiting",
+        nextRoundReady: false,
+        queueStatus: "waiting_for_opponent",
+        statusMessage: "Waiting for opponent to join.",
       });
     } catch (error) {
       if (attempt === MAX_WRITE_ATTEMPTS) {
