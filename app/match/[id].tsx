@@ -66,10 +66,12 @@ import { useTournamentAdvanceFlow } from '@/src/tournaments/useTournamentAdvance
 import { useGameStore } from '@/store/useGameStore';
 import { resolveVisibleViewportSize } from '@/src/layout/matchViewport';
 import {
+  PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL,
   PLAYTHROUGH_TUTORIAL_ID,
-  PLAYTHROUGH_TUTORIAL_LESSON_COUNT,
   PLAYTHROUGH_TUTORIAL_LESSONS,
+  PLAYTHROUGH_TUTORIAL_OPENING_MODAL,
   PLAYTHROUGH_TUTORIAL_SCRIPT,
+  getPlaythroughTutorialInstruction,
   getPlaythroughTutorialLessonState,
   isPlaythroughTutorialId,
 } from '@/tutorials/playthroughTutorial';
@@ -157,9 +159,10 @@ type MatchMomentCueKind = 'play' | 'rosette' | 'opponentJoined' | 'opponentForfe
 type RollButtonLatchPhase = 'idle' | 'awaitingOutcome' | 'awaitingTurnReset';
 type TutorialCoachPhase =
   | 'idle'
-  | 'lesson_intro'
+  | 'opening'
   | 'lesson_play'
   | 'lesson_result'
+  | 'completion'
   | 'freeplay';
 
 const MATCH_MOMENT_CUES: Record<MatchMomentCueKind, Omit<MatchMomentIndicatorCue, 'id'>> = {
@@ -637,32 +640,48 @@ export function GameRoom() {
       ? PLAYTHROUGH_TUTORIAL_SCRIPT[tutorialScriptStepIndex]
       : null;
   const tutorialCoachVisible =
-    tutorialCoachPhase === 'lesson_intro' || tutorialCoachPhase === 'lesson_result';
+    tutorialCoachPhase === 'opening' ||
+    tutorialCoachPhase === 'lesson_result' ||
+    tutorialCoachPhase === 'completion';
   const tutorialCoachEyebrow =
-    tutorialCoachPhase === 'lesson_intro' && tutorialLesson
-      ? `Lesson ${tutorialLesson.lessonNumber} of ${PLAYTHROUGH_TUTORIAL_LESSON_COUNT}`
+    tutorialCoachPhase === 'opening'
+      ? PLAYTHROUGH_TUTORIAL_OPENING_MODAL.eyebrow
       : tutorialCoachPhase === 'lesson_result'
         ? 'What this means'
+        : tutorialCoachPhase === 'completion'
+          ? PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL.eyebrow
         : undefined;
   const tutorialCoachTitle =
-    tutorialCoachPhase === 'lesson_intro' && tutorialLesson
-      ? tutorialLesson.title
+    tutorialCoachPhase === 'opening'
+      ? PLAYTHROUGH_TUTORIAL_OPENING_MODAL.title
       : tutorialCoachPhase === 'lesson_result' && tutorialLesson
         ? tutorialLesson.title
+        : tutorialCoachPhase === 'completion'
+          ? PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL.title
         : '';
   const tutorialCoachBody =
-    tutorialCoachPhase === 'lesson_intro' && tutorialLesson
-      ? tutorialLesson.objective
+    tutorialCoachPhase === 'opening'
+      ? PLAYTHROUGH_TUTORIAL_OPENING_MODAL.body
       : tutorialCoachPhase === 'lesson_result' && tutorialLesson
         ? tutorialLesson.implication
+        : tutorialCoachPhase === 'completion'
+          ? PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL.body
         : '';
   const tutorialCoachActionLabel =
-    tutorialCoachPhase === 'lesson_result' && tutorialLessonIndex === PLAYTHROUGH_TUTORIAL_LESSONS.length - 1
-      ? 'Play On'
+    tutorialCoachPhase === 'opening'
+      ? PLAYTHROUGH_TUTORIAL_OPENING_MODAL.actionLabel
+      : tutorialCoachPhase === 'completion'
+        ? PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL.actionLabel
       : 'Continue';
   const tutorialObjectiveBanner =
-    tutorialCoachPhase === 'lesson_play' && tutorialLesson
-      ? `Lesson ${tutorialLesson.lessonNumber}/${PLAYTHROUGH_TUTORIAL_LESSON_COUNT}: ${tutorialLesson.objective}`
+    tutorialCoachPhase === 'lesson_play'
+      ? getPlaythroughTutorialInstruction({
+        stepId: tutorialPendingStep?.id ?? null,
+        turn: gameState.currentTurn,
+        phase: gameState.phase,
+        rollValue: gameState.rollValue,
+        hasMoves: validMoves.length > 0,
+      })
       : null;
   const tournamentAdvanceFlow = useTournamentAdvanceFlow({
     enabled: shouldTrackTournamentAdvanceFlow,
@@ -952,7 +971,11 @@ export function GameRoom() {
       advanceTutorialScriptStep();
 
       if (tutorialLesson && tutorialScriptStepIndex === tutorialLesson.moveStepIndex) {
-        setTutorialCoachPhase('lesson_result');
+        setTutorialCoachPhase(
+          tutorialLessonIndex === PLAYTHROUGH_TUTORIAL_LESSONS.length - 1
+            ? 'completion'
+            : 'lesson_result',
+        );
       }
     },
     [
@@ -962,13 +985,14 @@ export function GameRoom() {
       setGameStateFromServer,
       tutorialCoachPhase,
       tutorialLesson,
+      tutorialLessonIndex,
       tutorialPendingStep,
       tutorialScriptStepIndex,
     ],
   );
 
   const handleContinueTutorialCoach = React.useCallback(() => {
-    if (tutorialCoachPhase === 'lesson_intro') {
+    if (tutorialCoachPhase === 'opening') {
       setTutorialCoachPhase('lesson_play');
       return;
     }
@@ -982,6 +1006,12 @@ export function GameRoom() {
         return;
       }
 
+      clearTutorialProgressTimers();
+      setTutorialCoachPhase('freeplay');
+      return;
+    }
+
+    if (tutorialCoachPhase === 'completion') {
       clearTutorialProgressTimers();
       setTutorialCoachPhase('freeplay');
     }
@@ -1824,7 +1854,7 @@ export function GameRoom() {
     setTutorialLessonIndex(0);
     setTutorialScriptStepIndex(0);
     applyTutorialSnapshot(getPlaythroughTutorialLessonState(0));
-    setTutorialCoachPhase('lesson_intro');
+    setTutorialCoachPhase('opening');
   }, [applyTutorialSnapshot, isPlaythroughTutorialMatch, matchId]);
 
   useEffect(() => {
@@ -2825,7 +2855,33 @@ export function GameRoom() {
         authoritativeActiveTimedPhase === gameState.phase);
   const showPersistentDiceVisual = introsComplete && diceAnimationEnabled;
   const showDestinationHighlights = introsComplete && !rollingVisual && gameState.rollValue !== null;
-  const displayedValidMoves = showDestinationHighlights && isOpponentReadyToPlay ? validMoves : [];
+  const displayedValidMoves = useMemo(() => {
+    const liveDisplayedMoves = showDestinationHighlights && isOpponentReadyToPlay ? validMoves : [];
+
+    if (
+      !isScriptedTutorialPhase ||
+      tutorialCoachPhase !== 'lesson_play' ||
+      tutorialPendingStep?.kind !== 'MOVE'
+    ) {
+      return liveDisplayedMoves;
+    }
+
+    const scriptedMove = liveDisplayedMoves.find(
+      (candidate) =>
+        candidate.pieceId === tutorialPendingStep.pieceId &&
+        candidate.fromIndex === tutorialPendingStep.fromIndex &&
+        candidate.toIndex === tutorialPendingStep.toIndex,
+    );
+
+    return scriptedMove ? [scriptedMove] : [];
+  }, [
+    isOpponentReadyToPlay,
+    isScriptedTutorialPhase,
+    showDestinationHighlights,
+    tutorialCoachPhase,
+    tutorialPendingStep,
+    validMoves,
+  ]);
   const displayedRollValue = gameState.rollValue ?? heldRollResult;
   const showMobileRollResult =
     introsComplete &&

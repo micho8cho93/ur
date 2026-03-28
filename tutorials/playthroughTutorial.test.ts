@@ -3,9 +3,12 @@ import { getPathCoord } from '@/logic/pathVariants';
 import type { GameState } from '@/logic/types';
 import { buildTutorialFrames } from './tutorialEngine';
 import {
+  PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL,
   PLAYTHROUGH_TUTORIAL_FRAMES,
   PLAYTHROUGH_TUTORIAL_LESSONS,
+  PLAYTHROUGH_TUTORIAL_OPENING_MODAL,
   PLAYTHROUGH_TUTORIAL_SCRIPT,
+  getPlaythroughTutorialInstruction,
   getPlaythroughTutorialLessonState,
 } from './playthroughTutorial';
 
@@ -190,6 +193,39 @@ describe('playthrough tutorial continuous script', () => {
 
   it('numbers the lessons exactly 1 through 5 with no duplicates', () => {
     expect(PLAYTHROUGH_TUTORIAL_LESSONS.map((lesson) => lesson.lessonNumber)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('exports opening and completion modal copy for the guided flow', () => {
+    expect(PLAYTHROUGH_TUTORIAL_OPENING_MODAL).toMatchObject({
+      title: 'Roll, move, and race to score',
+      actionLabel: 'Start Tutorial',
+    });
+    expect(PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL).toMatchObject({
+      title: 'Now finish the match',
+      actionLabel: 'Play For XP',
+    });
+  });
+
+  it('provides contextual tutorial banner instructions without lesson numbering', () => {
+    expect(
+      getPlaythroughTutorialInstruction({
+        stepId: 'roll-light-opening-rosette',
+        turn: 'light',
+        phase: 'rolling',
+        rollValue: null,
+        hasMoves: false,
+      }),
+    ).toBe('Roll again and keep moving the same piece.');
+
+    expect(
+      getPlaythroughTutorialInstruction({
+        stepId: 'roll-dark-threat-fizzles',
+        turn: 'dark',
+        phase: 'moving',
+        rollValue: 0,
+        hasMoves: false,
+      }),
+    ).toBe('Dark rolled a zero, so the turn comes back to you.');
   });
 
   it('derives the exported frame timeline only by applying the next scripted step', () => {

@@ -5,6 +5,21 @@ import type { TutorialRollStep, TutorialRollValue, TutorialStep } from './tutori
 export const PLAYTHROUGH_TUTORIAL_ID = 'playthrough' as const;
 export const PLAYTHROUGH_TUTORIAL_LESSON_COUNT = 5 as const;
 
+export const PLAYTHROUGH_TUTORIAL_OPENING_MODAL = {
+  eyebrow: 'How To Play',
+  title: 'Roll, move, and race to score',
+  body:
+    'Start by rolling the dice, then move your piece the same number of spaces.\n\nYour goal is to take each light piece from your side, move it up into the middle column, come down the last two tiles, and move it off the board to score.',
+  actionLabel: 'Start Tutorial',
+} as const;
+
+export const PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL = {
+  eyebrow: 'Tutorial Complete',
+  title: 'Now finish the match',
+  body: 'The guided part is over. Keep playing against the bot from here and win this match to earn your first XP.',
+  actionLabel: 'Play For XP',
+} as const;
+
 type PlaythroughTutorialLessonSpec = {
   id: string;
   lessonNumber: number;
@@ -21,6 +36,14 @@ export type PlaythroughTutorialLesson = PlaythroughTutorialLessonSpec & {
   moveStepIndex: number;
   forcedRoll: TutorialRollValue;
   expectedMove: MoveAction;
+};
+
+type TutorialInstructionParams = {
+  hasMoves: boolean;
+  phase: GameState['phase'];
+  rollValue: GameState['rollValue'];
+  stepId?: string | null;
+  turn: PlayerColor;
 };
 
 const assertTutorial = (condition: boolean, message: string): asserts condition => {
@@ -216,6 +239,60 @@ export const getPlaythroughTutorialLessonState = (lessonIndex: number): GameStat
   const lesson = PLAYTHROUGH_TUTORIAL_LESSONS[lessonIndex];
   assertTutorial(Boolean(lesson), `Unknown lesson index ${lessonIndex}.`);
   return cloneGameState(PLAYTHROUGH_TUTORIAL_FRAMES[lesson.startFrameIndex].gameState);
+};
+
+const PLAYTHROUGH_TUTORIAL_INSTRUCTION_BY_STEP_ID: Record<string, string> = {
+  'roll-light-enter': 'Roll the dice, then move your piece that many spaces.',
+  'move-light-enter': 'Move your first piece onto the board.',
+  'roll-dark-pass-after-entry': 'Dark is rolling now.',
+  'roll-light-opening-rosette': 'Roll again and keep moving the same piece.',
+  'move-light-opening-rosette': 'Move up the board and land on the rosette.',
+  'roll-light-enter-war-zone': 'Roll again and move toward the middle column.',
+  'move-light-enter-war-zone': 'Move into the middle column.',
+  'roll-dark-shared-rosette-threat': 'Watch Dark move into the shared row.',
+  'move-dark-shared-rosette-threat': 'Dark is entering the shared row.',
+  'roll-dark-threat-fizzles': 'Dark is rolling again.',
+  'roll-light-pass-before-capture-setup-1': 'Roll again. A zero means your turn passes.',
+  'roll-dark-enter-capture-runner': 'Dark is bringing in another piece.',
+  'move-dark-enter-capture-runner': 'Dark is setting up a piece in the shared row.',
+  'roll-light-pass-before-capture-setup-2': 'Roll again and be ready to move when you can.',
+  'roll-dark-advance-capture-runner': 'Dark is moving deeper into the middle column.',
+  'move-dark-advance-capture-runner': 'Dark is moving through the shared row.',
+  'roll-light-pass-before-capture-setup-3': 'Roll again. You are waiting for the right setup.',
+  'roll-dark-set-capture-target': 'Dark is moving one more time.',
+  'move-dark-set-capture-target': 'Dark is giving you a capture target.',
+  'roll-light-shared-rosette': 'Move down and try to land on the rosette tile.',
+  'move-light-shared-rosette': 'Move onto the rosette tile for another roll.',
+  'roll-light-capture': 'Roll again and capture the dark piece ahead.',
+  'move-light-capture': 'Capture the dark piece in the middle column.',
+  'roll-dark-pass-after-capture': 'Dark is rolling now.',
+  'roll-light-home-stretch': 'Move down toward the last two tiles.',
+  'move-light-home-stretch': 'Keep moving toward the last two tiles.',
+  'roll-dark-pass-before-score-setup': 'Dark is rolling now.',
+  'roll-light-home-rosette': 'Move onto the home rosette.',
+  'move-light-home-rosette': 'Land on the home rosette for one more roll.',
+  'roll-light-score': 'Roll a 1, then use SCORE to move off the board.',
+  'move-light-score': 'Use SCORE to move your piece off the board and score.',
+};
+
+export const getPlaythroughTutorialInstruction = ({
+  hasMoves,
+  phase,
+  rollValue,
+  stepId,
+  turn,
+}: TutorialInstructionParams): string | null => {
+  if (phase === 'moving' && rollValue === 0 && !hasMoves) {
+    return turn === 'light'
+      ? 'You rolled a zero, so your turn passes.'
+      : 'Dark rolled a zero, so the turn comes back to you.';
+  }
+
+  if (!stepId) {
+    return null;
+  }
+
+  return PLAYTHROUGH_TUTORIAL_INSTRUCTION_BY_STEP_ID[stepId] ?? null;
 };
 
 export const isPlaythroughTutorialId = (value: unknown): value is typeof PLAYTHROUGH_TUTORIAL_ID =>

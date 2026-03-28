@@ -965,6 +965,7 @@ describe('GameRoom match dice stage', () => {
 
     expect(screen.getByText('Play Tutorial')).toBeTruthy();
     expect(screen.getByTestId('mock-play-tutorial-coach')).toBeTruthy();
+    expect(screen.getByText('Roll, move, and race to score')).toBeTruthy();
   });
 
   it('keeps the tutorial on one continuous scripted playthrough between lesson callouts', async () => {
@@ -1038,6 +1039,21 @@ describe('GameRoom match dice stage', () => {
 
     await rollOnce();
     expect(mockStoreState.gameState.rollValue).toBe(3);
+    await act(async () => {
+      jest.advanceTimersByTime(2_000);
+    });
+    view.rerender(<GameRoom />);
+    expect(mockBoard.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        validMovesOverride: [
+          {
+            pieceId: 'light-0',
+            fromIndex: 0,
+            toIndex: 3,
+          },
+        ],
+      }),
+    );
     await moveOnce();
     expect(mockStoreState.gameState.light.pieces[0].position).toBe(3);
     expect(screen.queryByText('The middle row is where both sides can fight over the same squares, so captures become possible there.')).toBeNull();
