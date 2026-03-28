@@ -1028,7 +1028,16 @@ describe('GameRoom match dice stage', () => {
     view.rerender(<GameRoom />);
 
     await act(async () => {
-      jest.advanceTimersByTime(2_500);
+      jest.advanceTimersByTime(1_000);
+    });
+    view.rerender(<GameRoom />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(1_500);
     });
     view.rerender(<GameRoom />);
 

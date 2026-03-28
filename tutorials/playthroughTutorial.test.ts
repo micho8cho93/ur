@@ -149,16 +149,16 @@ describe('playthrough tutorial continuous script', () => {
       ...resultFrame.gameState,
       currentTurn: 'dark',
       phase: 'moving',
-      rollValue: 4,
+      rollValue: 5,
     };
 
     expect(resultFrame.gameState.currentTurn).toBe('light');
     expect(resultFrame.gameState.phase).toBe('rolling');
     expect(resultFrame.gameState.light.pieces[0]?.position).toBe(7);
-    expect(resultFrame.gameState.dark.pieces[0]?.position).toBe(3);
-    expect(getValidMoves(threatenedState, 4)).not.toContainEqual({
+    expect(resultFrame.gameState.dark.pieces[0]?.position).toBe(2);
+    expect(getValidMoves(threatenedState, 5)).not.toContainEqual({
       pieceId: 'dark-0',
-      fromIndex: 3,
+      fromIndex: 2,
       toIndex: 7,
     });
     expect(captureLesson.startFrameIndex).toBe(rosetteLesson.moveStepIndex + 1);
@@ -195,6 +195,25 @@ describe('playthrough tutorial continuous script', () => {
     expect(PLAYTHROUGH_TUTORIAL_LESSONS.map((lesson) => lesson.lessonNumber)).toEqual([1, 2, 3, 4, 5]);
   });
 
+  it('lets Dark move first and never gives Light more than one zero in a row', () => {
+    const firstDarkMove = PLAYTHROUGH_TUTORIAL_SCRIPT.find((step) => step.kind === 'MOVE' && step.player === 'dark');
+    const lightRollValues = PLAYTHROUGH_TUTORIAL_SCRIPT.reduce<number[]>((values, step) => {
+      if (step.kind === 'ROLL' && step.player === 'light') {
+        values.push(step.value);
+      }
+
+      return values;
+    }, []);
+
+    expect(firstDarkMove).toMatchObject({
+      pieceId: 'dark-0',
+      fromIndex: -1,
+      toIndex: 2,
+    });
+    expect(lightRollValues.filter((roll) => roll === 0)).toHaveLength(1);
+    expect(lightRollValues.some((roll, index) => roll === 0 && lightRollValues[index + 1] === 0)).toBe(false);
+  });
+
   it('exports opening and completion modal copy for the guided flow', () => {
     expect(PLAYTHROUGH_TUTORIAL_OPENING_MODAL).toMatchObject({
       title: 'Roll, move, and race to score',
@@ -219,7 +238,7 @@ describe('playthrough tutorial continuous script', () => {
 
     expect(
       getPlaythroughTutorialInstruction({
-        stepId: 'roll-dark-threat-fizzles',
+        stepId: 'roll-light-pass-before-capture-setup',
         turn: 'dark',
         phase: 'moving',
         rollValue: 0,
