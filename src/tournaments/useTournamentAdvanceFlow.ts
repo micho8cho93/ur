@@ -25,12 +25,13 @@ type UseTournamentAdvanceFlowOptions = {
   tournamentId: string | null;
   tournamentName: string;
   gameMode: string;
+  didPlayerWin: boolean;
   playerUserId: string | null;
   finishedMatchId: string | null;
   initialRound?: number | null;
 };
 
-type UseTournamentAdvanceFlowResult = {
+export type UseTournamentAdvanceFlowResult = {
   isActive: boolean;
   phase: TournamentAdvanceFlowPhase;
   tournament: PublicTournamentDetail | null;
@@ -121,6 +122,7 @@ export const useTournamentAdvanceFlow = ({
   tournamentId,
   tournamentName,
   gameMode,
+  didPlayerWin,
   playerUserId,
   finishedMatchId,
   initialRound = null,
@@ -197,7 +199,7 @@ export const useTournamentAdvanceFlow = ({
       setStandings([]);
       setCurrentStanding(null);
       setDerivedRound(initialRound);
-      setStatusText('Waiting for the next round to settle.');
+      setStatusText(didPlayerWin ? 'Waiting for the next round to settle.' : 'Waiting for the final tournament result to settle.');
       setSubtleStatusText(null);
       setRetryMessage(null);
       setFinalPlacement(null);
@@ -257,6 +259,14 @@ export const useTournamentAdvanceFlow = ({
             setStatusText('Your tournament run has ended.');
             setSubtleStatusText('Return to the standings to review the final board.');
             setRetryMessage(null);
+            return;
+          }
+
+          if (!didPlayerWin) {
+            setPhase('waiting');
+            setStatusText('Recording the final result in the standings...');
+            setSubtleStatusText('Waiting for the tournament board to confirm your placement.');
+            scheduleRefresh(refreshStatus);
             return;
           }
 
@@ -402,8 +412,14 @@ export const useTournamentAdvanceFlow = ({
     };
 
     setPhase('waiting');
-    setStatusText('Recording your victory in the standings...');
-    setSubtleStatusText('Waiting for the tournament board to refresh.');
+    setStatusText(
+      didPlayerWin ? 'Recording your victory in the standings...' : 'Recording the final result in the standings...',
+    );
+    setSubtleStatusText(
+      didPlayerWin
+        ? 'Waiting for the tournament board to refresh.'
+        : 'Waiting for the tournament board to confirm your placement.',
+    );
     setRetryMessage(null);
     void refreshStatus();
 
@@ -417,6 +433,7 @@ export const useTournamentAdvanceFlow = ({
     finalizeMatchLaunch,
     finishedMatchId,
     gameMode,
+    didPlayerWin,
     initialRound,
     playerUserId,
     runId,

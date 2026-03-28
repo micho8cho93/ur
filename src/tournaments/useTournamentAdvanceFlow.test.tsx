@@ -3,7 +3,7 @@ import React from 'react';
 import { Text } from 'react-native';
 
 import type { PublicTournamentStanding } from '@/src/tournaments/types';
-import { useTournamentAdvanceFlow } from './useTournamentAdvanceFlow';
+import { useTournamentAdvanceFlow, type UseTournamentAdvanceFlowResult } from './useTournamentAdvanceFlow';
 
 const mockGetPublicTournamentStatus = jest.fn();
 const mockLaunchTournamentMatch = jest.fn();
@@ -28,10 +28,11 @@ type HarnessProps = {
   tournamentId: string | null;
   tournamentName: string;
   gameMode: string;
+  didPlayerWin: boolean;
   playerUserId: string | null;
   finishedMatchId: string | null;
   initialRound?: number | null;
-  onState?: (state: ReturnType<typeof useTournamentAdvanceFlow>) => void;
+  onState?: (state: UseTournamentAdvanceFlowResult) => void;
 };
 
 function HookHarness({ onState, ...props }: HarnessProps) {
@@ -116,6 +117,7 @@ describe('useTournamentAdvanceFlow', () => {
     tournamentId: 'tournament-1',
     tournamentName: 'Spring Open',
     gameMode: 'standard',
+    didPlayerWin: true,
     playerUserId: 'user-1',
     finishedMatchId: 'match-finished',
     initialRound: 2,
@@ -316,7 +318,7 @@ describe('useTournamentAdvanceFlow', () => {
 
   it('rejects stale refresh responses after the flow is reset', async () => {
     const deferredStatus = createDeferred<ReturnType<typeof buildSnapshot>>();
-    let latestState: ReturnType<typeof useTournamentAdvanceFlow> | null = null;
+    let latestState: UseTournamentAdvanceFlowResult | null = null;
 
     mockGetPublicTournamentStatus.mockReturnValue(deferredStatus.promise);
 
@@ -379,14 +381,43 @@ describe('useTournamentAdvanceFlow', () => {
     expect(mockGetPublicTournamentStatus).toHaveBeenCalledTimes(1);
   });
 
-  it('does not auto-launch when the local result is a loss', async () => {
-    render(<HookHarness {...baseProps} enabled={false} />);
+  it('tracks a local loss until the run is explicitly eliminated', async () => {
+    mockGetPublicTournamentStatus
+      .mockResolvedValueOnce(
+        buildSnapshot([
+          buildStanding({
+            result: null,
+            matchId: null,
+            updatedAt: null,
+          }),
+        ]),
+      )
+      .mockResolvedValueOnce(
+        buildSnapshot([
+          buildStanding({
+            result: 'loss',
+            rank: 4,
+          }),
+        ]),
+      );
+
+    render(<HookHarness {...baseProps} didPlayerWin={false} />);
 
     await act(async () => {
       await flush();
     });
 
-    expect(mockGetPublicTournamentStatus).not.toHaveBeenCalled();
+    expect(screen.getByTestId('phase').props.children).toBe('waiting');
+    expect(screen.getByTestId('status').props.children).toBe('Recording the final result in the standings...');
+    expect(mockLaunchTournamentMatch).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(4_000);
+      await flush();
+    });
+
+    expect(screen.getByTestId('phase').props.children).toBe('eliminated');
+    expect(screen.getByTestId('status').props.children).toBe('Your tournament run has ended.');
     expect(mockLaunchTournamentMatch).not.toHaveBeenCalled();
   });
 });

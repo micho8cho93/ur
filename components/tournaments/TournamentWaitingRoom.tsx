@@ -21,6 +21,7 @@ type TournamentWaitingRoomProps = {
   finalPlacement: number | null;
   isChampion: boolean;
   onBackToStandings: () => void;
+  onReturnToMainPage: () => void;
   children?: React.ReactNode;
 };
 
@@ -75,10 +76,12 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
   isChampion,
   onBackToStandings,
   children,
+  onReturnToMainPage,
 }) => {
   const cueOpacity = useRef(new Animated.Value(phase === 'ready' || phase === 'launching' ? 1 : 0)).current;
   const cueScale = useRef(new Animated.Value(phase === 'ready' || phase === 'launching' ? 1 : 0.98)).current;
   const cueGlow = useRef(new Animated.Value(phase === 'ready' || phase === 'launching' ? 1 : 0)).current;
+  const showExitActions = phase === 'eliminated' || phase === 'finalized';
 
   useEffect(() => {
     const activeCue = phase === 'ready' || phase === 'launching';
@@ -215,7 +218,10 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
             presentation="preview"
           />
 
-          <Button title="Back to Standings" variant="outline" onPress={onBackToStandings} />
+          <View style={styles.buttonStack}>
+            <Button title="Back to Standings" variant="outline" onPress={onBackToStandings} />
+            {showExitActions ? <Button title="Return to Main Page" onPress={onReturnToMainPage} /> : null}
+          </View>
         </ScrollView>
       </View>
     </View>
@@ -385,5 +391,8 @@ const styles = StyleSheet.create({
     color: 'rgba(216, 232, 251, 0.74)',
     fontSize: 12,
     lineHeight: 17,
+  },
+  buttonStack: {
+    gap: urTheme.spacing.sm,
   },
 });

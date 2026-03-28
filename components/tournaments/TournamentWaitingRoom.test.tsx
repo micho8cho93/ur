@@ -52,6 +52,7 @@ describe('TournamentWaitingRoom', () => {
         finalPlacement={null}
         isChampion={false}
         onBackToStandings={jest.fn()}
+        onReturnToMainPage={jest.fn()}
       />,
     );
 
@@ -79,6 +80,7 @@ describe('TournamentWaitingRoom', () => {
         finalPlacement={null}
         isChampion={false}
         onBackToStandings={handleBack}
+        onReturnToMainPage={jest.fn()}
       />,
     );
 
@@ -105,10 +107,43 @@ describe('TournamentWaitingRoom', () => {
         finalPlacement={1}
         isChampion
         onBackToStandings={jest.fn()}
+        onReturnToMainPage={jest.fn()}
       />,
     );
 
     expect(screen.getByText('Champion Crowned')).toBeTruthy();
     expect(screen.getByText('Final placement: Champion')).toBeTruthy();
+    expect(screen.getByText('Return to Main Page')).toBeTruthy();
+  });
+
+  it('renders eliminated actions for a finished run', () => {
+    const handleBack = jest.fn();
+    const handleExit = jest.fn();
+
+    render(
+      <TournamentWaitingRoom
+        visible
+        phase="eliminated"
+        tournamentName="Spring Open"
+        derivedRound={3}
+        statusText="Your tournament run has ended."
+        subtleStatusText="Return to the standings to review the final board."
+        retryMessage={null}
+        standings={standings}
+        currentStanding={standings[0]}
+        highlightOwnerId="user-1"
+        finalPlacement={4}
+        isChampion={false}
+        onBackToStandings={handleBack}
+        onReturnToMainPage={handleExit}
+      />,
+    );
+
+    fireEvent.press(screen.getByText('Back to Standings'));
+    fireEvent.press(screen.getByText('Return to Main Page'));
+
+    expect(screen.getByText('Tournament Run Ended')).toBeTruthy();
+    expect(handleBack).toHaveBeenCalledTimes(1);
+    expect(handleExit).toHaveBeenCalledTimes(1);
   });
 });

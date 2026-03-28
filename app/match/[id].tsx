@@ -558,8 +558,7 @@ export function GameRoom() {
   const [mobileScoreRowHeight, setMobileScoreRowHeight] = React.useState(0);
   const [tutorialCoachPhase, setTutorialCoachPhase] = React.useState<TutorialCoachPhase>('idle');
   const [tutorialLessonIndex, setTutorialLessonIndex] = React.useState(0);
-  const showTournamentWaitingRoom = showWinModal && isTournamentMatch && didPlayerWin;
-  const shouldRenderResultModal = showWinModal && !showTournamentWaitingRoom;
+  const shouldTrackTournamentAdvanceFlow = showWinModal && isTournamentMatch;
   const isScriptedTutorialPhase =
     isPlaythroughTutorialMatch &&
     tutorialCoachPhase !== 'idle' &&
@@ -635,15 +634,23 @@ export function GameRoom() {
       ? `Lesson ${tutorialLesson.lessonNumber}/${PLAYTHROUGH_TUTORIAL_LESSON_COUNT}: ${tutorialLesson.objective}`
       : null;
   const tournamentAdvanceFlow = useTournamentAdvanceFlow({
-    enabled: showTournamentWaitingRoom,
+    enabled: shouldTrackTournamentAdvanceFlow,
     runId: tournamentRunIdParam ?? null,
     tournamentId: tournamentIdParam ?? null,
     tournamentName: tournamentDisplayName,
     gameMode: effectiveMatchConfig.modeId,
+    didPlayerWin,
     playerUserId: tournamentPlayerUserId,
     finishedMatchId: matchId ?? null,
     initialRound: initialTournamentRound,
   });
+  const showTournamentWaitingRoom =
+    showWinModal &&
+    isTournamentMatch &&
+    (didPlayerWin ||
+      tournamentAdvanceFlow.phase === 'eliminated' ||
+      tournamentAdvanceFlow.phase === 'finalized');
+  const shouldRenderResultModal = showWinModal && !showTournamentWaitingRoom;
 
   const cueSystemReady = ancientCueFontLoaded || Boolean(ancientCueFontError);
   const cueFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : undefined;
@@ -3739,6 +3746,7 @@ export function GameRoom() {
         finalPlacement={tournamentAdvanceFlow.finalPlacement}
         isChampion={tournamentAdvanceFlow.isChampion}
         onBackToStandings={handleReturnToTournament}
+        onReturnToMainPage={handleExit}
       >
         {renderSharedResultSummary()}
       </TournamentWaitingRoom>
