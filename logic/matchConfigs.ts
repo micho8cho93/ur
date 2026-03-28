@@ -57,7 +57,7 @@ const GAME_MODE_MATCH_CONFIGS: readonly MatchConfig[] = [
     rulesVariant: 'standard',
     allowsXp: true,
     allowsOnline: false,
-    allowsChallenges: false,
+    allowsChallenges: true,
     allowsCoins: false,
     allowsRankedStats: false,
     offlineWinRewardSource: 'practice_1_piece_win',
@@ -73,7 +73,7 @@ const GAME_MODE_MATCH_CONFIGS: readonly MatchConfig[] = [
     rulesVariant: 'standard',
     allowsXp: true,
     allowsOnline: false,
-    allowsChallenges: false,
+    allowsChallenges: true,
     allowsCoins: false,
     allowsRankedStats: false,
     offlineWinRewardSource: 'practice_3_pieces_win',
@@ -89,7 +89,7 @@ const GAME_MODE_MATCH_CONFIGS: readonly MatchConfig[] = [
     rulesVariant: 'standard',
     allowsXp: true,
     allowsOnline: false,
-    allowsChallenges: false,
+    allowsChallenges: true,
     allowsCoins: false,
     allowsRankedStats: false,
     offlineWinRewardSource: 'practice_5_pieces_win',
@@ -105,7 +105,7 @@ const GAME_MODE_MATCH_CONFIGS: readonly MatchConfig[] = [
     rulesVariant: 'standard',
     allowsXp: true,
     allowsOnline: false,
-    allowsChallenges: false,
+    allowsChallenges: true,
     allowsCoins: false,
     allowsRankedStats: false,
     offlineWinRewardSource: 'practice_extended_path_win',
@@ -157,7 +157,7 @@ export const getPracticeModeRewardLabel = (config: MatchConfig): string =>
   `Practice Mode Win Reward: +${getXpAwardAmount(config.offlineWinRewardSource)} XP`;
 
 export const GAME_MODE_SCREEN_NOTE =
-  'Game Modes are offline bot matches with reduced XP rewards when signed in. No challenge rewards or online play.';
+  'Game Modes are offline bot matches with reduced XP rewards when signed in. Permanent challenges still track here, but online play stays disabled.';
 
 export const isMatchModeId = (value: unknown): value is MatchModeId =>
   typeof value === 'string' && value in MATCH_CONFIGS;

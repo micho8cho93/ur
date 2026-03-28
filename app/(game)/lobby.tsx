@@ -326,7 +326,7 @@ export default function Lobby() {
 
             <Text style={styles.title}>Create Private Game</Text>
             <Text style={styles.subtitle}>
-              {`Make a shareable room code for a friend. Private match wins award +${privateWinRewardXp} XP and never count toward challenges.`}
+              {`Make a shareable room code for a friend. Private match wins award +${privateWinRewardXp} XP and now count toward permanent challenge progress.`}
             </Text>
 
             {privateStatusLabel ? <Text style={styles.statusText}>{privateStatusLabel}</Text> : null}
@@ -389,7 +389,7 @@ export default function Lobby() {
 
             <Text style={styles.title}>Enter Private Game Code</Text>
             <Text style={styles.subtitle}>
-              {`Paste the short code your friend sent you to enter their private table and play for the +${privateWinRewardXp} XP private-match reward.`}
+              {`Paste the short code your friend sent you to enter their private table, play for the +${privateWinRewardXp} XP private-match reward, and unlock social challenge progress.`}
             </Text>
 
             {joinStatusLabel ? <Text style={styles.statusText}>{joinStatusLabel}</Text> : null}

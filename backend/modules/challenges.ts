@@ -5,10 +5,8 @@ import {
   ChallengeDefinitionsRpcResponse,
   ChallengeId,
   CHALLENGE_DEFINITIONS,
-  CHALLENGE_IDS,
   CompletedMatchSummary,
   createDefaultUserChallengeProgressSnapshot,
-  getChallengeDefinition,
   isChallengeDefinition,
   isCompletedBotMatchRewardMode,
   isCompletedMatchSummary,
@@ -34,6 +32,14 @@ import {
   getStorageObjectVersion,
   normalizeProgressionProfile,
 } from "./progression";
+import {
+  applyMatchToChallengeStats,
+  challengeProgressNeedsRepair,
+  createCompletedChallengeState,
+  decorateChallengeProgressSnapshot,
+  evaluateChallengeCompletions,
+  normalizeChallengeProgressSnapshot,
+} from "./challengeProgress";
 
 type RuntimeContext = any;
 type RuntimeLogger = any;
@@ -69,23 +75,6 @@ export const RPC_GET_CHALLENGE_DEFINITIONS = "get_challenge_definitions";
 export const RPC_GET_USER_CHALLENGE_PROGRESS = "get_user_challenge_progress";
 export const RPC_SUBMIT_COMPLETED_BOT_MATCH = "submit_completed_bot_match";
 
-const CHALLENGE_EVALUATORS: Readonly<Record<ChallengeId, (summary: CompletedMatchSummary) => boolean>> = {
-  [CHALLENGE_IDS.FIRST_VICTORY]: (summary) => summary.didWin,
-  [CHALLENGE_IDS.BEAT_EASY_BOT]: (summary) => summary.didWin && summary.opponentType === "easy_bot",
-  [CHALLENGE_IDS.FAST_FINISH]: (summary) => summary.didWin && summary.totalMoves < 100,
-  [CHALLENGE_IDS.SAFE_PLAY]: (summary) => summary.didWin && summary.piecesLost === 0,
-  [CHALLENGE_IDS.LUCKY_ROLL]: (summary) => summary.didWin && summary.maxRollCount >= 3,
-  [CHALLENGE_IDS.HOME_STRETCH]: (summary) => summary.didWin && summary.capturesMade === 0,
-  // Intentional design decision: the challenge description does not require a win,
-  // so any completed match with 3+ captures counts.
-  [CHALLENGE_IDS.CAPTURE_MASTER]: (summary) => summary.capturesMade >= 3,
-  [CHALLENGE_IDS.COMEBACK_WIN]: (summary) => summary.didWin && summary.wasBehindDuringMatch,
-  [CHALLENGE_IDS.RISK_TAKER]: (summary) => summary.didWin && summary.contestedTilesLandedCount >= 3,
-  [CHALLENGE_IDS.BEAT_MEDIUM_BOT]: (summary) => summary.didWin && summary.opponentType === "medium_bot",
-  [CHALLENGE_IDS.BEAT_HARD_BOT]: (summary) => summary.didWin && summary.opponentType === "hard_bot",
-  [CHALLENGE_IDS.BEAT_PERFECT_BOT]: (summary) => summary.didWin && summary.opponentType === "perfect_bot",
-};
-
 const buildChallengeRewardLedgerKey = (challengeId: ChallengeId): string => `challenge:${challengeId}`;
 const buildProcessedMatchResultKey = (matchId: string): string => matchId;
 const isBotOpponentType = (opponentType: CompletedMatchSummary["opponentType"]): boolean =>
@@ -110,81 +99,6 @@ const readStringField = (value: unknown, keys: string[]): string | null => {
   return null;
 };
 
-const normalizeChallengeProgress = (
-  rawValue: unknown,
-  fallbackUpdatedAt = new Date().toISOString()
-): UserChallengeProgressSnapshot => {
-  const rawRecord = typeof rawValue === "object" && rawValue !== null ? (rawValue as Record<string, unknown>) : null;
-  const rawChallenges =
-    rawRecord && typeof rawRecord.challenges === "object" && rawRecord.challenges !== null
-      ? (rawRecord.challenges as Record<string, unknown>)
-      : null;
-
-  const normalizedChallenges = CHALLENGE_DEFINITIONS.reduce(
-    (states, definition) => {
-      const rawState = rawChallenges?.[definition.id] as Record<string, unknown> | undefined;
-      const completed = rawState?.completed === true;
-      const completedAt = completed
-        ? readStringField(rawState, ["completedAt", "completed_at"]) ?? fallbackUpdatedAt
-        : null;
-      const completedMatchId = completed ? readStringField(rawState, ["completedMatchId", "completed_match_id"]) : null;
-
-      states[definition.id] = {
-        challengeId: definition.id,
-        completed,
-        completedAt,
-        completedMatchId: completedMatchId ?? null,
-        rewardXp: definition.rewardXp,
-      };
-      return states;
-    },
-    {} as UserChallengeProgressSnapshot["challenges"]
-  );
-
-  const totalCompleted = Object.values(normalizedChallenges).filter((challenge) => challenge.completed).length;
-  const totalRewardedXp = Object.values(normalizedChallenges)
-    .filter((challenge) => challenge.completed)
-    .reduce((total, challenge) => total + challenge.rewardXp, 0);
-
-  return {
-    totalCompleted,
-    totalRewardedXp,
-    updatedAt: readStringField(rawRecord, ["updatedAt", "updated_at"]) ?? fallbackUpdatedAt,
-    challenges: normalizedChallenges,
-  };
-};
-
-const challengeProgressNeedsRepair = (
-  rawValue: unknown,
-  normalized: UserChallengeProgressSnapshot
-): boolean => {
-  const rawRecord = typeof rawValue === "object" && rawValue !== null ? (rawValue as Record<string, unknown>) : null;
-  if (!rawRecord) {
-    return true;
-  }
-
-  if ((rawRecord.totalCompleted as number | undefined) !== normalized.totalCompleted) {
-    return true;
-  }
-
-  if ((rawRecord.totalRewardedXp as number | undefined) !== normalized.totalRewardedXp) {
-    return true;
-  }
-
-  const rawChallenges = rawRecord.challenges as Record<string, unknown> | undefined;
-  return CHALLENGE_DEFINITIONS.some((definition) => {
-    const rawState = rawChallenges?.[definition.id] as Record<string, unknown> | undefined;
-    const normalizedState = normalized.challenges[definition.id];
-
-    return (
-      !rawState ||
-      rawState.completed !== normalizedState.completed ||
-      rawState.completedAt !== normalizedState.completedAt ||
-      rawState.completedMatchId !== normalizedState.completedMatchId ||
-      rawState.rewardXp !== normalizedState.rewardXp
-    );
-  });
-};
 
 const readChallengeProgressObject = (nk: RuntimeNakama, userId: string): RuntimeStorageObject | null => {
   const objects = nk.storageRead([
@@ -235,7 +149,10 @@ export const ensureChallengeDefinitions = (nk: RuntimeNakama, logger: RuntimeLog
           storedDefinition.name === definition.name &&
           storedDefinition.description === definition.description &&
           storedDefinition.type === definition.type &&
-          storedDefinition.rewardXp === definition.rewardXp
+          storedDefinition.category === definition.category &&
+          storedDefinition.rewardXp === definition.rewardXp &&
+          storedDefinition.sortOrder === definition.sortOrder &&
+          storedDefinition.hidden === definition.hidden
         ) {
           return [];
         }
@@ -286,9 +203,13 @@ export const ensureUserChallengeProgress = (
 ): UserChallengeProgressSnapshot => {
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const existingObject = readChallengeProgressObject(nk, userId);
+    const progressionProfile = ensureProgressionProfile(nk, logger, userId);
 
     if (existingObject) {
-      const normalized = normalizeChallengeProgress(getStorageObjectValue(existingObject));
+      const normalized = normalizeChallengeProgressSnapshot(
+        getStorageObjectValue(existingObject),
+        progressionProfile.totalXp
+      );
       if (!challengeProgressNeedsRepair(getStorageObjectValue(existingObject), normalized)) {
         return normalized;
       }
@@ -309,7 +230,10 @@ export const ensureUserChallengeProgress = (
       continue;
     }
 
-    const defaults = createDefaultUserChallengeProgressSnapshot();
+    const defaults = decorateChallengeProgressSnapshot(
+      createDefaultUserChallengeProgressSnapshot(),
+      progressionProfile.totalXp
+    );
     try {
       writeChallengeProgressObject(nk, userId, defaults, "*");
       return defaults;
@@ -338,9 +262,12 @@ export const getUserChallengeProgress = (
 ): UserChallengeProgressRpcResponse => ensureUserChallengeProgress(nk, logger, userId);
 
 export const evaluateChallengesForMatchSummary = (summary: CompletedMatchSummary): ChallengeId[] =>
-  CHALLENGE_DEFINITIONS.filter((definition) => CHALLENGE_EVALUATORS[definition.id](summary)).map(
-    (definition) => definition.id
-  );
+  evaluateChallengeCompletions({
+    summary,
+    stats: applyMatchToChallengeStats(createDefaultUserChallengeProgressSnapshot().stats, summary),
+    totalXp: 0,
+    completedChallengeIds: new Set<ChallengeId>(),
+  });
 
 const normalizeProcessedMatchResult = (rawValue: unknown): ProcessedMatchResultRecord | null => {
   if (typeof rawValue !== "object" || rawValue === null) {
@@ -374,8 +301,7 @@ const normalizeProcessedMatchResult = (rawValue: unknown): ProcessedMatchResultR
 const readMatchProcessingObjects = (
   nk: RuntimeNakama,
   userId: string,
-  matchId: string,
-  candidateChallengeIds: ChallengeId[]
+  matchId: string
 ): {
   profileObject: RuntimeStorageObject | null;
   challengeProgressObject: RuntimeStorageObject | null;
@@ -398,24 +324,24 @@ const readMatchProcessingObjects = (
       key: buildProcessedMatchResultKey(matchId),
       userId,
     },
-    ...candidateChallengeIds.map((challengeId) => ({
+    ...CHALLENGE_DEFINITIONS.map((challengeId) => ({
       collection: XP_REWARD_LEDGER_COLLECTION,
-      key: buildChallengeRewardLedgerKey(challengeId),
+      key: buildChallengeRewardLedgerKey(challengeId.id),
       userId,
     })),
   ];
 
   const objects = nk.storageRead(objectIds) as RuntimeStorageObject[];
-  const rewardLedgerObjectsByChallengeId = candidateChallengeIds.reduce(
-    (entries, challengeId) => {
+  const rewardLedgerObjectsByChallengeId = CHALLENGE_DEFINITIONS.reduce(
+    (entries, definition) => {
       const rewardObject = findStorageObject(
         objects,
         XP_REWARD_LEDGER_COLLECTION,
-        buildChallengeRewardLedgerKey(challengeId),
+        buildChallengeRewardLedgerKey(definition.id),
         userId
       );
       if (rewardObject) {
-        entries[challengeId] = rewardObject;
+        entries[definition.id] = rewardObject;
       }
       return entries;
     },
@@ -455,8 +381,6 @@ export const processCompletedMatch = (
     throw new Error("Completed match summary must include non-empty match and user IDs.");
   }
 
-  const satisfiedChallengeIds = evaluateChallengesForMatchSummary(summary);
-
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const now = new Date().toISOString();
     const {
@@ -464,14 +388,14 @@ export const processCompletedMatch = (
       challengeProgressObject,
       processedMatchObject,
       rewardLedgerObjectsByChallengeId,
-    } = readMatchProcessingObjects(nk, userId, matchId, satisfiedChallengeIds);
+    } = readMatchProcessingObjects(nk, userId, matchId);
 
     const currentProfile = profileObject
       ? normalizeProgressionProfile(getStorageObjectValue(profileObject), now)
       : ensureProgressionProfile(nk, logger, userId);
     const currentProgress = challengeProgressObject
-      ? normalizeChallengeProgress(getStorageObjectValue(challengeProgressObject), now)
-      : createDefaultUserChallengeProgressSnapshot(now);
+      ? normalizeChallengeProgressSnapshot(getStorageObjectValue(challengeProgressObject), currentProfile.totalXp, now)
+      : decorateChallengeProgressSnapshot(createDefaultUserChallengeProgressSnapshot(now), currentProfile.totalXp);
 
     const existingProcessedMatch = normalizeProcessedMatchResult(getStorageObjectValue(processedMatchObject));
     if (existingProcessedMatch) {
@@ -487,47 +411,64 @@ export const processCompletedMatch = (
     const completedChallengeIds: ChallengeId[] = [];
     const completionWrites: ChallengeCompletionRecord[] = [];
     let totalAwardedXp = 0;
+    let projectedTotalXp = currentProfile.totalXp;
+    const completedChallengeIdsSet = new Set<ChallengeId>(
+      CHALLENGE_DEFINITIONS.filter((definition) => currentProgress.challenges[definition.id]?.completed).map(
+        (definition) => definition.id
+      )
+    );
+    const nextStats = applyMatchToChallengeStats(currentProgress.stats, summary);
 
-    const nextProgress: UserChallengeProgressSnapshot = {
+    let nextProgress: UserChallengeProgressSnapshot = {
       ...currentProgress,
       updatedAt: now,
+      stats: nextStats,
       challenges: { ...currentProgress.challenges },
     };
 
-    for (const challengeId of satisfiedChallengeIds) {
-      const definition = getChallengeDefinition(challengeId);
-      const existingState = nextProgress.challenges[challengeId];
-      if (existingState.completed) {
-        continue;
+    while (true) {
+      const newlySatisfiedChallengeIds = evaluateChallengeCompletions({
+        summary,
+        stats: nextStats,
+        totalXp: projectedTotalXp,
+        completedChallengeIds: completedChallengeIdsSet,
+      });
+
+      if (newlySatisfiedChallengeIds.length === 0) {
+        break;
       }
 
-      completedChallengeIds.push(challengeId);
-      nextProgress.challenges[challengeId] = {
-        challengeId,
-        completed: true,
-        completedAt: now,
-        completedMatchId: matchId,
-        rewardXp: definition.rewardXp,
-      };
+      newlySatisfiedChallengeIds.forEach((challengeId) => {
+        if (completedChallengeIdsSet.has(challengeId)) {
+          return;
+        }
 
-      if (!rewardLedgerObjectsByChallengeId[challengeId]) {
-        totalAwardedXp += definition.rewardXp;
-        completionWrites.push({
-          challengeId,
-          completedAt: now,
-          completedMatchId: matchId,
-          rewardXp: definition.rewardXp,
-          rewardLedgerKey: buildChallengeRewardLedgerKey(challengeId),
-        });
-      }
+        const definition = CHALLENGE_DEFINITIONS.find((entry) => entry.id === challengeId)!;
+        completedChallengeIds.push(challengeId);
+        completedChallengeIdsSet.add(challengeId);
+        nextProgress.challenges[challengeId] = createCompletedChallengeState(challengeId, now, matchId);
+
+        if (!rewardLedgerObjectsByChallengeId[challengeId]) {
+          totalAwardedXp += definition.rewardXp;
+          projectedTotalXp += definition.rewardXp;
+          completionWrites.push({
+            challengeId,
+            completedAt: now,
+            completedMatchId: matchId,
+            rewardXp: definition.rewardXp,
+            rewardLedgerKey: buildChallengeRewardLedgerKey(challengeId),
+          });
+        }
+      });
     }
 
     nextProgress.totalCompleted = Object.values(nextProgress.challenges).filter((challenge) => challenge.completed).length;
     nextProgress.totalRewardedXp = Object.values(nextProgress.challenges)
       .filter((challenge) => challenge.completed)
       .reduce((total, challenge) => total + challenge.rewardXp, 0);
+    nextProgress = decorateChallengeProgressSnapshot(nextProgress, projectedTotalXp);
 
-    const nextTotalXp = currentProfile.totalXp + totalAwardedXp;
+    const nextTotalXp = projectedTotalXp;
     const nextProfile: ProgressionProfile = {
       totalXp: nextTotalXp,
       currentRankTitle: getRankForXp(nextTotalXp).title,
@@ -621,7 +562,7 @@ export const processCompletedMatch = (
         progressionRank: nextProfile.currentRankTitle,
       };
     } catch (error) {
-      const refreshed = readMatchProcessingObjects(nk, userId, matchId, satisfiedChallengeIds);
+      const refreshed = readMatchProcessingObjects(nk, userId, matchId);
       const refreshedProcessed = normalizeProcessedMatchResult(getStorageObjectValue(refreshed.processedMatchObject));
       if (refreshedProcessed) {
         const refreshedProfile = refreshed.profileObject

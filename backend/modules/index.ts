@@ -4,8 +4,8 @@
 */
 
 import { applyMove, createInitialState, getValidMoves, rollDice } from "../../logic/engine";
-import { PATH_DARK, PATH_LENGTH, PATH_LIGHT, isWarZone } from "../../logic/constants";
 import { MatchModeId, getMatchConfig, isMatchModeId } from "../../logic/matchConfigs";
+import { getPathCoord as getVariantPathCoord, getPathLength } from "../../logic/pathVariants";
 import { GameState, PlayerColor } from "../../logic/types";
 import {
   awardXpForMatchWin,
@@ -51,7 +51,19 @@ import {
   isMoveRequestPayload,
   isRollRequestPayload,
 } from "../../shared/urMatchProtocol";
-import { CompletedMatchSummary, OpponentType, calculateComebackCheckpoint } from "../../shared/challenges";
+import {
+  CHALLENGE_THRESHOLDS,
+  CompletedMatchSummary,
+  OpponentType,
+  calculateComebackCheckpoint,
+  calculateDoubleStrikeTurnSpan,
+  countActivePiecesOnBoard,
+  getOpponentDifficultyFromType,
+  getPositionLeadRelation,
+  hasPlayerExitedStartingArea,
+  isContestedLanding,
+  isOneSuccessfulMoveFromVictory,
+} from "../../shared/challenges";
 import type { XpSource } from "../../shared/progression";
 import {
   generatePrivateMatchCode,
@@ -158,17 +170,29 @@ type PrivateMatchCodeRecord = {
 
 type MatchPlayerTelemetry = {
   playerMoveCount: number;
+  playerTurnCount: number;
   maxRollCount: number;
+  unusableRollCount: number;
   capturesMade: number;
   capturesSuffered: number;
+  captureTurnNumbers: number[];
+  currentCaptureTurnStreak: number;
+  maxCaptureTurnStreak: number;
   contestedTilesLandedCount: number;
   wasBehindDuringMatch: boolean;
   behindCheckpointCount: number;
   behindReasons: Set<"progress_deficit" | "borne_off_deficit">;
+  firstStartingAreaExitTurn: number | null;
+  opponentReachedBrink: boolean;
+  lastBehindTurnIndex: number | null;
+  momentumShiftAchieved: boolean;
+  momentumShiftTurnSpan: number | null;
+  maxActivePiecesOnBoard: number;
 };
 
 type MatchTelemetry = {
   totalMoves: number;
+  totalTurns: number;
   players: Record<PlayerColor, MatchPlayerTelemetry>;
 };
 
@@ -384,17 +408,29 @@ const encodeOnlinePresencePayload = (nowMs: number): string =>
 
 const createPlayerTelemetry = (): MatchPlayerTelemetry => ({
   playerMoveCount: 0,
+  playerTurnCount: 0,
   maxRollCount: 0,
+  unusableRollCount: 0,
   capturesMade: 0,
   capturesSuffered: 0,
+  captureTurnNumbers: [],
+  currentCaptureTurnStreak: 0,
+  maxCaptureTurnStreak: 0,
   contestedTilesLandedCount: 0,
   wasBehindDuringMatch: false,
   behindCheckpointCount: 0,
   behindReasons: new Set(),
+  firstStartingAreaExitTurn: null,
+  opponentReachedBrink: false,
+  lastBehindTurnIndex: null,
+  momentumShiftAchieved: false,
+  momentumShiftTurnSpan: null,
+  maxActivePiecesOnBoard: 0,
 });
 
 const createMatchTelemetry = (): MatchTelemetry => ({
   totalMoves: 0,
+  totalTurns: 0,
   players: {
     light: createPlayerTelemetry(),
     dark: createPlayerTelemetry(),
@@ -418,18 +454,10 @@ const createMatchTimerState = (): MatchTimerState => ({
   resetReason: null,
 });
 
-const getPathCoord = (color: PlayerColor, index: number) => {
-  if (index < 0 || index >= PATH_LENGTH) {
-    return null;
-  }
-
-  return color === "light" ? PATH_LIGHT[index] ?? null : PATH_DARK[index] ?? null;
-};
-
 const detectCaptureOnMove = (state: GameState, move: MoveRequestPayload["move"]): boolean => {
   const moverColor = state.currentTurn;
   const opponentColor: PlayerColor = moverColor === "light" ? "dark" : "light";
-  const targetCoord = getPathCoord(moverColor, move.toIndex);
+  const targetCoord = getVariantPathCoord(state.matchConfig.pathVariant, moverColor, move.toIndex);
   if (!targetCoord) {
     return false;
   }
@@ -439,7 +467,7 @@ const detectCaptureOnMove = (state: GameState, move: MoveRequestPayload["move"])
       return false;
     }
 
-    const pieceCoord = getPathCoord(opponentColor, piece.position);
+    const pieceCoord = getVariantPathCoord(state.matchConfig.pathVariant, opponentColor, piece.position);
     return Boolean(pieceCoord && pieceCoord.row === targetCoord.row && pieceCoord.col === targetCoord.col);
   });
 };
@@ -456,6 +484,97 @@ const updateComebackTelemetry = (state: MatchState): void => {
     playerTelemetry.behindCheckpointCount += 1;
     checkpoint.reasons.forEach((reason) => playerTelemetry.behindReasons.add(reason));
   });
+};
+
+const updateActivePieceTelemetry = (state: MatchState): void => {
+  const pathLength = getPathLength(state.gameState.matchConfig.pathVariant);
+  (["light", "dark"] as PlayerColor[]).forEach((playerColor) => {
+    const activePieceCount = countActivePiecesOnBoard(state.gameState[playerColor], pathLength);
+    state.telemetry.players[playerColor].maxActivePiecesOnBoard = Math.max(
+      state.telemetry.players[playerColor].maxActivePiecesOnBoard,
+      activePieceCount
+    );
+  });
+};
+
+const updateStartingAreaExitTelemetry = (state: MatchState, playerColor: PlayerColor): void => {
+  const playerTelemetry = state.telemetry.players[playerColor];
+  if (playerTelemetry.firstStartingAreaExitTurn !== null) {
+    return;
+  }
+
+  if (!hasPlayerExitedStartingArea(state.gameState[playerColor], state.gameState.matchConfig.pathVariant)) {
+    return;
+  }
+
+  playerTelemetry.firstStartingAreaExitTurn = playerTelemetry.playerTurnCount;
+};
+
+const updateOpponentBrinkTelemetry = (state: MatchState): void => {
+  (["light", "dark"] as PlayerColor[]).forEach((playerColor) => {
+    const opponentColor = getOtherPlayerColor(playerColor);
+    if (isOneSuccessfulMoveFromVictory(state.gameState, opponentColor)) {
+      state.telemetry.players[playerColor].opponentReachedBrink = true;
+    }
+  });
+};
+
+const updateMomentumTelemetry = (state: MatchState): void => {
+  const turnIndex = state.telemetry.totalTurns;
+  (["light", "dark"] as PlayerColor[]).forEach((playerColor) => {
+    const playerTelemetry = state.telemetry.players[playerColor];
+    const relation = getPositionLeadRelation(state.gameState, playerColor);
+
+    if (relation === "behind") {
+      playerTelemetry.lastBehindTurnIndex = turnIndex;
+      return;
+    }
+
+    if (relation !== "ahead" || playerTelemetry.lastBehindTurnIndex === null) {
+      return;
+    }
+
+    const turnSpan = turnIndex - playerTelemetry.lastBehindTurnIndex;
+    if (turnSpan > CHALLENGE_THRESHOLDS.MOMENTUM_SHIFT_MAX_TURN_WINDOW) {
+      return;
+    }
+
+    playerTelemetry.momentumShiftAchieved = true;
+    playerTelemetry.momentumShiftTurnSpan =
+      playerTelemetry.momentumShiftTurnSpan === null
+        ? turnSpan
+        : Math.min(playerTelemetry.momentumShiftTurnSpan, turnSpan);
+  });
+};
+
+const completePlayerTurnTelemetry = (
+  state: MatchState,
+  playerColor: PlayerColor,
+  options: { didCapture: boolean; unusableRoll: boolean }
+): void => {
+  const playerTelemetry = state.telemetry.players[playerColor];
+  state.telemetry.totalTurns += 1;
+  playerTelemetry.playerTurnCount += 1;
+
+  if (options.unusableRoll) {
+    playerTelemetry.unusableRollCount += 1;
+    playerTelemetry.currentCaptureTurnStreak = 0;
+  } else if (options.didCapture) {
+    playerTelemetry.captureTurnNumbers.push(playerTelemetry.playerTurnCount);
+    playerTelemetry.currentCaptureTurnStreak += 1;
+    playerTelemetry.maxCaptureTurnStreak = Math.max(
+      playerTelemetry.maxCaptureTurnStreak,
+      playerTelemetry.currentCaptureTurnStreak
+    );
+  } else {
+    playerTelemetry.currentCaptureTurnStreak = 0;
+  }
+
+  updateStartingAreaExitTelemetry(state, playerColor);
+  updateActivePieceTelemetry(state);
+  updateComebackTelemetry(state);
+  updateMomentumTelemetry(state);
+  updateOpponentBrinkTelemetry(state);
 };
 
 const parseRpcPayload = (payload: string): RuntimeRecord => {
@@ -864,24 +983,50 @@ const buildPlayerMatchSummary = (
 ): CompletedMatchSummary => {
   const opponentColor: PlayerColor = playerColor === "light" ? "dark" : "light";
   const playerTelemetry = state.telemetry.players[playerColor];
+  const opponentTelemetry = state.telemetry.players[opponentColor];
+  const doubleStrikeTurnSpan = calculateDoubleStrikeTurnSpan(playerTelemetry.captureTurnNumbers);
 
   return {
     matchId,
     playerUserId,
     opponentType: state.opponentType,
+    opponentDifficulty: getOpponentDifficultyFromType(state.opponentType),
     didWin: state.gameState.winner === playerColor,
     totalMoves: state.telemetry.totalMoves,
     playerMoveCount: playerTelemetry.playerMoveCount,
+    playerTurnCount: playerTelemetry.playerTurnCount,
+    opponentTurnCount: opponentTelemetry.playerTurnCount,
     piecesLost: playerTelemetry.capturesSuffered,
     maxRollCount: playerTelemetry.maxRollCount,
+    unusableRollCount: playerTelemetry.unusableRollCount,
     capturesMade: playerTelemetry.capturesMade,
     capturesSuffered: playerTelemetry.capturesSuffered,
+    captureTurnNumbers: [...playerTelemetry.captureTurnNumbers],
+    maxCaptureTurnStreak: playerTelemetry.maxCaptureTurnStreak,
+    doubleStrikeAchieved: doubleStrikeTurnSpan !== null,
+    relentlessPressureAchieved:
+      playerTelemetry.maxCaptureTurnStreak >= CHALLENGE_THRESHOLDS.RELENTLESS_PRESSURE_REQUIRED_STREAK,
     contestedTilesLandedCount: playerTelemetry.contestedTilesLandedCount,
+    opponentStartingAreaExitTurn: opponentTelemetry.firstStartingAreaExitTurn,
+    lockdownAchieved:
+      opponentTelemetry.playerTurnCount >= CHALLENGE_THRESHOLDS.LOCKDOWN_REQUIRED_OPPONENT_TURNS &&
+      (opponentTelemetry.firstStartingAreaExitTurn === null ||
+        opponentTelemetry.firstStartingAreaExitTurn > CHALLENGE_THRESHOLDS.LOCKDOWN_REQUIRED_OPPONENT_TURNS),
     borneOffCount: state.gameState[playerColor].finishedCount,
     opponentBorneOffCount: state.gameState[opponentColor].finishedCount,
     wasBehindDuringMatch: playerTelemetry.wasBehindDuringMatch,
     behindCheckpointCount: playerTelemetry.behindCheckpointCount,
     behindReasons: Array.from(playerTelemetry.behindReasons),
+    opponentReachedBrink: playerTelemetry.opponentReachedBrink,
+    momentumShiftAchieved: playerTelemetry.momentumShiftAchieved,
+    momentumShiftTurnSpan: playerTelemetry.momentumShiftTurnSpan,
+    maxActivePiecesOnBoard: playerTelemetry.maxActivePiecesOnBoard,
+    modeId: state.modeId,
+    pieceCountPerSide: state.gameState.matchConfig.pieceCountPerSide,
+    isPrivateMatch: state.classification.private,
+    isFriendMatch: state.privateMatch,
+    isTournamentMatch: Boolean(state.tournamentContext),
+    tournamentEliminationRisk: state.tournamentContext?.eliminationRisk === true,
     timestamp: new Date().toISOString(),
   };
 };
@@ -1162,7 +1307,7 @@ function rpcCreatePrivateMatch(
     privateCode,
     privateCreatorUserId: ctx.userId,
     winRewardSource: "private_pvp_win",
-    allowsChallengeRewards: false,
+    allowsChallengeRewards: true,
   });
   createPrivateMatchCodeRecord(nk, modeId, matchId, ctx.userId, privateCode);
 
@@ -1582,7 +1727,7 @@ function applyRollOutcome(state: MatchState, playerColor: PlayerColor, rollValue
       rollValue: null,
       history: [...rollingState.history, `${rollingState.currentTurn} rolled ${rollValue} but had no moves.`],
     };
-    updateComebackTelemetry(state);
+    completePlayerTurnTelemetry(state, playerColor, { didCapture: false, unusableRoll: true });
     return [];
   }
 
@@ -1592,7 +1737,7 @@ function applyRollOutcome(state: MatchState, playerColor: PlayerColor, rollValue
 
 function applyValidatedMove(state: MatchState, playerColor: PlayerColor, move: MoveRequestPayload["move"]): void {
   const didCapture = detectCaptureOnMove(state.gameState, move);
-  const targetCoord = getPathCoord(playerColor, move.toIndex);
+  const targetCoord = getVariantPathCoord(state.gameState.matchConfig.pathVariant, playerColor, move.toIndex);
   state.gameState = applyMove(state.gameState, move);
   state.telemetry.totalMoves += 1;
   state.telemetry.players[playerColor].playerMoveCount += 1;
@@ -1603,11 +1748,11 @@ function applyValidatedMove(state: MatchState, playerColor: PlayerColor, move: M
     state.telemetry.players[opponentColor].capturesSuffered += 1;
   }
 
-  if (targetCoord && isWarZone(targetCoord.row, targetCoord.col)) {
+  if (targetCoord && isContestedLanding(state.gameState.matchConfig.pathVariant, playerColor, move.toIndex)) {
     state.telemetry.players[playerColor].contestedTilesLandedCount += 1;
   }
 
-  updateComebackTelemetry(state);
+  completePlayerTurnTelemetry(state, playerColor, { didCapture, unusableRoll: false });
 }
 
 function forfeitPlayerForInactivity(
@@ -1678,7 +1823,7 @@ function applyTimedTurnTimeout(
         rollValue: null,
         history: [...state.gameState.history, `${activePlayerColor} timed out with no valid move.`],
       };
-      updateComebackTelemetry(state);
+      completePlayerTurnTelemetry(state, activePlayerColor, { didCapture: false, unusableRoll: true });
     }
   }
 

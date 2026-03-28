@@ -30,6 +30,47 @@ import { awardXpForMatchWin } from './progression';
 
 const mockedAwardXpForMatchWin = awardXpForMatchWin as jest.MockedFunction<typeof awardXpForMatchWin>;
 
+const createSummary = (overrides: Record<string, unknown> = {}) => ({
+  matchId: 'local-1',
+  playerUserId: 'ignored-client-value',
+  opponentType: 'easy_bot',
+  opponentDifficulty: 'easy',
+  didWin: true,
+  totalMoves: 1,
+  playerMoveCount: 1,
+  playerTurnCount: 1,
+  opponentTurnCount: 0,
+  piecesLost: 0,
+  maxRollCount: 0,
+  unusableRollCount: 0,
+  capturesMade: 0,
+  capturesSuffered: 0,
+  captureTurnNumbers: [],
+  maxCaptureTurnStreak: 0,
+  doubleStrikeAchieved: false,
+  relentlessPressureAchieved: false,
+  contestedTilesLandedCount: 0,
+  opponentStartingAreaExitTurn: null,
+  lockdownAchieved: false,
+  borneOffCount: 7,
+  opponentBorneOffCount: 0,
+  wasBehindDuringMatch: false,
+  behindCheckpointCount: 0,
+  behindReasons: [],
+  opponentReachedBrink: false,
+  momentumShiftAchieved: false,
+  momentumShiftTurnSpan: null,
+  maxActivePiecesOnBoard: 1,
+  modeId: 'standard',
+  pieceCountPerSide: 7,
+  isPrivateMatch: false,
+  isFriendMatch: false,
+  isTournamentMatch: false,
+  tournamentEliminationRisk: false,
+  timestamp: '2026-03-19T12:00:00.000Z',
+  ...overrides,
+});
+
 describe('rpcSubmitCompletedBotMatch', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -50,25 +91,7 @@ describe('rpcSubmitCompletedBotMatch', () => {
       logger,
       nk,
       JSON.stringify({
-        summary: {
-          matchId: 'local-1',
-          playerUserId: 'ignored-client-value',
-          opponentType: 'easy_bot',
-          didWin: true,
-          totalMoves: 1,
-          playerMoveCount: 1,
-          piecesLost: 0,
-          maxRollCount: 0,
-          capturesMade: 0,
-          capturesSuffered: 0,
-          contestedTilesLandedCount: 0,
-          borneOffCount: 7,
-          opponentBorneOffCount: 0,
-          wasBehindDuringMatch: false,
-          behindCheckpointCount: 0,
-          behindReasons: [],
-          timestamp: '2026-03-19T12:00:00.000Z',
-        },
+        summary: createSummary(),
         tutorialId: 'playthrough',
         modeId: 'standard',
         rewardMode: 'base_win_only',
@@ -95,13 +118,13 @@ describe('rpcSubmitCompletedBotMatch', () => {
     });
   });
 
-  it('uses practice-mode rewards and keeps challenge processing off for practice matches', () => {
+  it('uses practice-mode rewards and still processes challenge progress for practice matches', () => {
     const logger = {
       info: jest.fn(),
       warn: jest.fn(),
     };
     const nk = {
-      storageRead: jest.fn(),
+      storageRead: jest.fn().mockReturnValue([]),
       storageWrite: jest.fn(),
     };
 
@@ -110,25 +133,12 @@ describe('rpcSubmitCompletedBotMatch', () => {
       logger,
       nk,
       JSON.stringify({
-        summary: {
+        summary: createSummary({
           matchId: 'local-2',
-          playerUserId: 'ignored-client-value',
-          opponentType: 'easy_bot',
-          didWin: true,
-          totalMoves: 1,
-          playerMoveCount: 1,
-          piecesLost: 0,
-          maxRollCount: 0,
-          capturesMade: 0,
-          capturesSuffered: 0,
-          contestedTilesLandedCount: 0,
           borneOffCount: 1,
-          opponentBorneOffCount: 0,
-          wasBehindDuringMatch: false,
-          behindCheckpointCount: 0,
-          behindReasons: [],
-          timestamp: '2026-03-19T12:00:00.000Z',
-        },
+          pieceCountPerSide: 1,
+          modeId: 'gameMode_1_piece',
+        }),
         modeId: 'gameMode_1_piece',
       }),
     );
@@ -142,8 +152,8 @@ describe('rpcSubmitCompletedBotMatch', () => {
         userId: 'user-1',
       }),
     );
-    expect(nk.storageRead).not.toHaveBeenCalled();
-    expect(nk.storageWrite).not.toHaveBeenCalled();
+    expect(nk.storageRead).toHaveBeenCalled();
+    expect(nk.storageWrite).toHaveBeenCalled();
     expect(JSON.parse(response)).toMatchObject({
       progressionAward: expect.objectContaining({
         awardedXp: 10,

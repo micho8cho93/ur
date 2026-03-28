@@ -403,7 +403,7 @@ export function GameRoom() {
   const pieceCountPerSide = effectiveMatchConfig.pieceCountPerSide;
   const isPracticeModeMatch = effectiveMatchConfig.isPracticeMode;
   const offlineBotRewardMode: CompletedBotMatchRewardMode | undefined =
-    isPlaythroughTutorialMatch || !effectiveMatchConfig.allowsChallenges ? 'base_win_only' : undefined;
+    isPlaythroughTutorialMatch ? 'base_win_only' : undefined;
   const practiceModeRewardLabel = isPracticeModeMatch ? getPracticeModeRewardLabel(effectiveMatchConfig) : null;
 
   const hasAssignedColor = playerColor === 'light' || playerColor === 'dark';
@@ -414,8 +414,7 @@ export function GameRoom() {
   const shouldShowChallengeRewards =
     shouldShowAccountRewards &&
     effectiveMatchConfig.allowsChallenges &&
-    !isPlaythroughTutorialMatch &&
-    !isPrivateMatch;
+    !isPlaythroughTutorialMatch;
   const isRankedHumanMatch =
     !isOffline &&
     !isPrivateMatch &&
@@ -2095,6 +2094,7 @@ export function GameRoom() {
       if (newHistoryEntries.length > 0) {
         offlineMatchTelemetryRef.current = recordOfflineHistoryEntries(
           offlineMatchTelemetryRef.current,
+          previous,
           gameState,
           newHistoryEntries,
         );

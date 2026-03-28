@@ -41,6 +41,15 @@ const getVisualStatus = (challenge: UserChallengeState | null | undefined): Chal
     return 'locked';
   }
 
+  if (
+    typeof challenge.progressCurrent === 'number' &&
+    typeof challenge.progressTarget === 'number' &&
+    challenge.progressCurrent > 0 &&
+    challenge.progressCurrent < challenge.progressTarget
+  ) {
+    return 'in_progress';
+  }
+
   return 'available';
 };
 
@@ -51,6 +60,10 @@ const getProgressLabel = (challenge: UserChallengeState | null | undefined): str
 
   if (challenge.completed) {
     return challenge.completedAt ? 'Completed' : 'Reward claimed';
+  }
+
+  if (challenge.progressLabel) {
+    return challenge.progressLabel;
   }
 
   return 'Awaiting completion';

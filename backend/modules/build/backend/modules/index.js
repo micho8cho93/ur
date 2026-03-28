@@ -256,6 +256,7 @@ var buildProgressionSnapshot = (totalXp) => {
     progressPercent: nextRank ? progressPercent : 100
   };
 };
+var MAX_PROGRESSION_RANK = MAX_RANK;
 
 // logic/matchConfigs.ts
 var STANDARD_MATCH_CONFIG = {
@@ -281,7 +282,7 @@ var GAME_MODE_MATCH_CONFIGS = [
     rulesVariant: "standard",
     allowsXp: true,
     allowsOnline: false,
-    allowsChallenges: false,
+    allowsChallenges: true,
     allowsCoins: false,
     allowsRankedStats: false,
     offlineWinRewardSource: "practice_1_piece_win",
@@ -297,7 +298,7 @@ var GAME_MODE_MATCH_CONFIGS = [
     rulesVariant: "standard",
     allowsXp: true,
     allowsOnline: false,
-    allowsChallenges: false,
+    allowsChallenges: true,
     allowsCoins: false,
     allowsRankedStats: false,
     offlineWinRewardSource: "practice_3_pieces_win",
@@ -313,7 +314,7 @@ var GAME_MODE_MATCH_CONFIGS = [
     rulesVariant: "standard",
     allowsXp: true,
     allowsOnline: false,
-    allowsChallenges: false,
+    allowsChallenges: true,
     allowsCoins: false,
     allowsRankedStats: false,
     offlineWinRewardSource: "practice_5_pieces_win",
@@ -329,7 +330,7 @@ var GAME_MODE_MATCH_CONFIGS = [
     rulesVariant: "standard",
     allowsXp: true,
     allowsOnline: false,
-    allowsChallenges: false,
+    allowsChallenges: true,
     allowsCoins: false,
     allowsRankedStats: false,
     offlineWinRewardSource: "practice_extended_path_win",
@@ -2126,7 +2127,55 @@ var CHALLENGE_IDS = {
   RISK_TAKER: "risk_taker",
   BEAT_MEDIUM_BOT: "beat_medium_bot",
   BEAT_HARD_BOT: "beat_hard_bot",
-  BEAT_PERFECT_BOT: "beat_perfect_bot"
+  BEAT_PERFECT_BOT: "beat_perfect_bot",
+  PERFECT_PATH: "perfect_path",
+  NO_WASTE: "no_waste",
+  DOUBLE_STRIKE: "double_strike",
+  LOCKDOWN: "lockdown",
+  RELENTLESS_PRESSURE: "relentless_pressure",
+  UNBREAKABLE: "unbreakable",
+  FROM_THE_BRINK: "from_the_brink",
+  MOMENTUM_SHIFT: "momentum_shift",
+  SOLO_MASTER: "solo_master",
+  MINIMALIST: "minimalist",
+  HALF_STRATEGY: "half_strategy",
+  FULL_COMMANDER: "full_commander",
+  SPEED_RUNNER: "speed_runner",
+  DAILY_GRINDER: "daily_grinder",
+  WINNING_STREAK_I: "winning_streak_i",
+  WINNING_STREAK_II: "winning_streak_ii",
+  WINNING_STREAK_III: "winning_streak_iii",
+  VETERAN_I: "veteran_i",
+  VETERAN_II: "veteran_ii",
+  VETERAN_III: "veteran_iii",
+  ETERNAL: "eternal",
+  PERFECTIONIST: "perfectionist",
+  FRIENDLY_RIVALRY: "friendly_rivalry",
+  TOURNAMENT_SURVIVOR: "tournament_survivor",
+  CLUTCH_TOURNAMENT: "clutch_tournament",
+  SILENT_VICTORY: "silent_victory",
+  SHADOW_PLAYER: "shadow_player",
+  MASTER_OF_UR: "master_of_ur"
+};
+var CHALLENGE_THRESHOLDS = {
+  FAST_FINISH_MAX_TOTAL_MOVES: 100,
+  LUCKY_ROLL_REQUIRED_MAX_ROLLS: 3,
+  CAPTURE_MASTER_REQUIRED_CAPTURES: 3,
+  RISK_TAKER_REQUIRED_CONTESTED_LANDINGS: 3,
+  DOUBLE_STRIKE_MAX_TURN_SPAN: 3,
+  LOCKDOWN_REQUIRED_OPPONENT_TURNS: 10,
+  RELENTLESS_PRESSURE_REQUIRED_STREAK: 3,
+  MOMENTUM_SHIFT_MAX_TURN_WINDOW: 5,
+  SPEED_RUNNER_MAX_PLAYER_TURNS: 10,
+  DAILY_GRINDER_REQUIRED_GAMES: 3,
+  WINNING_STREAK_I_REQUIRED_WINS: 3,
+  WINNING_STREAK_II_REQUIRED_WINS: 5,
+  WINNING_STREAK_III_REQUIRED_WINS: 10,
+  VETERAN_I_REQUIRED_GAMES: 50,
+  VETERAN_II_REQUIRED_GAMES: 100,
+  VETERAN_III_REQUIRED_GAMES: 250,
+  IMMORTAL_REQUIRED_XP: MAX_PROGRESSION_RANK.threshold,
+  TOURNAMENT_SURVIVOR_REQUIRED_WINS: 3
 };
 var CHALLENGE_DEFINITIONS = [
   {
@@ -2134,84 +2183,360 @@ var CHALLENGE_DEFINITIONS = [
     name: "First Victory",
     description: "Win your first completed game against any opponent.",
     type: "milestone",
-    rewardXp: 50
+    category: "starter",
+    rewardXp: 50,
+    sortOrder: 10
   },
   {
     id: CHALLENGE_IDS.BEAT_EASY_BOT,
     name: "Beat the Easy Bot",
     description: "Win a completed game against the easy AI opponent.",
     type: "bot",
-    rewardXp: 30
-  },
-  {
-    id: CHALLENGE_IDS.FAST_FINISH,
-    name: "Fast Finish",
-    description: "Win a completed game in fewer than 100 total applied moves.",
-    type: "match",
-    rewardXp: 150
-  },
-  {
-    id: CHALLENGE_IDS.SAFE_PLAY,
-    name: "Safe Play",
-    description: "Win a completed game without losing any pieces to captures.",
-    type: "match",
-    rewardXp: 150
-  },
-  {
-    id: CHALLENGE_IDS.LUCKY_ROLL,
-    name: "Lucky Roll",
-    description: "Win a completed game after rolling the maximum value at least 3 times.",
-    type: "match",
-    rewardXp: 100
-  },
-  {
-    id: CHALLENGE_IDS.HOME_STRETCH,
-    name: "Home Stretch",
-    description: "Win a completed game while making zero captures across the entire match.",
-    type: "match",
-    rewardXp: 150
-  },
-  {
-    id: CHALLENGE_IDS.CAPTURE_MASTER,
-    name: "Capture Master",
-    description: "Capture at least 3 opponent pieces in a single completed game. Victory is not required.",
-    type: "match",
-    rewardXp: 150
-  },
-  {
-    id: CHALLENGE_IDS.COMEBACK_WIN,
-    name: "Comeback Win",
-    description: "Win a completed game after trailing at one or more deterministic progress checkpoints during the match.",
-    type: "match",
-    rewardXp: 250
-  },
-  {
-    id: CHALLENGE_IDS.RISK_TAKER,
-    name: "Risk Taker",
-    description: "Win a completed game after landing on shared contestable tiles at least 3 times.",
-    type: "match",
-    rewardXp: 200
+    category: "starter",
+    rewardXp: 30,
+    sortOrder: 20
   },
   {
     id: CHALLENGE_IDS.BEAT_MEDIUM_BOT,
     name: "Beat the Medium Bot",
     description: "Win a completed game against the medium AI opponent.",
     type: "bot",
-    rewardXp: 100
+    category: "mastery",
+    rewardXp: 100,
+    sortOrder: 30
   },
   {
     id: CHALLENGE_IDS.BEAT_HARD_BOT,
     name: "Beat the Hard Bot",
     description: "Win a completed game against the hard AI opponent.",
     type: "bot",
-    rewardXp: 150
+    category: "mastery",
+    rewardXp: 150,
+    sortOrder: 40
   },
   {
     id: CHALLENGE_IDS.BEAT_PERFECT_BOT,
     name: "Beat the Perfect Bot",
     description: "Win a completed game against the perfect AI opponent.",
     type: "bot",
-    rewardXp: 250
+    category: "mastery",
+    rewardXp: 250,
+    sortOrder: 50
+  },
+  {
+    id: CHALLENGE_IDS.MASTER_OF_UR,
+    name: "Master of Ur",
+    description: "Win against the perfect bot without losing a piece.",
+    type: "bot",
+    category: "mastery",
+    rewardXp: 350,
+    sortOrder: 60
+  },
+  {
+    id: CHALLENGE_IDS.FAST_FINISH,
+    name: "Fast Finish",
+    description: "Win a completed game in fewer than 100 total applied moves.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 150,
+    sortOrder: 70
+  },
+  {
+    id: CHALLENGE_IDS.SAFE_PLAY,
+    name: "Safe Play",
+    description: "Win a completed game without losing any pieces to captures.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 150,
+    sortOrder: 80
+  },
+  {
+    id: CHALLENGE_IDS.UNBREAKABLE,
+    name: "Unbreakable",
+    description: "Complete a game without any of your pieces being captured.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 120,
+    sortOrder: 90
+  },
+  {
+    id: CHALLENGE_IDS.LUCKY_ROLL,
+    name: "Lucky Roll",
+    description: "Win a completed game after rolling the maximum value at least 3 times.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 100,
+    sortOrder: 100
+  },
+  {
+    id: CHALLENGE_IDS.HOME_STRETCH,
+    name: "Home Stretch",
+    description: "Win a completed game while making zero captures across the entire match.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 150,
+    sortOrder: 110
+  },
+  {
+    id: CHALLENGE_IDS.SILENT_VICTORY,
+    name: "Silent Victory",
+    description: "Win without capturing any opponent pieces.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 150,
+    sortOrder: 120
+  },
+  {
+    id: CHALLENGE_IDS.CAPTURE_MASTER,
+    name: "Capture Master",
+    description: "Capture at least 3 opponent pieces in a single completed game. Victory is not required.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 150,
+    sortOrder: 130
+  },
+  {
+    id: CHALLENGE_IDS.DOUBLE_STRIKE,
+    name: "Double Strike",
+    description: "Capture two opponent pieces within 3 of your own turns.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 150,
+    sortOrder: 140
+  },
+  {
+    id: CHALLENGE_IDS.RELENTLESS_PRESSURE,
+    name: "Relentless Pressure",
+    description: "Capture at least one piece in 3 consecutive turns of your own.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 180,
+    sortOrder: 150
+  },
+  {
+    id: CHALLENGE_IDS.PERFECT_PATH,
+    name: "Perfect Path",
+    description: "Win without landing on a contested tile.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 120,
+    sortOrder: 160
+  },
+  {
+    id: CHALLENGE_IDS.RISK_TAKER,
+    name: "Risk Taker",
+    description: "Win a completed game after landing on shared contestable tiles at least 3 times.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 200,
+    sortOrder: 170
+  },
+  {
+    id: CHALLENGE_IDS.NO_WASTE,
+    name: "No Waste",
+    description: "Complete a game with zero unusable rolls.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 120,
+    sortOrder: 180
+  },
+  {
+    id: CHALLENGE_IDS.LOCKDOWN,
+    name: "Lockdown",
+    description: "Keep the opponent from leaving their starting area for 10 turns.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 180,
+    sortOrder: 190
+  },
+  {
+    id: CHALLENGE_IDS.COMEBACK_WIN,
+    name: "Comeback Win",
+    description: "Win a completed game after trailing at one or more deterministic progress checkpoints during the match.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 250,
+    sortOrder: 200
+  },
+  {
+    id: CHALLENGE_IDS.FROM_THE_BRINK,
+    name: "From the Brink",
+    description: "Win after the opponent reaches a state where they are one successful move from victory.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 220,
+    sortOrder: 210
+  },
+  {
+    id: CHALLENGE_IDS.MOMENTUM_SHIFT,
+    name: "Momentum Shift",
+    description: "Go from behind to ahead within a 5-turn window.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 200,
+    sortOrder: 220
+  },
+  {
+    id: CHALLENGE_IDS.SHADOW_PLAYER,
+    name: "Shadow Player",
+    description: "Win while never having more than one of your own pieces on the board at the same time.",
+    type: "match",
+    category: "mastery",
+    rewardXp: 250,
+    sortOrder: 230
+  },
+  {
+    id: CHALLENGE_IDS.SOLO_MASTER,
+    name: "Solo Master",
+    description: "Win a 1-piece mode game.",
+    type: "mode",
+    category: "mode",
+    rewardXp: 80,
+    sortOrder: 240
+  },
+  {
+    id: CHALLENGE_IDS.SPEED_RUNNER,
+    name: "Speed Runner",
+    description: "Win a 1-piece mode game in under 10 turns.",
+    type: "mode",
+    category: "mode",
+    rewardXp: 200,
+    sortOrder: 250
+  },
+  {
+    id: CHALLENGE_IDS.MINIMALIST,
+    name: "Minimalist",
+    description: "Win with 3 pieces.",
+    type: "mode",
+    category: "mode",
+    rewardXp: 100,
+    sortOrder: 260
+  },
+  {
+    id: CHALLENGE_IDS.HALF_STRATEGY,
+    name: "Half Strategy",
+    description: "Win with 5 pieces.",
+    type: "mode",
+    category: "mode",
+    rewardXp: 120,
+    sortOrder: 270
+  },
+  {
+    id: CHALLENGE_IDS.FULL_COMMANDER,
+    name: "Full Commander",
+    description: "Win a full 7-piece match.",
+    type: "mode",
+    category: "mode",
+    rewardXp: 100,
+    sortOrder: 280
+  },
+  {
+    id: CHALLENGE_IDS.DAILY_GRINDER,
+    name: "Daily Grinder",
+    description: "Complete 3 games in one UTC day.",
+    type: "progression",
+    category: "grind",
+    rewardXp: 100,
+    sortOrder: 290
+  },
+  {
+    id: CHALLENGE_IDS.WINNING_STREAK_I,
+    name: "Winning Streak I",
+    description: "Win 3 games in a row.",
+    type: "progression",
+    category: "grind",
+    rewardXp: 100,
+    sortOrder: 300
+  },
+  {
+    id: CHALLENGE_IDS.WINNING_STREAK_II,
+    name: "Winning Streak II",
+    description: "Win 5 games in a row.",
+    type: "progression",
+    category: "grind",
+    rewardXp: 180,
+    sortOrder: 310
+  },
+  {
+    id: CHALLENGE_IDS.WINNING_STREAK_III,
+    name: "Winning Streak III",
+    description: "Win 10 games in a row.",
+    type: "progression",
+    category: "grind",
+    rewardXp: 320,
+    sortOrder: 320
+  },
+  {
+    id: CHALLENGE_IDS.VETERAN_I,
+    name: "Veteran I",
+    description: "Play 50 games.",
+    type: "progression",
+    category: "grind",
+    rewardXp: 120,
+    sortOrder: 330
+  },
+  {
+    id: CHALLENGE_IDS.VETERAN_II,
+    name: "Veteran II",
+    description: "Play 100 games.",
+    type: "progression",
+    category: "grind",
+    rewardXp: 220,
+    sortOrder: 340
+  },
+  {
+    id: CHALLENGE_IDS.VETERAN_III,
+    name: "Veteran III",
+    description: "Play 250 games.",
+    type: "progression",
+    category: "grind",
+    rewardXp: 400,
+    sortOrder: 350
+  },
+  {
+    id: CHALLENGE_IDS.ETERNAL,
+    name: "Eternal",
+    description: "Reach the Immortal rank.",
+    type: "progression",
+    category: "grind",
+    rewardXp: 300,
+    sortOrder: 360
+  },
+  {
+    id: CHALLENGE_IDS.FRIENDLY_RIVALRY,
+    name: "Friendly Rivalry",
+    description: "Win against a friend.",
+    type: "social",
+    category: "social",
+    rewardXp: 120,
+    sortOrder: 370
+  },
+  {
+    id: CHALLENGE_IDS.TOURNAMENT_SURVIVOR,
+    name: "Tournament Survivor",
+    description: "Win 3 consecutive tournament matches.",
+    type: "tournament",
+    category: "tournament",
+    rewardXp: 220,
+    sortOrder: 380
+  },
+  {
+    id: CHALLENGE_IDS.CLUTCH_TOURNAMENT,
+    name: "Clutch Tournament",
+    description: "Win a tournament match while at risk of elimination.",
+    type: "tournament",
+    category: "tournament",
+    rewardXp: 220,
+    sortOrder: 390
+  },
+  {
+    id: CHALLENGE_IDS.PERFECTIONIST,
+    name: "Perfectionist",
+    description: "Complete every other challenge.",
+    type: "meta",
+    category: "meta",
+    rewardXp: 500,
+    sortOrder: 400
   }
 ];
 var CHALLENGE_DEFINITION_BY_ID = CHALLENGE_DEFINITIONS.reduce(
@@ -2221,6 +2546,9 @@ var CHALLENGE_DEFINITION_BY_ID = CHALLENGE_DEFINITIONS.reduce(
   },
   {}
 );
+var CHALLENGE_IDS_EXCLUDING_PERFECTIONIST = CHALLENGE_DEFINITIONS.filter(
+  (definition) => definition.id !== CHALLENGE_IDS.PERFECTIONIST
+).map((definition) => definition.id);
 var getChallengeDefinition = (challengeId) => {
   const definition = CHALLENGE_DEFINITION_BY_ID[challengeId];
   if (!definition) {
@@ -2228,10 +2556,19 @@ var getChallengeDefinition = (challengeId) => {
   }
   return definition;
 };
+var createDefaultChallengeProgressStats = () => ({
+  totalGamesPlayed: 0,
+  totalWins: 0,
+  currentWinStreak: 0,
+  currentTournamentWinStreak: 0,
+  dailyGameBucket: null,
+  dailyGameCount: 0
+});
 var createDefaultUserChallengeProgressSnapshot = (updatedAt = (/* @__PURE__ */ new Date()).toISOString()) => ({
   totalCompleted: 0,
   totalRewardedXp: 0,
   updatedAt,
+  stats: createDefaultChallengeProgressStats(),
   challenges: CHALLENGE_DEFINITIONS.reduce(
     (states, definition) => {
       states[definition.id] = {
@@ -2239,7 +2576,10 @@ var createDefaultUserChallengeProgressSnapshot = (updatedAt = (/* @__PURE__ */ n
         completed: false,
         completedAt: null,
         completedMatchId: null,
-        rewardXp: definition.rewardXp
+        rewardXp: definition.rewardXp,
+        progressCurrent: null,
+        progressTarget: null,
+        progressLabel: null
       };
       return states;
     },
@@ -2248,21 +2588,30 @@ var createDefaultUserChallengeProgressSnapshot = (updatedAt = (/* @__PURE__ */ n
 });
 var isChallengeId = (value) => typeof value === "string" && value in CHALLENGE_DEFINITION_BY_ID;
 var isOpponentType = (value) => value === "human" || value === "easy_bot" || value === "medium_bot" || value === "hard_bot" || value === "perfect_bot";
+var isOpponentDifficulty = (value) => value === "easy" || value === "medium" || value === "hard" || value === "perfect";
+var getOpponentDifficultyFromType = (opponentType) => {
+  if (opponentType === "human") {
+    return null;
+  }
+  return opponentType.replace("_bot", "");
+};
 var isChallengeDefinition = (value) => {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const definition = value;
-  return isChallengeId(definition.id) && typeof definition.name === "string" && typeof definition.description === "string" && (definition.type === "milestone" || definition.type === "bot" || definition.type === "match") && typeof definition.rewardXp === "number";
+  return isChallengeId(definition.id) && typeof definition.name === "string" && typeof definition.description === "string" && typeof definition.type === "string" && typeof definition.category === "string" && typeof definition.rewardXp === "number" && typeof definition.sortOrder === "number" && (typeof definition.hidden === "undefined" || typeof definition.hidden === "boolean");
 };
+var isOptionalNonNegativeNumber = (value) => typeof value === "undefined" || typeof value === "number" && Number.isFinite(value) && value >= 0;
+var isOptionalBoolean = (value) => typeof value === "undefined" || typeof value === "boolean";
 var isCompletedMatchSummary = (value) => {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const summary = value;
-  return typeof summary.matchId === "string" && typeof summary.playerUserId === "string" && isOpponentType(summary.opponentType) && typeof summary.didWin === "boolean" && typeof summary.totalMoves === "number" && typeof summary.playerMoveCount === "number" && typeof summary.piecesLost === "number" && typeof summary.maxRollCount === "number" && typeof summary.capturesMade === "number" && typeof summary.capturesSuffered === "number" && typeof summary.contestedTilesLandedCount === "number" && typeof summary.borneOffCount === "number" && typeof summary.opponentBorneOffCount === "number" && typeof summary.wasBehindDuringMatch === "boolean" && typeof summary.behindCheckpointCount === "number" && Array.isArray(summary.behindReasons) && summary.behindReasons.every(
+  return typeof summary.matchId === "string" && typeof summary.playerUserId === "string" && isOpponentType(summary.opponentType) && (summary.opponentDifficulty === null || typeof summary.opponentDifficulty === "undefined" || isOpponentDifficulty(summary.opponentDifficulty)) && typeof summary.didWin === "boolean" && typeof summary.totalMoves === "number" && typeof summary.playerMoveCount === "number" && isOptionalNonNegativeNumber(summary.playerTurnCount) && isOptionalNonNegativeNumber(summary.opponentTurnCount) && typeof summary.piecesLost === "number" && typeof summary.maxRollCount === "number" && isOptionalNonNegativeNumber(summary.unusableRollCount) && typeof summary.capturesMade === "number" && typeof summary.capturesSuffered === "number" && (typeof summary.captureTurnNumbers === "undefined" || Array.isArray(summary.captureTurnNumbers) && summary.captureTurnNumbers.every((turn) => typeof turn === "number" && turn >= 0)) && isOptionalNonNegativeNumber(summary.maxCaptureTurnStreak) && isOptionalBoolean(summary.doubleStrikeAchieved) && isOptionalBoolean(summary.relentlessPressureAchieved) && typeof summary.contestedTilesLandedCount === "number" && (typeof summary.opponentStartingAreaExitTurn === "undefined" || summary.opponentStartingAreaExitTurn === null || typeof summary.opponentStartingAreaExitTurn === "number" && summary.opponentStartingAreaExitTurn >= 0) && isOptionalBoolean(summary.lockdownAchieved) && typeof summary.borneOffCount === "number" && typeof summary.opponentBorneOffCount === "number" && typeof summary.wasBehindDuringMatch === "boolean" && typeof summary.behindCheckpointCount === "number" && Array.isArray(summary.behindReasons) && summary.behindReasons.every(
     (reason) => reason === "progress_deficit" || reason === "borne_off_deficit"
-  ) && typeof summary.timestamp === "string";
+  ) && isOptionalBoolean(summary.opponentReachedBrink) && isOptionalBoolean(summary.momentumShiftAchieved) && (typeof summary.momentumShiftTurnSpan === "undefined" || summary.momentumShiftTurnSpan === null || typeof summary.momentumShiftTurnSpan === "number" && summary.momentumShiftTurnSpan >= 0) && isOptionalNonNegativeNumber(summary.maxActivePiecesOnBoard) && (typeof summary.modeId === "undefined" || summary.modeId === null || isMatchModeId(summary.modeId)) && isOptionalNonNegativeNumber(summary.pieceCountPerSide) && isOptionalBoolean(summary.isPrivateMatch) && isOptionalBoolean(summary.isFriendMatch) && isOptionalBoolean(summary.isTournamentMatch) && isOptionalBoolean(summary.tournamentEliminationRisk) && typeof summary.timestamp === "string";
 };
 var isCompletedBotMatchRewardMode = (value) => value === "standard" || value === "base_win_only";
 var isSubmitCompletedBotMatchRpcRequest = (value) => {
@@ -2282,6 +2631,19 @@ var getPieceProgressScore = (position, pathLength) => {
   return position + 1;
 };
 var calculateBoardProgressScore = (player, pathLength) => player.pieces.reduce((total, piece) => total + getPieceProgressScore(piece.position, pathLength), 0);
+var getPositionLeadRelation = (state, playerColor) => {
+  const opponentColor = playerColor === "light" ? "dark" : "light";
+  const pathLength = getPathLength(state.matchConfig.pathVariant);
+  const playerScore = calculateBoardProgressScore(state[playerColor], pathLength);
+  const opponentScore = calculateBoardProgressScore(state[opponentColor], pathLength);
+  if (playerScore > opponentScore) {
+    return "ahead";
+  }
+  if (playerScore < opponentScore) {
+    return "behind";
+  }
+  return "tied";
+};
 var calculateComebackCheckpoint = (state, playerColor) => {
   const opponentColor = playerColor === "light" ? "dark" : "light";
   const player = state[playerColor];
@@ -2301,6 +2663,400 @@ var calculateComebackCheckpoint = (state, playerColor) => {
     reasons
   };
 };
+var formatUtcDayBucket = (isoTimestamp) => isoTimestamp.slice(0, 10);
+var getSharedPathStartIndex = (modeIdOrVariant) => {
+  const path = getPathForColor(modeIdOrVariant, "light");
+  const sharedIndex = path.findIndex((coord) => coord.row === 1);
+  return sharedIndex >= 0 ? sharedIndex : path.length;
+};
+var isContestedLanding = (variant, playerColor, targetIndex) => {
+  const coord = getPathCoord(variant, playerColor, targetIndex);
+  if (!coord || coord.row !== 1) {
+    return false;
+  }
+  return !isRosette(coord.row, coord.col);
+};
+var countActivePiecesOnBoard = (player, pathLength) => player.pieces.filter((piece) => piece.position >= 0 && piece.position < pathLength && !piece.isFinished).length;
+var hasPlayerExitedStartingArea = (player, variant) => {
+  const sharedPathStartIndex = getSharedPathStartIndex(variant);
+  return player.pieces.some((piece) => piece.isFinished || piece.position >= sharedPathStartIndex);
+};
+var isOneSuccessfulMoveFromVictory = (state, playerColor) => {
+  const player = state[playerColor];
+  const pathLength = getPathLength(state.matchConfig.pathVariant);
+  const remainingPieces = player.pieces.filter((piece) => !piece.isFinished);
+  if (remainingPieces.length !== 1) {
+    return false;
+  }
+  const finalPiece = remainingPieces[0];
+  if (finalPiece.position < 0) {
+    return false;
+  }
+  const distanceToFinish = pathLength - finalPiece.position;
+  return distanceToFinish >= 1 && distanceToFinish <= 4;
+};
+var calculateDoubleStrikeTurnSpan = (captureTurnNumbers, maxInclusiveTurnSpan = CHALLENGE_THRESHOLDS.DOUBLE_STRIKE_MAX_TURN_SPAN) => {
+  if (captureTurnNumbers.length < 2) {
+    return null;
+  }
+  let bestSpan = null;
+  for (let index = 1; index < captureTurnNumbers.length; index += 1) {
+    const span = captureTurnNumbers[index] - captureTurnNumbers[index - 1] + 1;
+    if (span <= maxInclusiveTurnSpan) {
+      bestSpan = bestSpan === null ? span : Math.min(bestSpan, span);
+    }
+  }
+  return bestSpan;
+};
+var hasReachedImmortalRank = (totalXp) => getRankForXp(totalXp).title === MAX_PROGRESSION_RANK.title;
+
+// backend/modules/challengeProgress.ts
+var asRecord2 = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField4 = (value, keys) => {
+  const record = asRecord2(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "string" && field.length > 0) {
+      return field;
+    }
+  }
+  return null;
+};
+var readNumberField3 = (value, keys) => {
+  const record = asRecord2(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "number" && Number.isFinite(field)) {
+      return field;
+    }
+    if (typeof field === "string" && field.trim().length > 0) {
+      const parsed = Number(field);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+};
+var clampNonNegativeInteger = (value) => typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+var normalizeChallengeStats = (rawValue) => {
+  var _a, _b, _c, _d, _e;
+  const record = asRecord2(rawValue);
+  return {
+    totalGamesPlayed: clampNonNegativeInteger(
+      (_a = readNumberField3(record, ["totalGamesPlayed", "total_games_played"])) != null ? _a : 0
+    ),
+    totalWins: clampNonNegativeInteger((_b = readNumberField3(record, ["totalWins", "total_wins"])) != null ? _b : 0),
+    currentWinStreak: clampNonNegativeInteger(
+      (_c = readNumberField3(record, ["currentWinStreak", "current_win_streak"])) != null ? _c : 0
+    ),
+    currentTournamentWinStreak: clampNonNegativeInteger(
+      (_d = readNumberField3(record, ["currentTournamentWinStreak", "current_tournament_win_streak"])) != null ? _d : 0
+    ),
+    dailyGameBucket: readStringField4(record, ["dailyGameBucket", "daily_game_bucket"]),
+    dailyGameCount: clampNonNegativeInteger((_e = readNumberField3(record, ["dailyGameCount", "daily_game_count"])) != null ? _e : 0)
+  };
+};
+var getRequiredCountForChallenge = (challengeId) => {
+  switch (challengeId) {
+    case CHALLENGE_IDS.DAILY_GRINDER:
+      return CHALLENGE_THRESHOLDS.DAILY_GRINDER_REQUIRED_GAMES;
+    case CHALLENGE_IDS.WINNING_STREAK_I:
+      return CHALLENGE_THRESHOLDS.WINNING_STREAK_I_REQUIRED_WINS;
+    case CHALLENGE_IDS.WINNING_STREAK_II:
+      return CHALLENGE_THRESHOLDS.WINNING_STREAK_II_REQUIRED_WINS;
+    case CHALLENGE_IDS.WINNING_STREAK_III:
+      return CHALLENGE_THRESHOLDS.WINNING_STREAK_III_REQUIRED_WINS;
+    case CHALLENGE_IDS.VETERAN_I:
+      return CHALLENGE_THRESHOLDS.VETERAN_I_REQUIRED_GAMES;
+    case CHALLENGE_IDS.VETERAN_II:
+      return CHALLENGE_THRESHOLDS.VETERAN_II_REQUIRED_GAMES;
+    case CHALLENGE_IDS.VETERAN_III:
+      return CHALLENGE_THRESHOLDS.VETERAN_III_REQUIRED_GAMES;
+    case CHALLENGE_IDS.TOURNAMENT_SURVIVOR:
+      return CHALLENGE_THRESHOLDS.TOURNAMENT_SURVIVOR_REQUIRED_WINS;
+    default:
+      return null;
+  }
+};
+var buildIncompleteChallengeProgress = (challengeId, stats, totalXp, completedChallengeIds) => {
+  const requiredCount = getRequiredCountForChallenge(challengeId);
+  if (requiredCount !== null) {
+    let current = 0;
+    let labelSuffix = "";
+    switch (challengeId) {
+      case CHALLENGE_IDS.DAILY_GRINDER:
+        current = stats.dailyGameCount;
+        labelSuffix = "games today";
+        break;
+      case CHALLENGE_IDS.WINNING_STREAK_I:
+      case CHALLENGE_IDS.WINNING_STREAK_II:
+      case CHALLENGE_IDS.WINNING_STREAK_III:
+        current = stats.currentWinStreak;
+        labelSuffix = "wins in a row";
+        break;
+      case CHALLENGE_IDS.VETERAN_I:
+      case CHALLENGE_IDS.VETERAN_II:
+      case CHALLENGE_IDS.VETERAN_III:
+        current = stats.totalGamesPlayed;
+        labelSuffix = "games played";
+        break;
+      case CHALLENGE_IDS.TOURNAMENT_SURVIVOR:
+        current = stats.currentTournamentWinStreak;
+        labelSuffix = "tournament wins in a row";
+        break;
+    }
+    return {
+      progressCurrent: current,
+      progressTarget: requiredCount,
+      progressLabel: `${Math.min(current, requiredCount)}/${requiredCount} ${labelSuffix}`
+    };
+  }
+  if (challengeId === CHALLENGE_IDS.ETERNAL) {
+    return {
+      progressCurrent: totalXp,
+      progressTarget: CHALLENGE_THRESHOLDS.IMMORTAL_REQUIRED_XP,
+      progressLabel: `Current rank: ${getRankForXp(totalXp).title}`
+    };
+  }
+  if (challengeId === CHALLENGE_IDS.PERFECTIONIST) {
+    const completedOtherChallenges = CHALLENGE_IDS_EXCLUDING_PERFECTIONIST.filter(
+      (id) => completedChallengeIds.has(id)
+    ).length;
+    const required = CHALLENGE_IDS_EXCLUDING_PERFECTIONIST.length;
+    return {
+      progressCurrent: completedOtherChallenges,
+      progressTarget: required,
+      progressLabel: `${completedOtherChallenges}/${required} other challenges completed`
+    };
+  }
+  return {
+    progressCurrent: null,
+    progressTarget: null,
+    progressLabel: null
+  };
+};
+var decorateChallengeProgressSnapshot = (snapshot, totalXp) => {
+  const completedChallengeIds = new Set(
+    CHALLENGE_DEFINITIONS.filter((definition) => {
+      var _a;
+      return (_a = snapshot.challenges[definition.id]) == null ? void 0 : _a.completed;
+    }).map(
+      (definition) => definition.id
+    )
+  );
+  return __spreadProps(__spreadValues({}, snapshot), {
+    challenges: CHALLENGE_DEFINITIONS.reduce(
+      (states, definition) => {
+        const current = snapshot.challenges[definition.id];
+        if (!current) {
+          return states;
+        }
+        const progress = current.completed ? { progressCurrent: null, progressTarget: null, progressLabel: null } : buildIncompleteChallengeProgress(definition.id, snapshot.stats, totalXp, completedChallengeIds);
+        states[definition.id] = __spreadValues(__spreadProps(__spreadValues({}, current), {
+          rewardXp: definition.rewardXp
+        }), progress);
+        return states;
+      },
+      {}
+    )
+  });
+};
+var normalizeChallengeProgressSnapshot = (rawValue, totalXp, fallbackUpdatedAt = (/* @__PURE__ */ new Date()).toISOString()) => {
+  var _a;
+  const defaults = createDefaultUserChallengeProgressSnapshot(fallbackUpdatedAt);
+  const rawRecord = asRecord2(rawValue);
+  const rawChallenges = rawRecord && typeof rawRecord.challenges === "object" && rawRecord.challenges !== null ? rawRecord.challenges : null;
+  const normalized = __spreadProps(__spreadValues({}, defaults), {
+    updatedAt: (_a = readStringField4(rawRecord, ["updatedAt", "updated_at"])) != null ? _a : fallbackUpdatedAt,
+    stats: normalizeChallengeStats(rawRecord == null ? void 0 : rawRecord.stats),
+    challenges: CHALLENGE_DEFINITIONS.reduce(
+      (states, definition) => {
+        var _a2;
+        const rawState = asRecord2(rawChallenges == null ? void 0 : rawChallenges[definition.id]);
+        const completed = (rawState == null ? void 0 : rawState.completed) === true;
+        const completedAt = completed ? (_a2 = readStringField4(rawState, ["completedAt", "completed_at"])) != null ? _a2 : fallbackUpdatedAt : null;
+        const completedMatchId = completed ? readStringField4(rawState, ["completedMatchId", "completed_match_id"]) : null;
+        states[definition.id] = {
+          challengeId: definition.id,
+          completed,
+          completedAt,
+          completedMatchId: completedMatchId != null ? completedMatchId : null,
+          rewardXp: definition.rewardXp,
+          progressCurrent: null,
+          progressTarget: null,
+          progressLabel: null
+        };
+        return states;
+      },
+      {}
+    )
+  });
+  normalized.totalCompleted = Object.values(normalized.challenges).filter((challenge) => challenge.completed).length;
+  normalized.totalRewardedXp = Object.values(normalized.challenges).filter((challenge) => challenge.completed).reduce((total, challenge) => total + challenge.rewardXp, 0);
+  return decorateChallengeProgressSnapshot(normalized, totalXp);
+};
+var challengeProgressNeedsRepair = (rawValue, normalized) => {
+  const rawRecord = asRecord2(rawValue);
+  if (!rawRecord) {
+    return true;
+  }
+  if (rawRecord.totalCompleted !== normalized.totalCompleted) {
+    return true;
+  }
+  if (rawRecord.totalRewardedXp !== normalized.totalRewardedXp) {
+    return true;
+  }
+  if (rawRecord.updatedAt !== normalized.updatedAt) {
+    return true;
+  }
+  const rawStats = asRecord2(rawRecord.stats);
+  if (readNumberField3(rawStats, ["totalGamesPlayed", "total_games_played"]) !== normalized.stats.totalGamesPlayed || readNumberField3(rawStats, ["totalWins", "total_wins"]) !== normalized.stats.totalWins || readNumberField3(rawStats, ["currentWinStreak", "current_win_streak"]) !== normalized.stats.currentWinStreak || readNumberField3(rawStats, ["currentTournamentWinStreak", "current_tournament_win_streak"]) !== normalized.stats.currentTournamentWinStreak || readStringField4(rawStats, ["dailyGameBucket", "daily_game_bucket"]) !== normalized.stats.dailyGameBucket || readNumberField3(rawStats, ["dailyGameCount", "daily_game_count"]) !== normalized.stats.dailyGameCount) {
+    return true;
+  }
+  const rawChallenges = rawRecord.challenges;
+  return CHALLENGE_DEFINITIONS.some((definition) => {
+    const rawState = asRecord2(rawChallenges == null ? void 0 : rawChallenges[definition.id]);
+    const normalizedState = normalized.challenges[definition.id];
+    return !rawState || rawState.completed !== normalizedState.completed || rawState.completedAt !== normalizedState.completedAt || rawState.completedMatchId !== normalizedState.completedMatchId || rawState.rewardXp !== normalizedState.rewardXp || rawState.progressCurrent !== normalizedState.progressCurrent || rawState.progressTarget !== normalizedState.progressTarget || rawState.progressLabel !== normalizedState.progressLabel;
+  });
+};
+var applyMatchToChallengeStats = (currentStats, summary) => {
+  const dayBucket = formatUtcDayBucket(summary.timestamp);
+  const sameDay = currentStats.dailyGameBucket === dayBucket;
+  return {
+    totalGamesPlayed: currentStats.totalGamesPlayed + 1,
+    totalWins: currentStats.totalWins + (summary.didWin ? 1 : 0),
+    currentWinStreak: summary.didWin ? currentStats.currentWinStreak + 1 : 0,
+    currentTournamentWinStreak: summary.isTournamentMatch ? summary.didWin ? currentStats.currentTournamentWinStreak + 1 : 0 : currentStats.currentTournamentWinStreak,
+    dailyGameBucket: dayBucket,
+    dailyGameCount: sameDay ? currentStats.dailyGameCount + 1 : 1
+  };
+};
+var didWinModeWithPieceCount = (summary, pieceCountPerSide) => {
+  var _a;
+  return summary.didWin && ((_a = summary.pieceCountPerSide) != null ? _a : 0) === pieceCountPerSide;
+};
+var evaluateChallengeCompletion = (challengeId, context) => {
+  var _a, _b, _c, _d, _e, _f, _g, _h;
+  const { summary, stats, totalXp, completedChallengeIds } = context;
+  const unusableRollCount = (_a = summary.unusableRollCount) != null ? _a : 0;
+  const playerTurnCount = (_b = summary.playerTurnCount) != null ? _b : summary.playerMoveCount;
+  const opponentTurnCount = (_c = summary.opponentTurnCount) != null ? _c : 0;
+  const captureTurnNumbers = Array.isArray(summary.captureTurnNumbers) ? summary.captureTurnNumbers : [];
+  const maxCaptureTurnStreak = (_d = summary.maxCaptureTurnStreak) != null ? _d : 0;
+  const doubleStrikeAchieved = (_e = summary.doubleStrikeAchieved) != null ? _e : captureTurnNumbers.length >= 2 && captureTurnNumbers.some(
+    (turn, index) => index > 0 && turn - captureTurnNumbers[index - 1] + 1 <= CHALLENGE_THRESHOLDS.DOUBLE_STRIKE_MAX_TURN_SPAN
+  );
+  const relentlessPressureAchieved = (_f = summary.relentlessPressureAchieved) != null ? _f : maxCaptureTurnStreak >= CHALLENGE_THRESHOLDS.RELENTLESS_PRESSURE_REQUIRED_STREAK;
+  const lockdownAchieved = (_g = summary.lockdownAchieved) != null ? _g : opponentTurnCount >= CHALLENGE_THRESHOLDS.LOCKDOWN_REQUIRED_OPPONENT_TURNS && (summary.opponentStartingAreaExitTurn === null || summary.opponentStartingAreaExitTurn > CHALLENGE_THRESHOLDS.LOCKDOWN_REQUIRED_OPPONENT_TURNS);
+  switch (challengeId) {
+    case CHALLENGE_IDS.FIRST_VICTORY:
+      return summary.didWin;
+    case CHALLENGE_IDS.BEAT_EASY_BOT:
+      return summary.didWin && summary.opponentType === "easy_bot";
+    case CHALLENGE_IDS.FAST_FINISH:
+      return summary.didWin && summary.totalMoves < CHALLENGE_THRESHOLDS.FAST_FINISH_MAX_TOTAL_MOVES;
+    case CHALLENGE_IDS.SAFE_PLAY:
+      return summary.didWin && summary.piecesLost === 0;
+    case CHALLENGE_IDS.LUCKY_ROLL:
+      return summary.didWin && summary.maxRollCount >= CHALLENGE_THRESHOLDS.LUCKY_ROLL_REQUIRED_MAX_ROLLS;
+    case CHALLENGE_IDS.HOME_STRETCH:
+      return summary.didWin && summary.capturesMade === 0;
+    case CHALLENGE_IDS.CAPTURE_MASTER:
+      return summary.capturesMade >= CHALLENGE_THRESHOLDS.CAPTURE_MASTER_REQUIRED_CAPTURES;
+    case CHALLENGE_IDS.COMEBACK_WIN:
+      return summary.didWin && summary.wasBehindDuringMatch;
+    case CHALLENGE_IDS.RISK_TAKER:
+      return summary.didWin && summary.contestedTilesLandedCount >= CHALLENGE_THRESHOLDS.RISK_TAKER_REQUIRED_CONTESTED_LANDINGS;
+    case CHALLENGE_IDS.BEAT_MEDIUM_BOT:
+      return summary.didWin && summary.opponentType === "medium_bot";
+    case CHALLENGE_IDS.BEAT_HARD_BOT:
+      return summary.didWin && summary.opponentType === "hard_bot";
+    case CHALLENGE_IDS.BEAT_PERFECT_BOT:
+      return summary.didWin && summary.opponentType === "perfect_bot";
+    case CHALLENGE_IDS.PERFECT_PATH:
+      return summary.didWin && summary.contestedTilesLandedCount === 0;
+    case CHALLENGE_IDS.NO_WASTE:
+      return unusableRollCount === 0;
+    case CHALLENGE_IDS.DOUBLE_STRIKE:
+      return doubleStrikeAchieved;
+    case CHALLENGE_IDS.LOCKDOWN:
+      return lockdownAchieved;
+    case CHALLENGE_IDS.RELENTLESS_PRESSURE:
+      return relentlessPressureAchieved;
+    case CHALLENGE_IDS.UNBREAKABLE:
+      return summary.capturesSuffered === 0;
+    case CHALLENGE_IDS.FROM_THE_BRINK:
+      return summary.didWin && summary.opponentReachedBrink;
+    case CHALLENGE_IDS.MOMENTUM_SHIFT:
+      return summary.momentumShiftAchieved === true;
+    case CHALLENGE_IDS.SOLO_MASTER:
+      return didWinModeWithPieceCount(summary, 1);
+    case CHALLENGE_IDS.MINIMALIST:
+      return didWinModeWithPieceCount(summary, 3);
+    case CHALLENGE_IDS.HALF_STRATEGY:
+      return didWinModeWithPieceCount(summary, 5);
+    case CHALLENGE_IDS.FULL_COMMANDER:
+      return didWinModeWithPieceCount(summary, 7);
+    case CHALLENGE_IDS.SPEED_RUNNER:
+      return didWinModeWithPieceCount(summary, 1) && playerTurnCount < CHALLENGE_THRESHOLDS.SPEED_RUNNER_MAX_PLAYER_TURNS;
+    case CHALLENGE_IDS.DAILY_GRINDER:
+      return stats.dailyGameCount >= CHALLENGE_THRESHOLDS.DAILY_GRINDER_REQUIRED_GAMES;
+    case CHALLENGE_IDS.WINNING_STREAK_I:
+      return stats.currentWinStreak >= CHALLENGE_THRESHOLDS.WINNING_STREAK_I_REQUIRED_WINS;
+    case CHALLENGE_IDS.WINNING_STREAK_II:
+      return stats.currentWinStreak >= CHALLENGE_THRESHOLDS.WINNING_STREAK_II_REQUIRED_WINS;
+    case CHALLENGE_IDS.WINNING_STREAK_III:
+      return stats.currentWinStreak >= CHALLENGE_THRESHOLDS.WINNING_STREAK_III_REQUIRED_WINS;
+    case CHALLENGE_IDS.VETERAN_I:
+      return stats.totalGamesPlayed >= CHALLENGE_THRESHOLDS.VETERAN_I_REQUIRED_GAMES;
+    case CHALLENGE_IDS.VETERAN_II:
+      return stats.totalGamesPlayed >= CHALLENGE_THRESHOLDS.VETERAN_II_REQUIRED_GAMES;
+    case CHALLENGE_IDS.VETERAN_III:
+      return stats.totalGamesPlayed >= CHALLENGE_THRESHOLDS.VETERAN_III_REQUIRED_GAMES;
+    case CHALLENGE_IDS.ETERNAL:
+      return hasReachedImmortalRank(totalXp);
+    case CHALLENGE_IDS.PERFECTIONIST:
+      return CHALLENGE_IDS_EXCLUDING_PERFECTIONIST.every((id) => completedChallengeIds.has(id));
+    case CHALLENGE_IDS.FRIENDLY_RIVALRY:
+      return summary.didWin && summary.isFriendMatch === true;
+    case CHALLENGE_IDS.TOURNAMENT_SURVIVOR:
+      return stats.currentTournamentWinStreak >= CHALLENGE_THRESHOLDS.TOURNAMENT_SURVIVOR_REQUIRED_WINS;
+    case CHALLENGE_IDS.CLUTCH_TOURNAMENT:
+      return summary.didWin && summary.isTournamentMatch === true && summary.tournamentEliminationRisk === true;
+    case CHALLENGE_IDS.SILENT_VICTORY:
+      return summary.didWin && summary.capturesMade === 0;
+    case CHALLENGE_IDS.SHADOW_PLAYER:
+      return summary.didWin && ((_h = summary.maxActivePiecesOnBoard) != null ? _h : 0) <= 1;
+    case CHALLENGE_IDS.MASTER_OF_UR:
+      return summary.didWin && summary.opponentType === "perfect_bot" && summary.capturesSuffered === 0;
+    default:
+      return false;
+  }
+};
+var evaluateChallengeCompletions = (context) => CHALLENGE_DEFINITIONS.filter(
+  (definition) => !context.completedChallengeIds.has(definition.id) && evaluateChallengeCompletion(definition.id, context)
+).map((definition) => definition.id);
+var createCompletedChallengeState = (challengeId, completedAt, completedMatchId) => {
+  const definition = getChallengeDefinition(challengeId);
+  return {
+    challengeId,
+    completed: true,
+    completedAt,
+    completedMatchId,
+    rewardXp: definition.rewardXp,
+    progressCurrent: null,
+    progressTarget: null,
+    progressLabel: null
+  };
+};
 
 // backend/modules/challenges.ts
 var CHALLENGE_DEFINITIONS_COLLECTION = "challenge_definitions";
@@ -2310,26 +3066,10 @@ var PROCESSED_MATCH_RESULTS_COLLECTION = "processed_match_results";
 var RPC_GET_CHALLENGE_DEFINITIONS = "get_challenge_definitions";
 var RPC_GET_USER_CHALLENGE_PROGRESS = "get_user_challenge_progress";
 var RPC_SUBMIT_COMPLETED_BOT_MATCH = "submit_completed_bot_match";
-var CHALLENGE_EVALUATORS = {
-  [CHALLENGE_IDS.FIRST_VICTORY]: (summary) => summary.didWin,
-  [CHALLENGE_IDS.BEAT_EASY_BOT]: (summary) => summary.didWin && summary.opponentType === "easy_bot",
-  [CHALLENGE_IDS.FAST_FINISH]: (summary) => summary.didWin && summary.totalMoves < 100,
-  [CHALLENGE_IDS.SAFE_PLAY]: (summary) => summary.didWin && summary.piecesLost === 0,
-  [CHALLENGE_IDS.LUCKY_ROLL]: (summary) => summary.didWin && summary.maxRollCount >= 3,
-  [CHALLENGE_IDS.HOME_STRETCH]: (summary) => summary.didWin && summary.capturesMade === 0,
-  // Intentional design decision: the challenge description does not require a win,
-  // so any completed match with 3+ captures counts.
-  [CHALLENGE_IDS.CAPTURE_MASTER]: (summary) => summary.capturesMade >= 3,
-  [CHALLENGE_IDS.COMEBACK_WIN]: (summary) => summary.didWin && summary.wasBehindDuringMatch,
-  [CHALLENGE_IDS.RISK_TAKER]: (summary) => summary.didWin && summary.contestedTilesLandedCount >= 3,
-  [CHALLENGE_IDS.BEAT_MEDIUM_BOT]: (summary) => summary.didWin && summary.opponentType === "medium_bot",
-  [CHALLENGE_IDS.BEAT_HARD_BOT]: (summary) => summary.didWin && summary.opponentType === "hard_bot",
-  [CHALLENGE_IDS.BEAT_PERFECT_BOT]: (summary) => summary.didWin && summary.opponentType === "perfect_bot"
-};
 var buildChallengeRewardLedgerKey = (challengeId) => `challenge:${challengeId}`;
 var buildProcessedMatchResultKey = (matchId) => matchId;
 var isBotOpponentType = (opponentType) => opponentType === "easy_bot" || opponentType === "medium_bot" || opponentType === "hard_bot" || opponentType === "perfect_bot";
-var readStringField4 = (value, keys) => {
+var readStringField5 = (value, keys) => {
   if (typeof value !== "object" || value === null) {
     return null;
   }
@@ -2341,55 +3081,6 @@ var readStringField4 = (value, keys) => {
     }
   }
   return null;
-};
-var normalizeChallengeProgress = (rawValue, fallbackUpdatedAt = (/* @__PURE__ */ new Date()).toISOString()) => {
-  var _a;
-  const rawRecord = typeof rawValue === "object" && rawValue !== null ? rawValue : null;
-  const rawChallenges = rawRecord && typeof rawRecord.challenges === "object" && rawRecord.challenges !== null ? rawRecord.challenges : null;
-  const normalizedChallenges = CHALLENGE_DEFINITIONS.reduce(
-    (states, definition) => {
-      var _a2;
-      const rawState = rawChallenges == null ? void 0 : rawChallenges[definition.id];
-      const completed = (rawState == null ? void 0 : rawState.completed) === true;
-      const completedAt = completed ? (_a2 = readStringField4(rawState, ["completedAt", "completed_at"])) != null ? _a2 : fallbackUpdatedAt : null;
-      const completedMatchId = completed ? readStringField4(rawState, ["completedMatchId", "completed_match_id"]) : null;
-      states[definition.id] = {
-        challengeId: definition.id,
-        completed,
-        completedAt,
-        completedMatchId: completedMatchId != null ? completedMatchId : null,
-        rewardXp: definition.rewardXp
-      };
-      return states;
-    },
-    {}
-  );
-  const totalCompleted = Object.values(normalizedChallenges).filter((challenge) => challenge.completed).length;
-  const totalRewardedXp = Object.values(normalizedChallenges).filter((challenge) => challenge.completed).reduce((total, challenge) => total + challenge.rewardXp, 0);
-  return {
-    totalCompleted,
-    totalRewardedXp,
-    updatedAt: (_a = readStringField4(rawRecord, ["updatedAt", "updated_at"])) != null ? _a : fallbackUpdatedAt,
-    challenges: normalizedChallenges
-  };
-};
-var challengeProgressNeedsRepair = (rawValue, normalized) => {
-  const rawRecord = typeof rawValue === "object" && rawValue !== null ? rawValue : null;
-  if (!rawRecord) {
-    return true;
-  }
-  if (rawRecord.totalCompleted !== normalized.totalCompleted) {
-    return true;
-  }
-  if (rawRecord.totalRewardedXp !== normalized.totalRewardedXp) {
-    return true;
-  }
-  const rawChallenges = rawRecord.challenges;
-  return CHALLENGE_DEFINITIONS.some((definition) => {
-    const rawState = rawChallenges == null ? void 0 : rawChallenges[definition.id];
-    const normalizedState = normalized.challenges[definition.id];
-    return !rawState || rawState.completed !== normalizedState.completed || rawState.completedAt !== normalizedState.completedAt || rawState.completedMatchId !== normalizedState.completedMatchId || rawState.rewardXp !== normalizedState.rewardXp;
-  });
 };
 var readChallengeProgressObject = (nk, userId) => {
   const objects = nk.storageRead([
@@ -2428,7 +3119,7 @@ var ensureChallengeDefinitions = (nk, logger) => {
       const stored = getStorageObjectValue(existing);
       if (stored && isChallengeDefinition(stored)) {
         const storedDefinition = stored;
-        if (storedDefinition.name === definition.name && storedDefinition.description === definition.description && storedDefinition.type === definition.type && storedDefinition.rewardXp === definition.rewardXp) {
+        if (storedDefinition.name === definition.name && storedDefinition.description === definition.description && storedDefinition.type === definition.type && storedDefinition.category === definition.category && storedDefinition.rewardXp === definition.rewardXp && storedDefinition.sortOrder === definition.sortOrder && storedDefinition.hidden === definition.hidden) {
           return [];
         }
       }
@@ -2468,8 +3159,12 @@ var ensureUserChallengeProgress = (nk, logger, userId) => {
   var _a;
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const existingObject = readChallengeProgressObject(nk, userId);
+    const progressionProfile = ensureProgressionProfile(nk, logger, userId);
     if (existingObject) {
-      const normalized = normalizeChallengeProgress(getStorageObjectValue(existingObject));
+      const normalized = normalizeChallengeProgressSnapshot(
+        getStorageObjectValue(existingObject),
+        progressionProfile.totalXp
+      );
       if (!challengeProgressNeedsRepair(getStorageObjectValue(existingObject), normalized)) {
         return normalized;
       }
@@ -2487,7 +3182,10 @@ var ensureUserChallengeProgress = (nk, logger, userId) => {
       }
       continue;
     }
-    const defaults = createDefaultUserChallengeProgressSnapshot();
+    const defaults = decorateChallengeProgressSnapshot(
+      createDefaultUserChallengeProgressSnapshot(),
+      progressionProfile.totalXp
+    );
     try {
       writeChallengeProgressObject(nk, userId, defaults, "*");
       return defaults;
@@ -2507,17 +3205,14 @@ var getChallengeDefinitionsResponse = () => ({
   challenges: [...CHALLENGE_DEFINITIONS]
 });
 var getUserChallengeProgress = (nk, logger, userId) => ensureUserChallengeProgress(nk, logger, userId);
-var evaluateChallengesForMatchSummary = (summary) => CHALLENGE_DEFINITIONS.filter((definition) => CHALLENGE_EVALUATORS[definition.id](summary)).map(
-  (definition) => definition.id
-);
 var normalizeProcessedMatchResult = (rawValue) => {
   if (typeof rawValue !== "object" || rawValue === null) {
     return null;
   }
   const record = rawValue;
-  const matchId = readStringField4(record, ["matchId", "match_id"]);
-  const playerUserId = readStringField4(record, ["playerUserId", "player_user_id"]);
-  const processedAt = readStringField4(record, ["processedAt", "processed_at"]);
+  const matchId = readStringField5(record, ["matchId", "match_id"]);
+  const playerUserId = readStringField5(record, ["playerUserId", "player_user_id"]);
+  const processedAt = readStringField5(record, ["processedAt", "processed_at"]);
   const summary = record.summary;
   const completedChallengeIds = Array.isArray(record.completedChallengeIds) ? record.completedChallengeIds.filter((challengeId) => typeof challengeId === "string") : [];
   const awardedXp = typeof record.awardedXp === "number" ? record.awardedXp : 0;
@@ -2533,7 +3228,7 @@ var normalizeProcessedMatchResult = (rawValue) => {
     awardedXp
   };
 };
-var readMatchProcessingObjects = (nk, userId, matchId, candidateChallengeIds) => {
+var readMatchProcessingObjects = (nk, userId, matchId) => {
   const objectIds = [
     {
       collection: PROGRESSION_COLLECTION,
@@ -2550,23 +3245,23 @@ var readMatchProcessingObjects = (nk, userId, matchId, candidateChallengeIds) =>
       key: buildProcessedMatchResultKey(matchId),
       userId
     },
-    ...candidateChallengeIds.map((challengeId) => ({
+    ...CHALLENGE_DEFINITIONS.map((challengeId) => ({
       collection: XP_REWARD_LEDGER_COLLECTION,
-      key: buildChallengeRewardLedgerKey(challengeId),
+      key: buildChallengeRewardLedgerKey(challengeId.id),
       userId
     }))
   ];
   const objects = nk.storageRead(objectIds);
-  const rewardLedgerObjectsByChallengeId = candidateChallengeIds.reduce(
-    (entries, challengeId) => {
+  const rewardLedgerObjectsByChallengeId = CHALLENGE_DEFINITIONS.reduce(
+    (entries, definition) => {
       const rewardObject = findStorageObject(
         objects,
         XP_REWARD_LEDGER_COLLECTION,
-        buildChallengeRewardLedgerKey(challengeId),
+        buildChallengeRewardLedgerKey(definition.id),
         userId
       );
       if (rewardObject) {
-        entries[challengeId] = rewardObject;
+        entries[definition.id] = rewardObject;
       }
       return entries;
     },
@@ -2599,7 +3294,6 @@ var processCompletedMatch = (nk, logger, summary) => {
   if (!userId || !matchId) {
     throw new Error("Completed match summary must include non-empty match and user IDs.");
   }
-  const satisfiedChallengeIds = evaluateChallengesForMatchSummary(summary);
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const {
@@ -2607,9 +3301,9 @@ var processCompletedMatch = (nk, logger, summary) => {
       challengeProgressObject,
       processedMatchObject,
       rewardLedgerObjectsByChallengeId
-    } = readMatchProcessingObjects(nk, userId, matchId, satisfiedChallengeIds);
+    } = readMatchProcessingObjects(nk, userId, matchId);
     const currentProfile = profileObject ? normalizeProgressionProfile(getStorageObjectValue(profileObject), now) : ensureProgressionProfile(nk, logger, userId);
-    const currentProgress = challengeProgressObject ? normalizeChallengeProgress(getStorageObjectValue(challengeProgressObject), now) : createDefaultUserChallengeProgressSnapshot(now);
+    const currentProgress = challengeProgressObject ? normalizeChallengeProgressSnapshot(getStorageObjectValue(challengeProgressObject), currentProfile.totalXp, now) : decorateChallengeProgressSnapshot(createDefaultUserChallengeProgressSnapshot(now), currentProfile.totalXp);
     const existingProcessedMatch = normalizeProcessedMatchResult(getStorageObjectValue(processedMatchObject));
     if (existingProcessedMatch) {
       return {
@@ -2623,38 +3317,56 @@ var processCompletedMatch = (nk, logger, summary) => {
     const completedChallengeIds = [];
     const completionWrites = [];
     let totalAwardedXp = 0;
-    const nextProgress = __spreadProps(__spreadValues({}, currentProgress), {
+    let projectedTotalXp = currentProfile.totalXp;
+    const completedChallengeIdsSet = new Set(
+      CHALLENGE_DEFINITIONS.filter((definition) => {
+        var _a2;
+        return (_a2 = currentProgress.challenges[definition.id]) == null ? void 0 : _a2.completed;
+      }).map(
+        (definition) => definition.id
+      )
+    );
+    const nextStats = applyMatchToChallengeStats(currentProgress.stats, summary);
+    let nextProgress = __spreadProps(__spreadValues({}, currentProgress), {
       updatedAt: now,
+      stats: nextStats,
       challenges: __spreadValues({}, currentProgress.challenges)
     });
-    for (const challengeId of satisfiedChallengeIds) {
-      const definition = getChallengeDefinition(challengeId);
-      const existingState = nextProgress.challenges[challengeId];
-      if (existingState.completed) {
-        continue;
+    while (true) {
+      const newlySatisfiedChallengeIds = evaluateChallengeCompletions({
+        summary,
+        stats: nextStats,
+        totalXp: projectedTotalXp,
+        completedChallengeIds: completedChallengeIdsSet
+      });
+      if (newlySatisfiedChallengeIds.length === 0) {
+        break;
       }
-      completedChallengeIds.push(challengeId);
-      nextProgress.challenges[challengeId] = {
-        challengeId,
-        completed: true,
-        completedAt: now,
-        completedMatchId: matchId,
-        rewardXp: definition.rewardXp
-      };
-      if (!rewardLedgerObjectsByChallengeId[challengeId]) {
-        totalAwardedXp += definition.rewardXp;
-        completionWrites.push({
-          challengeId,
-          completedAt: now,
-          completedMatchId: matchId,
-          rewardXp: definition.rewardXp,
-          rewardLedgerKey: buildChallengeRewardLedgerKey(challengeId)
-        });
-      }
+      newlySatisfiedChallengeIds.forEach((challengeId) => {
+        if (completedChallengeIdsSet.has(challengeId)) {
+          return;
+        }
+        const definition = CHALLENGE_DEFINITIONS.find((entry) => entry.id === challengeId);
+        completedChallengeIds.push(challengeId);
+        completedChallengeIdsSet.add(challengeId);
+        nextProgress.challenges[challengeId] = createCompletedChallengeState(challengeId, now, matchId);
+        if (!rewardLedgerObjectsByChallengeId[challengeId]) {
+          totalAwardedXp += definition.rewardXp;
+          projectedTotalXp += definition.rewardXp;
+          completionWrites.push({
+            challengeId,
+            completedAt: now,
+            completedMatchId: matchId,
+            rewardXp: definition.rewardXp,
+            rewardLedgerKey: buildChallengeRewardLedgerKey(challengeId)
+          });
+        }
+      });
     }
     nextProgress.totalCompleted = Object.values(nextProgress.challenges).filter((challenge) => challenge.completed).length;
     nextProgress.totalRewardedXp = Object.values(nextProgress.challenges).filter((challenge) => challenge.completed).reduce((total, challenge) => total + challenge.rewardXp, 0);
-    const nextTotalXp = currentProfile.totalXp + totalAwardedXp;
+    nextProgress = decorateChallengeProgressSnapshot(nextProgress, projectedTotalXp);
+    const nextTotalXp = projectedTotalXp;
     const nextProfile = {
       totalXp: nextTotalXp,
       currentRankTitle: getRankForXp(nextTotalXp).title,
@@ -2742,7 +3454,7 @@ var processCompletedMatch = (nk, logger, summary) => {
         progressionRank: nextProfile.currentRankTitle
       };
     } catch (error) {
-      const refreshed = readMatchProcessingObjects(nk, userId, matchId, satisfiedChallengeIds);
+      const refreshed = readMatchProcessingObjects(nk, userId, matchId);
       const refreshedProcessed = normalizeProcessedMatchResult(getStorageObjectValue(refreshed.processedMatchObject));
       if (refreshedProcessed) {
         const refreshedProfile = refreshed.profileObject ? normalizeProgressionProfile(getStorageObjectValue(refreshed.profileObject), now) : currentProfile;
@@ -2881,7 +3593,7 @@ var TOURNAMENT_STATUSES = [
   "complete",
   "cancelled"
 ];
-var readStringField5 = (value, keys) => {
+var readStringField6 = (value, keys) => {
   const record = asRecord(value);
   if (!record) {
     return null;
@@ -2894,7 +3606,7 @@ var readStringField5 = (value, keys) => {
   }
   return null;
 };
-var readNumberField3 = (value, keys) => {
+var readNumberField4 = (value, keys) => {
   const record = asRecord(value);
   if (!record) {
     return null;
@@ -2966,7 +3678,7 @@ var parseJsonPayload = (payload) => {
   return record;
 };
 var requireAuthenticatedUserId = (ctx) => {
-  const userId = readStringField5(ctx, ["userId", "user_id"]);
+  const userId = readStringField6(ctx, ["userId", "user_id"]);
   if (!userId) {
     throw new Error("Authentication required.");
   }
@@ -2976,7 +3688,7 @@ var getActorLabel = (ctx) => {
   var _a, _b;
   const ctxRecord = asRecord(ctx);
   const vars = asRecord(ctxRecord == null ? void 0 : ctxRecord.vars);
-  return (_b = (_a = readStringField5(ctxRecord, ["username", "displayName", "display_name", "name"])) != null ? _a : readStringField5(vars, ["usernameDisplay", "username_display", "displayName", "display_name", "email"])) != null ? _b : requireAuthenticatedUserId(ctx);
+  return (_b = (_a = readStringField6(ctxRecord, ["username", "displayName", "display_name", "name"])) != null ? _a : readStringField6(vars, ["usernameDisplay", "username_display", "displayName", "display_name", "email"])) != null ? _b : requireAuthenticatedUserId(ctx);
 };
 var normalizeTournamentStatus = (value, fallback = "draft") => {
   if (typeof value !== "string") {
@@ -3016,14 +3728,14 @@ var normalizeParticipant = (value) => {
   if (!record) {
     return null;
   }
-  const userId = readStringField5(record, ["userId", "user_id"]);
-  const displayName = readStringField5(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField5(record, ["joinedAt", "joined_at"]);
+  const userId = readStringField6(record, ["userId", "user_id"]);
+  const displayName = readStringField6(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField6(record, ["joinedAt", "joined_at"]);
   if (!userId || !displayName || !joinedAt) {
     return null;
   }
-  const status = readStringField5(record, ["status"]);
-  const seed = readNumberField3(record, ["seed"]);
+  const status = readStringField6(record, ["status"]);
+  const seed = readNumberField4(record, ["seed"]);
   return {
     userId,
     displayName,
@@ -3038,14 +3750,14 @@ var normalizeResult = (value) => {
   if (!record) {
     return null;
   }
-  const matchId = readStringField5(record, ["matchId", "match_id"]);
-  const submittedByUserId = readStringField5(record, ["submittedByUserId", "submitted_by_user_id"]);
-  const submittedAt = readStringField5(record, ["submittedAt", "submitted_at"]);
-  const playerAUserId = readStringField5(record, ["playerAUserId", "player_a_user_id"]);
-  const playerBUserId = readStringField5(record, ["playerBUserId", "player_b_user_id"]);
-  const scoreA = readNumberField3(record, ["scoreA", "score_a"]);
-  const scoreB = readNumberField3(record, ["scoreB", "score_b"]);
-  const round = readNumberField3(record, ["round"]);
+  const matchId = readStringField6(record, ["matchId", "match_id"]);
+  const submittedByUserId = readStringField6(record, ["submittedByUserId", "submitted_by_user_id"]);
+  const submittedAt = readStringField6(record, ["submittedAt", "submitted_at"]);
+  const playerAUserId = readStringField6(record, ["playerAUserId", "player_a_user_id"]);
+  const playerBUserId = readStringField6(record, ["playerBUserId", "player_b_user_id"]);
+  const scoreA = readNumberField4(record, ["scoreA", "score_a"]);
+  const scoreB = readNumberField4(record, ["scoreB", "score_b"]);
+  const round = readNumberField4(record, ["round"]);
   if (!matchId || !submittedByUserId || !submittedAt || !playerAUserId || !playerBUserId || typeof scoreA !== "number" || typeof scoreB !== "number" || typeof round !== "number") {
     return null;
   }
@@ -3058,8 +3770,8 @@ var normalizeResult = (value) => {
     playerBUserId,
     scoreA,
     scoreB,
-    winnerUserId: readStringField5(record, ["winnerUserId", "winner_user_id"]),
-    notes: (_a = readStringField5(record, ["notes"])) != null ? _a : null
+    winnerUserId: readStringField6(record, ["winnerUserId", "winner_user_id"]),
+    notes: (_a = readStringField6(record, ["notes"])) != null ? _a : null
   };
 };
 var normalizeTournamentRecord = (value, fallbackId) => {
@@ -3068,13 +3780,13 @@ var normalizeTournamentRecord = (value, fallbackId) => {
   if (!record) {
     return null;
   }
-  const id = (_b = (_a = readStringField5(record, ["id"])) != null ? _a : fallbackId) != null ? _b : null;
-  const name = readStringField5(record, ["name"]);
-  const startsAt = readStringField5(record, ["startsAt", "starts_at"]);
-  const createdAt = readStringField5(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField5(record, ["updatedAt", "updated_at"]);
-  const createdByUserId = readStringField5(record, ["createdByUserId", "created_by_user_id"]);
-  const createdByLabel = readStringField5(record, ["createdByLabel", "created_by_label"]);
+  const id = (_b = (_a = readStringField6(record, ["id"])) != null ? _a : fallbackId) != null ? _b : null;
+  const name = readStringField6(record, ["name"]);
+  const startsAt = readStringField6(record, ["startsAt", "starts_at"]);
+  const createdAt = readStringField6(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField6(record, ["updatedAt", "updated_at"]);
+  const createdByUserId = readStringField6(record, ["createdByUserId", "created_by_user_id"]);
+  const createdByLabel = readStringField6(record, ["createdByLabel", "created_by_label"]);
   if (!id || !name || !startsAt || !createdAt || !updatedAt || !createdByUserId || !createdByLabel) {
     return null;
   }
@@ -3090,31 +3802,31 @@ var normalizeTournamentRecord = (value, fallbackId) => {
   });
   return {
     id,
-    slug: (_c = readStringField5(record, ["slug"])) != null ? _c : id,
+    slug: (_c = readStringField6(record, ["slug"])) != null ? _c : id,
     name,
-    description: (_d = readStringField5(record, ["description"])) != null ? _d : "",
+    description: (_d = readStringField6(record, ["description"])) != null ? _d : "",
     status: normalizeTournamentStatus(record.status, "draft"),
     startsAt,
     createdAt,
     updatedAt,
     createdByUserId,
     createdByLabel,
-    region: (_e = readStringField5(record, ["region"])) != null ? _e : "Global",
-    gameMode: (_f = readStringField5(record, ["gameMode", "game_mode"])) != null ? _f : "Standard",
-    entryFee: (_g = readStringField5(record, ["entryFee", "entry_fee"])) != null ? _g : "Free",
+    region: (_e = readStringField6(record, ["region"])) != null ? _e : "Global",
+    gameMode: (_f = readStringField6(record, ["gameMode", "game_mode"])) != null ? _f : "Standard",
+    entryFee: (_g = readStringField6(record, ["entryFee", "entry_fee"])) != null ? _g : "Free",
     maxParticipants: clampPositiveInteger(
-      readNumberField3(record, ["maxParticipants", "max_participants"]),
+      readNumberField4(record, ["maxParticipants", "max_participants"]),
       DEFAULT_MAX_PARTICIPANTS,
       MAX_TOURNAMENT_PARTICIPANTS
     ),
     rewardCurrency: normalizeCurrency(record.rewardCurrency),
     rewardPoolAmount: normalizeRewardPoolAmount(record.rewardPoolAmount),
-    rewardNotes: readStringField5(record, ["rewardNotes", "reward_notes"]),
+    rewardNotes: readStringField6(record, ["rewardNotes", "reward_notes"]),
     tags: readStringArrayField(record, ["tags"]),
     scoring: {
-      winPoints: (_h = readNumberField3(scoringRecord, ["winPoints", "win_points"])) != null ? _h : DEFAULT_TOURNAMENT_SCORING.winPoints,
-      drawPoints: (_i = readNumberField3(scoringRecord, ["drawPoints", "draw_points"])) != null ? _i : DEFAULT_TOURNAMENT_SCORING.drawPoints,
-      lossPoints: (_j = readNumberField3(scoringRecord, ["lossPoints", "loss_points"])) != null ? _j : DEFAULT_TOURNAMENT_SCORING.lossPoints,
+      winPoints: (_h = readNumberField4(scoringRecord, ["winPoints", "win_points"])) != null ? _h : DEFAULT_TOURNAMENT_SCORING.winPoints,
+      drawPoints: (_i = readNumberField4(scoringRecord, ["drawPoints", "draw_points"])) != null ? _i : DEFAULT_TOURNAMENT_SCORING.drawPoints,
+      lossPoints: (_j = readNumberField4(scoringRecord, ["lossPoints", "loss_points"])) != null ? _j : DEFAULT_TOURNAMENT_SCORING.lossPoints,
       allowDraws: (_k = readBooleanField3(scoringRecord, ["allowDraws", "allow_draws"])) != null ? _k : DEFAULT_TOURNAMENT_SCORING.allowDraws
     },
     participants,
@@ -3201,7 +3913,7 @@ var ADMIN_ROLE_RANK = {
   operator: 2,
   admin: 3
 };
-var readStringField6 = (value, keys) => {
+var readStringField7 = (value, keys) => {
   const record = asRecord(value);
   if (!record) {
     return null;
@@ -3215,7 +3927,7 @@ var readStringField6 = (value, keys) => {
   return null;
 };
 var getContextUserId = (ctx) => {
-  const userId = readStringField6(ctx, ["userId", "user_id"]);
+  const userId = readStringField7(ctx, ["userId", "user_id"]);
   if (!userId) {
     throw new Error("Authentication required.");
   }
@@ -3232,7 +3944,7 @@ var normalizeAdminRole = (value) => {
   if (!record) {
     return null;
   }
-  const role = readStringField6(record, ["role"]);
+  const role = readStringField7(record, ["role"]);
   if (role === "viewer" || role === "operator" || role === "admin") {
     return role;
   }
@@ -3286,9 +3998,9 @@ var resolveAdminProfile = (nk, userId) => {
     const users = Array.isArray(rawUsers) ? rawUsers : [];
     const profile = (_a = users.map((value) => normalizeUserRecord(value)).find((value) => Boolean(value))) != null ? _a : null;
     return {
-      username: readStringField6(profile, ["username"]),
-      displayName: readStringField6(profile, ["displayName", "display_name"]),
-      email: readStringField6(profile, ["email"])
+      username: readStringField7(profile, ["username"]),
+      displayName: readStringField7(profile, ["displayName", "display_name"]),
+      email: readStringField7(profile, ["email"])
     };
   } catch (e) {
     return {
@@ -3399,17 +4111,17 @@ var normalizeAuditEntry = (value) => {
   if (!record) {
     return null;
   }
-  const id = readStringField5(record, ["id"]);
-  const action = readStringField5(record, ["action"]);
-  const userId = readStringField5(record, ["userId", "user_id", "actorUserId", "actor_user_id"]);
-  const targetId = readStringField5(record, ["targetId", "target_id", "tournamentId", "tournament_id"]);
-  const timestamp = readStringField5(record, ["timestamp", "createdAt", "created_at"]);
+  const id = readStringField6(record, ["id"]);
+  const action = readStringField6(record, ["action"]);
+  const userId = readStringField6(record, ["userId", "user_id", "actorUserId", "actor_user_id"]);
+  const targetId = readStringField6(record, ["targetId", "target_id", "tournamentId", "tournament_id"]);
+  const timestamp = readStringField6(record, ["timestamp", "createdAt", "created_at"]);
   if (!id || !action || !userId || !targetId || !timestamp) {
     return null;
   }
   const payloadSummary = (_c = (_b = (_a = asRecord(record.payloadSummary)) != null ? _a : asRecord(record.payload_summary)) != null ? _b : asRecord(record.metadata)) != null ? _c : {};
-  const actorLabel = (_d = readStringField5(record, ["actorLabel", "actor_label"])) != null ? _d : userId;
-  const tournamentName = (_f = (_e = readStringField5(record, ["tournamentName", "tournament_name"])) != null ? _e : readStringField5(record, ["targetName", "target_name"])) != null ? _f : targetId;
+  const actorLabel = (_d = readStringField6(record, ["actorLabel", "actor_label"])) != null ? _d : userId;
+  const tournamentName = (_f = (_e = readStringField6(record, ["tournamentName", "tournament_name"])) != null ? _e : readStringField6(record, ["targetName", "target_name"])) != null ? _f : targetId;
   return {
     id,
     userId,
@@ -3431,7 +4143,7 @@ var normalizeAuditLogRecord = (value) => {
   const entries = Array.isArray(record == null ? void 0 : record.entries) ? record.entries.map((entry) => normalizeAuditEntry(entry)).filter((entry) => Boolean(entry)) : [];
   return {
     entries,
-    updatedAt: (_a = readStringField5(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
+    updatedAt: (_a = readStringField6(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
   };
 };
 var readAuditLogState = (nk) => {
@@ -3509,7 +4221,7 @@ var resolveDefaultTargetId = (ctx, payload, response) => {
   var _a, _b, _c, _d, _e;
   const responseRun = asRecord(response == null ? void 0 : response.run);
   const responseTournament = asRecord(response == null ? void 0 : response.tournament);
-  return (_e = (_d = (_c = (_b = (_a = readStringField5(payload, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id"])) != null ? _a : readStringField5(response, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id", "userId", "user_id"])) != null ? _b : readStringField5(responseRun, ["runId", "run_id", "tournamentId", "tournament_id"])) != null ? _c : readStringField5(responseTournament, ["id", "tournamentId", "tournament_id"])) != null ? _d : readStringField5(ctx, ["userId", "user_id"])) != null ? _e : "unknown-target";
+  return (_e = (_d = (_c = (_b = (_a = readStringField6(payload, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id"])) != null ? _a : readStringField6(response, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id", "userId", "user_id"])) != null ? _b : readStringField6(responseRun, ["runId", "run_id", "tournamentId", "tournament_id"])) != null ? _c : readStringField6(responseTournament, ["id", "tournamentId", "tournament_id"])) != null ? _d : readStringField6(ctx, ["userId", "user_id"])) != null ? _e : "unknown-target";
 };
 var resolveTargetId = (ctx, payload, response, resolver) => {
   var _a;
@@ -3531,7 +4243,7 @@ var resolveTargetName = (ctx, payload, response, targetId, resolver) => {
   }
   const responseRun = asRecord(response == null ? void 0 : response.run);
   const responseTournament = asRecord(response == null ? void 0 : response.tournament);
-  return (_d = (_c = (_b = readStringField5(responseRun, ["title", "name"])) != null ? _b : readStringField5(responseTournament, ["title", "name"])) != null ? _c : readStringField5(payload, ["title", "name"])) != null ? _d : targetId;
+  return (_d = (_c = (_b = readStringField6(responseRun, ["title", "name"])) != null ? _b : readStringField6(responseTournament, ["title", "name"])) != null ? _c : readStringField6(payload, ["title", "name"])) != null ? _d : targetId;
 };
 var safeParsePayload = (payload) => {
   try {
@@ -3689,18 +4401,18 @@ var normalizeStandingsSnapshot = (value) => {
   }
   const rawRecords = Array.isArray(record.records) ? record.records : [];
   return {
-    generatedAt: (_a = readStringField5(record, ["generatedAt", "generated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString(),
-    overrideExpiry: clampInteger(readNumberField3(record, ["overrideExpiry", "override_expiry"]), 0, 0, 2147483647),
+    generatedAt: (_a = readStringField6(record, ["generatedAt", "generated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString(),
+    overrideExpiry: clampInteger(readNumberField4(record, ["overrideExpiry", "override_expiry"]), 0, 0, 2147483647),
     rankCount: (() => {
-      const rankCount = readNumberField3(record, ["rankCount", "rank_count"]);
+      const rankCount = readNumberField4(record, ["rankCount", "rank_count"]);
       return typeof rankCount === "number" ? rankCount : null;
     })(),
     records: rawRecords.map((entry) => {
       var _a2;
       return (_a2 = asRecord(entry)) != null ? _a2 : {};
     }),
-    prevCursor: readStringField5(record, ["prevCursor", "prev_cursor"]),
-    nextCursor: readStringField5(record, ["nextCursor", "next_cursor"])
+    prevCursor: readStringField6(record, ["prevCursor", "prev_cursor"]),
+    nextCursor: readStringField6(record, ["nextCursor", "next_cursor"])
   };
 };
 var normalizeRunRecord = (value, fallbackId) => {
@@ -3709,13 +4421,13 @@ var normalizeRunRecord = (value, fallbackId) => {
   if (!record) {
     return null;
   }
-  const runId = (_b = (_a = readStringField5(record, ["runId", "run_id"])) != null ? _a : fallbackId) != null ? _b : null;
-  const tournamentId = (_c = readStringField5(record, ["tournamentId", "tournament_id"])) != null ? _c : runId;
-  const title = readStringField5(record, ["title"]);
-  const createdAt = readStringField5(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField5(record, ["updatedAt", "updated_at"]);
-  const createdByUserId = readStringField5(record, ["createdByUserId", "created_by_user_id"]);
-  const createdByLabel = readStringField5(record, ["createdByLabel", "created_by_label"]);
+  const runId = (_b = (_a = readStringField6(record, ["runId", "run_id"])) != null ? _a : fallbackId) != null ? _b : null;
+  const tournamentId = (_c = readStringField6(record, ["tournamentId", "tournament_id"])) != null ? _c : runId;
+  const title = readStringField6(record, ["title"]);
+  const createdAt = readStringField6(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField6(record, ["updatedAt", "updated_at"]);
+  const createdByUserId = readStringField6(record, ["createdByUserId", "created_by_user_id"]);
+  const createdByLabel = readStringField6(record, ["createdByLabel", "created_by_label"]);
   if (!runId || !tournamentId || !title || !createdAt || !updatedAt || !createdByUserId || !createdByLabel) {
     return null;
   }
@@ -3723,33 +4435,33 @@ var normalizeRunRecord = (value, fallbackId) => {
     runId,
     tournamentId,
     title,
-    description: (_d = readStringField5(record, ["description"])) != null ? _d : "",
-    category: clampInteger(readNumberField3(record, ["category"]), DEFAULT_CATEGORY, 0, 127),
+    description: (_d = readStringField6(record, ["description"])) != null ? _d : "",
+    category: clampInteger(readNumberField4(record, ["category"]), DEFAULT_CATEGORY, 0, 127),
     authoritative: (_e = readBooleanField4(record, ["authoritative"])) != null ? _e : true,
-    sortOrder: normalizeSortOrder((_f = readStringField5(record, ["sortOrder", "sort_order"])) != null ? _f : DEFAULT_SORT_ORDER),
-    operator: normalizeOperator((_g = readStringField5(record, ["operator"])) != null ? _g : DEFAULT_OPERATOR),
-    resetSchedule: (_h = readStringField5(record, ["resetSchedule", "reset_schedule"])) != null ? _h : "",
+    sortOrder: normalizeSortOrder((_f = readStringField6(record, ["sortOrder", "sort_order"])) != null ? _f : DEFAULT_SORT_ORDER),
+    operator: normalizeOperator((_g = readStringField6(record, ["operator"])) != null ? _g : DEFAULT_OPERATOR),
+    resetSchedule: (_h = readStringField6(record, ["resetSchedule", "reset_schedule"])) != null ? _h : "",
     metadata: readMetadataField(record, ["metadata"]),
-    startTime: clampInteger(readNumberField3(record, ["startTime", "start_time"]), 0, 0, 2147483647),
-    endTime: clampInteger(readNumberField3(record, ["endTime", "end_time"]), 0, 0, 2147483647),
-    duration: clampInteger(readNumberField3(record, ["duration"]), DEFAULT_DURATION_SECONDS, 1, 2147483647),
-    maxSize: clampInteger(readNumberField3(record, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1e6),
+    startTime: clampInteger(readNumberField4(record, ["startTime", "start_time"]), 0, 0, 2147483647),
+    endTime: clampInteger(readNumberField4(record, ["endTime", "end_time"]), 0, 0, 2147483647),
+    duration: clampInteger(readNumberField4(record, ["duration"]), DEFAULT_DURATION_SECONDS, 1, 2147483647),
+    maxSize: clampInteger(readNumberField4(record, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1e6),
     maxNumScore: clampInteger(
-      readNumberField3(record, ["maxNumScore", "max_num_score"]),
+      readNumberField4(record, ["maxNumScore", "max_num_score"]),
       DEFAULT_MAX_NUM_SCORE,
       1,
       1e6
     ),
     joinRequired: (_i = readBooleanField4(record, ["joinRequired", "join_required"])) != null ? _i : true,
     enableRanks: (_j = readBooleanField4(record, ["enableRanks", "enable_ranks"])) != null ? _j : true,
-    lifecycle: normalizeRunLifecycle((_k = readStringField5(record, ["lifecycle"])) != null ? _k : "draft"),
+    lifecycle: normalizeRunLifecycle((_k = readStringField6(record, ["lifecycle"])) != null ? _k : "draft"),
     createdAt,
     updatedAt,
     createdByUserId,
     createdByLabel,
-    openedAt: readStringField5(record, ["openedAt", "opened_at"]),
-    closedAt: readStringField5(record, ["closedAt", "closed_at"]),
-    finalizedAt: readStringField5(record, ["finalizedAt", "finalized_at"]),
+    openedAt: readStringField6(record, ["openedAt", "opened_at"]),
+    closedAt: readStringField6(record, ["closedAt", "closed_at"]),
+    finalizedAt: readStringField6(record, ["finalizedAt", "finalized_at"]),
     finalSnapshot: normalizeStandingsSnapshot(record.finalSnapshot)
   };
 };
@@ -3761,7 +4473,7 @@ var normalizeRunIndex = (value) => {
     runIds: Array.from(
       new Set(runIds.filter((entry) => typeof entry === "string" && entry.trim().length > 0))
     ),
-    updatedAt: (_a = readStringField5(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
+    updatedAt: (_a = readStringField6(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
   };
 };
 var readRunIndexState = (nk) => {
@@ -3876,7 +4588,7 @@ var readTournamentArray = (value) => {
 var mapTournamentsById = (value) => {
   return readTournamentArray(value).reduce(
     (accumulator, tournament) => {
-      const tournamentId = readStringField5(tournament, ["id"]);
+      const tournamentId = readStringField6(tournament, ["id"]);
       if (tournamentId) {
         accumulator[tournamentId] = tournament;
       }
@@ -3909,10 +4621,10 @@ var readTournamentRecordList = (value) => {
       var _a;
       return (_a = asRecord(entry)) != null ? _a : {};
     }),
-    prevCursor: readStringField5(record, ["prev_cursor", "prevCursor"]),
-    nextCursor: readStringField5(record, ["next_cursor", "nextCursor"]),
+    prevCursor: readStringField6(record, ["prev_cursor", "prevCursor"]),
+    nextCursor: readStringField6(record, ["next_cursor", "nextCursor"]),
     rankCount: (() => {
-      const parsed = readNumberField3(record, ["rank_count", "rankCount"]);
+      const parsed = readNumberField4(record, ["rank_count", "rankCount"]);
       return typeof parsed === "number" ? parsed : null;
     })()
   };
@@ -3922,7 +4634,7 @@ var resolveOverrideExpiry = (overrideExpiry, tournament) => {
     return Math.floor(overrideExpiry);
   }
   if (tournament) {
-    const endTime = readNumberField3(tournament, ["end_time", "endTime"]);
+    const endTime = readNumberField4(tournament, ["end_time", "endTime"]);
     if (typeof endTime === "number" && endTime > 0) {
       return Math.floor(endTime);
     }
@@ -3994,7 +4706,7 @@ var rpcAdminListTournaments = (ctx, logger, nk, payload) => {
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
       const limit = clampInteger(parsed.limit, 50, 1, MAX_RUN_LIST_LIMIT);
-      const lifecycleFilter = readStringField5(parsed, ["lifecycle"]);
+      const lifecycleFilter = readStringField6(parsed, ["lifecycle"]);
       const indexState = readRunIndexState(_nk);
       const runs = sortRuns(readRunsByIds(_nk, indexState.index.runIds));
       const filteredRuns = lifecycleFilter && (lifecycleFilter === "draft" || lifecycleFilter === "open" || lifecycleFilter === "closed" || lifecycleFilter === "finalized") ? runs.filter((run) => run.lifecycle === lifecycleFilter) : runs;
@@ -4032,7 +4744,7 @@ var rpcAdminGetTournamentRun = (ctx, logger, nk, payload) => {
       var _a, _b;
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField5(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -4062,7 +4774,7 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
       var _a, _b, _c, _d, _e;
       assertAdmin(_ctx, "operator", _nk);
       const parsed = parseJsonPayload(_payload);
-      const title = readStringField5(parsed, ["title"]);
+      const title = readStringField6(parsed, ["title"]);
       if (!title) {
         throw new Error("title is required.");
       }
@@ -4070,7 +4782,7 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
         const indexState = readRunIndexState(_nk);
         const createdAt = (/* @__PURE__ */ new Date()).toISOString();
         const runId = buildRunId(
-          readStringField5(parsed, ["runId", "run_id"]),
+          readStringField6(parsed, ["runId", "run_id"]),
           title,
           indexState.index.runIds
         );
@@ -4078,19 +4790,19 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
           runId,
           tournamentId: runId,
           title,
-          description: (_a = readStringField5(parsed, ["description"])) != null ? _a : "",
-          category: clampInteger(readNumberField3(parsed, ["category"]), DEFAULT_CATEGORY, 0, 127),
+          description: (_a = readStringField6(parsed, ["description"])) != null ? _a : "",
+          category: clampInteger(readNumberField4(parsed, ["category"]), DEFAULT_CATEGORY, 0, 127),
           authoritative: (_b = readBooleanField4(parsed, ["authoritative"])) != null ? _b : true,
-          sortOrder: normalizeSortOrder(readStringField5(parsed, ["sortOrder", "sort_order"])),
-          operator: normalizeOperator(readStringField5(parsed, ["operator"])),
-          resetSchedule: (_c = readStringField5(parsed, ["resetSchedule", "reset_schedule"])) != null ? _c : "",
+          sortOrder: normalizeSortOrder(readStringField6(parsed, ["sortOrder", "sort_order"])),
+          operator: normalizeOperator(readStringField6(parsed, ["operator"])),
+          resetSchedule: (_c = readStringField6(parsed, ["resetSchedule", "reset_schedule"])) != null ? _c : "",
           metadata: readMetadataField(parsed, ["metadata"]),
-          startTime: clampInteger(readNumberField3(parsed, ["startTime", "start_time"]), 0, 0, 2147483647),
-          endTime: clampInteger(readNumberField3(parsed, ["endTime", "end_time"]), 0, 0, 2147483647),
-          duration: clampInteger(readNumberField3(parsed, ["duration"]), DEFAULT_DURATION_SECONDS, 1, 2147483647),
-          maxSize: clampInteger(readNumberField3(parsed, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1e6),
+          startTime: clampInteger(readNumberField4(parsed, ["startTime", "start_time"]), 0, 0, 2147483647),
+          endTime: clampInteger(readNumberField4(parsed, ["endTime", "end_time"]), 0, 0, 2147483647),
+          duration: clampInteger(readNumberField4(parsed, ["duration"]), DEFAULT_DURATION_SECONDS, 1, 2147483647),
+          maxSize: clampInteger(readNumberField4(parsed, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1e6),
           maxNumScore: clampInteger(
-            readNumberField3(parsed, ["maxNumScore", "max_num_score"]),
+            readNumberField4(parsed, ["maxNumScore", "max_num_score"]),
             DEFAULT_MAX_NUM_SCORE,
             1,
             1e6
@@ -4152,7 +4864,7 @@ var rpcAdminOpenTournament = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "operator", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField5(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -4213,7 +4925,7 @@ var rpcAdminDeleteTournament = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "admin", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField5(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -4255,7 +4967,7 @@ var rpcAdminCloseTournament = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "operator", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField5(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -4290,7 +5002,7 @@ var rpcAdminFinalizeTournament = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "admin", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField5(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -4298,7 +5010,7 @@ var rpcAdminFinalizeTournament = (ctx, logger, nk, payload) => {
       const nakamaTournament = getNakamaTournamentById(_nk, runBeforeUpdate.tournamentId);
       const standingsLimit = clampInteger(parsed.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
       const overrideExpiry = resolveOverrideExpiry(
-        readNumberField3(parsed, ["overrideExpiry", "override_expiry"]),
+        readNumberField4(parsed, ["overrideExpiry", "override_expiry"]),
         nakamaTournament
       );
       const finalSnapshot = buildStandingsSnapshot(_nk, runBeforeUpdate.tournamentId, standingsLimit, overrideExpiry);
@@ -4341,7 +5053,7 @@ var rpcAdminGetTournamentStandings = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField5(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -4349,7 +5061,7 @@ var rpcAdminGetTournamentStandings = (ctx, logger, nk, payload) => {
       const nakamaTournament = getNakamaTournamentById(_nk, run.tournamentId);
       const limit = clampInteger(parsed.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
       const overrideExpiry = resolveOverrideExpiry(
-        readNumberField3(parsed, ["overrideExpiry", "override_expiry"]),
+        readNumberField4(parsed, ["overrideExpiry", "override_expiry"]),
         nakamaTournament
       );
       const standings = buildStandingsSnapshot(_nk, run.tournamentId, limit, overrideExpiry);
@@ -4374,7 +5086,7 @@ var rpcAdminGetTournamentAuditLog = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField5(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -4408,12 +5120,12 @@ var resolveDisplayName = (ctx, requestDisplayName, userId) => {
     return requestDisplayName.trim();
   }
   if (typeof ctx === "object" && ctx !== null) {
-    const username = readStringField5(ctx, ["username", "displayName", "display_name", "name"]);
+    const username = readStringField6(ctx, ["username", "displayName", "display_name", "name"]);
     if (username) {
       return username;
     }
     const vars = typeof ctx.vars === "object" && ctx.vars !== null ? ctx.vars : null;
-    const fallbackName = readStringField5(vars, ["usernameDisplay", "displayName", "email"]);
+    const fallbackName = readStringField6(vars, ["usernameDisplay", "displayName", "email"]);
     if (fallbackName) {
       return fallbackName;
     }
@@ -4430,8 +5142,8 @@ var rpcJoinTournament = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
   const request = {
-    tournamentId: (_a = readStringField5(parsed, ["tournamentId", "tournament_id"])) != null ? _a : "",
-    displayName: (_b = readStringField5(parsed, ["displayName", "display_name"])) != null ? _b : void 0
+    tournamentId: (_a = readStringField6(parsed, ["tournamentId", "tournament_id"])) != null ? _a : "",
+    displayName: (_b = readStringField6(parsed, ["displayName", "display_name"])) != null ? _b : void 0
   };
   if (!request.tournamentId) {
     throw new Error("tournamentId is required.");
@@ -4522,12 +5234,12 @@ var normalizeMembershipRecord = (value, fallbackRunId, fallbackUserId) => {
   if (!record) {
     return null;
   }
-  const runId = (_a = readStringField5(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
-  const tournamentId = (_b = readStringField5(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
-  const userId = (_c = readStringField5(record, ["userId", "user_id"])) != null ? _c : fallbackUserId;
-  const displayName = readStringField5(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField5(record, ["joinedAt", "joined_at"]);
-  const updatedAt = (_d = readStringField5(record, ["updatedAt", "updated_at"])) != null ? _d : joinedAt;
+  const runId = (_a = readStringField6(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
+  const tournamentId = (_b = readStringField6(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
+  const userId = (_c = readStringField6(record, ["userId", "user_id"])) != null ? _c : fallbackUserId;
+  const displayName = readStringField6(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField6(record, ["joinedAt", "joined_at"]);
+  const updatedAt = (_d = readStringField6(record, ["updatedAt", "updated_at"])) != null ? _d : joinedAt;
   if (!runId || !tournamentId || !userId || !displayName || !joinedAt || !updatedAt) {
     return null;
   }
@@ -4546,14 +5258,14 @@ var normalizeMatchQueueRecord = (value, fallbackRunId) => {
   if (!record) {
     return null;
   }
-  const runId = (_a = readStringField5(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
-  const tournamentId = (_b = readStringField5(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
-  const matchId = readStringField5(record, ["matchId", "match_id"]);
-  const hostUserId = readStringField5(record, ["hostUserId", "host_user_id"]);
-  const modeId = (_c = readStringField5(record, ["modeId", "mode_id"])) != null ? _c : "standard";
-  const createdAt = readStringField5(record, ["createdAt", "created_at"]);
-  const updatedAt = (_d = readStringField5(record, ["updatedAt", "updated_at"])) != null ? _d : createdAt;
-  const expiresAt = readStringField5(record, ["expiresAt", "expires_at"]);
+  const runId = (_a = readStringField6(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
+  const tournamentId = (_b = readStringField6(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
+  const matchId = readStringField6(record, ["matchId", "match_id"]);
+  const hostUserId = readStringField6(record, ["hostUserId", "host_user_id"]);
+  const modeId = (_c = readStringField6(record, ["modeId", "mode_id"])) != null ? _c : "standard";
+  const createdAt = readStringField6(record, ["createdAt", "created_at"]);
+  const updatedAt = (_d = readStringField6(record, ["updatedAt", "updated_at"])) != null ? _d : createdAt;
+  const expiresAt = readStringField6(record, ["expiresAt", "expires_at"]);
   if (!runId || !tournamentId || !matchId || !hostUserId || !createdAt || !updatedAt || !expiresAt) {
     return null;
   }
@@ -4566,8 +5278,8 @@ var normalizeMatchQueueRecord = (value, fallbackRunId) => {
     createdAt,
     updatedAt,
     expiresAt,
-    claimedByUserId: readStringField5(record, ["claimedByUserId", "claimed_by_user_id"]),
-    claimedAt: readStringField5(record, ["claimedAt", "claimed_at"])
+    claimedByUserId: readStringField6(record, ["claimedByUserId", "claimed_by_user_id"]),
+    claimedAt: readStringField6(record, ["claimedAt", "claimed_at"])
   };
 };
 var toIsoFromUnixSeconds = (seconds, fallback) => {
@@ -4582,11 +5294,11 @@ var readMetadata = (run) => {
 };
 var formatPrizeLabel = (metadata) => {
   var _a;
-  const explicitPrize = readStringField5(metadata, ["prizePool", "prize_pool", "prizeLabel", "prize_label"]);
+  const explicitPrize = readStringField6(metadata, ["prizePool", "prize_pool", "prizeLabel", "prize_label"]);
   if (explicitPrize) {
     return explicitPrize;
   }
-  const buyIn = (_a = readStringField5(metadata, ["buyIn", "buy_in"])) != null ? _a : "Free";
+  const buyIn = (_a = readStringField6(metadata, ["buyIn", "buy_in"])) != null ? _a : "Free";
   return buyIn === "Free" ? "No prize listed" : `${buyIn} buy-in`;
 };
 var buildMembershipState = (membership) => {
@@ -4607,29 +5319,29 @@ var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
     description: run.description || "No description configured.",
     lifecycle: run.lifecycle,
     startAt: (_b = toIsoFromUnixSeconds(
-      (_a = readNumberField3(nakamaTournament, ["startTime", "start_time"])) != null ? _a : run.startTime,
+      (_a = readNumberField4(nakamaTournament, ["startTime", "start_time"])) != null ? _a : run.startTime,
       createdAt
     )) != null ? _b : createdAt,
     endAt: toIsoFromUnixSeconds(
-      (_c = readNumberField3(nakamaTournament, ["endTime", "end_time"])) != null ? _c : run.endTime,
+      (_c = readNumberField4(nakamaTournament, ["endTime", "end_time"])) != null ? _c : run.endTime,
       null
     ),
     updatedAt: run.updatedAt,
-    entrants: Math.max(0, Math.floor((_d = readNumberField3(nakamaTournament, ["size"])) != null ? _d : 0)),
+    entrants: Math.max(0, Math.floor((_d = readNumberField4(nakamaTournament, ["size"])) != null ? _d : 0)),
     maxEntrants: Math.max(
       0,
-      Math.floor((_e = readNumberField3(nakamaTournament, ["maxSize", "max_size"])) != null ? _e : run.maxSize)
+      Math.floor((_e = readNumberField4(nakamaTournament, ["maxSize", "max_size"])) != null ? _e : run.maxSize)
     ),
-    gameMode: (_f = readStringField5(metadata, ["gameMode", "game_mode"])) != null ? _f : "standard",
-    region: (_g = readStringField5(metadata, ["region"])) != null ? _g : "Global",
-    buyInLabel: (_h = readStringField5(metadata, ["buyIn", "buy_in"])) != null ? _h : "Free",
+    gameMode: (_f = readStringField6(metadata, ["gameMode", "game_mode"])) != null ? _f : "standard",
+    region: (_g = readStringField6(metadata, ["region"])) != null ? _g : "Global",
+    buyInLabel: (_h = readStringField6(metadata, ["buyIn", "buy_in"])) != null ? _h : "Free",
     prizeLabel: formatPrizeLabel(metadata),
     membership: buildMembershipState(membership)
   };
 };
 var getRunEndTimeMs = (run, nakamaTournament) => {
   var _a;
-  const endTimeSeconds = (_a = readNumberField3(nakamaTournament, ["endTime", "end_time"])) != null ? _a : run.endTime;
+  const endTimeSeconds = (_a = readNumberField4(nakamaTournament, ["endTime", "end_time"])) != null ? _a : run.endTime;
   if (typeof endTimeSeconds !== "number" || !Number.isFinite(endTimeSeconds) || endTimeSeconds <= 0) {
     return null;
   }
@@ -4805,7 +5517,7 @@ var rpcListPublicTournaments = (ctx, _logger, nk, payload) => {
 var rpcGetPublicTournament = (ctx, _logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField5(parsed, ["runId", "run_id", "tournamentRunId", "tournament_run_id", "tournamentId", "tournament_id"]);
+  const runId = readStringField6(parsed, ["runId", "run_id", "tournamentRunId", "tournament_run_id", "tournamentId", "tournament_id"]);
   if (!runId) {
     throw new Error("runId is required.");
   }
@@ -4825,7 +5537,7 @@ var rpcGetPublicTournamentStandings = (ctx, _logger, nk, payload) => {
   var _a;
   requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField5(parsed, ["runId", "run_id", "tournamentRunId", "tournament_run_id", "tournamentId", "tournament_id"]);
+  const runId = readStringField6(parsed, ["runId", "run_id", "tournamentRunId", "tournament_run_id", "tournamentId", "tournament_id"]);
   if (!runId) {
     throw new Error("runId is required.");
   }
@@ -4851,7 +5563,7 @@ var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField5(parsed, ["runId", "run_id", "tournamentRunId", "tournament_run_id", "tournamentId", "tournament_id"]);
+  const runId = readStringField6(parsed, ["runId", "run_id", "tournamentRunId", "tournament_run_id", "tournamentId", "tournament_id"]);
   if (!runId) {
     throw new Error("runId is required.");
   }
@@ -4862,10 +5574,10 @@ var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
   const displayName = getActorLabel(ctx);
   let joined = false;
   if (!existingMembership) {
-    const entrantsBeforeJoin = Math.max(0, Math.floor((_a = readNumberField3(nakamaTournamentBeforeJoin, ["size"])) != null ? _a : 0));
+    const entrantsBeforeJoin = Math.max(0, Math.floor((_a = readNumberField4(nakamaTournamentBeforeJoin, ["size"])) != null ? _a : 0));
     const maxEntrants = Math.max(
       0,
-      Math.floor((_b = readNumberField3(nakamaTournamentBeforeJoin, ["maxSize", "max_size"])) != null ? _b : run.maxSize)
+      Math.floor((_b = readNumberField4(nakamaTournamentBeforeJoin, ["maxSize", "max_size"])) != null ? _b : run.maxSize)
     );
     if (maxEntrants > 0 && entrantsBeforeJoin >= maxEntrants) {
       throw new Error("This tournament is already full.");
@@ -4893,7 +5605,7 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField5(parsed, ["runId", "run_id", "tournamentRunId", "tournament_run_id", "tournamentId", "tournament_id"]);
+  const runId = readStringField6(parsed, ["runId", "run_id", "tournamentRunId", "tournament_run_id", "tournamentId", "tournament_id"]);
   if (!runId) {
     throw new Error("runId is required.");
   }
@@ -4910,7 +5622,7 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
     throw new Error("This tournament has not started yet.");
   }
   const metadata = readMetadata(run);
-  const modeId = (_a = readStringField5(metadata, ["gameMode", "game_mode"])) != null ? _a : "standard";
+  const modeId = (_a = readStringField6(metadata, ["gameMode", "game_mode"])) != null ? _a : "standard";
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const queueState = readQueueState(nk, run.runId);
     const activeQueue = queueState.queue && !queueState.queue.claimedByUserId && !isQueueExpired(queueState.queue, nowMs) ? queueState.queue : null;
@@ -4976,7 +5688,9 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
       winRewardSource: "pvp_win",
       allowsChallengeRewards: true,
       tournamentRunId: run.runId,
-      tournamentId: run.tournamentId
+      tournamentId: run.tournamentId,
+      // Current public tournaments operate as elimination runs: a loss ends the player's run.
+      tournamentEliminationRisk: true
     });
     const nextQueue = {
       runId: run.runId,
@@ -5051,10 +5765,10 @@ var normalizeRunSnapshot = (value, fallbackRunId) => {
   if (!record) {
     return null;
   }
-  const runId = (_a = readStringField5(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
-  const tournamentId = (_b = readStringField5(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
-  const title = readStringField5(record, ["title"]);
-  const updatedAt = readStringField5(record, ["updatedAt", "updated_at"]);
+  const runId = (_a = readStringField6(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
+  const tournamentId = (_b = readStringField6(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
+  const title = readStringField6(record, ["title"]);
+  const updatedAt = readStringField6(record, ["updatedAt", "updated_at"]);
   if (!runId || !tournamentId || !title || !updatedAt) {
     return null;
   }
@@ -5062,8 +5776,8 @@ var normalizeRunSnapshot = (value, fallbackRunId) => {
     runId,
     tournamentId,
     title,
-    lifecycle: normalizeRunLifecycle2((_c = readStringField5(record, ["lifecycle"])) != null ? _c : "draft"),
-    operator: normalizeOperator2((_d = readStringField5(record, ["operator"])) != null ? _d : "best"),
+    lifecycle: normalizeRunLifecycle2((_c = readStringField6(record, ["lifecycle"])) != null ? _c : "draft"),
+    operator: normalizeOperator2((_d = readStringField6(record, ["operator"])) != null ? _d : "best"),
     joinRequired: record.joinRequired !== false,
     metadata: normalizeMetadata(record.metadata),
     updatedAt
@@ -5165,8 +5879,8 @@ var resolveUsernames = (nk, logger, players) => {
     try {
       const users = normalizeUsersArray(nk.usersGetId(unresolvedUserIds));
       users.forEach((user) => {
-        const userId = readStringField5(user, ["userId", "user_id", "id"]);
-        const username = readStringField5(user, ["username", "displayName", "display_name"]);
+        const userId = readStringField6(user, ["userId", "user_id", "id"]);
+        const username = readStringField6(user, ["username", "displayName", "display_name"]);
         if (userId && username) {
           usernames[userId] = username;
         }
@@ -5253,7 +5967,7 @@ var updateTournamentRunMetadata = (nk, logger, runId, result) => {
     const currentMetadata = normalizeMetadata(currentState.value.metadata);
     const currentCount = Math.max(
       0,
-      Math.floor((_a = readNumberField3(currentMetadata, ["countedMatchCount", "validMatchCount"])) != null ? _a : 0)
+      Math.floor((_a = readNumberField4(currentMetadata, ["countedMatchCount", "validMatchCount"])) != null ? _a : 0)
     );
     const nextMetadata = __spreadProps(__spreadValues({}, currentMetadata), {
       countedMatchCount: result.counted ? currentCount + 1 : currentCount,
@@ -5293,8 +6007,8 @@ var updateTournamentRunMetadata = (nk, logger, runId, result) => {
 };
 var resolveTournamentMatchContextFromParams = (params) => {
   var _a, _b;
-  const runId = readStringField5(params, ["tournamentRunId", "tournament_run_id", "runId", "run_id"]);
-  const tournamentId = readStringField5(params, ["tournamentId", "tournament_id"]);
+  const runId = readStringField6(params, ["tournamentRunId", "tournament_run_id", "runId", "run_id"]);
+  const tournamentId = readStringField6(params, ["tournamentId", "tournament_id"]);
   if (!runId && !tournamentId) {
     return null;
   }
@@ -5302,19 +6016,20 @@ var resolveTournamentMatchContextFromParams = (params) => {
   if (!normalizedRunId) {
     return null;
   }
-  const round = readNumberField3(params, ["tournamentRound", "tournament_round", "round"]);
+  const round = readNumberField4(params, ["tournamentRound", "tournament_round", "round"]);
   return {
     runId: normalizedRunId,
     tournamentId: tournamentId != null ? tournamentId : normalizedRunId,
     round: typeof round === "number" && Number.isFinite(round) ? Math.max(1, Math.floor(round)) : null,
-    entryId: (_b = readStringField5(params, [
+    entryId: (_b = readStringField6(params, [
       "tournamentEntryId",
       "tournament_entry_id",
       "tournamentMatchId",
       "tournament_match_id",
       "bracketMatchId",
       "bracket_match_id"
-    ])) != null ? _b : null
+    ])) != null ? _b : null,
+    eliminationRisk: params.tournamentEliminationRisk === true
   };
 };
 var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
@@ -5438,9 +6153,9 @@ var PRIVATE_MATCH_CODE_COLLECTION = "private_match_codes";
 var PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS = 12;
 var PRIVATE_MATCH_CODE_WRITE_ATTEMPTS = 4;
 var onlinePresenceByUser = /* @__PURE__ */ new Map();
-var asRecord2 = (value) => typeof value === "object" && value !== null ? value : null;
-var readStringField7 = (value, keys) => {
-  const record = asRecord2(value);
+var asRecord3 = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField8 = (value, keys) => {
+  const record = asRecord3(value);
   if (!record) {
     return null;
   }
@@ -5452,8 +6167,8 @@ var readStringField7 = (value, keys) => {
   }
   return null;
 };
-var readNumberField4 = (value, keys) => {
-  const record = asRecord2(value);
+var readNumberField5 = (value, keys) => {
+  const record = asRecord3(value);
   if (!record) {
     return null;
   }
@@ -5483,7 +6198,7 @@ var decodeMessageData = (data, nk) => {
   if (typeof data === "string") {
     return data;
   }
-  const binaryToString = (_a = asRecord2(nk)) == null ? void 0 : _a.binaryToString;
+  const binaryToString = (_a = asRecord3(nk)) == null ? void 0 : _a.binaryToString;
   if (typeof binaryToString === "function") {
     try {
       return String(binaryToString(data));
@@ -5501,9 +6216,9 @@ var decodeMessageData = (data, nk) => {
   }
   return String(data != null ? data : "");
 };
-var getPresenceUserId = (presence) => readStringField7(presence, ["userId", "user_id"]);
-var getPresenceSessionId = (presence) => readStringField7(presence, ["sessionId", "session_id"]);
-var getSenderUserId = (sender) => readStringField7(sender, ["userId", "user_id"]);
+var getPresenceUserId = (presence) => readStringField8(presence, ["userId", "user_id"]);
+var getPresenceSessionId = (presence) => readStringField8(presence, ["sessionId", "session_id"]);
+var getSenderUserId = (sender) => readStringField8(sender, ["userId", "user_id"]);
 var getPresenceKey = (presence) => {
   const sessionId = getPresenceSessionId(presence);
   if (sessionId) {
@@ -5514,10 +6229,10 @@ var getPresenceKey = (presence) => {
 };
 var getMatchId = (ctx) => {
   var _a;
-  return (_a = readStringField7(ctx, ["matchId", "match_id"])) != null ? _a : "";
+  return (_a = readStringField8(ctx, ["matchId", "match_id"])) != null ? _a : "";
 };
-var getMessageOpCode = (message) => readNumberField4(message, ["opCode", "op_code"]);
-var getContextUserId2 = (ctx) => readStringField7(ctx, ["userId", "user_id"]);
+var getMessageOpCode = (message) => readNumberField5(message, ["opCode", "op_code"]);
+var getContextUserId2 = (ctx) => readStringField8(ctx, ["userId", "user_id"]);
 var resolveMatchModeId = (value) => isMatchModeId(value) ? value : "standard";
 var buildMatchClassification = (params, modeId) => {
   const config = getMatchConfig(modeId);
@@ -5548,16 +6263,28 @@ var encodeOnlinePresencePayload = (nowMs) => JSON.stringify({
 });
 var createPlayerTelemetry = () => ({
   playerMoveCount: 0,
+  playerTurnCount: 0,
   maxRollCount: 0,
+  unusableRollCount: 0,
   capturesMade: 0,
   capturesSuffered: 0,
+  captureTurnNumbers: [],
+  currentCaptureTurnStreak: 0,
+  maxCaptureTurnStreak: 0,
   contestedTilesLandedCount: 0,
   wasBehindDuringMatch: false,
   behindCheckpointCount: 0,
-  behindReasons: /* @__PURE__ */ new Set()
+  behindReasons: /* @__PURE__ */ new Set(),
+  firstStartingAreaExitTurn: null,
+  opponentReachedBrink: false,
+  lastBehindTurnIndex: null,
+  momentumShiftAchieved: false,
+  momentumShiftTurnSpan: null,
+  maxActivePiecesOnBoard: 0
 });
 var createMatchTelemetry = () => ({
   totalMoves: 0,
+  totalTurns: 0,
   players: {
     light: createPlayerTelemetry(),
     dark: createPlayerTelemetry()
@@ -5578,17 +6305,10 @@ var createMatchTimerState = () => ({
   activePhase: null,
   resetReason: null
 });
-var getPathCoord2 = (color, index) => {
-  var _a, _b;
-  if (index < 0 || index >= PATH_LENGTH) {
-    return null;
-  }
-  return color === "light" ? (_a = PATH_LIGHT[index]) != null ? _a : null : (_b = PATH_DARK[index]) != null ? _b : null;
-};
 var detectCaptureOnMove = (state, move) => {
   const moverColor = state.currentTurn;
   const opponentColor = moverColor === "light" ? "dark" : "light";
-  const targetCoord = getPathCoord2(moverColor, move.toIndex);
+  const targetCoord = getPathCoord(state.matchConfig.pathVariant, moverColor, move.toIndex);
   if (!targetCoord) {
     return false;
   }
@@ -5596,7 +6316,7 @@ var detectCaptureOnMove = (state, move) => {
     if (piece.position < 0 || piece.isFinished) {
       return false;
     }
-    const pieceCoord = getPathCoord2(opponentColor, piece.position);
+    const pieceCoord = getPathCoord(state.matchConfig.pathVariant, opponentColor, piece.position);
     return Boolean(pieceCoord && pieceCoord.row === targetCoord.row && pieceCoord.col === targetCoord.col);
   });
 };
@@ -5612,27 +6332,98 @@ var updateComebackTelemetry = (state) => {
     checkpoint.reasons.forEach((reason) => playerTelemetry.behindReasons.add(reason));
   });
 };
+var updateActivePieceTelemetry = (state) => {
+  const pathLength = getPathLength(state.gameState.matchConfig.pathVariant);
+  ["light", "dark"].forEach((playerColor) => {
+    const activePieceCount = countActivePiecesOnBoard(state.gameState[playerColor], pathLength);
+    state.telemetry.players[playerColor].maxActivePiecesOnBoard = Math.max(
+      state.telemetry.players[playerColor].maxActivePiecesOnBoard,
+      activePieceCount
+    );
+  });
+};
+var updateStartingAreaExitTelemetry = (state, playerColor) => {
+  const playerTelemetry = state.telemetry.players[playerColor];
+  if (playerTelemetry.firstStartingAreaExitTurn !== null) {
+    return;
+  }
+  if (!hasPlayerExitedStartingArea(state.gameState[playerColor], state.gameState.matchConfig.pathVariant)) {
+    return;
+  }
+  playerTelemetry.firstStartingAreaExitTurn = playerTelemetry.playerTurnCount;
+};
+var updateOpponentBrinkTelemetry = (state) => {
+  ["light", "dark"].forEach((playerColor) => {
+    const opponentColor = getOtherPlayerColor(playerColor);
+    if (isOneSuccessfulMoveFromVictory(state.gameState, opponentColor)) {
+      state.telemetry.players[playerColor].opponentReachedBrink = true;
+    }
+  });
+};
+var updateMomentumTelemetry = (state) => {
+  const turnIndex = state.telemetry.totalTurns;
+  ["light", "dark"].forEach((playerColor) => {
+    const playerTelemetry = state.telemetry.players[playerColor];
+    const relation = getPositionLeadRelation(state.gameState, playerColor);
+    if (relation === "behind") {
+      playerTelemetry.lastBehindTurnIndex = turnIndex;
+      return;
+    }
+    if (relation !== "ahead" || playerTelemetry.lastBehindTurnIndex === null) {
+      return;
+    }
+    const turnSpan = turnIndex - playerTelemetry.lastBehindTurnIndex;
+    if (turnSpan > CHALLENGE_THRESHOLDS.MOMENTUM_SHIFT_MAX_TURN_WINDOW) {
+      return;
+    }
+    playerTelemetry.momentumShiftAchieved = true;
+    playerTelemetry.momentumShiftTurnSpan = playerTelemetry.momentumShiftTurnSpan === null ? turnSpan : Math.min(playerTelemetry.momentumShiftTurnSpan, turnSpan);
+  });
+};
+var completePlayerTurnTelemetry = (state, playerColor, options) => {
+  const playerTelemetry = state.telemetry.players[playerColor];
+  state.telemetry.totalTurns += 1;
+  playerTelemetry.playerTurnCount += 1;
+  if (options.unusableRoll) {
+    playerTelemetry.unusableRollCount += 1;
+    playerTelemetry.currentCaptureTurnStreak = 0;
+  } else if (options.didCapture) {
+    playerTelemetry.captureTurnNumbers.push(playerTelemetry.playerTurnCount);
+    playerTelemetry.currentCaptureTurnStreak += 1;
+    playerTelemetry.maxCaptureTurnStreak = Math.max(
+      playerTelemetry.maxCaptureTurnStreak,
+      playerTelemetry.currentCaptureTurnStreak
+    );
+  } else {
+    playerTelemetry.currentCaptureTurnStreak = 0;
+  }
+  updateStartingAreaExitTelemetry(state, playerColor);
+  updateActivePieceTelemetry(state);
+  updateComebackTelemetry(state);
+  updateMomentumTelemetry(state);
+  updateOpponentBrinkTelemetry(state);
+};
 var parseRpcPayload = (payload) => {
   var _a;
   if (!payload) {
     return {};
   }
   const data = JSON.parse(payload);
-  return (_a = asRecord2(data)) != null ? _a : {};
+  return (_a = asRecord3(data)) != null ? _a : {};
 };
 var normalizePrivateMatchCodeRecord = (value) => {
   var _a;
-  const record = asRecord2(value);
+  const record = asRecord3(value);
   if (!record) {
     return null;
   }
-  const code = normalizePrivateMatchCodeInput((_a = readStringField7(record, ["code"])) != null ? _a : "");
-  const matchId = readStringField7(record, ["matchId", "match_id"]);
+  const code = normalizePrivateMatchCodeInput((_a = readStringField8(record, ["code"])) != null ? _a : "");
+  const matchId = readStringField8(record, ["matchId", "match_id"]);
   const modeId = record.modeId;
-  const creatorUserId = readStringField7(record, ["creatorUserId", "creator_user_id"]);
-  const joinedUserId = readStringField7(record, ["joinedUserId", "joined_user_id"]);
-  const createdAt = readStringField7(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField7(record, ["updatedAt", "updated_at"]);
+  const creatorUserId = readStringField8(record, ["creatorUserId", "creator_user_id"]);
+  const joinedUserId = readStringField8(record, ["joinedUserId", "joined_user_id"]);
+  const createdAt = readStringField8(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField8(record, ["updatedAt", "updated_at"]);
   if (!isPrivateMatchCode(code) || !matchId || !isMatchModeId(modeId) || !creatorUserId || !createdAt || !updatedAt) {
     return null;
   }
@@ -5900,29 +6691,52 @@ var buildPrivateMatchRpcResponse = (matchId, modeId, privateCode, hasGuestJoined
   privateCode
 }, typeof hasGuestJoined === "boolean" ? { hasGuestJoined } : {}));
 var buildPlayerMatchSummary = (state, matchId, playerUserId, playerColor) => {
+  var _a;
   const opponentColor = playerColor === "light" ? "dark" : "light";
   const playerTelemetry = state.telemetry.players[playerColor];
+  const opponentTelemetry = state.telemetry.players[opponentColor];
+  const doubleStrikeTurnSpan = calculateDoubleStrikeTurnSpan(playerTelemetry.captureTurnNumbers);
   return {
     matchId,
     playerUserId,
     opponentType: state.opponentType,
+    opponentDifficulty: getOpponentDifficultyFromType(state.opponentType),
     didWin: state.gameState.winner === playerColor,
     totalMoves: state.telemetry.totalMoves,
     playerMoveCount: playerTelemetry.playerMoveCount,
+    playerTurnCount: playerTelemetry.playerTurnCount,
+    opponentTurnCount: opponentTelemetry.playerTurnCount,
     piecesLost: playerTelemetry.capturesSuffered,
     maxRollCount: playerTelemetry.maxRollCount,
+    unusableRollCount: playerTelemetry.unusableRollCount,
     capturesMade: playerTelemetry.capturesMade,
     capturesSuffered: playerTelemetry.capturesSuffered,
+    captureTurnNumbers: [...playerTelemetry.captureTurnNumbers],
+    maxCaptureTurnStreak: playerTelemetry.maxCaptureTurnStreak,
+    doubleStrikeAchieved: doubleStrikeTurnSpan !== null,
+    relentlessPressureAchieved: playerTelemetry.maxCaptureTurnStreak >= CHALLENGE_THRESHOLDS.RELENTLESS_PRESSURE_REQUIRED_STREAK,
     contestedTilesLandedCount: playerTelemetry.contestedTilesLandedCount,
+    opponentStartingAreaExitTurn: opponentTelemetry.firstStartingAreaExitTurn,
+    lockdownAchieved: opponentTelemetry.playerTurnCount >= CHALLENGE_THRESHOLDS.LOCKDOWN_REQUIRED_OPPONENT_TURNS && (opponentTelemetry.firstStartingAreaExitTurn === null || opponentTelemetry.firstStartingAreaExitTurn > CHALLENGE_THRESHOLDS.LOCKDOWN_REQUIRED_OPPONENT_TURNS),
     borneOffCount: state.gameState[playerColor].finishedCount,
     opponentBorneOffCount: state.gameState[opponentColor].finishedCount,
     wasBehindDuringMatch: playerTelemetry.wasBehindDuringMatch,
     behindCheckpointCount: playerTelemetry.behindCheckpointCount,
     behindReasons: Array.from(playerTelemetry.behindReasons),
+    opponentReachedBrink: playerTelemetry.opponentReachedBrink,
+    momentumShiftAchieved: playerTelemetry.momentumShiftAchieved,
+    momentumShiftTurnSpan: playerTelemetry.momentumShiftTurnSpan,
+    maxActivePiecesOnBoard: playerTelemetry.maxActivePiecesOnBoard,
+    modeId: state.modeId,
+    pieceCountPerSide: state.gameState.matchConfig.pieceCountPerSide,
+    isPrivateMatch: state.classification.private,
+    isFriendMatch: state.privateMatch,
+    isTournamentMatch: Boolean(state.tournamentContext),
+    tournamentEliminationRisk: ((_a = state.tournamentContext) == null ? void 0 : _a.eliminationRisk) === true,
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   };
 };
-var getPresenceUsername = (presence) => readStringField7(presence, ["username", "displayName", "display_name", "name"]);
+var getPresenceUsername = (presence) => readStringField8(presence, ["username", "displayName", "display_name", "name"]);
 var buildTournamentMatchCompletion = (state, matchId) => {
   var _a, _b, _c, _d;
   if (!state.tournamentContext) {
@@ -6130,7 +6944,7 @@ function rpcCreatePrivateMatch(ctx, _logger, nk, payload) {
     privateCode,
     privateCreatorUserId: ctx.userId,
     winRewardSource: "private_pvp_win",
-    allowsChallengeRewards: false
+    allowsChallengeRewards: true
   });
   createPrivateMatchCodeRecord(nk, modeId, matchId, ctx.userId, privateCode);
   return buildPrivateMatchRpcResponse(matchId, modeId, privateCode);
@@ -6410,7 +7224,7 @@ function applyRollOutcome(state, playerColor, rollValue) {
       rollValue: null,
       history: [...rollingState.history, `${rollingState.currentTurn} rolled ${rollValue} but had no moves.`]
     });
-    updateComebackTelemetry(state);
+    completePlayerTurnTelemetry(state, playerColor, { didCapture: false, unusableRoll: true });
     return [];
   }
   state.gameState = rollingState;
@@ -6418,7 +7232,7 @@ function applyRollOutcome(state, playerColor, rollValue) {
 }
 function applyValidatedMove(state, playerColor, move) {
   const didCapture = detectCaptureOnMove(state.gameState, move);
-  const targetCoord = getPathCoord2(playerColor, move.toIndex);
+  const targetCoord = getPathCoord(state.gameState.matchConfig.pathVariant, playerColor, move.toIndex);
   state.gameState = applyMove(state.gameState, move);
   state.telemetry.totalMoves += 1;
   state.telemetry.players[playerColor].playerMoveCount += 1;
@@ -6427,10 +7241,10 @@ function applyValidatedMove(state, playerColor, move) {
     state.telemetry.players[playerColor].capturesMade += 1;
     state.telemetry.players[opponentColor].capturesSuffered += 1;
   }
-  if (targetCoord && isWarZone(targetCoord.row, targetCoord.col)) {
+  if (targetCoord && isContestedLanding(state.gameState.matchConfig.pathVariant, playerColor, move.toIndex)) {
     state.telemetry.players[playerColor].contestedTilesLandedCount += 1;
   }
-  updateComebackTelemetry(state);
+  completePlayerTurnTelemetry(state, playerColor, { didCapture, unusableRoll: false });
 }
 function forfeitPlayerForInactivity(logger, nk, dispatcher, state, matchId, forfeitingColor) {
   const winnerColor = getOtherPlayerColor(forfeitingColor);
@@ -6482,7 +7296,7 @@ function applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, nowMs) {
         rollValue: null,
         history: [...state.gameState.history, `${activePlayerColor} timed out with no valid move.`]
       });
-      updateComebackTelemetry(state);
+      completePlayerTurnTelemetry(state, activePlayerColor, { didCapture: false, unusableRoll: true });
     }
   }
   if (state.gameState.winner) {

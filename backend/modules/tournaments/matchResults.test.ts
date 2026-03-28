@@ -129,6 +129,7 @@ const createCompletion = (overrides: Partial<AuthoritativeTournamentMatchComplet
     tournamentId: "tour-1",
     round: 1,
     entryId: "round-1-match-1",
+    eliminationRisk: true,
   },
   completedAt: "2026-03-26T11:00:00.000Z",
   totalMoves: 18,
@@ -266,12 +267,14 @@ describe("tournament authoritative match results", () => {
         tournamentId: "tour-1",
         tournamentRound: 3,
         tournamentEntryId: "quarter-final-2",
+        tournamentEliminationRisk: true,
       }),
     ).toEqual({
       runId: "run-1",
       tournamentId: "tour-1",
       round: 3,
       entryId: "quarter-final-2",
+      eliminationRisk: true,
     });
   });
 });

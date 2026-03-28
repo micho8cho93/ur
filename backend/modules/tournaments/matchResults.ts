@@ -1,5 +1,5 @@
-import type { MatchModeId } from "../../logic/matchConfigs";
-import type { PlayerColor } from "../../logic/types";
+import type { MatchModeId } from "../../../logic/matchConfigs";
+import type { PlayerColor } from "../../../logic/types";
 import {
   MAX_WRITE_ATTEMPTS,
   RuntimeStorageObject,
@@ -41,6 +41,7 @@ export type TournamentMatchContext = {
   tournamentId: string;
   round: number | null;
   entryId: string | null;
+  eliminationRisk: boolean;
 };
 
 export type TournamentMatchClassification = {
@@ -481,6 +482,7 @@ export const resolveTournamentMatchContextFromParams = (
         "bracketMatchId",
         "bracket_match_id",
       ]) ?? null,
+    eliminationRisk: params.tournamentEliminationRisk === true,
   };
 };
 

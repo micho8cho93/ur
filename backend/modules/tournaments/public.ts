@@ -658,6 +658,8 @@ export const rpcLaunchTournamentMatch = (
       allowsChallengeRewards: true,
       tournamentRunId: run.runId,
       tournamentId: run.tournamentId,
+      // Current public tournaments operate as elimination runs: a loss ends the player's run.
+      tournamentEliminationRisk: true,
     });
     const nextQueue: TournamentMatchQueueRecord = {
       runId: run.runId,

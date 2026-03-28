@@ -13,29 +13,34 @@ describe('offlineMatchRewards', () => {
     let telemetry = createOfflineMatchTelemetry();
     telemetry = recordOfflineRoll(telemetry, 'light', 4);
 
+    const previousState = createInitialState();
     const nextState = createInitialState();
     nextState.light.pieces[0].position = 4;
     nextState.dark.pieces[0].position = -1;
     nextState.history = ['light captured dark', 'light moved to 4. Rosette: false'];
 
-    telemetry = recordOfflineHistoryEntries(telemetry, nextState, nextState.history);
+    telemetry = recordOfflineHistoryEntries(telemetry, previousState, nextState, nextState.history);
 
     expect(telemetry.totalMoves).toBe(1);
+    expect(telemetry.totalTurns).toBe(1);
     expect(telemetry.players.light.playerMoveCount).toBe(1);
+    expect(telemetry.players.light.playerTurnCount).toBe(1);
     expect(telemetry.players.light.maxRollCount).toBe(1);
     expect(telemetry.players.light.capturesMade).toBe(1);
     expect(telemetry.players.dark.capturesSuffered).toBe(1);
     expect(telemetry.players.light.contestedTilesLandedCount).toBe(1);
+    expect(telemetry.players.light.captureTurnNumbers).toEqual([1]);
   });
 
   it('tracks comeback checkpoints and builds a bot-match summary', () => {
     let telemetry = createOfflineMatchTelemetry();
 
+    const previousState = createInitialState();
     const behindState = createInitialState();
     behindState.dark.finishedCount = 1;
     behindState.dark.pieces[0].position = 10;
 
-    telemetry = recordOfflineHistoryEntries(telemetry, behindState, ['light rolled 0 but had no moves.']);
+    telemetry = recordOfflineHistoryEntries(telemetry, previousState, behindState, ['light rolled 0 but had no moves.']);
 
     const finalState = createInitialState();
     finalState.light.finishedCount = 7;
@@ -65,12 +70,18 @@ describe('offlineMatchRewards', () => {
       matchId: 'local-123',
       playerUserId: 'user-1',
       opponentType: 'easy_bot',
+      opponentDifficulty: 'easy',
       didWin: true,
+      playerTurnCount: 1,
+      opponentTurnCount: 0,
+      unusableRollCount: 1,
       borneOffCount: 7,
       opponentBorneOffCount: 5,
       wasBehindDuringMatch: true,
       behindCheckpointCount: 1,
       behindReasons: expect.arrayContaining(['borne_off_deficit', 'progress_deficit']),
+      modeId: 'standard',
+      pieceCountPerSide: 7,
       timestamp: '2026-03-19T12:00:00.000Z',
     });
   });
