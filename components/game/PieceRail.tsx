@@ -312,6 +312,13 @@ export const PieceRail: React.FC<PieceRailProps> = ({
       return;
     }
 
+    // Horizontal trays begin with a provisional fallback stack position before the tray art
+    // bounds are resolved. Only report coordinates once the final tray-well geometry exists so
+    // intro animations land on the same coordinates the reserve pieces will actually occupy.
+    if (!isVertical && !horizontalTrayInteriorBounds) {
+      return;
+    }
+
     requestAnimationFrame(() => {
       const measuredSlots: (ReserveSlotMeasurement | null)[] = Array.from(
         { length: visibleSlotIndices.length },
@@ -349,7 +356,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
         });
       });
     });
-  }, [color, onReserveSlotsLayout, shownCount, visibleSlotIndices]);
+  }, [color, horizontalTrayInteriorBounds, isVertical, onReserveSlotsLayout, shownCount, visibleSlotIndices]);
 
   const reportRailFrame = useCallback(() => {
     if (!onRailFrameLayout || !railRef.current) {
