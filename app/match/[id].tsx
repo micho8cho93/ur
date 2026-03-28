@@ -67,11 +67,9 @@ import { useGameStore } from '@/store/useGameStore';
 import { resolveVisibleViewportSize } from '@/src/layout/matchViewport';
 import {
   PLAYTHROUGH_TUTORIAL_ID,
-  PLAYTHROUGH_TUTORIAL_COMPLETION_COPY,
+  PLAYTHROUGH_TUTORIAL_LESSON_COUNT,
   PLAYTHROUGH_TUTORIAL_LESSONS,
-  PLAYTHROUGH_TUTORIAL_OPENING_COPY,
   PLAYTHROUGH_TUTORIAL_SCRIPT,
-  getPlaythroughTutorialStepGuidance,
   getPlaythroughTutorialLessonState,
   isPlaythroughTutorialId,
 } from '@/tutorials/playthroughTutorial';
@@ -638,39 +636,33 @@ export function GameRoom() {
     tutorialScriptStepIndex < PLAYTHROUGH_TUTORIAL_SCRIPT.length
       ? PLAYTHROUGH_TUTORIAL_SCRIPT[tutorialScriptStepIndex]
       : null;
-  const isGuidedTutorialActive = isPlaythroughTutorialMatch && tutorialCoachPhase !== 'freeplay';
-  const isFinalTutorialLesson = tutorialLessonIndex === PLAYTHROUGH_TUTORIAL_LESSONS.length - 1;
   const tutorialCoachVisible =
     tutorialCoachPhase === 'lesson_intro' || tutorialCoachPhase === 'lesson_result';
   const tutorialCoachEyebrow =
-    tutorialCoachPhase === 'lesson_result' && !isFinalTutorialLesson
-      ? 'What this means'
-      : undefined;
+    tutorialCoachPhase === 'lesson_intro' && tutorialLesson
+      ? `Lesson ${tutorialLesson.lessonNumber} of ${PLAYTHROUGH_TUTORIAL_LESSON_COUNT}`
+      : tutorialCoachPhase === 'lesson_result'
+        ? 'What this means'
+        : undefined;
   const tutorialCoachTitle =
-    tutorialCoachPhase === 'lesson_intro'
-      ? PLAYTHROUGH_TUTORIAL_OPENING_COPY.title
-      : tutorialCoachPhase === 'lesson_result' && isFinalTutorialLesson
-        ? PLAYTHROUGH_TUTORIAL_COMPLETION_COPY.title
+    tutorialCoachPhase === 'lesson_intro' && tutorialLesson
+      ? tutorialLesson.title
       : tutorialCoachPhase === 'lesson_result' && tutorialLesson
         ? tutorialLesson.title
         : '';
   const tutorialCoachBody =
-    tutorialCoachPhase === 'lesson_intro'
-      ? PLAYTHROUGH_TUTORIAL_OPENING_COPY.body
-      : tutorialCoachPhase === 'lesson_result' && isFinalTutorialLesson
-        ? PLAYTHROUGH_TUTORIAL_COMPLETION_COPY.body
+    tutorialCoachPhase === 'lesson_intro' && tutorialLesson
+      ? tutorialLesson.objective
       : tutorialCoachPhase === 'lesson_result' && tutorialLesson
         ? tutorialLesson.implication
         : '';
   const tutorialCoachActionLabel =
-    tutorialCoachPhase === 'lesson_intro'
-      ? PLAYTHROUGH_TUTORIAL_OPENING_COPY.actionLabel
-      : tutorialCoachPhase === 'lesson_result' && isFinalTutorialLesson
-        ? PLAYTHROUGH_TUTORIAL_COMPLETION_COPY.actionLabel
+    tutorialCoachPhase === 'lesson_result' && tutorialLessonIndex === PLAYTHROUGH_TUTORIAL_LESSONS.length - 1
+      ? 'Play On'
       : 'Continue';
   const tutorialObjectiveBanner =
-    tutorialCoachPhase === 'lesson_play'
-      ? getPlaythroughTutorialStepGuidance(tutorialPendingStep)
+    tutorialCoachPhase === 'lesson_play' && tutorialLesson
+      ? `Lesson ${tutorialLesson.lessonNumber}/${PLAYTHROUGH_TUTORIAL_LESSON_COUNT}: ${tutorialLesson.objective}`
       : null;
   const tournamentAdvanceFlow = useTournamentAdvanceFlow({
     enabled: shouldTrackTournamentAdvanceFlow,
@@ -2491,8 +2483,6 @@ export function GameRoom() {
 
   const lightReserve = gameState.light.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
   const darkReserve = gameState.dark.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
-  const displayedLightReserve = isGuidedTutorialActive ? Math.min(lightReserve, 1) : lightReserve;
-  const displayedDarkReserve = isGuidedTutorialActive ? 0 : darkReserve;
   const normalizedMatchNumber = matchId ? matchId.replace(/^local-/, '') : null;
   const matchTitle = isPlaythroughTutorialMatch
     ? 'Play Tutorial'
@@ -2963,17 +2953,17 @@ export function GameRoom() {
     if (!hasPlayedBoardDropIntro) return;
     if (hasPlayedReserveCascadeIntro || showReserveCascadeIntro) return;
     if (reserveCascadeTargets.length === 0) return;
-    if (lightReserveSlots.length !== displayedLightReserve) return;
-    if (darkReserveSlots.length !== displayedDarkReserve) return;
+    if (lightReserveSlots.length !== lightReserve) return;
+    if (darkReserveSlots.length !== darkReserve) return;
 
     setFrozenReserveCascadeTargets(reserveCascadeTargets.map((target) => ({ ...target })));
     setShowReserveCascadeIntro(true);
   }, [
-    displayedDarkReserve,
-    displayedLightReserve,
+    darkReserve,
     darkReserveSlots.length,
     hasPlayedBoardDropIntro,
     hasPlayedReserveCascadeIntro,
+    lightReserve,
     lightReserveSlots.length,
     reserveCascadeTargets.length,
     showReserveCascadeIntro,
@@ -3484,7 +3474,7 @@ export function GameRoom() {
                   color="light"
                   tokenVariant="light"
                   piecePixelSize={scaledReservePiecePixelSize}
-                  reserveCount={displayedLightReserve}
+                  reserveCount={lightReserve}
                   totalCount={pieceCountPerSide}
                   active={introsComplete && isMyTurn}
                   hideReservePieces={shouldHideReservePieces}
@@ -3571,7 +3561,7 @@ export function GameRoom() {
                   color="dark"
                   tokenVariant="dark"
                   piecePixelSize={scaledReservePiecePixelSize}
-                  reserveCount={displayedDarkReserve}
+                  reserveCount={darkReserve}
                   totalCount={pieceCountPerSide}
                   active={introsComplete && !isMyTurn}
                   hideReservePieces={shouldHideReservePieces}
@@ -3645,7 +3635,7 @@ export function GameRoom() {
                       tokenVariant="light"
                       orientation="vertical"
                       piecePixelSize={scaledReservePiecePixelSize}
-                      reserveCount={displayedLightReserve}
+                      reserveCount={lightReserve}
                       totalCount={pieceCountPerSide}
                       active={introsComplete && isMyTurn}
                       hideReservePieces={shouldHideReservePieces}
@@ -3686,7 +3676,7 @@ export function GameRoom() {
                       tokenVariant="dark"
                       orientation="vertical"
                       piecePixelSize={scaledReservePiecePixelSize}
-                      reserveCount={displayedDarkReserve}
+                      reserveCount={darkReserve}
                       totalCount={pieceCountPerSide}
                       active={introsComplete && !isMyTurn}
                       hideReservePieces={shouldHideReservePieces}
@@ -3752,7 +3742,7 @@ export function GameRoom() {
                         color="light"
                         tokenVariant="light"
                         piecePixelSize={scaledReservePiecePixelSize}
-                        reserveCount={displayedLightReserve}
+                        reserveCount={lightReserve}
                         totalCount={pieceCountPerSide}
                         active={introsComplete && isMyTurn}
                         hideReservePieces={shouldHideReservePieces}
@@ -3766,7 +3756,7 @@ export function GameRoom() {
                         color="dark"
                         tokenVariant="dark"
                         piecePixelSize={scaledReservePiecePixelSize}
-                        reserveCount={displayedDarkReserve}
+                        reserveCount={darkReserve}
                         totalCount={pieceCountPerSide}
                         active={introsComplete && !isMyTurn}
                         hideReservePieces={shouldHideReservePieces}

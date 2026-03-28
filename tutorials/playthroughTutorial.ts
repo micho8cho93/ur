@@ -5,20 +5,6 @@ import type { TutorialRollStep, TutorialRollValue, TutorialStep } from './tutori
 export const PLAYTHROUGH_TUTORIAL_ID = 'playthrough' as const;
 export const PLAYTHROUGH_TUTORIAL_LESSON_COUNT = 5 as const;
 
-export const PLAYTHROUGH_TUTORIAL_OPENING_COPY = {
-  title: 'Roll and race',
-  body:
-    'Start by rolling the dice and moving the glowing piece the same number of spaces. Your goal is to bring each light piece onto the board, move it up into the middle column, down the last two tiles, and then move it off the board to score.',
-  actionLabel: 'Start Tutorial',
-} as const;
-
-export const PLAYTHROUGH_TUTORIAL_COMPLETION_COPY = {
-  title: 'Tutorial complete',
-  body:
-    'The guided part is over. Keep playing against the bot from this position. Win the match to earn your first XP.',
-  actionLabel: 'Keep Playing',
-} as const;
-
 type PlaythroughTutorialLessonSpec = {
   id: string;
   lessonNumber: number;
@@ -230,70 +216,6 @@ export const getPlaythroughTutorialLessonState = (lessonIndex: number): GameStat
   const lesson = PLAYTHROUGH_TUTORIAL_LESSONS[lessonIndex];
   assertTutorial(Boolean(lesson), `Unknown lesson index ${lessonIndex}.`);
   return cloneGameState(PLAYTHROUGH_TUTORIAL_FRAMES[lesson.startFrameIndex].gameState);
-};
-
-const PLAYTHROUGH_TUTORIAL_STEP_GUIDANCE: Readonly<Record<string, string>> = {
-  'roll-light-enter': 'Roll the dice, then move the glowing piece the same number of spaces.',
-  'move-light-enter': 'Move your piece onto the board.',
-  'roll-dark-pass-after-entry': 'Dark rolled a zero, so no piece moves.',
-  'roll-light-opening-rosette': 'Roll again and keep the same piece moving.',
-  'move-light-opening-rosette': 'Move up the path toward the middle column.',
-  'roll-light-enter-war-zone': 'Roll again and move into the middle column.',
-  'move-light-enter-war-zone': 'Move into the middle column.',
-  'roll-dark-shared-rosette-threat': 'Watch Dark enter the shared lane.',
-  'move-dark-shared-rosette-threat': 'Dark moved up into the shared lane.',
-  'roll-dark-threat-fizzles': 'Dark rolled a zero, so the turn comes back.',
-  'roll-light-pass-before-capture-setup-1': 'You rolled a zero, so this piece cannot move.',
-  'roll-dark-enter-capture-runner': 'Dark is bringing in another piece.',
-  'move-dark-enter-capture-runner': 'Watch where Dark places the new piece.',
-  'roll-light-pass-before-capture-setup-2': 'You rolled a zero again, so stay ready.',
-  'roll-dark-advance-capture-runner': 'Dark is moving deeper into the shared lane.',
-  'move-dark-advance-capture-runner': 'Dark moved up the middle column.',
-  'roll-light-pass-before-capture-setup-3': 'You rolled a zero again. The rosette chance is next.',
-  'roll-dark-set-capture-target': 'Dark is setting a target in front of you.',
-  'move-dark-set-capture-target': 'Dark stopped ahead of you in the middle column.',
-  'roll-light-shared-rosette': 'Roll again and try to land on the rosette tile.',
-  'move-light-shared-rosette': 'Move down and land on the rosette tile.',
-  'roll-light-capture': 'Rosette bonus. Roll again and capture the dark piece.',
-  'move-light-capture': 'Capture the dark piece in front of you.',
-  'roll-dark-pass-after-capture': 'Dark rolled a zero, so you stay in control.',
-  'roll-light-home-stretch': 'Roll again and move down toward the last two tiles.',
-  'move-light-home-stretch': 'Move down the path toward the last two tiles.',
-  'roll-dark-pass-before-score-setup': 'Dark rolled a zero, so you can keep pushing.',
-  'roll-light-home-rosette': 'Roll again and try to land on the final rosette tile.',
-  'move-light-home-rosette': 'Move onto the rosette tile near the end.',
-  'roll-light-score': 'Roll once more, then move the piece off the board to score.',
-  'move-light-score': 'Move the piece off the board to score.',
-};
-
-export const getPlaythroughTutorialStepGuidance = (step: TutorialStep | null): string | null => {
-  if (!step) {
-    return null;
-  }
-
-  const guidance = PLAYTHROUGH_TUTORIAL_STEP_GUIDANCE[step.id];
-
-  if (guidance) {
-    return guidance;
-  }
-
-  if (step.kind === 'ROLL') {
-    if (step.player === 'light' && step.value === 0) {
-      return 'You rolled a zero, so no piece moves this turn.';
-    }
-
-    if (step.player === 'dark' && step.value === 0) {
-      return 'Dark rolled a zero, so no piece moves.';
-    }
-
-    return step.player === 'light'
-      ? 'Roll again and keep moving.'
-      : 'Dark is rolling. Watch what happens next.';
-  }
-
-  return step.player === 'light'
-    ? 'Move the highlighted piece.'
-    : 'Dark is moving. Watch the lane, then get ready.';
 };
 
 export const isPlaythroughTutorialId = (value: unknown): value is typeof PLAYTHROUGH_TUTORIAL_ID =>

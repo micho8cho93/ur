@@ -16,14 +16,6 @@ const mockAudioSettingsModal = jest.fn(() => {
   const { View } = require('react-native');
   return <View testID="mock-audio-settings" />;
 });
-const mockPieceRail = jest.fn(({ color, reserveCount }: { color: string; reserveCount: number }) => {
-  const { Text, View } = require('react-native');
-  return (
-    <View testID={`mock-piece-rail-${color}`}>
-      <Text>{`${color}:${reserveCount}`}</Text>
-    </View>
-  );
-});
 const mockModal = jest.fn(
   ({
     visible,
@@ -227,8 +219,10 @@ jest.mock('@/components/game/Board', () => {
 });
 
 jest.mock('@/components/game/PieceRail', () => {
+  const React = require('react');
+  const { View } = require('react-native');
   return {
-    PieceRail: (props: { color: string; reserveCount: number }) => mockPieceRail(props),
+    PieceRail: () => <View testID="mock-piece-rail" />,
   };
 });
 
@@ -959,7 +953,7 @@ describe('GameRoom match dice stage', () => {
     expect(screen.queryByText("Time's up")).toBeNull();
   });
 
-  it('shows the tutorial opening modal and hides extra reserve pieces during guided play', async () => {
+  it('shows the guided tutorial title when launched in tutorial mode', async () => {
     mockSearchParams.tutorial = 'playthrough';
     mockSearchParams.botDifficulty = 'easy';
 
@@ -969,15 +963,8 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Roll and race')).toBeTruthy();
+    expect(screen.getByText('Play Tutorial')).toBeTruthy();
     expect(screen.getByTestId('mock-play-tutorial-coach')).toBeTruthy();
-    expect(
-      screen.getByText(
-        'Start by rolling the dice and moving the glowing piece the same number of spaces. Your goal is to bring each light piece onto the board, move it up into the middle column, down the last two tiles, and then move it off the board to score.',
-      ),
-    ).toBeTruthy();
-    expect(screen.getAllByText('light:1').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('dark:0').length).toBeGreaterThan(0);
   });
 
   it('keeps the tutorial on one continuous scripted playthrough between lesson callouts', async () => {
@@ -1001,11 +988,6 @@ describe('GameRoom match dice stage', () => {
       fireEvent.press(screen.getByTestId('mock-play-tutorial-coach-continue'));
     });
     view.rerender(<GameRoom />);
-
-    expect(
-      screen.getByText('Roll the dice, then move the glowing piece the same number of spaces.'),
-    ).toBeTruthy();
-    expect(screen.queryByText(/Lesson \d/)).toBeNull();
 
     const rollOnce = async () => {
       const latestDiceProps = [...mockDice.mock.calls]
@@ -1053,7 +1035,6 @@ describe('GameRoom match dice stage', () => {
     expect(mockStoreState.gameState.phase).toBe('rolling');
     expect(mockStoreState.gameState.light.pieces[0].position).toBe(0);
     expect(screen.queryByText('The middle row is where both sides can fight over the same squares, so captures become possible there.')).toBeNull();
-    expect(screen.getByText('Roll again and keep the same piece moving.')).toBeTruthy();
 
     await rollOnce();
     expect(mockStoreState.gameState.rollValue).toBe(3);

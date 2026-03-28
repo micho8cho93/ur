@@ -3,12 +3,9 @@ import { getPathCoord } from '@/logic/pathVariants';
 import type { GameState } from '@/logic/types';
 import { buildTutorialFrames } from './tutorialEngine';
 import {
-  PLAYTHROUGH_TUTORIAL_COMPLETION_COPY,
   PLAYTHROUGH_TUTORIAL_FRAMES,
   PLAYTHROUGH_TUTORIAL_LESSONS,
-  PLAYTHROUGH_TUTORIAL_OPENING_COPY,
   PLAYTHROUGH_TUTORIAL_SCRIPT,
-  getPlaythroughTutorialStepGuidance,
   getPlaythroughTutorialLessonState,
 } from './playthroughTutorial';
 
@@ -193,28 +190,6 @@ describe('playthrough tutorial continuous script', () => {
 
   it('numbers the lessons exactly 1 through 5 with no duplicates', () => {
     expect(PLAYTHROUGH_TUTORIAL_LESSONS.map((lesson) => lesson.lessonNumber)).toEqual([1, 2, 3, 4, 5]);
-  });
-
-  it('exports opening and completion copy for the guided flow', () => {
-    expect(PLAYTHROUGH_TUTORIAL_OPENING_COPY.body).toContain('rolling the dice');
-    expect(PLAYTHROUGH_TUTORIAL_OPENING_COPY.body).toContain('move it off the board to score');
-    expect(PLAYTHROUGH_TUTORIAL_COMPLETION_COPY.body).toContain('bot');
-    expect(PLAYTHROUGH_TUTORIAL_COMPLETION_COPY.body).toContain('XP');
-  });
-
-  it('describes tutorial banner guidance with plain-language prompts', () => {
-    expect(getPlaythroughTutorialStepGuidance(PLAYTHROUGH_TUTORIAL_SCRIPT[0]!)).toBe(
-      'Roll the dice, then move the glowing piece the same number of spaces.',
-    );
-    expect(getPlaythroughTutorialStepGuidance(PLAYTHROUGH_TUTORIAL_SCRIPT[6]!)).toBe(
-      'Move into the middle column.',
-    );
-    expect(getPlaythroughTutorialStepGuidance(PLAYTHROUGH_TUTORIAL_SCRIPT[10]!)).toBe(
-      'You rolled a zero, so this piece cannot move.',
-    );
-    expect(getPlaythroughTutorialStepGuidance(PLAYTHROUGH_TUTORIAL_SCRIPT[20]!)).toBe(
-      'Move down and land on the rosette tile.',
-    );
   });
 
   it('derives the exported frame timeline only by applying the next scripted step', () => {
