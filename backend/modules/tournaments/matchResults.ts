@@ -11,6 +11,7 @@ import {
   maybeSetStorageVersion,
 } from "../progression";
 import { readNumberField, readStringField } from "./definitions";
+import { finalizeTournamentRun, getNakamaTournamentById } from "./admin";
 import type { RuntimeLogger, RuntimeMetadata, RuntimeNakama } from "./types";
 
 type TournamentOperator = "best" | "set" | "incr";
@@ -452,6 +453,50 @@ const updateTournamentRunMetadata = (
   }
 };
 
+const readTournamentEntrantCount = (value: unknown): number => {
+  const entrants = readNumberField(value, ["size", "maxSize", "max_size"]);
+  return typeof entrants === "number" && Number.isFinite(entrants) ? Math.max(0, Math.floor(entrants)) : 0;
+};
+
+const maybeAutoFinalizeTournamentRun = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  runId: string,
+): void => {
+  const runState = readTournamentRunState(nk, runId);
+  const run = runState.run;
+
+  if (!run || run.lifecycle === "finalized") {
+    return;
+  }
+
+  const countedMatchCount = Math.max(
+    0,
+    Math.floor(readNumberField(run.metadata, ["countedMatchCount", "validMatchCount"]) ?? 0),
+  );
+  const entrantCount = readTournamentEntrantCount(getNakamaTournamentById(nk, run.tournamentId));
+
+  if (entrantCount < 2 || countedMatchCount < entrantCount - 1) {
+    return;
+  }
+
+  try {
+    const result = finalizeTournamentRun(logger, nk, run.runId, {});
+    logger.info(
+      "Auto-finalized tournament run %s after %d counted matches for %d entrants.",
+      result.run.runId,
+      countedMatchCount,
+      entrantCount,
+    );
+  } catch (error) {
+    logger.warn(
+      "Unable to auto-finalize tournament run %s after match completion: %s",
+      run.runId,
+      getErrorMessage(error),
+    );
+  }
+};
+
 export const resolveTournamentMatchContextFromParams = (
   params: Record<string, unknown>,
 ): TournamentMatchContext | null => {
@@ -577,6 +622,9 @@ export const processCompletedAuthoritativeTournamentMatch = (
   if (runState.run) {
     try {
       updateTournamentRunMetadata(nk, logger, runState.run.runId, record);
+      if (record.counted) {
+        maybeAutoFinalizeTournamentRun(nk, logger, runState.run.runId);
+      }
     } catch (error) {
       logger.warn(
         "Unable to update tournament run metadata for %s after match %s: %s",

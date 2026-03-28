@@ -4724,6 +4724,81 @@ var resolveChampionUserId = (snapshot) => {
   const championRecord = (_d = (_c = (_a = rankedRecords.find((entry) => entry.rank === 1)) == null ? void 0 : _a.record) != null ? _c : (_b = rankedRecords.slice().sort((left, right) => left.rank - right.rank)[0]) == null ? void 0 : _b.record) != null ? _d : snapshot.records[0];
   return championRecord ? readStandingsRecordOwnerId(championRecord) : null;
 };
+var finalizeTournamentRun = (logger, nk, runId, options = {}) => {
+  var _a, _b, _c;
+  const runBeforeUpdate = readRunOrThrow(nk, runId);
+  const nakamaTournament = getNakamaTournamentById(nk, runBeforeUpdate.tournamentId);
+  const standingsLimit = clampInteger(options.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
+  const overrideExpiry = resolveOverrideExpiry((_a = options.overrideExpiry) != null ? _a : null, nakamaTournament);
+  const finalSnapshot = (_b = runBeforeUpdate.finalSnapshot) != null ? _b : buildStandingsSnapshot(
+    nk,
+    runBeforeUpdate.tournamentId,
+    standingsLimit,
+    overrideExpiry
+  );
+  let disabledRanks = false;
+  try {
+    nk.tournamentRanksDisable(runBeforeUpdate.tournamentId);
+    disabledRanks = true;
+  } catch (error) {
+    logger.warn(
+      "Unable to disable ranks for %s during finalization: %s",
+      runBeforeUpdate.runId,
+      String(error)
+    );
+  }
+  const finalizationTimestamp = (/* @__PURE__ */ new Date()).toISOString();
+  const run = updateRunWithRetry(nk, logger, runId, (current) => {
+    var _a2, _b2, _c2;
+    return __spreadProps(__spreadValues({}, current), {
+      lifecycle: "finalized",
+      updatedAt: finalizationTimestamp,
+      finalizedAt: (_a2 = current.finalizedAt) != null ? _a2 : finalizationTimestamp,
+      closedAt: (_b2 = current.closedAt) != null ? _b2 : finalizationTimestamp,
+      finalSnapshot: (_c2 = current.finalSnapshot) != null ? _c2 : finalSnapshot
+    });
+  });
+  const effectiveSnapshot = (_c = run.finalSnapshot) != null ? _c : finalSnapshot;
+  const championUserId = resolveChampionUserId(effectiveSnapshot);
+  if (championUserId) {
+    const rewardSettings = resolveTournamentXpRewardSettings(run.metadata);
+    if (rewardSettings.xpForTournamentChampion <= 0) {
+      logger.info("Skipping tournament champion XP for %s because the configured reward is zero.", run.runId);
+    } else {
+      try {
+        const rewardResult = awardXpForTournamentChampion(nk, logger, {
+          userId: championUserId,
+          runId: run.runId,
+          awardedXp: rewardSettings.xpForTournamentChampion
+        });
+        if (!rewardResult.duplicate) {
+          logger.info(
+            "Awarded tournament champion XP to %s for run %s. total=%d",
+            championUserId,
+            run.runId,
+            rewardResult.newTotalXp
+          );
+        }
+      } catch (error) {
+        logger.warn(
+          "Unable to award tournament champion XP for %s to %s: %s",
+          run.runId,
+          championUserId,
+          getErrorMessage(error)
+        );
+      }
+    }
+  } else if (effectiveSnapshot.records.length > 0) {
+    logger.warn("Unable to resolve champion user ID for finalized tournament %s.", run.runId);
+  }
+  return {
+    run,
+    nakamaTournament,
+    finalSnapshot: effectiveSnapshot,
+    disabledRanks,
+    championUserId
+  };
+};
 var sortRuns = (runs) => runs.slice().sort((left, right) => {
   const updatedCompare = right.updatedAt.localeCompare(left.updatedAt);
   if (updatedCompare !== 0) {
@@ -5076,69 +5151,16 @@ var rpcAdminFinalizeTournament = (ctx, logger, nk, payload) => {
       if (!runId) {
         throw new Error("runId is required.");
       }
-      const runBeforeUpdate = readRunOrThrow(_nk, runId);
-      const nakamaTournament = getNakamaTournamentById(_nk, runBeforeUpdate.tournamentId);
-      const standingsLimit = clampInteger(parsed.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
-      const overrideExpiry = resolveOverrideExpiry(
-        readNumberField4(parsed, ["overrideExpiry", "override_expiry"]),
-        nakamaTournament
-      );
-      const finalSnapshot = buildStandingsSnapshot(_nk, runBeforeUpdate.tournamentId, standingsLimit, overrideExpiry);
-      let disabledRanks = false;
-      try {
-        _nk.tournamentRanksDisable(runBeforeUpdate.tournamentId);
-        disabledRanks = true;
-      } catch (error) {
-        _logger.warn("Unable to disable ranks for %s during finalization: %s", runBeforeUpdate.runId, String(error));
-      }
-      const run = updateRunWithRetry(_nk, _logger, runId, (current) => {
-        var _a, _b;
-        return __spreadProps(__spreadValues({}, current), {
-          lifecycle: "finalized",
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          finalizedAt: (_a = current.finalizedAt) != null ? _a : (/* @__PURE__ */ new Date()).toISOString(),
-          closedAt: (_b = current.closedAt) != null ? _b : (/* @__PURE__ */ new Date()).toISOString(),
-          finalSnapshot
-        });
+      const finalized = finalizeTournamentRun(_logger, _nk, runId, {
+        limit: readNumberField4(parsed, ["limit"]),
+        overrideExpiry: readNumberField4(parsed, ["overrideExpiry", "override_expiry"])
       });
-      const championUserId = resolveChampionUserId(finalSnapshot);
-      if (championUserId) {
-        const rewardSettings = resolveTournamentXpRewardSettings(run.metadata);
-        if (rewardSettings.xpForTournamentChampion <= 0) {
-          _logger.info("Skipping tournament champion XP for %s because the configured reward is zero.", run.runId);
-        } else {
-          try {
-            const rewardResult = awardXpForTournamentChampion(_nk, _logger, {
-              userId: championUserId,
-              runId: run.runId,
-              awardedXp: rewardSettings.xpForTournamentChampion
-            });
-            if (!rewardResult.duplicate) {
-              _logger.info(
-                "Awarded tournament champion XP to %s for run %s. total=%d",
-                championUserId,
-                run.runId,
-                rewardResult.newTotalXp
-              );
-            }
-          } catch (error) {
-            _logger.warn(
-              "Unable to award tournament champion XP for %s to %s: %s",
-              run.runId,
-              championUserId,
-              getErrorMessage(error)
-            );
-          }
-        }
-      } else if (finalSnapshot.records.length > 0) {
-        _logger.warn("Unable to resolve champion user ID for finalized tournament %s.", run.runId);
-      }
       return JSON.stringify({
         ok: true,
-        run,
-        nakamaTournament,
-        finalSnapshot,
-        disabledRanks
+        run: finalized.run,
+        nakamaTournament: finalized.nakamaTournament,
+        finalSnapshot: finalized.finalSnapshot,
+        disabledRanks: finalized.disabledRanks
       });
     },
     {
@@ -6154,6 +6176,41 @@ var updateTournamentRunMetadata = (nk, logger, runId, result) => {
     }
   }
 };
+var readTournamentEntrantCount = (value) => {
+  const entrants = readNumberField4(value, ["size", "maxSize", "max_size"]);
+  return typeof entrants === "number" && Number.isFinite(entrants) ? Math.max(0, Math.floor(entrants)) : 0;
+};
+var maybeAutoFinalizeTournamentRun = (nk, logger, runId) => {
+  var _a;
+  const runState = readTournamentRunState(nk, runId);
+  const run = runState.run;
+  if (!run || run.lifecycle === "finalized") {
+    return;
+  }
+  const countedMatchCount = Math.max(
+    0,
+    Math.floor((_a = readNumberField4(run.metadata, ["countedMatchCount", "validMatchCount"])) != null ? _a : 0)
+  );
+  const entrantCount = readTournamentEntrantCount(getNakamaTournamentById(nk, run.tournamentId));
+  if (entrantCount < 2 || countedMatchCount < entrantCount - 1) {
+    return;
+  }
+  try {
+    const result = finalizeTournamentRun(logger, nk, run.runId, {});
+    logger.info(
+      "Auto-finalized tournament run %s after %d counted matches for %d entrants.",
+      result.run.runId,
+      countedMatchCount,
+      entrantCount
+    );
+  } catch (error) {
+    logger.warn(
+      "Unable to auto-finalize tournament run %s after match completion: %s",
+      run.runId,
+      getErrorMessage(error)
+    );
+  }
+};
 var resolveTournamentMatchContextFromParams = (params) => {
   var _a, _b;
   const runId = readStringField6(params, ["tournamentRunId", "tournament_run_id", "runId", "run_id"]);
@@ -6260,6 +6317,9 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
   if (runState.run) {
     try {
       updateTournamentRunMetadata(nk, logger, runState.run.runId, record);
+      if (record.counted) {
+        maybeAutoFinalizeTournamentRun(nk, logger, runState.run.runId);
+      }
     } catch (error) {
       logger.warn(
         "Unable to update tournament run metadata for %s after match %s: %s",

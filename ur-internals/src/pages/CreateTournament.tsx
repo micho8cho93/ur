@@ -269,7 +269,9 @@ export function CreateTournamentPage() {
                 onChange={(event) => updateField('xpForTournamentChampion', event)}
                 required
               />
-              <span className="muted">This champion bonus is awarded once when the run is finalized.</span>
+              <span className="muted">
+                This champion bonus is awarded once when the run is finalized. Public elimination runs finalize automatically after the deciding match.
+              </span>
             </div>
 
             <div className="field field--full field--checkboxes">

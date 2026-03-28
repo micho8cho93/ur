@@ -113,6 +113,7 @@ const BOARD_INTRO_FALLBACK_DELAY_MS = 400;
 const TUTORIAL_BOT_ROLL_DELAY_MS = 850;
 const TUTORIAL_BOT_MOVE_DELAY_MS = 1200;
 const TUTORIAL_NO_MOVE_DELAY_MS = 850;
+const ONLINE_MATCH_REWARD_REFRESH_RETRY_MS = 1200;
 const SHOULD_BYPASS_CINEMATIC_INTROS = process.env.NODE_ENV === 'test';
 
 const measureViewInWindow = (
@@ -1408,9 +1409,12 @@ export function GameRoom() {
     }
 
     let isMounted = true;
+    let followUpRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const refreshMatchRewards = async () => {
-      setIsRefreshingMatchRewards(true);
+    const refreshMatchRewards = async (options?: { showLoading?: boolean }) => {
+      if (options?.showLoading !== false) {
+        setIsRefreshingMatchRewards(true);
+      }
       setMatchRewardsErrorMessage(null);
 
       try {
@@ -1452,16 +1456,26 @@ export function GameRoom() {
         }
         setMatchRewardsErrorMessage(error instanceof Error ? error.message : 'Unable to refresh match rewards.');
       } finally {
-        if (isMounted) {
+        if (isMounted && options?.showLoading !== false) {
           setIsRefreshingMatchRewards(false);
         }
       }
     };
 
-    void refreshMatchRewards();
+    void refreshMatchRewards({ showLoading: true });
+    followUpRefreshTimer = setTimeout(() => {
+      if (!isMounted) {
+        return;
+      }
+
+      void refreshMatchRewards({ showLoading: false });
+    }, ONLINE_MATCH_REWARD_REFRESH_RETRY_MS);
 
     return () => {
       isMounted = false;
+      if (followUpRefreshTimer) {
+        clearTimeout(followUpRefreshTimer);
+      }
     };
   }, [
     challengeDefinitions,

@@ -4,6 +4,7 @@ import { useSession } from '../auth/useSession'
 import { getTournamentAuditLog } from '../api/auditLog'
 import {
   deleteTournament,
+  finalizeTournament,
   getTournament,
   getTournamentStandings,
   openTournament,
@@ -50,9 +51,11 @@ export function TournamentDetailPage() {
   const [auditEntries, setAuditEntries] = useState<AuditLogEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isOpening, setIsOpening] = useState(false)
+  const [isFinalizing, setIsFinalizing] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const canDeleteTournaments = adminIdentity?.role === 'admin'
+  const canFinalizeTournaments = adminIdentity?.role === 'admin'
 
   useEffect(() => {
     let active = true
@@ -173,6 +176,33 @@ export function TournamentDetailPage() {
     }
   }
 
+  async function handleFinalizeTournament() {
+    if (!tournament) {
+      return
+    }
+
+    setError(null)
+    setIsFinalizing(true)
+
+    try {
+      const finalizedTournament = await finalizeTournament(tournament.id)
+      const [nextStandings, nextAuditLog] = await Promise.all([
+        getTournamentStandings(finalizedTournament.id, 100),
+        getTournamentAuditLog(finalizedTournament.id, 50),
+      ])
+
+      setTournament(finalizedTournament)
+      setStandings(nextStandings)
+      setAuditEntries(nextAuditLog)
+    } catch (finalizeError) {
+      const message =
+        finalizeError instanceof Error ? finalizeError.message : 'Unable to finalize tournament.'
+      setError(message)
+    } finally {
+      setIsFinalizing(false)
+    }
+  }
+
   if (isLoading) {
     return <div className="empty-state">Loading tournament detail...</div>
   }
@@ -210,7 +240,7 @@ export function TournamentDetailPage() {
               <button
                 className="button button--primary"
                 type="button"
-                disabled={isOpening || isDeleting}
+                disabled={isOpening || isFinalizing || isDeleting}
                 onClick={() => {
                   void handleOpenTournament()
                 }}
@@ -218,11 +248,23 @@ export function TournamentDetailPage() {
                 {isOpening ? 'Opening...' : 'Open tournament'}
               </button>
             ) : null}
+            {canFinalizeTournaments && tournament.status !== 'Draft' && tournament.status !== 'Finalized' ? (
+              <button
+                className="button button--primary"
+                type="button"
+                disabled={isOpening || isFinalizing || isDeleting}
+                onClick={() => {
+                  void handleFinalizeTournament()
+                }}
+              >
+                {isFinalizing ? 'Finalizing...' : 'Finalize tournament'}
+              </button>
+            ) : null}
             {canDeleteTournaments ? (
               <button
                 className="button button--danger"
                 type="button"
-                disabled={isDeleting || isOpening}
+                disabled={isDeleting || isOpening || isFinalizing}
                 onClick={() => {
                   void handleDeleteTournament()
                 }}
