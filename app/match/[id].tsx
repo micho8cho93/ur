@@ -48,6 +48,7 @@ import { stripProgressionAwardEnvelope } from '@/services/progression';
 import { buildMatchChallengeRewardSummary, type MatchChallengeRewardSummary } from '@/src/challenges/challengeUi';
 import { useAuth } from '@/src/auth/useAuth';
 import { useChallenges } from '@/src/challenges/useChallenges';
+import { useEloRating } from '@/src/elo/useEloRating';
 import {
   buildOfflineCompletedMatchSummary,
   createOfflineMatchTelemetry,
@@ -388,6 +389,7 @@ export function GameRoom() {
   const setRollCommandSender = useGameStore((state) => state.setRollCommandSender);
   const setMoveCommandSender = useGameStore((state) => state.setMoveCommandSender);
   const { progression, refresh: refreshProgression, errorMessage: progressionError } = useProgression();
+  const { refresh: refreshElo } = useEloRating();
   const {
     definitions: challengeDefinitions,
     progress: challengeProgress,
@@ -1312,11 +1314,13 @@ export function GameRoom() {
       setMatchRewardsErrorMessage(null);
 
       try {
+        const eloPromise = isRankedHumanMatch ? refreshElo({ silent: true }) : Promise.resolve(null);
         const progressionPromise = refreshProgression({ silent: true });
         const challengesPromise = shouldShowChallengeRewards
           ? refreshChallenges({ silent: true })
           : Promise.resolve(null);
-        const [progressionResult, challengesResult] = await Promise.all([
+        const [, progressionResult, challengesResult] = await Promise.all([
+          eloPromise,
           progressionPromise,
           challengesPromise,
         ]);
@@ -1363,9 +1367,11 @@ export function GameRoom() {
     challengeDefinitions,
     challengeProgress,
     isOffline,
+    isRankedHumanMatch,
     isPrivateMatch,
     matchId,
     progressionError,
+    refreshElo,
     refreshChallenges,
     refreshProgression,
     shouldShowChallengeRewards,

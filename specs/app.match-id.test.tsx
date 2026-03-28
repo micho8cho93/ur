@@ -77,6 +77,7 @@ const mockGetMatchPreferences = jest.fn();
 const mockUpdateMatchPreferences = jest.fn();
 const mockConnectSocketWithRetry = jest.fn();
 const mockDisconnectSocket = jest.fn();
+const mockRefreshElo = jest.fn(() => Promise.resolve(null));
 const mockRefreshProgression = jest.fn(() => Promise.resolve(null));
 const mockRefreshChallenges = jest.fn(() => Promise.resolve(null));
 const mockGetPublicTournamentStatus = jest.fn();
@@ -378,6 +379,17 @@ jest.mock('@/src/progression/useProgression', () => ({
   }),
 }));
 
+jest.mock('@/src/elo/useEloRating', () => ({
+  useEloRating: () => ({
+    ratingProfile: null,
+    status: 'ready',
+    errorMessage: null,
+    isLoading: false,
+    isRefreshing: false,
+    refresh: mockRefreshElo,
+  }),
+}));
+
 jest.mock('@/src/challenges/useChallenges', () => ({
   useChallenges: () => ({
     definitions: [],
@@ -556,6 +568,7 @@ describe('GameRoom match dice stage', () => {
     mockConnectSocketWithRetry.mockResolvedValue(mockSocket);
     mockHasNakamaConfig.mockReturnValue(false);
     mockIsNakamaEnabled.mockReturnValue(false);
+    mockRefreshElo.mockImplementation(() => Promise.resolve(null));
     mockRefreshProgression.mockImplementation(() => Promise.resolve(null));
     mockRefreshChallenges.mockImplementation(() => Promise.resolve(null));
     mockGetPublicTournamentStatus.mockResolvedValue({
@@ -1564,6 +1577,37 @@ describe('GameRoom match dice stage', () => {
         ([props]) => props.visible === true && props.title === 'Defeat' && props.message === 'You forfeited due to inactivity.',
       ),
     ).toBe(true);
+  });
+
+  it('refreshes Elo from RPC after a ranked online match ends', async () => {
+    mockSearchParams.id = 'online-elo-refresh';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-elo-refresh',
+    });
+    mockStoreState.matchId = 'online-elo-refresh';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'dark',
+    };
+    mockRefreshElo.mockImplementation(() => new Promise(() => {}));
+    mockRefreshProgression.mockImplementation(() => new Promise(() => {}));
+    mockRefreshChallenges.mockImplementation(() => new Promise(() => {}));
+
+    render(<GameRoom />);
+
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(mockRefreshElo).toHaveBeenCalledWith({ silent: true });
   });
 
   it('keeps the existing tournament loss modal with Back to Standings', () => {
