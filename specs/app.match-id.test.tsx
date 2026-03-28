@@ -46,6 +46,20 @@ const mockSlotDiceScene = jest.fn(() => {
   const { Text } = require('react-native');
   return <Text testID="mock-inline-dice-scene">inline</Text>;
 });
+const mockDice = jest.fn(({ canRoll, onRoll }: { canRoll?: boolean; onRoll?: () => void }) => {
+  const { Pressable, Text, View } = require('react-native');
+  return (
+    <View testID="dice-roll-scene-host">
+      <Pressable testID="dice-roll-button" disabled={!canRoll} onPress={onRoll}>
+        <Text>{canRoll ? 'rollable' : 'locked'}</Text>
+      </Pressable>
+    </View>
+  );
+});
+const mockDiceStageVisual = jest.fn(() => {
+  const { View } = require('react-native');
+  return <View testID="mock-dice-stage-visual" />;
+});
 
 const mockMatchMomentIndicator = jest.fn(({ cue }: { cue: { message: string } | null }) => {
   const { Text } = require('react-native');
@@ -288,10 +302,30 @@ jest.mock('@/components/HowToPlayModal', () => {
 
 jest.mock('@/components/tutorial/PlayTutorialCoachModal', () => {
   const React = require('react');
-  const { View } = require('react-native');
+  const { Pressable, Text, View } = require('react-native');
   return {
-    PlayTutorialCoachModal: ({ visible }: { visible: boolean }) =>
-      visible ? <View testID="mock-play-tutorial-coach" /> : null,
+    PlayTutorialCoachModal: ({
+      visible,
+      title,
+      body,
+      actionLabel,
+      onContinue,
+    }: {
+      visible: boolean;
+      title: string;
+      body: string;
+      actionLabel?: string;
+      onContinue: () => void;
+    }) =>
+      visible ? (
+        <View testID="mock-play-tutorial-coach">
+          <Text>{title}</Text>
+          <Text>{body}</Text>
+          <Pressable testID="mock-play-tutorial-coach-continue" onPress={onContinue}>
+            <Text>{actionLabel ?? 'Continue'}</Text>
+          </Pressable>
+        </View>
+      ) : null,
   };
 });
 
@@ -360,6 +394,11 @@ jest.mock('@/components/game/SlotDiceScene', () => ({
 
     return mockSlotDiceScene();
   },
+}));
+
+jest.mock('@/components/game/Dice', () => ({
+  Dice: (props: unknown) => mockDice(props),
+  DiceStageVisual: (props: unknown) => mockDiceStageVisual(props),
 }));
 
 jest.mock('@/config/nakama', () => ({
@@ -676,6 +715,13 @@ describe('GameRoom match dice stage', () => {
     mockStoreState.authoritativeAfkRemainingMs = null;
     mockStoreState.authoritativeMatchEnd = null;
     mockStoreState.authoritativeSnapshotReceivedAtMs = null;
+    mockStoreState.setGameStateFromServer = jest.fn((nextState: GameState) => {
+      mockStoreState.gameState = nextState;
+      mockStoreState.validMoves =
+        nextState.rollValue !== null && nextState.phase === 'moving'
+          ? getValidMoves(nextState, nextState.rollValue)
+          : [];
+    });
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
       get: () => 'ios',
@@ -919,6 +965,90 @@ describe('GameRoom match dice stage', () => {
 
     expect(screen.getByText('Play Tutorial')).toBeTruthy();
     expect(screen.getByTestId('mock-play-tutorial-coach')).toBeTruthy();
+  });
+
+  it('keeps the tutorial on one continuous scripted playthrough between lesson callouts', async () => {
+    mockSearchParams.tutorial = 'playthrough';
+    mockSearchParams.botDifficulty = 'easy';
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('mock-play-tutorial-coach-continue'));
+    });
+    view.rerender(<GameRoom />);
+
+    const rollOnce = async () => {
+      const latestDiceProps = [...mockDice.mock.calls]
+        .map(([props]) => props)
+        .reverse()
+        .find((props) => typeof props?.onRoll === 'function') as {
+        onRoll?: () => void;
+      };
+
+      await act(async () => {
+        latestDiceProps.onRoll?.();
+      });
+      view.rerender(<GameRoom />);
+    };
+
+    const moveOnce = async () => {
+      const latestBoardProps = mockBoard.mock.calls.at(-1)?.[0] as {
+        onMakeMoveOverride?: (move: MoveAction) => void;
+      };
+
+      await act(async () => {
+        latestBoardProps.onMakeMoveOverride?.(mockStoreState.validMoves[0]);
+      });
+      view.rerender(<GameRoom />);
+    };
+
+    await rollOnce();
+    expect(mockRoll).not.toHaveBeenCalled();
+    expect(mockStoreState.gameState.rollValue).toBe(1);
+
+    await moveOnce();
+    expect(screen.getByText('Pieces begin in reserve. Bringing one in starts the race and gives you a runner to develop.')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('mock-play-tutorial-coach-continue'));
+    });
+    view.rerender(<GameRoom />);
+
+    await act(async () => {
+      jest.advanceTimersByTime(2_500);
+    });
+    view.rerender(<GameRoom />);
+
+    expect(mockStoreState.gameState.currentTurn).toBe('light');
+    expect(mockStoreState.gameState.phase).toBe('rolling');
+    expect(mockStoreState.gameState.light.pieces[0].position).toBe(0);
+    expect(screen.queryByText('The middle row is where both sides can fight over the same squares, so captures become possible there.')).toBeNull();
+
+    await rollOnce();
+    expect(mockStoreState.gameState.rollValue).toBe(3);
+    await moveOnce();
+    expect(mockStoreState.gameState.light.pieces[0].position).toBe(3);
+    expect(screen.queryByText('The middle row is where both sides can fight over the same squares, so captures become possible there.')).toBeNull();
+
+    await rollOnce();
+    expect(mockStoreState.gameState.rollValue).toBe(1);
+    await moveOnce();
+
+    expect(mockStoreState.gameState.light.pieces[0].position).toBe(4);
+    expect(screen.getByText('The middle row is where both sides can fight over the same squares, so captures become possible there.')).toBeTruthy();
+    expect(mockRoll).not.toHaveBeenCalled();
   });
 
   it('shows Opponent Joined only when a private match becomes ready', async () => {
