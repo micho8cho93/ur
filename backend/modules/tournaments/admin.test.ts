@@ -1,6 +1,7 @@
 import {
   rpcAdminDeleteTournament,
   rpcAdminCreateTournamentRun,
+  rpcAdminFinalizeTournament,
   rpcAdminGetTournamentRun,
   rpcAdminListTournaments,
   rpcAdminOpenTournament,
@@ -8,7 +9,13 @@ import {
   RUNS_INDEX_KEY,
 } from "./admin";
 import { ADMIN_COLLECTION, ADMIN_ROLE_KEY } from "./auth";
-import { GLOBAL_STORAGE_USER_ID } from "../progression";
+import {
+  GLOBAL_STORAGE_USER_ID,
+  PROGRESSION_COLLECTION,
+  PROGRESSION_PROFILE_KEY,
+  XP_REWARD_LEDGER_COLLECTION,
+} from "../progression";
+import { getXpAwardAmount } from "../../../shared/progression";
 
 type StoredObject = {
   collection: string;
@@ -110,6 +117,12 @@ const createNakama = () => {
     tournamentsGetId: jest.fn(() => []),
     tournamentCreate: jest.fn(),
     tournamentDelete: jest.fn(),
+    tournamentRanksDisable: jest.fn(),
+    tournamentRecordsList: jest.fn(() => ({
+      records: [],
+      owner_records: [],
+      rank_count: 0,
+    })),
   };
 };
 
@@ -290,7 +303,7 @@ describe("admin tournament run creation", () => {
       ),
     ) as {
       ok: boolean;
-      runs: Array<{ runId: string }>;
+      runs: { runId: string }[];
     };
 
     const getResponse = JSON.parse(
@@ -518,5 +531,147 @@ describe("admin tournament run creation", () => {
       }),
     );
     expect(nk.tournamentDelete).toHaveBeenCalledWith("test-tournament");
+  });
+
+  it("awards champion XP once when a tournament is finalized", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk, "admin-1", "admin");
+
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, "test-tournament"), {
+      collection: RUNS_COLLECTION,
+      key: "test-tournament",
+      value: {
+        runId: "test-tournament",
+        tournamentId: "test-tournament",
+        title: "Test Tournament",
+        description: "Saved closed run",
+        category: 0,
+        authoritative: true,
+        sortOrder: "desc",
+        operator: "incr",
+        resetSchedule: "",
+        metadata: {
+          gameMode: "Classic ladder",
+          region: "Global",
+          buyIn: "Free",
+        },
+        startTime: 1_774_572_800,
+        endTime: 1_774_580_000,
+        duration: 7_200,
+        maxSize: 32,
+        maxNumScore: 7,
+        joinRequired: true,
+        enableRanks: true,
+        lifecycle: "closed",
+        createdAt: "2026-03-27T10:00:00.000Z",
+        updatedAt: "2026-03-27T10:00:00.000Z",
+        createdByUserId: "admin-1",
+        createdByLabel: "Admin",
+        openedAt: "2026-03-27T10:05:00.000Z",
+        closedAt: "2026-03-27T12:00:00.000Z",
+        finalizedAt: null,
+        finalSnapshot: null,
+      },
+      version: "run-v1",
+    });
+
+    nk.tournamentRecordsList.mockReturnValue({
+      records: [
+        {
+          rank: 1,
+          owner_id: "champion-user",
+          username: "Champion",
+          score: 3,
+        },
+        {
+          rank: 2,
+          owner_id: "runner-up-user",
+          username: "Finalist",
+          score: 2,
+        },
+      ],
+      owner_records: [],
+      rank_count: 2,
+    });
+
+    const firstResponse = JSON.parse(
+      rpcAdminFinalizeTournament(
+        {
+          userId: "admin-1",
+          username: "Admin",
+        },
+        logger,
+        nk,
+        JSON.stringify({
+          runId: "test-tournament",
+          overrideExpiry: 0,
+        }),
+      ),
+    ) as {
+      ok: boolean;
+      run: { lifecycle: string; finalizedAt: string | null };
+      finalSnapshot: { records: { owner_id: string; rank: number }[] };
+    };
+
+    expect(firstResponse.ok).toBe(true);
+    expect(firstResponse.run.lifecycle).toBe("finalized");
+    expect(firstResponse.run.finalizedAt).not.toBeNull();
+    expect(firstResponse.finalSnapshot.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rank: 1,
+          owner_id: "champion-user",
+        }),
+      ]),
+    );
+
+    const championProfile = nk.storage.get(
+      buildStorageKey(PROGRESSION_COLLECTION, PROGRESSION_PROFILE_KEY, "champion-user"),
+    )?.value as { totalXp: number; currentRankTitle: string } | undefined;
+    const championLedger = nk.storage.get(
+      buildStorageKey(XP_REWARD_LEDGER_COLLECTION, "tournament_champion:test-tournament", "champion-user"),
+    )?.value as { awardedXp: number; source: string; sourceId: string } | undefined;
+
+    expect(championProfile).toEqual(
+      expect.objectContaining({
+        totalXp: getXpAwardAmount("tournament_champion"),
+      }),
+    );
+    expect(championLedger).toEqual(
+      expect.objectContaining({
+        awardedXp: getXpAwardAmount("tournament_champion"),
+        source: "tournament_champion",
+        sourceId: "test-tournament",
+      }),
+    );
+    expect(nk.tournamentRanksDisable).toHaveBeenCalledWith("test-tournament");
+
+    rpcAdminFinalizeTournament(
+      {
+        userId: "admin-1",
+        username: "Admin",
+      },
+      logger,
+      nk,
+      JSON.stringify({
+        runId: "test-tournament",
+        overrideExpiry: 0,
+      }),
+    );
+
+    const championProfileAfterRetry = nk.storage.get(
+      buildStorageKey(PROGRESSION_COLLECTION, PROGRESSION_PROFILE_KEY, "champion-user"),
+    )?.value as { totalXp: number } | undefined;
+    const championLedgerEntries = Array.from(nk.storage.keys()).filter((key) =>
+      key === buildStorageKey(
+        XP_REWARD_LEDGER_COLLECTION,
+        "tournament_champion:test-tournament",
+        "champion-user",
+      ),
+    );
+
+    expect(championProfileAfterRetry?.totalXp).toBe(getXpAwardAmount("tournament_champion"));
+    expect(championLedgerEntries).toHaveLength(1);
   });
 });

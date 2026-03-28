@@ -12,6 +12,7 @@ import {
   MAX_WRITE_ATTEMPTS,
   RuntimeStorageObject,
   STORAGE_PERMISSION_NONE,
+  awardXpForTournamentChampion,
   asRecord,
   findStorageObject,
   getErrorMessage,
@@ -484,6 +485,34 @@ export const buildStandingsSnapshot = (
   };
 };
 
+const readStandingsRecordRank = (record: Record<string, unknown>): number | null => {
+  const rank = readNumberField(record, ["rank"]);
+  return typeof rank === "number" && Number.isFinite(rank) ? rank : null;
+};
+
+const readStandingsRecordOwnerId = (record: Record<string, unknown>): string | null =>
+  readStringField(record, ["ownerId", "owner_id"]);
+
+const resolveChampionUserId = (snapshot: TournamentStandingsSnapshot): string | null => {
+  if (snapshot.records.length === 0) {
+    return null;
+  }
+
+  const rankedRecords = snapshot.records
+    .map((record) => ({
+      record,
+      rank: readStandingsRecordRank(record),
+    }))
+    .filter((entry): entry is { record: Record<string, unknown>; rank: number } => entry.rank !== null);
+
+  const championRecord =
+    rankedRecords.find((entry) => entry.rank === 1)?.record ??
+    rankedRecords.slice().sort((left, right) => left.rank - right.rank)[0]?.record ??
+    snapshot.records[0];
+
+  return championRecord ? readStandingsRecordOwnerId(championRecord) : null;
+};
+
 export const sortRuns = (runs: TournamentRunRecord[]): TournamentRunRecord[] =>
   runs.slice().sort((left, right) => {
     const updatedCompare = right.updatedAt.localeCompare(left.updatedAt);
@@ -943,6 +972,34 @@ export const rpcAdminFinalizeTournament = (
         closedAt: current.closedAt ?? new Date().toISOString(),
         finalSnapshot,
       }));
+
+      const championUserId = resolveChampionUserId(finalSnapshot);
+      if (championUserId) {
+        try {
+          const rewardResult = awardXpForTournamentChampion(_nk, _logger, {
+            userId: championUserId,
+            runId: run.runId,
+          });
+
+          if (!rewardResult.duplicate) {
+            _logger.info(
+              "Awarded tournament champion XP to %s for run %s. total=%d",
+              championUserId,
+              run.runId,
+              rewardResult.newTotalXp,
+            );
+          }
+        } catch (error) {
+          _logger.warn(
+            "Unable to award tournament champion XP for %s to %s: %s",
+            run.runId,
+            championUserId,
+            getErrorMessage(error),
+          );
+        }
+      } else if (finalSnapshot.records.length > 0) {
+        _logger.warn("Unable to resolve champion user ID for finalized tournament %s.", run.runId);
+      }
 
       return JSON.stringify({
         ok: true,

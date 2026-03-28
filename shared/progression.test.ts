@@ -74,6 +74,7 @@ describe("progression helpers", () => {
 
   it("returns the configured win rewards for public, private, bot, and practice matches", () => {
     expect(getXpAwardAmount("pvp_win")).toBe(100);
+    expect(getXpAwardAmount("tournament_champion")).toBe(250);
     expect(getXpAwardAmount("private_pvp_win")).toBe(25);
     expect(getXpAwardAmount("bot_win")).toBe(50);
     expect(getXpAwardAmount("practice_1_piece_win")).toBe(10);
@@ -83,5 +84,6 @@ describe("progression helpers", () => {
     expect(getXpAwardAmount("practice_1_piece_win")).toBeLessThan(getXpAwardAmount("private_pvp_win"));
     expect(getXpAwardAmount("private_pvp_win")).toBeLessThan(getXpAwardAmount("bot_win"));
     expect(getXpAwardAmount("bot_win")).toBeLessThan(getXpAwardAmount("pvp_win"));
+    expect(getXpAwardAmount("pvp_win")).toBeLessThan(getXpAwardAmount("tournament_champion"));
   });
 });

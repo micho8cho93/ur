@@ -583,6 +583,29 @@ export const awardXpForMatchWin = (
   );
 };
 
+export const awardXpForTournamentChampion = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  params: {
+    userId: string;
+    runId: string;
+  }
+): XpRewardResult & { source: "tournament_champion" } => {
+  const runId = params.runId?.trim();
+
+  if (!runId) {
+    throw new Error("Cannot award tournament champion XP without a run ID.");
+  }
+
+  return awardXp(nk, logger, {
+    userId: params.userId,
+    ledgerKey: `tournament_champion:${runId}`,
+    source: "tournament_champion",
+    sourceId: runId,
+    awardedXp: getXpAwardAmount("tournament_champion"),
+  }) as XpRewardResult & { source: "tournament_champion" };
+};
+
 export const createProgressionAwardNotification = (
   response: ProgressionAwardResponse
 ): ProgressionAwardNotificationPayload => ({

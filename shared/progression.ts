@@ -28,6 +28,10 @@ export const XP_SOURCE_CONFIG = {
     amount: 100,
     description: "Authoritative PvP win reward.",
   },
+  tournament_champion: {
+    amount: 250,
+    description: "Tournament champion reward.",
+  },
   private_pvp_win: {
     amount: 25,
     description: "Private PvP win reward.",
