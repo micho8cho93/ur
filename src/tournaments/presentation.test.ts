@@ -29,15 +29,29 @@ const baseTournament: PublicTournamentSummary = {
 };
 
 describe('tournament presentation helpers', () => {
-  it('returns the correct card and detail CTA states for joinable, joined, full, and starting soon tournaments', () => {
+  it('returns the correct card and detail CTA states for joinable, waiting, ready, and full tournaments', () => {
     const now = Date.parse('2026-03-27T12:00:00.000Z');
-    const startingSoon = {
+    const joinedWaitingForLobby = {
       ...baseTournament,
-      startAt: '2999-03-27T14:00:00.000Z',
+      membership: {
+        isJoined: true,
+        joinedAt: '2026-03-27T11:55:00.000Z',
+      },
     };
-    const joined = {
+    const joinedReady = {
       ...baseTournament,
-      startAt: '2020-03-27T10:00:00.000Z',
+      entrants: 16,
+      maxEntrants: 16,
+      membership: {
+        isJoined: true,
+        joinedAt: '2026-03-27T11:55:00.000Z',
+      },
+    };
+    const joinedWaitingForStart = {
+      ...baseTournament,
+      entrants: 16,
+      maxEntrants: 16,
+      startAt: '2999-03-27T14:00:00.000Z',
       membership: {
         isJoined: true,
         joinedAt: '2026-03-27T11:55:00.000Z',
@@ -54,15 +68,19 @@ describe('tournament presentation helpers', () => {
       disabled: false,
       intent: 'join',
     });
-    expect(getTournamentCardPrimaryState(joined)).toEqual({
+    expect(getTournamentCardPrimaryState(joinedWaitingForLobby, now)).toEqual({
+      label: 'Waiting for lobby to fill',
+      disabled: true,
+      intent: 'none',
+      loading: true,
+      waitReason: 'lobby',
+    });
+    expect(getTournamentCardPrimaryState(joinedReady, now)).toEqual({
       label: 'Play Tournament Match',
       disabled: false,
       intent: 'play',
-    });
-    expect(getTournamentCardPrimaryState(startingSoon)).toEqual({
-      label: 'Join',
-      disabled: false,
-      intent: 'join',
+      loading: false,
+      waitReason: null,
     });
     expect(getTournamentCardPrimaryState(full)).toEqual({
       label: 'Full',
@@ -70,19 +88,27 @@ describe('tournament presentation helpers', () => {
       intent: 'none',
     });
 
-    expect(getTournamentDetailPrimaryState(joined)).toEqual({
+    expect(getTournamentDetailPrimaryState(joinedReady, now)).toEqual({
       label: 'Play Tournament Match',
       disabled: false,
       intent: 'play',
+      loading: false,
+      waitReason: null,
     });
-    expect(getTournamentDetailPrimaryState({ ...joined, startAt: '2999-03-27T14:00:00.000Z' })).toEqual({
-      label: 'Play Tournament Match',
+    expect(getTournamentDetailPrimaryState(joinedWaitingForStart, now)).toEqual({
+      label: 'Tournament starts soon',
       disabled: true,
       intent: 'none',
+      loading: true,
+      waitReason: 'start',
     });
-    expect(getTournamentChipState(startingSoon, now)).toEqual({
+    expect(getTournamentChipState(baseTournament, now)).toEqual({
       label: 'Starting soon',
       tone: 'info',
+    });
+    expect(getTournamentChipState(joinedReady, now)).toEqual({
+      label: 'Open',
+      tone: 'success',
     });
   });
 

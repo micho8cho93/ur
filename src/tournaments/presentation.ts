@@ -8,6 +8,14 @@ export type TournamentChipState = {
   tone: TournamentChipTone;
 };
 
+export type TournamentPrimaryState = {
+  label: 'Join' | 'Full' | 'Play Tournament Match' | 'Waiting for lobby to fill' | 'Tournament starts soon';
+  disabled: boolean;
+  intent: 'join' | 'play' | 'none';
+  loading?: boolean;
+  waitReason?: 'lobby' | 'start' | null;
+};
+
 const safeParseTime = (value: string): number => {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -38,6 +46,11 @@ export const isTournamentVisibleForPlay = (
 export const isTournamentFull = (tournament: Pick<PublicTournamentSummary, 'entrants' | 'maxEntrants'>): boolean =>
   tournament.maxEntrants > 0 && tournament.entrants >= tournament.maxEntrants;
 
+export const isTournamentReadyToLaunch = (
+  tournament: Pick<PublicTournamentSummary, 'entrants' | 'maxEntrants' | 'startAt'>,
+  now = Date.now(),
+): boolean => isTournamentFull(tournament) && hasTournamentStarted(tournament, now);
+
 export const getTournamentChipState = (tournament: PublicTournamentSummary, now = Date.now()): TournamentChipState => {
   if (isTournamentFull(tournament) && !tournament.membership.isJoined) {
     return {
@@ -46,7 +59,7 @@ export const getTournamentChipState = (tournament: PublicTournamentSummary, now 
     };
   }
 
-  if (!hasTournamentStarted(tournament, now)) {
+  if (!isTournamentReadyToLaunch(tournament, now)) {
     return {
       label: 'Starting soon',
       tone: 'info',
@@ -64,20 +77,20 @@ export const getTournamentModeLabel = (gameMode: string): string => getMatchConf
 export const sortPublicTournamentsForPlay = (tournaments: PublicTournamentSummary[]): PublicTournamentSummary[] =>
   tournaments.slice().sort((left, right) => {
     const now = Date.now();
-    const leftStarted = hasTournamentStarted(left, now);
-    const rightStarted = hasTournamentStarted(right, now);
+    const leftReady = isTournamentReadyToLaunch(left, now);
+    const rightReady = isTournamentReadyToLaunch(right, now);
 
-    if (leftStarted !== rightStarted) {
-      return leftStarted ? -1 : 1;
+    if (leftReady !== rightReady) {
+      return leftReady ? -1 : 1;
     }
 
     const leftStart = safeParseTime(left.startAt);
     const rightStart = safeParseTime(right.startAt);
-    if (leftStarted && rightStarted && leftStart !== rightStart) {
+    if (leftReady && rightReady && leftStart !== rightStart) {
       return rightStart - leftStart;
     }
 
-    if (!leftStarted && !rightStarted && leftStart !== rightStart) {
+    if (!leftReady && !rightReady && leftStart !== rightStart) {
       return leftStart - rightStart;
     }
 
@@ -98,9 +111,40 @@ export const formatTournamentDateTime = (value: string | null): string => {
 export const buildTournamentPrizeSummary = (tournament: Pick<PublicTournamentSummary, 'buyInLabel' | 'prizeLabel'>): string =>
   `${tournament.buyInLabel} • ${tournament.prizeLabel}`;
 
+const getJoinedTournamentPrimaryState = (tournament: PublicTournamentSummary, now = Date.now()): TournamentPrimaryState => {
+  if (isTournamentReadyToLaunch(tournament, now)) {
+    return {
+      label: 'Play Tournament Match',
+      disabled: false,
+      intent: 'play',
+      loading: false,
+      waitReason: null,
+    };
+  }
+
+  if (!isTournamentFull(tournament)) {
+    return {
+      label: 'Waiting for lobby to fill',
+      disabled: true,
+      intent: 'none',
+      loading: true,
+      waitReason: 'lobby',
+    };
+  }
+
+  return {
+    label: 'Tournament starts soon',
+    disabled: true,
+    intent: 'none',
+    loading: true,
+    waitReason: 'start',
+  };
+};
+
 export const getTournamentCardPrimaryState = (
   tournament: PublicTournamentSummary,
-): { label: 'Join' | 'Joined' | 'Play Tournament Match' | 'Full'; disabled: boolean; intent: 'join' | 'play' | 'none' } => {
+  now = Date.now(),
+): TournamentPrimaryState => {
   if (isTournamentFull(tournament) && !tournament.membership.isJoined) {
     return {
       label: 'Full',
@@ -109,20 +153,8 @@ export const getTournamentCardPrimaryState = (
     };
   }
 
-  if (tournament.membership.isJoined && hasTournamentStarted(tournament)) {
-    return {
-      label: 'Play Tournament Match',
-      disabled: false,
-      intent: 'play',
-    };
-  }
-
   if (tournament.membership.isJoined) {
-    return {
-      label: 'Joined',
-      disabled: true,
-      intent: 'none',
-    };
+    return getJoinedTournamentPrimaryState(tournament, now);
   }
 
   return {
@@ -134,7 +166,8 @@ export const getTournamentCardPrimaryState = (
 
 export const getTournamentDetailPrimaryState = (
   tournament: PublicTournamentSummary,
-): { label: 'Join' | 'Play Tournament Match' | 'Full'; disabled: boolean; intent: 'join' | 'play' | 'none' } => {
+  now = Date.now(),
+): TournamentPrimaryState => {
   if (isTournamentFull(tournament) && !tournament.membership.isJoined) {
     return {
       label: 'Full',
@@ -144,11 +177,7 @@ export const getTournamentDetailPrimaryState = (
   }
 
   if (tournament.membership.isJoined) {
-    return {
-      label: 'Play Tournament Match',
-      disabled: !hasTournamentStarted(tournament),
-      intent: hasTournamentStarted(tournament) ? 'play' : 'none',
-    };
+    return getJoinedTournamentPrimaryState(tournament, now);
   }
 
   return {

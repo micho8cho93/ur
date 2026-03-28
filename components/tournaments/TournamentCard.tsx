@@ -110,7 +110,7 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
         />
         <Button
           title={primary.label}
-          loading={joining || launching}
+          loading={primary.loading || joining || launching}
           disabled={primary.disabled || joining || launching}
           style={styles.primaryButton}
           onPress={() => {

@@ -135,8 +135,8 @@ export default function TournamentDetailScreen() {
               <View style={styles.heroActionRow}>
                 <Button
                   title={primary?.label ?? 'Join'}
-                  loading={joiningRunId === tournament.runId || launchingRunId === tournament.runId}
-                  disabled={primary?.disabled ?? false}
+                  loading={Boolean(primary?.loading || joiningRunId === tournament.runId || launchingRunId === tournament.runId)}
+                  disabled={Boolean(primary?.disabled || joiningRunId === tournament.runId || launchingRunId === tournament.runId)}
                   onPress={() => {
                     if (!primary || primary.intent === 'none') {
                       return;
@@ -165,9 +165,11 @@ export default function TournamentDetailScreen() {
                 <View style={styles.joinedBanner}>
                   <Text style={styles.joinedBannerTitle}>You are enrolled in this tournament.</Text>
                   <Text style={styles.joinedBannerText}>
-                    {primary?.disabled
-                      ? 'You can launch your tournament match as soon as the start time arrives.'
-                      : 'You can launch a tournament match from this screen whenever you are ready.'}
+                    {primary?.waitReason === 'lobby'
+                      ? 'The lobby is still filling. Tournament matches unlock once the field is full, so you can stay here or return to Play Online while you wait.'
+                      : primary?.waitReason === 'start'
+                        ? 'The field is ready. Tournament matches will unlock as soon as the scheduled start time arrives.'
+                        : 'You can launch a tournament match from this screen whenever you are ready.'}
                   </Text>
                 </View>
               )}

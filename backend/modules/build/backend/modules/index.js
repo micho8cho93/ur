@@ -5449,6 +5449,39 @@ var getRunEndTimeMs = (run, nakamaTournament) => {
   }
   return Math.floor(endTimeSeconds * 1e3);
 };
+var getRunStartTimeMs = (run, nakamaTournament) => {
+  var _a;
+  const startTimeSeconds = (_a = readNumberField4(nakamaTournament, ["startTime", "start_time"])) != null ? _a : run.startTime;
+  if (typeof startTimeSeconds !== "number" || !Number.isFinite(startTimeSeconds) || startTimeSeconds <= 0) {
+    return null;
+  }
+  return Math.floor(startTimeSeconds * 1e3);
+};
+var getRunEntrants = (nakamaTournament) => {
+  var _a;
+  return Math.max(0, Math.floor((_a = readNumberField4(nakamaTournament, ["size"])) != null ? _a : 0));
+};
+var getRunMaxEntrants = (run, nakamaTournament) => {
+  var _a;
+  return Math.max(
+    0,
+    Math.floor((_a = readNumberField4(nakamaTournament, ["maxSize", "max_size"])) != null ? _a : run.maxSize)
+  );
+};
+var isPublicRunFull = (run, nakamaTournament) => {
+  const maxEntrants = getRunMaxEntrants(run, nakamaTournament);
+  return maxEntrants > 0 && getRunEntrants(nakamaTournament) >= maxEntrants;
+};
+var getLaunchBlockedReason = (run, nakamaTournament, nowMs = Date.now()) => {
+  if (!isPublicRunFull(run, nakamaTournament)) {
+    return "lobby";
+  }
+  const startAtMs = getRunStartTimeMs(run, nakamaTournament);
+  if (startAtMs !== null && startAtMs > nowMs) {
+    return "start";
+  }
+  return null;
+};
 var isPublicRunActive = (run, nakamaTournament, nowMs = Date.now()) => {
   if (run.lifecycle !== "open" || !nakamaTournament) {
     return false;
@@ -5661,7 +5694,6 @@ var rpcGetPublicTournamentStandings = (ctx, _logger, nk, payload) => {
   });
 };
 var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
-  var _a, _b;
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
   const parsed = parseJsonPayload(payload);
@@ -5676,11 +5708,8 @@ var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
   const displayName = getActorLabel(ctx);
   let joined = false;
   if (!existingMembership) {
-    const entrantsBeforeJoin = Math.max(0, Math.floor((_a = readNumberField4(nakamaTournamentBeforeJoin, ["size"])) != null ? _a : 0));
-    const maxEntrants = Math.max(
-      0,
-      Math.floor((_b = readNumberField4(nakamaTournamentBeforeJoin, ["maxSize", "max_size"])) != null ? _b : run.maxSize)
-    );
+    const entrantsBeforeJoin = getRunEntrants(nakamaTournamentBeforeJoin);
+    const maxEntrants = getRunMaxEntrants(run, nakamaTournamentBeforeJoin);
     if (maxEntrants > 0 && entrantsBeforeJoin >= maxEntrants) {
       throw new Error("This tournament is already full.");
     }
@@ -5719,8 +5748,11 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
     throw new Error("Join this tournament before launching a match.");
   }
   const nowMs = Date.now();
-  const startAtMs = run.startTime > 0 ? run.startTime * 1e3 : 0;
-  if (startAtMs > nowMs) {
+  const launchBlockedReason = getLaunchBlockedReason(run, nakamaTournament, nowMs);
+  if (launchBlockedReason === "lobby") {
+    throw new Error("This tournament is waiting for the lobby to fill.");
+  }
+  if (launchBlockedReason === "start") {
     throw new Error("This tournament has not started yet.");
   }
   const metadata = readMetadata(run);

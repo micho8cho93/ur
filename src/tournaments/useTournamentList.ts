@@ -15,6 +15,8 @@ type UseTournamentListOptions = {
   limit?: number;
 };
 
+const LIST_POLL_INTERVAL_MS = 10_000;
+
 export const useTournamentList = ({ featured = false, limit = 50 }: UseTournamentListOptions = {}) => {
   const [tournaments, setTournaments] = useState<PublicTournamentSummary[]>([]);
   const [now, setNow] = useState(() => Date.now());
@@ -49,6 +51,14 @@ export const useTournamentList = ({ featured = false, limit = 50 }: UseTournamen
   useFocusEffect(
     useCallback(() => {
       void refresh();
+
+      const pollId = setInterval(() => {
+        void refresh();
+      }, LIST_POLL_INTERVAL_MS);
+
+      return () => {
+        clearInterval(pollId);
+      };
     }, [refresh]),
   );
 

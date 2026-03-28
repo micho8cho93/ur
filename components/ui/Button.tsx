@@ -70,7 +70,10 @@ export const Button: React.FC<ButtonProps> = ({
     >
       <View style={styles.glossOverlay} />
       {loading ? (
-        <ActivityIndicator color={config.spinnerColor} />
+        <View style={styles.loadingContent}>
+          <ActivityIndicator color={config.spinnerColor} />
+          <Text style={[styles.label, styles.loadingLabel, { color: config.textColor }, labelStyle]}>{title}</Text>
+        </View>
       ) : (
         <Text style={[styles.label, { color: config.textColor }, labelStyle]}>{title}</Text>
       )}
@@ -107,6 +110,13 @@ const styles = StyleSheet.create({
   label: {
     ...urTypography.label,
     fontSize: 14,
+  },
+  loadingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  loadingLabel: {
+    marginLeft: urTheme.spacing.xs,
   },
   disabled: {
     opacity: 0.52,

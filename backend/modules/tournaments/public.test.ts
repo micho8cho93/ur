@@ -196,10 +196,12 @@ const seedOpenRun = (
 };
 
 describe('public tournament rpc flow', () => {
-  it('lists public runs and supports joining plus queue-based launch', () => {
+  it('waits for the lobby to fill before allowing queue-based match launch', () => {
     const nk = createNakama();
     const logger = createLogger();
     seedOpenRun(nk, {
+      entrants: 14,
+      maxSize: 16,
       metadata: {
         gameMode: 'standard',
         region: 'Global',
@@ -217,17 +219,17 @@ describe('public tournament rpc flow', () => {
         JSON.stringify({ limit: 10 }),
       ),
     ) as {
-      tournaments: Array<{
+      tournaments: {
         runId: string;
         entrants: number;
         membership: { isJoined: boolean };
-      }>;
+      }[];
     };
 
     expect(listResponse.tournaments).toEqual([
       expect.objectContaining({
         runId: 'run-1',
-        entrants: 4,
+        entrants: 14,
         membership: {
           isJoined: false,
           joinedAt: null,
@@ -251,9 +253,36 @@ describe('public tournament rpc flow', () => {
     };
 
     expect(joinResponse.joined).toBe(true);
-    expect(joinResponse.tournament.entrants).toBe(5);
+    expect(joinResponse.tournament.entrants).toBe(15);
     expect(joinResponse.tournament.membership.isJoined).toBe(true);
     expect(nk.tournamentJoin).toHaveBeenCalledWith('tour-1', 'user-1', 'RoyalPlayer');
+
+    expect(() =>
+      rpcLaunchTournamentMatch(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ).toThrow('This tournament is waiting for the lobby to fill.');
+
+    const guestJoinResponse = JSON.parse(
+      rpcJoinPublicTournament(
+        { userId: 'user-2', username: 'TempleGuest' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      joined: boolean;
+      tournament: {
+        entrants: number;
+        membership: { isJoined: boolean; joinedAt: string | null };
+      };
+    };
+
+    expect(guestJoinResponse.joined).toBe(true);
+    expect(guestJoinResponse.tournament.entrants).toBe(16);
 
     const hostLaunch = JSON.parse(
       rpcLaunchTournamentMatch(
@@ -284,12 +313,6 @@ describe('public tournament rpc flow', () => {
       }),
     );
 
-    rpcJoinPublicTournament(
-      { userId: 'user-2', username: 'TempleGuest' },
-      logger,
-      nk,
-      JSON.stringify({ runId: 'run-1' }),
-    );
     const guestLaunch = JSON.parse(
       rpcLaunchTournamentMatch(
         { userId: 'user-2', username: 'TempleGuest' },
@@ -349,7 +372,7 @@ describe('public tournament rpc flow', () => {
         JSON.stringify({ limit: 10 }),
       ),
     ) as {
-      tournaments: Array<{ runId: string }>;
+      tournaments: { runId: string }[];
       totalCount: number;
     };
 
@@ -367,5 +390,42 @@ describe('public tournament rpc flow', () => {
         JSON.stringify({ runId: 'expired-run' }),
       ),
     ).toThrow('This tournament is not available in public play.');
+  });
+
+  it('still respects the scheduled start time after the lobby is full', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    const nowSeconds = Math.floor(Date.now() / 1000);
+
+    seedOpenRun(nk, {
+      entrants: 15,
+      maxSize: 16,
+      startTime: nowSeconds + 900,
+      endTime: nowSeconds + 3600,
+    });
+
+    const joinResponse = JSON.parse(
+      rpcJoinPublicTournament(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      tournament: {
+        entrants: number;
+      };
+    };
+
+    expect(joinResponse.tournament.entrants).toBe(16);
+
+    expect(() =>
+      rpcLaunchTournamentMatch(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ).toThrow('This tournament has not started yet.');
   });
 });

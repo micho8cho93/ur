@@ -1,7 +1,6 @@
 import { appendTournamentAuditEntry } from "./audit";
 import {
   MAX_STANDINGS_LIMIT,
-  RUNS_COLLECTION,
   TournamentRunRecord,
   buildStandingsSnapshot,
   clampInteger,
@@ -222,6 +221,55 @@ const getRunEndTimeMs = (
   }
 
   return Math.floor(endTimeSeconds * 1000);
+};
+
+const getRunStartTimeMs = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+): number | null => {
+  const startTimeSeconds = readNumberField(nakamaTournament, ["startTime", "start_time"]) ?? run.startTime;
+  if (typeof startTimeSeconds !== "number" || !Number.isFinite(startTimeSeconds) || startTimeSeconds <= 0) {
+    return null;
+  }
+
+  return Math.floor(startTimeSeconds * 1000);
+};
+
+const getRunEntrants = (nakamaTournament: Record<string, unknown> | null): number =>
+  Math.max(0, Math.floor(readNumberField(nakamaTournament, ["size"]) ?? 0));
+
+const getRunMaxEntrants = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+): number =>
+  Math.max(
+    0,
+    Math.floor(readNumberField(nakamaTournament, ["maxSize", "max_size"]) ?? run.maxSize),
+  );
+
+const isPublicRunFull = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+): boolean => {
+  const maxEntrants = getRunMaxEntrants(run, nakamaTournament);
+  return maxEntrants > 0 && getRunEntrants(nakamaTournament) >= maxEntrants;
+};
+
+const getLaunchBlockedReason = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+  nowMs = Date.now(),
+): "lobby" | "start" | null => {
+  if (!isPublicRunFull(run, nakamaTournament)) {
+    return "lobby";
+  }
+
+  const startAtMs = getRunStartTimeMs(run, nakamaTournament);
+  if (startAtMs !== null && startAtMs > nowMs) {
+    return "start";
+  }
+
+  return null;
 };
 
 const isPublicRunActive = (
@@ -518,11 +566,8 @@ export const rpcJoinPublicTournament = (
   let joined = false;
 
   if (!existingMembership) {
-    const entrantsBeforeJoin = Math.max(0, Math.floor(readNumberField(nakamaTournamentBeforeJoin, ["size"]) ?? 0));
-    const maxEntrants = Math.max(
-      0,
-      Math.floor(readNumberField(nakamaTournamentBeforeJoin, ["maxSize", "max_size"]) ?? run.maxSize),
-    );
+    const entrantsBeforeJoin = getRunEntrants(nakamaTournamentBeforeJoin);
+    const maxEntrants = getRunMaxEntrants(run, nakamaTournamentBeforeJoin);
 
     if (maxEntrants > 0 && entrantsBeforeJoin >= maxEntrants) {
       throw new Error("This tournament is already full.");
@@ -574,8 +619,12 @@ export const rpcLaunchTournamentMatch = (
   }
 
   const nowMs = Date.now();
-  const startAtMs = run.startTime > 0 ? run.startTime * 1000 : 0;
-  if (startAtMs > nowMs) {
+  const launchBlockedReason = getLaunchBlockedReason(run, nakamaTournament, nowMs);
+  if (launchBlockedReason === "lobby") {
+    throw new Error("This tournament is waiting for the lobby to fill.");
+  }
+
+  if (launchBlockedReason === "start") {
     throw new Error("This tournament has not started yet.");
   }
 

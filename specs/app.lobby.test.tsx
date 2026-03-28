@@ -141,4 +141,41 @@ describe('Lobby private game join input', () => {
     expect(view.getByText('Create Private Game')).toBeTruthy();
     expect(view.getByText('Enter Private Game Code')).toBeTruthy();
   });
+
+  it('shows a waiting state for joined tournaments until the lobby fills', () => {
+    mockUseTournamentList.mockReturnValue({
+      tournaments: [
+        {
+          runId: 'spring-open',
+          tournamentId: 'spring-open',
+          name: 'Spring Open',
+          description: 'A live public bracket with full standings.',
+          lifecycle: 'open',
+          startAt: '2026-03-27T10:00:00.000Z',
+          endAt: null,
+          updatedAt: '2026-03-27T10:00:00.000Z',
+          entrants: 8,
+          maxEntrants: 16,
+          gameMode: 'standard',
+          region: 'Global',
+          buyInLabel: 'Free',
+          prizeLabel: 'No prize listed',
+          membership: {
+            isJoined: true,
+            joinedAt: '2026-03-27T10:05:00.000Z',
+          },
+        },
+      ],
+      isLoading: false,
+      errorMessage: null,
+      joinTournament: jest.fn(),
+      launchMatch: jest.fn(),
+      joiningRunId: null,
+      launchingRunId: null,
+    });
+
+    const view = render(<Lobby />);
+
+    expect(view.getByText('Waiting for lobby to fill')).toBeTruthy();
+  });
 });
