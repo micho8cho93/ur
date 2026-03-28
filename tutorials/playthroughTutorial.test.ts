@@ -141,9 +141,20 @@ describe('playthrough tutorial continuous script', () => {
     });
   });
 
-  it('makes the rosette lesson keep Light on turn and protects the shared rosette from capture', () => {
-    const rosetteLesson = PLAYTHROUGH_TUTORIAL_LESSONS[2];
-    const captureLesson = PLAYTHROUGH_TUTORIAL_LESSONS[3];
+  it('makes the first rosette lesson keep Light on turn for the bonus roll', () => {
+    const openingRosetteLesson = PLAYTHROUGH_TUTORIAL_LESSONS[1];
+    const warZoneLesson = PLAYTHROUGH_TUTORIAL_LESSONS[2];
+    const resultFrame = PLAYTHROUGH_TUTORIAL_FRAMES[openingRosetteLesson.moveStepIndex + 1];
+
+    expect(resultFrame.gameState.currentTurn).toBe('light');
+    expect(resultFrame.gameState.phase).toBe('rolling');
+    expect(resultFrame.gameState.light.pieces[0]?.position).toBe(3);
+    expect(warZoneLesson.startFrameIndex).toBe(openingRosetteLesson.moveStepIndex + 1);
+  });
+
+  it('makes the shared rosette lesson keep Light on turn and protect the tile from capture', () => {
+    const rosetteLesson = PLAYTHROUGH_TUTORIAL_LESSONS[3];
+    const captureLesson = PLAYTHROUGH_TUTORIAL_LESSONS[4];
     const resultFrame = PLAYTHROUGH_TUTORIAL_FRAMES[rosetteLesson.moveStepIndex + 1];
     const threatenedState: GameState = {
       ...resultFrame.gameState,
@@ -165,7 +176,7 @@ describe('playthrough tutorial continuous script', () => {
   });
 
   it('makes the capture lesson perform a real shared-row capture', () => {
-    const captureLesson = PLAYTHROUGH_TUTORIAL_LESSONS[3];
+    const captureLesson = PLAYTHROUGH_TUTORIAL_LESSONS[4];
     const startFrame = PLAYTHROUGH_TUTORIAL_FRAMES[captureLesson.startFrameIndex];
     const resultFrame = PLAYTHROUGH_TUTORIAL_FRAMES[captureLesson.moveStepIndex + 1];
     const captureCoord = getPathCoord(
@@ -191,8 +202,8 @@ describe('playthrough tutorial continuous script', () => {
     expect(finalFrame.gameState.currentTurn).toBe('dark');
   });
 
-  it('numbers the lessons exactly 1 through 5 with no duplicates', () => {
-    expect(PLAYTHROUGH_TUTORIAL_LESSONS.map((lesson) => lesson.lessonNumber)).toEqual([1, 2, 3, 4, 5]);
+  it('numbers the lessons exactly 1 through 6 with no duplicates', () => {
+    expect(PLAYTHROUGH_TUTORIAL_LESSONS.map((lesson) => lesson.lessonNumber)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
   it('lets Dark move first and never gives Light more than one zero in a row', () => {
@@ -235,6 +246,16 @@ describe('playthrough tutorial continuous script', () => {
         hasMoves: false,
       }),
     ).toBe('Roll again and keep moving the same piece.');
+
+    expect(
+      getPlaythroughTutorialInstruction({
+        stepId: 'move-light-opening-rosette',
+        turn: 'light',
+        phase: 'moving',
+        rollValue: 3,
+        hasMoves: true,
+      }),
+    ).toBe('Move up the board and land on the rosette for another roll.');
 
     expect(
       getPlaythroughTutorialInstruction({

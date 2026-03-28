@@ -1028,7 +1028,7 @@ describe('GameRoom match dice stage', () => {
     view.rerender(<GameRoom />);
 
     await act(async () => {
-      jest.advanceTimersByTime(1_000);
+      jest.advanceTimersByTime(1_800);
     });
     view.rerender(<GameRoom />);
     await act(async () => {
@@ -1037,7 +1037,7 @@ describe('GameRoom match dice stage', () => {
     });
 
     await act(async () => {
-      jest.advanceTimersByTime(1_500);
+      jest.advanceTimersByTime(2_500);
     });
     view.rerender(<GameRoom />);
 
@@ -1065,7 +1065,13 @@ describe('GameRoom match dice stage', () => {
     );
     await moveOnce();
     expect(mockStoreState.gameState.light.pieces[0].position).toBe(3);
-    expect(screen.queryByText('The middle row is where both sides can fight over the same squares, so captures become possible there.')).toBeNull();
+    expect(screen.getByText('Rosettes Let You Roll Again')).toBeTruthy();
+    expect(screen.getByText('Landing on a rosette gives you another roll immediately, so Light keeps the turn here.')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('mock-play-tutorial-coach-continue'));
+    });
+    view.rerender(<GameRoom />);
 
     await rollOnce();
     expect(mockStoreState.gameState.rollValue).toBe(1);
