@@ -14,6 +14,11 @@ import { computeBoardGapControlLayout } from '@/components/game/matchDiceStageLa
 import { MatchDiceRollStage } from '@/components/game/MatchDiceRollStage';
 import { MatchMomentIndicator } from '@/components/game/MatchMomentIndicator';
 import type { MatchMomentIndicatorCue } from '@/components/game/MatchMomentIndicator';
+import {
+  getNoMoveRollValueFromHistoryEntry,
+  shouldHoldRollResult,
+  ZERO_ROLL_RESULT_HOLD_MS,
+} from '@/components/game/rollResultHold';
 import { MatchResultSummaryContent } from '@/components/match/MatchResultSummaryContent';
 import { PieceRail, PieceRailFrameMeasurement, ReserveSlotMeasurement } from '@/components/game/PieceRail';
 import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
@@ -514,6 +519,7 @@ export function GameRoom() {
   const [isRefreshingMatchRewards, setIsRefreshingMatchRewards] = React.useState(false);
   const [rollingVisual, setRollingVisual] = React.useState(false);
   const [rollButtonLatchPhase, setRollButtonLatchPhase] = React.useState<RollButtonLatchPhase>('idle');
+  const [heldRollResult, setHeldRollResult] = React.useState<number | null>(null);
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
   const [musicEnabled, setMusicEnabled] = React.useState(true);
   const [musicVolume, setMusicVolume] = React.useState(1);
@@ -573,6 +579,8 @@ export function GameRoom() {
     historyLength: number;
   } | null>(null);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heldRollResultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingHeldRollResultRef = useRef<number | null>(null);
   const autoRollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turnTimeoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -715,6 +723,29 @@ export function GameRoom() {
     }
   }, []);
 
+  const clearHeldRollResultTimer = React.useCallback(() => {
+    if (heldRollResultTimerRef.current) {
+      clearTimeout(heldRollResultTimerRef.current);
+      heldRollResultTimerRef.current = null;
+    }
+  }, []);
+
+  const clearHeldRollResult = React.useCallback(() => {
+    clearHeldRollResultTimer();
+    pendingHeldRollResultRef.current = null;
+    setHeldRollResult(null);
+  }, [clearHeldRollResultTimer]);
+
+  const showHeldRollResult = React.useCallback((value: number) => {
+    clearHeldRollResultTimer();
+    pendingHeldRollResultRef.current = null;
+    setHeldRollResult(value);
+    heldRollResultTimerRef.current = setTimeout(() => {
+      heldRollResultTimerRef.current = null;
+      setHeldRollResult((current) => (current === value ? null : current));
+    }, ZERO_ROLL_RESULT_HOLD_MS);
+  }, [clearHeldRollResultTimer]);
+
   const clearTutorialTransitionTimers = React.useCallback(() => {
     tutorialTransitionTimersRef.current.forEach((timer) => clearTimeout(timer));
     tutorialTransitionTimersRef.current = [];
@@ -730,8 +761,23 @@ export function GameRoom() {
 
   const handleRollResultShown = React.useCallback(() => {
     clearRollTimer();
+    const pendingHeldRollResult = pendingHeldRollResultRef.current;
+    if (pendingHeldRollResult !== null) {
+      showHeldRollResult(pendingHeldRollResult);
+    }
     setRollingVisual(false);
-  }, [clearRollTimer]);
+  }, [clearRollTimer, showHeldRollResult]);
+
+  useEffect(() => {
+    if (rollingVisual) {
+      return;
+    }
+
+    const pendingHeldRollResult = pendingHeldRollResultRef.current;
+    if (pendingHeldRollResult !== null) {
+      showHeldRollResult(pendingHeldRollResult);
+    }
+  }, [rollingVisual, showHeldRollResult]);
 
   const applyTutorialSnapshot = React.useCallback(
     (nextState: GameState) => {
@@ -878,6 +924,7 @@ export function GameRoom() {
         return;
       }
 
+      clearHeldRollResult();
       rollButtonRequestRef.current = {
         serverRevision,
         currentTurn: gameState.currentTurn,
@@ -906,6 +953,7 @@ export function GameRoom() {
     [
       canRoll,
       clearRollTimer,
+      clearHeldRollResult,
       diceAnimationEnabled,
       scheduleRollVisualFallback,
       gameState,
@@ -954,6 +1002,7 @@ export function GameRoom() {
       return;
     }
 
+    clearHeldRollResult();
     rollButtonRequestRef.current = {
       serverRevision,
       currentTurn: gameState.currentTurn,
@@ -975,6 +1024,7 @@ export function GameRoom() {
   }, [
     canRoll,
     clearRollTimer,
+    clearHeldRollResult,
     diceAnimationEnabled,
     scheduleRollVisualFallback,
     gameState.currentTurn,
@@ -1390,6 +1440,7 @@ export function GameRoom() {
     localRollAudioPendingRef.current = false;
     rollButtonRequestRef.current = null;
     clearRollTimer();
+    clearHeldRollResult();
     clearTutorialTransitionTimers();
     if (autoRollTimerRef.current) {
       clearTimeout(autoRollTimerRef.current);
@@ -1418,11 +1469,12 @@ export function GameRoom() {
     setTutorialLessonIndex(0);
     setTutorialCoachPhase('idle');
     setLiveMatchCue(null);
-  }, [clearRollTimer, clearTutorialTransitionTimers, matchId, setLiveMatchCue]);
+  }, [clearHeldRollResult, clearRollTimer, clearTutorialTransitionTimers, matchId, setLiveMatchCue]);
   useEffect(() => () => {
+    clearHeldRollResult();
     clearRollTimer();
     clearTutorialTransitionTimers();
-  }, [clearRollTimer, clearTutorialTransitionTimers]);
+  }, [clearHeldRollResult, clearRollTimer, clearTutorialTransitionTimers]);
   useEffect(() => {
     if (rollButtonLatchPhase === 'idle') {
       rollButtonRequestRef.current = null;
@@ -2016,6 +2068,7 @@ export function GameRoom() {
   }, [isOffline, matchId, serverRevision, setMoveCommandSender, setRollCommandSender]);
   useEffect(() => {
     return () => {
+      clearHeldRollResult();
       clearRollTimer();
       if (autoRollTimerRef.current) {
         clearTimeout(autoRollTimerRef.current);
@@ -2025,7 +2078,7 @@ export function GameRoom() {
         clearTimeout(scoreBannerTimerRef.current);
       }
     };
-  }, [clearRollTimer]);
+  }, [clearHeldRollResult, clearRollTimer]);
   useEffect(() => {
     void gameAudio.start();
 
@@ -2118,6 +2171,15 @@ export function GameRoom() {
 
     if (newHistoryEntries.length > 0) {
       for (const entry of newHistoryEntries) {
+        const noMoveRollValue = getNoMoveRollValueFromHistoryEntry(entry);
+        if (noMoveRollValue !== null && shouldHoldRollResult(noMoveRollValue)) {
+          if (rollingVisual) {
+            pendingHeldRollResultRef.current = noMoveRollValue;
+          } else {
+            showHeldRollResult(noMoveRollValue);
+          }
+        }
+
         if (entry.includes('captured')) {
           void gameAudio.play('capture');
         } else if (entry.includes('moved to')) {
@@ -2176,6 +2238,7 @@ export function GameRoom() {
     matchId,
     playerColor,
     rollingVisual,
+    showHeldRollResult,
     validMoves.length,
   ]);
 
@@ -2698,13 +2761,13 @@ export function GameRoom() {
   const showPersistentDiceVisual = introsComplete && diceAnimationEnabled;
   const showDestinationHighlights = introsComplete && !rollingVisual && gameState.rollValue !== null;
   const displayedValidMoves = showDestinationHighlights && isPrivateMatchReady ? validMoves : [];
+  const displayedRollValue = gameState.rollValue ?? heldRollResult;
   const showMobileRollResult =
     introsComplete &&
     isMobileLayout &&
     !rollingVisual &&
-    gameState.rollValue !== null &&
-    (!diceAnimationEnabled || gameState.rollValue !== 0);
-  const showWebRollResult = introsComplete && showWebSideDiceVisual && !rollingVisual && gameState.rollValue !== null;
+    displayedRollValue !== null;
+  const showWebRollResult = introsComplete && showWebSideDiceVisual && !rollingVisual && displayedRollValue !== null;
   const showMobileWebDetachedDarkScore = useMobileSideReserveRails && darkTrayFrame !== null;
   const mobileWebDetachedDarkScoreFrame = useMemo(() => {
     if (!useMobileSideReserveRails || !darkTrayFrame) {
@@ -2732,7 +2795,7 @@ export function GameRoom() {
       !lightTrayFrame ||
       !boardTargetFrame ||
       !showMobileRollResult ||
-      gameState.rollValue === null
+      displayedRollValue === null
     ) {
       return null;
     }
@@ -2761,7 +2824,7 @@ export function GameRoom() {
     boardArtInsetBottom,
     boardArtInsetTop,
     boardTargetFrame,
-    gameState.rollValue,
+    displayedRollValue,
     lightTrayFrame,
     showMobileRollResult,
     useMobileSideReserveRails,
@@ -2930,7 +2993,7 @@ export function GameRoom() {
           compact={compactSupportUi}
           durationMs={diceAnimationDurationMs}
           onResultShown={handleRollResultShown}
-          rollValue={gameState.rollValue}
+          rollValue={displayedRollValue}
           rolling={rollingVisual}
           viewportHeight={viewportHeight}
           viewportWidth={viewportWidth}
@@ -2952,7 +3015,7 @@ export function GameRoom() {
         >
           <DiceStageVisual
             animationDurationMs={diceAnimationDurationMs}
-            value={gameState.rollValue}
+            value={displayedRollValue}
             rolling={rollingVisual}
             canRoll={introsComplete && canRoll}
             compact
@@ -2976,7 +3039,7 @@ export function GameRoom() {
             <View style={styles.mobileDiceWrap}>
               <Dice
                 animationDurationMs={diceAnimationDurationMs}
-                value={gameState.rollValue}
+                value={displayedRollValue}
                 rolling={rollingVisual}
                 onRoll={handleRoll}
                 onResultShown={handleRollResultShown}
@@ -3039,7 +3102,7 @@ export function GameRoom() {
               },
             ]}
           >
-            {gameState.rollValue}
+            {displayedRollValue}
           </Text>
         </View>
       ) : null}
@@ -3069,7 +3132,7 @@ export function GameRoom() {
             >
               <DiceStageVisual
                 animationDurationMs={diceAnimationDurationMs}
-                value={gameState.rollValue}
+                value={displayedRollValue}
                 rolling={rollingVisual}
                 canRoll={introsComplete && canRoll}
                 compact
@@ -3095,7 +3158,7 @@ export function GameRoom() {
         >
           <Dice
             animationDurationMs={diceAnimationDurationMs}
-            value={gameState.rollValue}
+            value={displayedRollValue}
             rolling={rollingVisual}
             onRoll={handleRoll}
             onResultShown={handleRollResultShown}
@@ -3337,7 +3400,7 @@ export function GameRoom() {
                         !showWebRollResult && styles.webRollResultValueMuted,
                       ]}
                     >
-                      {showWebRollResult ? String(gameState.rollValue) : ''}
+                      {showWebRollResult ? String(displayedRollValue) : ''}
                     </Text>
                   </View>
                 ) : null}
@@ -3419,7 +3482,7 @@ export function GameRoom() {
                   <View pointerEvents="none" style={[styles.webDiceVisualSlot, { height: webDiceVisualSlotHeight }]}>
                     <DiceStageVisual
                       animationDurationMs={diceAnimationDurationMs}
-                      value={gameState.rollValue}
+                      value={displayedRollValue}
                       rolling={rollingVisual}
                       canRoll={introsComplete && canRoll}
                       compact={compactSupportUi || webDiceVisualSlotHeight < 140}
@@ -3444,7 +3507,7 @@ export function GameRoom() {
                     <View style={styles.webUnderTrayButtonWrap}>
                       <Dice
                         animationDurationMs={diceAnimationDurationMs}
-                        value={gameState.rollValue}
+                        value={displayedRollValue}
                         rolling={rollingVisual}
                         onRoll={handleRoll}
                         onResultShown={handleRollResultShown}
@@ -3463,7 +3526,7 @@ export function GameRoom() {
                 ) : (
                   <Dice
                     animationDurationMs={diceAnimationDurationMs}
-                    value={gameState.rollValue}
+                    value={displayedRollValue}
                     rolling={rollingVisual}
                     onRoll={handleRoll}
                     onResultShown={handleRollResultShown}
@@ -3565,7 +3628,7 @@ export function GameRoom() {
                     <View style={[styles.mobileDiceWrap, { width: mobileDiceDockWidth }]}>
                       <Dice
                         animationDurationMs={diceAnimationDurationMs}
-                        value={gameState.rollValue}
+                        value={displayedRollValue}
                         rolling={rollingVisual}
                         onRoll={handleRoll}
                         onResultShown={handleRollResultShown}
@@ -3592,7 +3655,7 @@ export function GameRoom() {
                         { fontFamily: rollResultFontFamily, transform: [{ translateY: mobileRollResultOffset }] },
                       ]}
                     >
-                      {gameState.rollValue}
+                      {displayedRollValue}
                     </Text>
                   ) : null}
                 </View>
@@ -3653,7 +3716,7 @@ export function GameRoom() {
                     <View style={[styles.mobileDiceWrap, { width: mobileDiceDockWidth }]}>
                       <Dice
                         animationDurationMs={diceAnimationDurationMs}
-                        value={gameState.rollValue}
+                        value={displayedRollValue}
                         rolling={rollingVisual}
                         onRoll={handleRoll}
                         onResultShown={handleRollResultShown}

@@ -20,6 +20,7 @@ import {
 import Animated, {
   Easing,
   cancelAnimation,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -53,6 +54,31 @@ interface BoardProps {
 interface Point {
   x: number;
   y: number;
+}
+
+type PreviewTone = 'valid' | 'blocked';
+
+interface PreviewState {
+  color: 'light' | 'dark';
+  fromIndex: number;
+  pieceId: string;
+  toIndex: number;
+  tone: PreviewTone;
+}
+
+interface BoardOccupant {
+  color: 'light' | 'dark';
+  id: string;
+  position: number;
+}
+
+interface AnimatedBoardMove {
+  color: 'light' | 'dark';
+  cumulativeDistances: number[];
+  durationMs: number;
+  pieceId: string;
+  points: Point[];
+  totalDistance: number;
 }
 
 interface BoardTileLandingOffsetOptions {
@@ -109,6 +135,10 @@ const MIN_TILE_SHELL_PADDING = 2;
 const BOARD_PIECE_VISIBLE_TILE_COVERAGE = 0.75;
 const BOARD_PIECE_ART_SCALE = BOARD_PIECE_VISIBLE_TILE_COVERAGE / PIECE_ART_VISIBLE_COVERAGE;
 const BOARD_PIECE_ART_OFFSET_Y_RATIO = 0.02;
+const MOVE_SLIDE_MIN_DURATION_MS = 240;
+const MOVE_SLIDE_BASE_DURATION_MS = 150;
+const MOVE_SLIDE_STEP_DURATION_MS = 110;
+const MOVE_SLIDE_MAX_DURATION_MS = 640;
 const SHOW_BOARD_ALIGNMENT_DEBUG = false;
 const VERTICAL_BOARD_ROW_LANDING_OFFSET_Y_RATIOS = [
   0.008,
@@ -224,10 +254,14 @@ export const Board: React.FC<BoardProps> = ({
   const { width } = useWindowDimensions();
   const [selectedMove, setSelectedMove] = useState<MoveAction | null>(null);
   const [hoveredMove, setHoveredMove] = useState<MoveAction | null>(null);
+  const [blockedPreview, setBlockedPreview] = useState<PreviewState | null>(null);
+  const [animatedMove, setAnimatedMove] = useState<AnimatedBoardMove | null>(null);
 
   const cuePulse = useSharedValue(0);
   const scoreCuePulse = useSharedValue(0);
   const previewPulse = useSharedValue(0);
+  const movingPieceProgress = useSharedValue(0);
+  const movingPieceLift = useSharedValue(0);
 
   const gameState = gameStateOverride ?? storeGameState;
   const validMoves = validMovesOverride ?? storeValidMoves;
@@ -244,6 +278,7 @@ export const Board: React.FC<BoardProps> = ({
     [gameState.matchConfig.pathVariant],
   );
   const pathLength = pathDefinition.pathLength;
+  const previousGameStateRef = React.useRef<GameState | null>(null);
   const getPathForColor = React.useCallback(
     (color: 'light' | 'dark') => (color === 'light' ? pathDefinition.light : pathDefinition.dark),
     [pathDefinition.dark, pathDefinition.light],
@@ -407,17 +442,95 @@ export const Board: React.FC<BoardProps> = ({
     spawnCueOffsetDistance,
   ]);
 
-  const getPieceAt = (r: number, c: number): { id: string; color: 'light' | 'dark' } | undefined => {
+  const buildPathPoints = React.useCallback(
+    (color: 'light' | 'dark', fromIndex: number, toIndex: number): Point[] => {
+      const points: Point[] = [];
+      const cappedToIndex = Math.min(toIndex, pathLength);
+
+      if (fromIndex === -1) {
+        const reservePoint = coordForPathIndex(color, -1);
+        if (reservePoint) {
+          points.push(reservePoint);
+        }
+
+        for (let index = 0; index <= Math.min(cappedToIndex, pathLength - 1); index += 1) {
+          const point = coordForPathIndex(color, index);
+          if (point) {
+            points.push(point);
+          }
+        }
+      } else {
+        const startPoint = coordForPathIndex(color, fromIndex);
+        if (startPoint) {
+          points.push(startPoint);
+        }
+
+        for (let index = fromIndex + 1; index <= Math.min(cappedToIndex, pathLength - 1); index += 1) {
+          const point = coordForPathIndex(color, index);
+          if (point) {
+            points.push(point);
+          }
+        }
+      }
+
+      if (cappedToIndex === pathLength) {
+        const finishPoint = coordForPathIndex(color, pathLength);
+        if (finishPoint) {
+          points.push(finishPoint);
+        }
+      }
+
+      return points;
+    },
+    [coordForPathIndex, pathLength],
+  );
+
+  const buildAnimatedMove = React.useCallback(
+    (color: 'light' | 'dark', pieceId: string, fromIndex: number, toIndex: number): AnimatedBoardMove | null => {
+      const points = buildPathPoints(color, fromIndex, toIndex);
+      if (points.length < 2) {
+        return null;
+      }
+
+      let totalDistance = 0;
+      const cumulativeDistances = [0];
+
+      for (let index = 1; index < points.length; index += 1) {
+        const previous = points[index - 1];
+        const current = points[index];
+        totalDistance += Math.hypot(current.x - previous.x, current.y - previous.y);
+        cumulativeDistances.push(totalDistance);
+      }
+
+      return {
+        color,
+        cumulativeDistances,
+        durationMs: Math.min(
+          MOVE_SLIDE_MAX_DURATION_MS,
+          Math.max(
+            MOVE_SLIDE_MIN_DURATION_MS,
+            MOVE_SLIDE_BASE_DURATION_MS + (points.length - 1) * MOVE_SLIDE_STEP_DURATION_MS,
+          ),
+        ),
+        pieceId,
+        points,
+        totalDistance,
+      };
+    },
+    [buildPathPoints],
+  );
+
+  const getPieceAt = (r: number, c: number): BoardOccupant | undefined => {
     const lightPiece = gameState.light.pieces.find(
       (piece) =>
         !piece.isFinished && piece.position !== -1 && mapIndexToCoord('light', piece.position, r, c),
     );
-    if (lightPiece) return { id: lightPiece.id, color: 'light' };
+    if (lightPiece) return { id: lightPiece.id, color: 'light', position: lightPiece.position };
 
     const darkPiece = gameState.dark.pieces.find(
       (piece) => !piece.isFinished && piece.position !== -1 && mapIndexToCoord('dark', piece.position, r, c),
     );
-    if (darkPiece) return { id: darkPiece.id, color: 'dark' };
+    if (darkPiece) return { id: darkPiece.id, color: 'dark', position: darkPiece.position };
 
     return undefined;
   };
@@ -490,51 +603,33 @@ export const Board: React.FC<BoardProps> = ({
       : null;
 
   const hintedMove = !selectedMove && !hoveredMove ? suggestedMove : null;
-  const previewMove = selectedMove ?? hoveredMove ?? hintedMove;
+  const validPreview = selectedMove ?? hoveredMove ?? hintedMove;
+  const previewState = useMemo<PreviewState | null>(() => {
+    if (blockedPreview) {
+      return blockedPreview;
+    }
+
+    if (!validPreview) {
+      return null;
+    }
+
+    return {
+      color: validPreview.pieceId.startsWith('dark') ? 'dark' : 'light',
+      fromIndex: validPreview.fromIndex,
+      pieceId: validPreview.pieceId,
+      toIndex: validPreview.toIndex,
+      tone: 'valid',
+    };
+  }, [blockedPreview, validPreview]);
+  const previewTone: PreviewTone = previewState?.tone ?? 'valid';
 
   const previewPoints = useMemo(() => {
-    if (!previewMove) return [] as Point[];
-
-    const color: 'light' | 'dark' = previewMove.pieceId.startsWith('dark') ? 'dark' : 'light';
-    const points: Point[] = [];
-
-    if (previewMove.fromIndex === -1) {
-      const reservePoint = coordForPathIndex(color, -1);
-      if (reservePoint) {
-        points.push(reservePoint);
-      }
-      for (let index = 0; index <= Math.min(previewMove.toIndex, pathLength - 1); index += 1) {
-        const point = coordForPathIndex(color, index);
-        if (point) {
-          points.push(point);
-        }
-      }
-    } else {
-      const startPoint = coordForPathIndex(color, previewMove.fromIndex);
-      if (startPoint) {
-        points.push(startPoint);
-      }
-      for (
-        let index = previewMove.fromIndex + 1;
-        index <= Math.min(previewMove.toIndex, pathLength - 1);
-        index += 1
-      ) {
-        const point = coordForPathIndex(color, index);
-        if (point) {
-          points.push(point);
-        }
-      }
+    if (!previewState) {
+      return [] as Point[];
     }
 
-    if (previewMove.toIndex === pathLength) {
-      const finishPoint = coordForPathIndex(color, pathLength);
-      if (finishPoint) {
-        points.push(finishPoint);
-      }
-    }
-
-    return points;
-  }, [coordForPathIndex, pathLength, previewMove]);
+    return buildPathPoints(previewState.color, previewState.fromIndex, previewState.toIndex);
+  }, [buildPathPoints, previewState]);
 
   const previewSegments = useMemo(() => {
     const segments: { x: number; y: number; width: number; angle: number }[] = [];
@@ -557,6 +652,9 @@ export const Board: React.FC<BoardProps> = ({
     return segments;
   }, [previewPoints]);
   const previewDestinationPoint = previewPoints[previewPoints.length - 1] ?? null;
+  const clearAnimatedMove = React.useCallback(() => {
+    setAnimatedMove(null);
+  }, []);
 
   const boardArtLayout = useMemo<BoardArtImageLayout>(() => {
     // Fit artwork from gameplay grid measurements so visuals follow interaction geometry.
@@ -665,7 +763,7 @@ export const Board: React.FC<BoardProps> = ({
   }, [hasScoringMove, isInteractiveTurn, scoreCuePulse]);
 
   useEffect(() => {
-    if (!previewMove) {
+    if (!previewState) {
       cancelAnimation(previewPulse);
       previewPulse.value = withTiming(0, { duration: urTheme.motion.duration.fast });
       return;
@@ -679,7 +777,7 @@ export const Board: React.FC<BoardProps> = ({
       -1,
       true,
     );
-  }, [previewMove, previewPulse]);
+  }, [previewPulse, previewState]);
 
   useEffect(() => {
     if (!selectedMove) return;
@@ -719,7 +817,94 @@ export const Board: React.FC<BoardProps> = ({
   useEffect(() => {
     setSelectedMove(null);
     setHoveredMove(null);
+    setBlockedPreview(null);
   }, [gameState.currentTurn, gameState.phase, gameState.rollValue]);
+
+  useEffect(() => {
+    const previousGameState = previousGameStateRef.current;
+
+    if (!previousGameState) {
+      previousGameStateRef.current = gameState;
+      return;
+    }
+
+    const newHistoryEntries =
+      gameState.history.length > previousGameState.history.length
+        ? gameState.history.slice(previousGameState.history.length)
+        : [];
+    const didApplyMove = newHistoryEntries.some((entry) => entry.includes('moved to'));
+
+    if (didApplyMove) {
+      const movingColor = previousGameState.currentTurn;
+      const previousPieces = previousGameState[movingColor].pieces;
+      const movedPiece = gameState[movingColor].pieces.find((piece) => {
+        const previousPiece = previousPieces.find((candidate) => candidate.id === piece.id);
+        if (!previousPiece) {
+          return false;
+        }
+
+        return previousPiece.position !== piece.position || previousPiece.isFinished !== piece.isFinished;
+      });
+      const previousPiece = movedPiece
+        ? previousPieces.find((candidate) => candidate.id === movedPiece.id) ?? null
+        : null;
+
+      if (movedPiece && previousPiece) {
+        const nextAnimatedMove = buildAnimatedMove(
+          movingColor,
+          movedPiece.id,
+          previousPiece.position,
+          movedPiece.position,
+        );
+
+        if (nextAnimatedMove) {
+          setAnimatedMove(nextAnimatedMove);
+        }
+      }
+    }
+
+    previousGameStateRef.current = gameState;
+  }, [buildAnimatedMove, gameState]);
+
+  useEffect(() => {
+    if (!animatedMove) {
+      cancelAnimation(movingPieceProgress);
+      cancelAnimation(movingPieceLift);
+      movingPieceProgress.value = 0;
+      movingPieceLift.value = 0;
+      return;
+    }
+
+    movingPieceProgress.value = 0;
+    movingPieceLift.value = 0;
+    movingPieceLift.value = withSequence(
+      withTiming(1, {
+        duration: Math.max(90, Math.round(animatedMove.durationMs * 0.32)),
+        easing: Easing.out(Easing.cubic),
+      }),
+      withTiming(0, {
+        duration: Math.max(120, Math.round(animatedMove.durationMs * 0.68)),
+        easing: Easing.inOut(Easing.quad),
+      }),
+    );
+    movingPieceProgress.value = withTiming(
+      animatedMove.totalDistance,
+      {
+        duration: animatedMove.durationMs,
+        easing: Easing.inOut(Easing.cubic),
+      },
+      (finished) => {
+        if (finished) {
+          runOnJS(clearAnimatedMove)();
+        }
+      },
+    );
+
+    return () => {
+      cancelAnimation(movingPieceProgress);
+      cancelAnimation(movingPieceLift);
+    };
+  }, [animatedMove, clearAnimatedMove, movingPieceLift, movingPieceProgress]);
 
   const executeMove = (move: MoveAction) => {
     console.info('[Board][executeMove]', {
@@ -731,6 +916,7 @@ export const Board: React.FC<BoardProps> = ({
       playerColor: assignedPlayerColor,
     });
     LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
+    setBlockedPreview(null);
     makeMove(move);
     setSelectedMove(null);
     setHoveredMove(null);
@@ -750,12 +936,14 @@ export const Board: React.FC<BoardProps> = ({
   const handleSpawnCuePress = () => {
     notifyInteraction();
     if (!spawnMove || !isInteractiveTurn || gameState.phase !== 'moving') return;
+    setBlockedPreview(null);
     setHoveredMove(null);
     executeMove(spawnMove);
   };
 
   const handleSpawnCueHoverIn = () => {
     if (!spawnMove || !isInteractiveTurn || gameState.phase !== 'moving' || !!selectedMove) return;
+    setBlockedPreview(null);
     setHoveredMove(spawnMove);
   };
 
@@ -777,6 +965,7 @@ export const Board: React.FC<BoardProps> = ({
   const handleScoreCuePress = () => {
     notifyInteraction();
     if (!isInteractiveTurn || gameState.phase !== 'moving') return;
+    setBlockedPreview(null);
 
     if (selectedMove && selectedMove.toIndex === pathLength) {
       const selectedScoringMove = validMoves.find(
@@ -800,22 +989,26 @@ export const Board: React.FC<BoardProps> = ({
 
   const handlePreviewDestinationPress = () => {
     notifyInteraction();
-    if (!isInteractiveTurn || gameState.phase !== 'moving' || !isMoveValid(previewMove)) {
+    if (!isInteractiveTurn || gameState.phase !== 'moving' || !validPreview || !isMoveValid(validPreview)) {
       return;
     }
 
-    executeMove(previewMove);
+    setBlockedPreview(null);
+    executeMove(validPreview);
   };
 
   const handleTilePress = (r: number, c: number) => {
     notifyInteraction();
     if (!assignedPlayerColor || !isInteractiveTurn || gameState.phase !== 'moving') return;
+    const occupant = getPieceAt(r, c);
+    const playerPiece = occupant && occupant.color === assignedPlayerColor ? occupant : undefined;
 
     const moveFromTile = validMoves.find(
       (move) => move.fromIndex >= 0 && mapAssignedIndexToCoord(move.fromIndex, r, c),
     );
 
     if (moveFromTile) {
+      setBlockedPreview(null);
       setHoveredMove(null);
       executeMove(moveFromTile);
       return;
@@ -826,6 +1019,7 @@ export const Board: React.FC<BoardProps> = ({
         selectedMove.toIndex !== pathLength && mapAssignedIndexToCoord(selectedMove.toIndex, r, c);
 
       if (selectedToTileMatch) {
+        setBlockedPreview(null);
         executeMove(selectedMove);
         return;
       }
@@ -836,16 +1030,36 @@ export const Board: React.FC<BoardProps> = ({
     );
 
     if (moveToTile) {
+      setBlockedPreview(null);
       executeMove(moveToTile);
       return;
     }
 
+    if (playerPiece && gameState.rollValue !== null) {
+      const attemptedToIndex = Math.min(playerPiece.position + gameState.rollValue, pathLength);
+
+      if (attemptedToIndex > playerPiece.position) {
+        setSelectedMove(null);
+        setHoveredMove(null);
+        setBlockedPreview({
+          color: playerPiece.color,
+          fromIndex: playerPiece.position,
+          pieceId: playerPiece.id,
+          toIndex: attemptedToIndex,
+          tone: 'blocked',
+        });
+        return;
+      }
+    }
+
     setSelectedMove(null);
     setHoveredMove(null);
+    setBlockedPreview(null);
   };
 
   const handleTileHoverIn = (moveFromTile?: MoveAction) => {
     if (!moveFromTile || !isInteractiveTurn || gameState.phase !== 'moving' || !!selectedMove) return;
+    setBlockedPreview(null);
     setHoveredMove(moveFromTile);
   };
 
@@ -878,6 +1092,46 @@ export const Board: React.FC<BoardProps> = ({
     opacity: 0.28 + previewPulse.value * 0.64,
   }));
 
+  const movingPieceStyle = useAnimatedStyle(() => {
+    if (!animatedMove || animatedMove.points.length === 0) {
+      return {
+        opacity: 0,
+      };
+    }
+
+    const totalDistance = animatedMove.totalDistance;
+    const travel = Math.max(0, Math.min(totalDistance, movingPieceProgress.value));
+    let x = animatedMove.points[0].x;
+    let y = animatedMove.points[0].y;
+
+    for (let index = 1; index < animatedMove.points.length; index += 1) {
+      const segmentStartDistance = animatedMove.cumulativeDistances[index - 1] ?? 0;
+      const segmentEndDistance = animatedMove.cumulativeDistances[index] ?? totalDistance;
+
+      if (travel <= segmentEndDistance || index === animatedMove.points.length - 1) {
+        const startPoint = animatedMove.points[index - 1];
+        const endPoint = animatedMove.points[index];
+        const segmentDistance = Math.max(1, segmentEndDistance - segmentStartDistance);
+        const segmentProgress = Math.min(1, Math.max(0, (travel - segmentStartDistance) / segmentDistance));
+
+        x = startPoint.x + (endPoint.x - startPoint.x) * segmentProgress;
+        y = startPoint.y + (endPoint.y - startPoint.y) * segmentProgress;
+        break;
+      }
+    }
+
+    const liftDistance = Math.max(8, boardPiecePixelSize * 0.12);
+
+    return {
+      opacity: 1,
+      transform: [
+        { translateX: x - boardPiecePixelSize / 2 },
+        { translateY: y - boardPiecePixelSize / 2 - movingPieceLift.value * liftDistance },
+        { scale: 1 + movingPieceLift.value * 0.04 },
+      ],
+    };
+  }, [animatedMove, boardPiecePixelSize]);
+
   const renderGrid = () => {
     const rows = [];
 
@@ -905,6 +1159,7 @@ export const Board: React.FC<BoardProps> = ({
         }
 
         const piece = getPieceAt(r, c);
+        const visiblePiece = piece?.id === animatedMove?.pieceId ? undefined : piece;
         const moveFromTile = validMoves.find(
           (move) => move.fromIndex >= 0 && isMyTurn && mapAssignedIndexToCoord(move.fromIndex, r, c),
         );
@@ -916,18 +1171,19 @@ export const Board: React.FC<BoardProps> = ({
           );
 
         const isPreviewDestination =
-          !!previewMove &&
-          previewMove.toIndex !== pathLength &&
-          mapAssignedIndexToCoord(previewMove.toIndex, r, c);
+          !!previewState &&
+          previewState.toIndex !== pathLength &&
+          mapAssignedIndexToCoord(previewState.toIndex, r, c);
 
         const isSelectedPiece =
           !!selectedMove && selectedMove.fromIndex >= 0 && mapAssignedIndexToCoord(selectedMove.fromIndex, r, c);
         const isHintedPiece =
           !!hintedMove && hintedMove.fromIndex >= 0 && mapAssignedIndexToCoord(hintedMove.fromIndex, r, c);
         const isFocusedPiece = isSelectedPiece || isHintedPiece;
+        const isOwnTurnPiece = !!piece && piece.color === assignedPlayerColor;
 
-        const isValidTarget = isPreviewDestination;
-        const isInteractable = isInteractiveTurn && (isDestination || !!moveFromTile || isFocusedPiece);
+        const isValidTarget = previewTone === 'valid' && isPreviewDestination;
+        const isInteractable = isInteractiveTurn && (isDestination || !!moveFromTile || isFocusedPiece || isOwnTurnPiece);
         const pieceLandingOffset = getBoardTileLandingOffset({
           cellSize: renderedTileSize,
           col: c,
@@ -956,7 +1212,7 @@ export const Board: React.FC<BoardProps> = ({
               pieceOffsetY={pieceLandingOffset.y}
               pieceArtScale={boardPieceArtScale}
               pieceArtOffsetY={boardPieceArtOffsetY}
-              piece={piece}
+              piece={visiblePiece}
               isValidTarget={isValidTarget}
               isSelectedPiece={isFocusedPiece}
               isInteractive={isInteractable}
@@ -1072,12 +1328,17 @@ export const Board: React.FC<BoardProps> = ({
       </View>
 
       {(previewSegments.length > 0 || previewDestinationPoint) && (
-        <View pointerEvents="none" style={styles.previewLayer}>
+        <View
+          pointerEvents="none"
+          style={styles.previewLayer}
+          testID={previewTone === 'blocked' ? 'board-preview-blocked' : 'board-preview-valid'}
+        >
           {previewSegments.map((segment, index) => (
             <Animated.View
               key={`segment-${index}`}
               style={[
                 styles.previewSegment,
+                previewTone === 'blocked' ? styles.previewSegmentBlocked : styles.previewSegmentValid,
                 {
                   left: segment.x - segment.width / 2,
                   top: segment.y - 3,
@@ -1093,6 +1354,7 @@ export const Board: React.FC<BoardProps> = ({
               key="destination-point"
               style={[
                 styles.previewPoint,
+                previewTone === 'blocked' ? styles.previewPointBlocked : styles.previewPointValid,
                 {
                   left: previewDestinationPoint.x - 7,
                   top: previewDestinationPoint.y - 7,
@@ -1104,7 +1366,7 @@ export const Board: React.FC<BoardProps> = ({
         </View>
       )}
 
-      {previewDestinationPoint && isMoveValid(previewMove) ? (
+      {previewDestinationPoint && validPreview && isMoveValid(validPreview) ? (
         <Pressable
           onPress={handlePreviewDestinationPress}
           testID="board-preview-destination"
@@ -1119,6 +1381,20 @@ export const Board: React.FC<BoardProps> = ({
             },
           ]}
         />
+      ) : null}
+
+      {animatedMove ? (
+        <View pointerEvents="none" style={styles.movingPieceLayer}>
+          <Animated.View testID="board-moving-piece" style={[styles.movingPiece, movingPieceStyle]}>
+            <Piece
+              color={animatedMove.color}
+              pixelSize={boardPiecePixelSize}
+              artScale={boardPieceArtScale}
+              artOffsetY={boardPieceArtOffsetY}
+              state="idle"
+            />
+          </Animated.View>
+        </View>
       ) : null}
 
       {isInteractiveTurn && hasScoringMove && scoreCueAnchor && (
@@ -1336,10 +1612,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     height: 6,
     borderRadius: urTheme.radii.pill,
+  },
+  previewSegmentValid: {
     backgroundColor: 'rgba(111, 184, 255, 0.95)',
     ...boxShadow({
       color: urTheme.colors.glow,
       opacity: 0.36,
+      blurRadius: 7,
+      elevation: 6,
+    }),
+  },
+  previewSegmentBlocked: {
+    backgroundColor: 'rgba(214, 70, 58, 0.96)',
+    ...boxShadow({
+      color: '#D6463A',
+      opacity: 0.34,
       blurRadius: 7,
       elevation: 6,
     }),
@@ -1349,8 +1636,10 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(241, 230, 208, 0.92)',
     borderWidth: 1,
+  },
+  previewPointValid: {
+    backgroundColor: 'rgba(241, 230, 208, 0.92)',
     borderColor: 'rgba(63, 40, 18, 0.48)',
     ...boxShadow({
       color: urTheme.colors.glow,
@@ -1359,9 +1648,26 @@ const styles = StyleSheet.create({
       elevation: 6,
     }),
   },
+  previewPointBlocked: {
+    backgroundColor: 'rgba(255, 232, 226, 0.96)',
+    borderColor: 'rgba(134, 34, 28, 0.72)',
+    ...boxShadow({
+      color: '#D6463A',
+      opacity: 0.42,
+      blurRadius: 8,
+      elevation: 6,
+    }),
+  },
   previewDestinationTouchable: {
     position: 'absolute',
     zIndex: 6,
+  },
+  movingPieceLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 7,
+  },
+  movingPiece: {
+    position: 'absolute',
   },
   spawnCueTouchable: {
     position: 'absolute',

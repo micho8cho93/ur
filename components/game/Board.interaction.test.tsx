@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Board } from './Board';
 import { createInitialState, getValidMoves } from '@/logic/engine';
+import { getPathCoord } from '@/logic/pathVariants';
 import type { GameState, PlayerColor } from '@/logic/types';
 
 jest.mock('./Tile', () => {
@@ -121,5 +122,40 @@ describe('Board interactions', () => {
     fireEvent.press(screen.getByTestId('board-preview-destination'));
 
     expect(onMakeMove).toHaveBeenCalledWith(validMoves[0]);
+  });
+
+  it('shows a blocked red path when an owned piece cannot move', () => {
+    const state = createInitialState();
+    state.currentTurn = 'light';
+    state.phase = 'moving';
+    state.rollValue = 1;
+    setOnlyActivePiece(state, 'light', 0, 0);
+    setAllPiecesFinished(state, 'dark');
+
+    state.light.pieces[1].position = 1;
+    state.light.pieces[1].isFinished = false;
+    state.light.finishedCount -= 1;
+
+    const validMoves = getValidMoves(state, 1);
+    const onMakeMove = jest.fn();
+    const blockedTile = getPathCoord(state.matchConfig.pathVariant, 'light', 0);
+
+    if (!blockedTile) {
+      throw new Error('Expected a board coordinate for the blocked test tile.');
+    }
+
+    render(
+      <Board
+        gameStateOverride={state}
+        validMovesOverride={validMoves}
+        onMakeMoveOverride={onMakeMove}
+        playerColorOverride="light"
+      />,
+    );
+
+    fireEvent.press(screen.getByTestId(`tile-${blockedTile.row}-${blockedTile.col}`));
+
+    expect(onMakeMove).not.toHaveBeenCalled();
+    expect(screen.getByTestId('board-preview-blocked')).toBeTruthy();
   });
 });
