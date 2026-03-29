@@ -637,7 +637,7 @@ export const processRankedMatchResult = (
   logger: RuntimeLogger,
   params: ProcessRankedMatchResultParams,
 ): ProcessRankedMatchResult | null => {
-  if (!params.ranked || params.privateMatch || params.botMatch || params.casualMatch || params.experimentalMode) {
+  if (!params.ranked || params.botMatch || params.casualMatch || params.experimentalMode) {
     return null;
   }
 

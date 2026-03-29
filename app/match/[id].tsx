@@ -503,16 +503,13 @@ export function GameRoom() {
     !isPlaythroughTutorialMatch;
   const isRankedHumanMatch =
     !isOffline &&
-    !isPrivateMatch &&
-    effectiveMatchConfig.allowsRankedStats &&
+    (effectiveMatchConfig.allowsRankedStats || isTournamentMatch) &&
     !isPlaythroughTutorialMatch;
   const eloUnchangedReason = isRankedHumanMatch
     ? null
-    : isPrivateMatch
-      ? 'Private matches do not affect Elo.'
-      : isOffline
+    : isOffline
         ? 'Bot and offline matches do not affect Elo.'
-        : !effectiveMatchConfig.allowsRankedStats
+        : !effectiveMatchConfig.allowsRankedStats && !isTournamentMatch
           ? 'This mode does not affect Elo.'
           : 'Elo was unchanged for this match.';
   const effectiveMatchToken = storedMatchId === matchId ? matchToken : null;

@@ -58,6 +58,58 @@ describe('private match RPC payloads', () => {
     });
   });
 
+  it('marks standard private tables as rated and alternate private tables as unrated', () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0);
+
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = {
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+    const nk = {
+      storageRead: jest.fn(() => []),
+      storageWrite: jest.fn(),
+      matchCreate: jest.fn(() => 'match-1'),
+    };
+
+    runtime.rpcCreatePrivateMatch(
+      { userId: 'user-1' },
+      logger,
+      nk,
+      JSON.stringify({ modeId: 'standard' })
+    );
+    runtime.rpcCreatePrivateMatch(
+      { userId: 'user-1' },
+      logger,
+      nk,
+      JSON.stringify({ modeId: 'gameMode_1_piece' })
+    );
+
+    expect(nk.matchCreate).toHaveBeenNthCalledWith(
+      1,
+      'authoritative_match',
+      expect.objectContaining({
+        modeId: 'standard',
+        privateMatch: true,
+        rankedMatch: true,
+        winRewardSource: 'private_pvp_win',
+        allowsChallengeRewards: true,
+      })
+    );
+    expect(nk.matchCreate).toHaveBeenNthCalledWith(
+      2,
+      'authoritative_match',
+      expect.objectContaining({
+        modeId: 'gameMode_1_piece',
+        privateMatch: true,
+        rankedMatch: false,
+        winRewardSource: 'private_pvp_win',
+        allowsChallengeRewards: true,
+      })
+    );
+  });
+
   it('reads and claims private codes from system-owned storage', () => {
     const runtime = globalThis as RuntimeGlobals;
     const logger = {

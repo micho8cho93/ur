@@ -53,9 +53,36 @@ const MESOPOTAMIA_FACTS = [
 const buildCards = (
   rewardSummary: TournamentMatchRewardSummaryPayload | null,
   rotationCycle: number,
+  showExitActions: boolean,
 ): WaitingRoomCard[] => {
   const urFact = ROYAL_GAME_OF_UR_FACTS[rotationCycle % ROYAL_GAME_OF_UR_FACTS.length];
   const mesopotamiaFact = MESOPOTAMIA_FACTS[rotationCycle % MESOPOTAMIA_FACTS.length];
+
+  if (showExitActions && !rewardSummary) {
+    return [
+      {
+        key: 'final',
+        eyebrow: 'Tournament Complete',
+        title: 'Result locked',
+        body: 'Your final standing has been recorded.',
+        accent: '#A7D3FF',
+      },
+      {
+        key: 'ur',
+        eyebrow: 'Royal Game of Ur',
+        title: 'Archive Note',
+        body: urFact,
+        accent: '#C5E4FF',
+      },
+      {
+        key: 'mesopotamia',
+        eyebrow: 'Mesopotamia',
+        title: 'World Note',
+        body: mesopotamiaFact,
+        accent: '#F1C975',
+      },
+    ];
+  }
 
   if (!rewardSummary) {
     return [
@@ -166,7 +193,10 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
   const [cardIndex, setCardIndex] = useState(0);
   const [rotationCycle, setRotationCycle] = useState(0);
   const launchTriggeredRef = useRef(false);
-  const cards = useMemo(() => buildCards(rewardSummary, rotationCycle), [rewardSummary, rotationCycle]);
+  const cards = useMemo(
+    () => buildCards(rewardSummary, rotationCycle, showExitActions),
+    [rewardSummary, rotationCycle, showExitActions],
+  );
   const activeCard = cards[cardIndex] ?? cards[0];
 
   useEffect(() => {
@@ -222,11 +252,15 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
 
       <View style={styles.chrome}>
         <View style={styles.headerBlock}>
-          <Text style={styles.eyebrow}>Tournament Waiting Room</Text>
+          <Text style={styles.eyebrow}>{showExitActions ? 'Tournament Complete' : 'Tournament Waiting Room'}</Text>
           <Text numberOfLines={2} style={styles.title}>
             {tournamentName}
           </Text>
-          <Text style={styles.bodyCopy}>The next match will start automatically as soon as the bracket is ready.</Text>
+          <Text style={styles.bodyCopy}>
+            {showExitActions
+              ? 'Your tournament run is over and the final standings are now locked.'
+              : 'The next match will start automatically as soon as the bracket is ready.'}
+          </Text>
         </View>
 
         <View style={styles.pillRow}>

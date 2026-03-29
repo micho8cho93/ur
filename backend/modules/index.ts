@@ -405,10 +405,11 @@ const resolveConfiguredRewardXp = (value: unknown): number | null => {
 
 const buildMatchClassification = (params: Record<string, unknown>, modeId: MatchModeId): MatchClassification => {
   const config = getMatchConfig(modeId);
+  const tournamentMatch = Boolean(resolveTournamentMatchContextFromParams(params));
   const privateMatch = params.privateMatch === true;
   const botMatch = params.botMatch === true;
   const casualMatch = params.casualMatch === true;
-  const experimental = !config.allowsRankedStats;
+  const experimental = !config.allowsRankedStats && !tournamentMatch;
   const ranked =
     params.rankedMatch === true ||
     (!privateMatch && !botMatch && !casualMatch && !experimental && params.rankedMatch !== false);
@@ -992,23 +993,32 @@ const finalizeCompletedMatch = (
   dispatcher: nkruntime.MatchDispatcher,
   state: MatchState,
   matchId: string
-): void => {
+): boolean => {
   if (!state.gameState.winner || state.resultRecorded) {
-    return;
+    return state.resultRecorded;
   }
 
   syncCompletedMatchEnd(state);
-  state.resultRecorded = true;
   const ratingProcessingResult = processCompletedMatchRatings(logger, nk, dispatcher, state, matchId);
   const winnerProgressionAward = awardWinnerProgression(logger, nk, dispatcher, state, matchId);
   const tournamentProcessingResult = processCompletedTournamentMatch(logger, nk, state, matchId);
   const challengeProcessingResults = processCompletedMatchSummaries(logger, nk, state, matchId);
+
+  if (state.tournamentContext && !tournamentProcessingResult) {
+    logger.warn("Deferring final result lock for match %s until tournament synchronization succeeds.", matchId);
+    state.resultRecorded = false;
+    return false;
+  }
+
   broadcastTournamentMatchRewardSummaries(logger, nk, dispatcher, state, matchId, {
     ratingProcessingResult,
     winnerProgressionAward,
     tournamentProcessingResult,
     challengeProcessingResults,
   });
+
+  state.resultRecorded = true;
+  return true;
 };
 
 const markMatchStartedIfReady = (state: MatchState, nowMs: number): boolean => {
@@ -1362,11 +1372,12 @@ function rpcCreatePrivateMatch(
 
   const data = parseRpcPayload(payload);
   const modeId = resolveMatchModeId(data.modeId);
+  const matchConfig = getMatchConfig(modeId);
   const privateCode = createAvailablePrivateMatchCode(nk);
   const matchId = nk.matchCreate(MATCH_HANDLER, {
     playerIds: [ctx.userId],
     modeId,
-    rankedMatch: false,
+    rankedMatch: matchConfig.allowsRankedStats,
     casualMatch: false,
     botMatch: false,
     privateMatch: true,
@@ -1741,6 +1752,14 @@ function matchLoop(
     }
   }
 
+  if (state.gameState.winner && !state.resultRecorded) {
+    try {
+      finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
+    } catch (error) {
+      logMatchLoopError(logger, matchId, state, "result_processing", error);
+    }
+  }
+
   return { state };
 }
 
@@ -2061,6 +2080,12 @@ function processCompletedMatchRatings(
       };
       return entries;
     }, {} as MatchRatingProcessingResult["byUserId"]);
+
+    if (ratingResult.duplicate) {
+      return {
+        byUserId,
+      };
+    }
 
     ratingResult.record.playerResults.forEach((playerResult) => {
       const targetPresences = getUserPresenceTargets(state, playerResult.userId);
