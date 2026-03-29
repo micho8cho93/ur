@@ -1,6 +1,6 @@
 export const TOURNAMENT_SIZE_OPTIONS = [2, 4, 8, 16, 32, 64, 128] as const
 
-export const AUTO_TOURNAMENT_DURATION_SECONDS = 31_536_000
+export const AUTO_TOURNAMENT_DURATION_SECONDS = 18_000
 
 export function getSingleEliminationRoundCount(entrantCap: number) {
   const normalizedCap = Math.max(2, Math.floor(entrantCap))
