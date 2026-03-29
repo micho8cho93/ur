@@ -5211,18 +5211,80 @@ var resolveChampionUserId = (snapshot) => {
   const championRecord = (_d = (_c = (_a = rankedRecords.find((entry) => entry.rank === 1)) == null ? void 0 : _a.record) != null ? _c : (_b = rankedRecords.slice().sort((left, right) => left.rank - right.rank)[0]) == null ? void 0 : _b.record) != null ? _d : snapshot.records[0];
   return championRecord ? readStandingsRecordOwnerId(championRecord) : null;
 };
+var compareBracketParticipantsForFallbackSnapshot = (left, right) => {
+  const leftPlacement = typeof left.finalPlacement === "number" ? left.finalPlacement : Number.MAX_SAFE_INTEGER;
+  const rightPlacement = typeof right.finalPlacement === "number" ? right.finalPlacement : Number.MAX_SAFE_INTEGER;
+  if (leftPlacement !== rightPlacement) {
+    return leftPlacement - rightPlacement;
+  }
+  const leftRound = typeof left.currentRound === "number" ? left.currentRound : 0;
+  const rightRound = typeof right.currentRound === "number" ? right.currentRound : 0;
+  if (leftRound !== rightRound) {
+    return rightRound - leftRound;
+  }
+  if (left.seed !== right.seed) {
+    return left.seed - right.seed;
+  }
+  const joinedCompare = left.joinedAt.localeCompare(right.joinedAt);
+  if (joinedCompare !== 0) {
+    return joinedCompare;
+  }
+  return left.userId.localeCompare(right.userId);
+};
+var buildBracketStandingsFallbackSnapshot = (run, overrideExpiry, generatedAt) => {
+  var _a, _b;
+  const records = ((_b = (_a = run.bracket) == null ? void 0 : _a.participants) != null ? _b : []).slice().sort(compareBracketParticipantsForFallbackSnapshot).map((participant, index) => ({
+    rank: typeof participant.finalPlacement === "number" && Number.isFinite(participant.finalPlacement) ? participant.finalPlacement : index + 1,
+    owner_id: participant.userId,
+    username: participant.displayName,
+    score: participant.state === "champion" ? 1 : 0,
+    subscore: 0,
+    metadata: {
+      state: participant.state,
+      round: participant.currentRound,
+      entryId: participant.currentEntryId,
+      activeMatchId: participant.activeMatchId,
+      finalPlacement: participant.finalPlacement,
+      result: participant.lastResult,
+      seed: participant.seed
+    }
+  }));
+  return {
+    generatedAt,
+    overrideExpiry,
+    rankCount: records.length,
+    records,
+    prevCursor: null,
+    nextCursor: null
+  };
+};
 var finalizeTournamentRun = (logger, nk, runId, options = {}) => {
-  var _a, _b, _c;
+  var _a, _b, _c, _d, _e;
   const runBeforeUpdate = readRunOrThrow(nk, runId);
   const nakamaTournament = getNakamaTournamentById(nk, runBeforeUpdate.tournamentId);
   const standingsLimit = clampInteger(options.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
   const overrideExpiry = resolveOverrideExpiry((_a = options.overrideExpiry) != null ? _a : null, nakamaTournament);
-  const finalSnapshot = (_b = runBeforeUpdate.finalSnapshot) != null ? _b : buildStandingsSnapshot(
-    nk,
-    runBeforeUpdate.tournamentId,
-    standingsLimit,
-    overrideExpiry
-  );
+  const finalizationTimestamp = (/* @__PURE__ */ new Date()).toISOString();
+  const finalSnapshot = (() => {
+    if (runBeforeUpdate.finalSnapshot) {
+      return runBeforeUpdate.finalSnapshot;
+    }
+    try {
+      return buildStandingsSnapshot(
+        nk,
+        runBeforeUpdate.tournamentId,
+        standingsLimit,
+        overrideExpiry
+      );
+    } catch (error) {
+      logger.warn(
+        "Unable to build final standings snapshot for %s during finalization, using bracket fallback: %s",
+        runBeforeUpdate.runId,
+        getErrorMessage(error)
+      );
+      return buildBracketStandingsFallbackSnapshot(runBeforeUpdate, overrideExpiry, finalizationTimestamp);
+    }
+  })();
   let disabledRanks = false;
   try {
     nk.tournamentRanksDisable(runBeforeUpdate.tournamentId);
@@ -5234,7 +5296,6 @@ var finalizeTournamentRun = (logger, nk, runId, options = {}) => {
       String(error)
     );
   }
-  const finalizationTimestamp = (/* @__PURE__ */ new Date()).toISOString();
   const run = updateRunWithRetry(nk, logger, runId, (current) => {
     var _a2, _b2, _c2;
     return __spreadProps(__spreadValues({}, current), {
@@ -5245,8 +5306,8 @@ var finalizeTournamentRun = (logger, nk, runId, options = {}) => {
       finalSnapshot: (_c2 = current.finalSnapshot) != null ? _c2 : finalSnapshot
     });
   });
-  const effectiveSnapshot = (_c = run.finalSnapshot) != null ? _c : finalSnapshot;
-  const championUserId = resolveChampionUserId(effectiveSnapshot);
+  const effectiveSnapshot = (_b = run.finalSnapshot) != null ? _b : finalSnapshot;
+  const championUserId = (_e = (_d = resolveChampionUserId(effectiveSnapshot)) != null ? _d : (_c = run.bracket) == null ? void 0 : _c.winnerUserId) != null ? _e : null;
   let championRewardResult = null;
   if (championUserId) {
     const rewardSettings = resolveTournamentXpRewardSettings(run.metadata);
@@ -6833,7 +6894,7 @@ var updateTournamentRunBracket = (nk, logger, completion) => {
     });
   });
 };
-var maybeAutoFinalizeTournamentRun = (nk, logger, runId) => {
+var maybeAutoFinalizeTournamentRunById = (nk, logger, runId) => {
   var _a, _b;
   const runState = readTournamentRunState(nk, runId);
   const run = runState.run;
@@ -7013,7 +7074,7 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
       updateTournamentRunMetadata(nk, logger, runState.run.runId, record);
       if (record.counted) {
         updatedRun = (_c = updateTournamentRunBracket(nk, logger, completion)) != null ? _c : updatedRun;
-        finalizationResult = maybeAutoFinalizeTournamentRun(nk, logger, runState.run.runId);
+        finalizationResult = maybeAutoFinalizeTournamentRunById(nk, logger, runState.run.runId);
       }
     } catch (error) {
       logger.warn(
@@ -7621,6 +7682,34 @@ var finalizeCompletedMatch = (logger, nk, dispatcher, state, matchId) => {
   state.resultRecorded = true;
   return true;
 };
+var maybeFinalizeRecordedTournamentRun = (logger, nk, state, matchId, source) => {
+  if (!state.tournamentContext || !state.gameState.winner) {
+    return;
+  }
+  try {
+    const finalizationResult = maybeAutoFinalizeTournamentRunById(
+      nk,
+      logger,
+      state.tournamentContext.runId
+    );
+    if (finalizationResult) {
+      logger.info(
+        "Auto-finalized tournament run %s after %s processing for completed match %s.",
+        finalizationResult.run.runId,
+        source,
+        matchId
+      );
+    }
+  } catch (error) {
+    logger.warn(
+      "Unable to auto-finalize tournament run %s after %s processing for match %s: %s",
+      state.tournamentContext.runId,
+      source,
+      matchId,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+};
 var markMatchStartedIfReady = (state, nowMs) => {
   if (state.started || !canStartMatch(state)) {
     return false;
@@ -8065,6 +8154,9 @@ function matchLeave(ctx, logger, nk, dispatcher, _tick, state, presences) {
       logMatchLoopError(logger, getMatchId(ctx), state, "leave_result_processing", error);
     }
   }
+  if (state.gameState.winner && state.resultRecorded) {
+    maybeFinalizeRecordedTournamentRun(logger, nk, state, getMatchId(ctx), "leave");
+  }
   return { state };
 }
 var logMatchLoopError = (logger, matchId, state, context, error) => {
@@ -8171,6 +8263,9 @@ function matchTerminate(ctx, logger, nk, dispatcher, _tick, state, _graceSeconds
     } catch (error) {
       logMatchLoopError(logger, getMatchId(ctx), state, "terminate_result_processing", error);
     }
+  }
+  if (state.gameState.winner && state.resultRecorded) {
+    maybeFinalizeRecordedTournamentRun(logger, nk, state, getMatchId(ctx), "terminate");
   }
   return { state };
 }

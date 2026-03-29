@@ -4,6 +4,7 @@ import {
   assertPowerOfTwoTournamentSize,
   getSingleEliminationRoundCount,
   normalizeTournamentBracketState,
+  type TournamentBracketParticipant,
   normalizeTournamentRunRegistration,
   type TournamentBracketState,
   type TournamentRunRegistration,
@@ -574,6 +575,72 @@ export const resolveChampionUserId = (snapshot: TournamentStandingsSnapshot): st
   return championRecord ? readStandingsRecordOwnerId(championRecord) : null;
 };
 
+const compareBracketParticipantsForFallbackSnapshot = (
+  left: TournamentBracketParticipant,
+  right: TournamentBracketParticipant,
+): number => {
+  const leftPlacement = typeof left.finalPlacement === "number" ? left.finalPlacement : Number.MAX_SAFE_INTEGER;
+  const rightPlacement = typeof right.finalPlacement === "number" ? right.finalPlacement : Number.MAX_SAFE_INTEGER;
+  if (leftPlacement !== rightPlacement) {
+    return leftPlacement - rightPlacement;
+  }
+
+  const leftRound = typeof left.currentRound === "number" ? left.currentRound : 0;
+  const rightRound = typeof right.currentRound === "number" ? right.currentRound : 0;
+  if (leftRound !== rightRound) {
+    return rightRound - leftRound;
+  }
+
+  if (left.seed !== right.seed) {
+    return left.seed - right.seed;
+  }
+
+  const joinedCompare = left.joinedAt.localeCompare(right.joinedAt);
+  if (joinedCompare !== 0) {
+    return joinedCompare;
+  }
+
+  return left.userId.localeCompare(right.userId);
+};
+
+const buildBracketStandingsFallbackSnapshot = (
+  run: TournamentRunRecord,
+  overrideExpiry: number,
+  generatedAt: string,
+): TournamentStandingsSnapshot => {
+  const records = (run.bracket?.participants ?? [])
+    .slice()
+    .sort(compareBracketParticipantsForFallbackSnapshot)
+    .map((participant, index) => ({
+      rank:
+        typeof participant.finalPlacement === "number" && Number.isFinite(participant.finalPlacement)
+          ? participant.finalPlacement
+          : index + 1,
+      owner_id: participant.userId,
+      username: participant.displayName,
+      score: participant.state === "champion" ? 1 : 0,
+      subscore: 0,
+      metadata: {
+        state: participant.state,
+        round: participant.currentRound,
+        entryId: participant.currentEntryId,
+        activeMatchId: participant.activeMatchId,
+        finalPlacement: participant.finalPlacement,
+        result: participant.lastResult,
+        seed: participant.seed,
+      },
+    }));
+
+  return {
+    generatedAt,
+    overrideExpiry,
+    rankCount: records.length,
+    records,
+    prevCursor: null,
+    nextCursor: null,
+  };
+};
+
 export const finalizeTournamentRun = (
   logger: RuntimeLogger,
   nk: RuntimeNakama,
@@ -584,12 +651,28 @@ export const finalizeTournamentRun = (
   const nakamaTournament = getNakamaTournamentById(nk, runBeforeUpdate.tournamentId);
   const standingsLimit = clampInteger(options.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
   const overrideExpiry = resolveOverrideExpiry(options.overrideExpiry ?? null, nakamaTournament);
-  const finalSnapshot = runBeforeUpdate.finalSnapshot ?? buildStandingsSnapshot(
-    nk,
-    runBeforeUpdate.tournamentId,
-    standingsLimit,
-    overrideExpiry,
-  );
+  const finalizationTimestamp = new Date().toISOString();
+  const finalSnapshot = (() => {
+    if (runBeforeUpdate.finalSnapshot) {
+      return runBeforeUpdate.finalSnapshot;
+    }
+
+    try {
+      return buildStandingsSnapshot(
+        nk,
+        runBeforeUpdate.tournamentId,
+        standingsLimit,
+        overrideExpiry,
+      );
+    } catch (error) {
+      logger.warn(
+        "Unable to build final standings snapshot for %s during finalization, using bracket fallback: %s",
+        runBeforeUpdate.runId,
+        getErrorMessage(error),
+      );
+      return buildBracketStandingsFallbackSnapshot(runBeforeUpdate, overrideExpiry, finalizationTimestamp);
+    }
+  })();
   let disabledRanks = false;
 
   try {
@@ -603,7 +686,6 @@ export const finalizeTournamentRun = (
     );
   }
 
-  const finalizationTimestamp = new Date().toISOString();
   const run = updateRunWithRetry(nk, logger, runId, (current) => ({
     ...current,
     lifecycle: "finalized",
@@ -614,7 +696,7 @@ export const finalizeTournamentRun = (
   }));
 
   const effectiveSnapshot = run.finalSnapshot ?? finalSnapshot;
-  const championUserId = resolveChampionUserId(effectiveSnapshot);
+  const championUserId = resolveChampionUserId(effectiveSnapshot) ?? run.bracket?.winnerUserId ?? null;
   let championRewardResult: (XpRewardResult & { source: "tournament_champion" }) | null = null;
 
   if (championUserId) {

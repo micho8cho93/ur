@@ -51,6 +51,7 @@ jest.mock('./tournaments/matchResults', () => {
   const actual = jest.requireActual('./tournaments/matchResults');
   return {
     ...actual,
+    maybeAutoFinalizeTournamentRunById: jest.fn(),
     processCompletedAuthoritativeTournamentMatch: jest.fn(),
   };
 });
@@ -60,7 +61,7 @@ import { processCompletedMatch } from './challenges';
 import { processRankedMatchResult } from './elo';
 import './index';
 import { awardXpForMatchWin } from './progression';
-import { processCompletedAuthoritativeTournamentMatch } from './tournaments/matchResults';
+import { maybeAutoFinalizeTournamentRunById, processCompletedAuthoritativeTournamentMatch } from './tournaments/matchResults';
 
 type RuntimeGlobals = typeof globalThis & {
   matchInit: (
@@ -94,6 +95,8 @@ const mockedProcessRankedMatchResult = processRankedMatchResult as jest.MockedFu
 const mockedAwardXpForMatchWin = awardXpForMatchWin as jest.MockedFunction<typeof awardXpForMatchWin>;
 const mockedProcessCompletedAuthoritativeTournamentMatch =
   processCompletedAuthoritativeTournamentMatch as jest.MockedFunction<typeof processCompletedAuthoritativeTournamentMatch>;
+const mockedMaybeAutoFinalizeTournamentRunById =
+  maybeAutoFinalizeTournamentRunById as jest.MockedFunction<typeof maybeAutoFinalizeTournamentRunById>;
 
 const createLogger = () => ({
   info: jest.fn(),
@@ -209,6 +212,7 @@ const attachPresences = (state: any) => {
 describe('tournament match result synchronization', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedMaybeAutoFinalizeTournamentRunById.mockReturnValue(null);
     mockedProcessCompletedMatch.mockReturnValue({
       duplicate: false,
       completedChallengeIds: [],
@@ -681,6 +685,109 @@ describe('tournament match result synchronization', () => {
 
     expect(state.resultRecorded).toBe(true);
     expect(mockedProcessCompletedAuthoritativeTournamentMatch).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries tournament finalization when a recorded final empties out before the run closes', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = createLogger();
+    const nk = createNakama();
+    const dispatcher = createDispatcher();
+    const ctx = { matchId: 'match-finalize-on-leave' };
+
+    mockedProcessRankedMatchResult.mockReturnValueOnce(buildRatedResult(false));
+    mockedProcessCompletedAuthoritativeTournamentMatch.mockReturnValueOnce({
+      skipped: false,
+      duplicate: false,
+      record: null,
+      updatedRun: {
+        runId: 'run-1',
+        lifecycle: 'open',
+        bracket: {
+          totalRounds: 1,
+          finalizedAt: '2026-03-29T18:39:00.000Z',
+          winnerUserId: 'user-light',
+          runnerUpUserId: 'user-dark',
+        },
+      } as never,
+      participantResolutions: [
+        {
+          userId: 'user-light',
+          state: 'champion',
+          finalPlacement: 1,
+        },
+        {
+          userId: 'user-dark',
+          state: 'runner_up',
+          finalPlacement: 2,
+        },
+      ],
+      finalizationResult: null,
+    } as ReturnType<typeof processCompletedAuthoritativeTournamentMatch>);
+    mockedMaybeAutoFinalizeTournamentRunById.mockReturnValueOnce({
+      run: {
+        runId: 'run-1',
+        lifecycle: 'finalized',
+      } as never,
+      finalSnapshot: {
+        generatedAt: '2026-03-29T18:39:00.000Z',
+        overrideExpiry: 0,
+        rankCount: 2,
+        records: [],
+        prevCursor: null,
+        nextCursor: null,
+      },
+      championUserId: 'user-light',
+      championRewardResult: null,
+      disabledRanks: true,
+      nakamaTournament: null,
+    });
+
+    const initialized = runtime.matchInit(ctx, logger, nk, {
+      playerIds: ['user-light', 'user-dark'],
+      modeId: 'standard',
+      rankedMatch: true,
+      tournamentRunId: 'run-1',
+      tournamentId: 'tour-1',
+      tournamentRound: 1,
+      tournamentEntryId: 'round-1-match-1',
+    });
+
+    let state = attachPresences({
+      ...initialized.state,
+      gameState: {
+        ...initialized.state.gameState,
+        phase: 'ended',
+        winner: 'light',
+      },
+    });
+
+    state = runtime.matchLoop(ctx, logger, nk, dispatcher, 1, state, []).state;
+    expect(state.resultRecorded).toBe(true);
+
+    state = runtime.matchLeave(
+      ctx,
+      logger,
+      nk,
+      dispatcher,
+      2,
+      state,
+      [
+        {
+          userId: 'user-light',
+          sessionId: 'light-session',
+          node: 'node-1',
+        },
+        {
+          userId: 'user-dark',
+          sessionId: 'dark-session',
+          node: 'node-1',
+        },
+      ],
+    ).state;
+
+    expect(state.resultRecorded).toBe(true);
+    expect(mockedProcessCompletedAuthoritativeTournamentMatch).toHaveBeenCalledTimes(1);
+    expect(mockedMaybeAutoFinalizeTournamentRunById).toHaveBeenCalledWith(nk, logger, 'run-1');
   });
 
   it('processes public matchmaking wins through Elo, XP, and challenge rewards', () => {

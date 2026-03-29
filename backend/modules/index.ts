@@ -119,6 +119,7 @@ import {
   rpcListPublicTournaments,
 } from "./tournaments";
 import {
+  maybeAutoFinalizeTournamentRunById,
   processCompletedAuthoritativeTournamentMatch,
   resolveTournamentMatchContextFromParams,
   type AuthoritativeTournamentMatchCompletion,
@@ -1021,6 +1022,43 @@ const finalizeCompletedMatch = (
   return true;
 };
 
+const maybeFinalizeRecordedTournamentRun = (
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  state: MatchState,
+  matchId: string,
+  source: "leave" | "terminate",
+): void => {
+  if (!state.tournamentContext || !state.gameState.winner) {
+    return;
+  }
+
+  try {
+    const finalizationResult = maybeAutoFinalizeTournamentRunById(
+      nk,
+      logger,
+      state.tournamentContext.runId,
+    );
+
+    if (finalizationResult) {
+      logger.info(
+        "Auto-finalized tournament run %s after %s processing for completed match %s.",
+        finalizationResult.run.runId,
+        source,
+        matchId,
+      );
+    }
+  } catch (error) {
+    logger.warn(
+      "Unable to auto-finalize tournament run %s after %s processing for match %s: %s",
+      state.tournamentContext.runId,
+      source,
+      matchId,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+};
+
 const markMatchStartedIfReady = (state: MatchState, nowMs: number): boolean => {
   if (state.started || !canStartMatch(state)) {
     return false;
@@ -1636,6 +1674,10 @@ function matchLeave(
     }
   }
 
+  if (state.gameState.winner && state.resultRecorded) {
+    maybeFinalizeRecordedTournamentRun(logger, nk, state, getMatchId(ctx), "leave");
+  }
+
   return { state };
 }
 
@@ -1786,6 +1828,10 @@ function matchTerminate(
     } catch (error) {
       logMatchLoopError(logger, getMatchId(ctx), state, "terminate_result_processing", error);
     }
+  }
+
+  if (state.gameState.winner && state.resultRecorded) {
+    maybeFinalizeRecordedTournamentRun(logger, nk, state, getMatchId(ctx), "terminate");
   }
 
   return { state };

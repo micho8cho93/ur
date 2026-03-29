@@ -1,4 +1,8 @@
 import {
+  createSingleEliminationBracket,
+  type TournamentRunRegistration,
+} from "./bracket";
+import {
   processCompletedAuthoritativeTournamentMatch,
   resolveTournamentMatchContextFromParams,
   TOURNAMENT_MATCH_RESULTS_COLLECTION,
@@ -149,6 +153,14 @@ const seedRun = (nk: ReturnType<typeof createNakama>, overrides: Record<string, 
     version: "run-version-1",
   });
 };
+
+const buildRegistrations = (count: number): TournamentRunRegistration[] =>
+  Array.from({ length: count }, (_, index) => ({
+    userId: `user-${index + 1}`,
+    displayName: `Player ${index + 1}`,
+    joinedAt: `2026-03-26T10:0${index}:00.000Z`,
+    seed: index + 1,
+  }));
 
 const createCompletion = (overrides: Partial<AuthoritativeTournamentMatchCompletion> = {}): AuthoritativeTournamentMatchCompletion => ({
   matchId: "match-1",
@@ -361,6 +373,94 @@ describe("tournament authoritative match results", () => {
         awardedXp: 420,
         source: "tournament_champion",
         sourceId: "run-1",
+      }),
+    );
+  });
+
+  it("finalizes the deciding match with a bracket fallback snapshot when standings lookup fails", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    const startedAt = "2026-03-26T10:30:00.000Z";
+    seedRun(nk, {
+      metadata: {
+        xpForTournamentChampion: 420,
+      },
+      maxSize: 2,
+      registrations: buildRegistrations(2),
+      bracket: createSingleEliminationBracket(buildRegistrations(2), startedAt),
+    });
+    nk.tournamentsGetId.mockImplementation((ids: string[]) =>
+      ids.includes("tour-1")
+        ? [
+            {
+              id: "tour-1",
+              size: 2,
+              maxSize: 2,
+            },
+          ]
+        : [],
+    );
+    nk.tournamentRecordsList.mockImplementation(() => {
+      throw new Error("standings unavailable");
+    });
+
+    const result = processCompletedAuthoritativeTournamentMatch(nk, logger, createCompletion({
+      players: [
+        {
+          userId: "user-1",
+          username: "light-user",
+          color: "light",
+          didWin: true,
+          score: 1,
+          finishedCount: 7,
+          capturesMade: 2,
+          capturesSuffered: 0,
+          playerMoveCount: 9,
+        },
+        {
+          userId: "user-2",
+          username: "dark-user",
+          color: "dark",
+          didWin: false,
+          score: 0,
+          finishedCount: 4,
+          capturesMade: 0,
+          capturesSuffered: 2,
+          playerMoveCount: 9,
+        },
+      ],
+      winnerUserId: "user-1",
+      loserUserId: "user-2",
+    }));
+
+    expect(result.record?.counted).toBe(true);
+    expect(result.finalizationResult?.run.lifecycle).toBe("finalized");
+    expect(result.finalizationResult?.championUserId).toBe("user-1");
+    expect(result.finalizationResult?.finalSnapshot.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rank: 1,
+          owner_id: "user-1",
+        }),
+        expect.objectContaining({
+          rank: 2,
+          owner_id: "user-2",
+        }),
+      ]),
+    );
+
+    const storedRun = nk.storage.get(buildStorageKey(TOURNAMENT_RUNS_COLLECTION, "run-1"));
+    expect(storedRun?.value).toEqual(
+      expect.objectContaining({
+        lifecycle: "finalized",
+        finalSnapshot: expect.objectContaining({
+          records: expect.arrayContaining([
+            expect.objectContaining({
+              rank: 1,
+              owner_id: "user-1",
+            }),
+          ]),
+        }),
       }),
     );
   });

@@ -457,7 +457,7 @@ const updateTournamentRunBracket = (
   });
 };
 
-const maybeAutoFinalizeTournamentRun = (
+export const maybeAutoFinalizeTournamentRunById = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
   runId: string,
@@ -672,7 +672,7 @@ export const processCompletedAuthoritativeTournamentMatch = (
       updateTournamentRunMetadata(nk, logger, runState.run.runId, record);
       if (record.counted) {
         updatedRun = updateTournamentRunBracket(nk, logger, completion) ?? updatedRun;
-        finalizationResult = maybeAutoFinalizeTournamentRun(nk, logger, runState.run.runId);
+        finalizationResult = maybeAutoFinalizeTournamentRunById(nk, logger, runState.run.runId);
       }
     } catch (error) {
       logger.warn(
