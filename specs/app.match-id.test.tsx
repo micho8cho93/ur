@@ -1242,6 +1242,121 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByText('Opponent Joined')).toBeTruthy();
   });
 
+  it('renders a compact private match pill with the match code', async () => {
+    mockSearchParams.id = 'private-pill';
+    mockSearchParams.offline = '0';
+    mockSearchParams.privateMatch = '1';
+    mockSearchParams.privateHost = '1';
+    mockSearchParams.privateCode = 'ABCD12';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'private-pill',
+    });
+    mockStoreState.matchId = 'private-pill';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.matchPresences = ['self-user'];
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('online-match-status-pill')).toBeTruthy();
+    expect(screen.getByText('Private Match - ABCD12')).toBeTruthy();
+  });
+
+  it('renders tournament status in the top pill and updates when the opponent joins', async () => {
+    mockSearchParams.id = 'tournament-pill';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-pill',
+    });
+    mockStoreState.matchId = 'tournament-pill';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.matchPresences = ['self-user'];
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Spring Open - Waiting for Opponent')).toBeTruthy();
+
+    mockStoreState.matchPresences = ['self-user', 'opponent-user'];
+
+    await act(async () => {
+      view.rerender(<GameRoom />);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Spring Open - Opponent Joined')).toBeTruthy();
+  });
+
+  it('renders online matchmaking status in the top pill and updates when the opponent joins', async () => {
+    mockSearchParams.id = 'online-pill';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-pill',
+    });
+    mockStoreState.matchId = 'online-pill';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.matchPresences = ['self-user'];
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Online Match - Waiting for Opponent')).toBeTruthy();
+
+    mockStoreState.matchPresences = ['self-user', 'opponent-user'];
+
+    await act(async () => {
+      view.rerender(<GameRoom />);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Online Match - Opponent Joined')).toBeTruthy();
+  });
+
   it('shows Opponent Forfeit when a private opponent leaves mid-match', async () => {
     mockSearchParams.id = 'private-2';
     mockSearchParams.offline = '0';
@@ -1874,7 +1989,7 @@ describe('GameRoom match dice stage', () => {
     expect(mockRefreshElo).toHaveBeenCalledWith({ silent: true });
   });
 
-  it('keeps the existing tournament loss modal with Back to Standings', () => {
+  it('shows the eliminated tournament result modal when a tournament run ends in a loss', async () => {
     mockSearchParams.id = 'tournament-loss';
     mockSearchParams.offline = '0';
     mockSearchParams.tournamentRunId = 'run-1';
@@ -1883,6 +1998,11 @@ describe('GameRoom match dice stage', () => {
     mockSearchParams.tournamentReturnTarget = 'detail';
     mockHasNakamaConfig.mockReturnValue(true);
     mockIsNakamaEnabled.mockReturnValue(true);
+    mockTournamentAdvanceFlowState = {
+      ...mockTournamentAdvanceFlowState,
+      phase: 'eliminated',
+      statusText: 'Your tournament run has ended.',
+    };
     mockStoreState.matchId = 'tournament-loss';
     mockStoreState.userId = 'self-user';
     mockStoreState.playerColor = 'light';
@@ -1896,7 +2016,13 @@ describe('GameRoom match dice stage', () => {
 
     render(<GameRoom />);
 
-    expect(screen.getByText('Back to Standings')).toBeTruthy();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Tournament Eliminated')).toBeTruthy();
+    expect(screen.getByText('Your tournament run has ended.')).toBeTruthy();
+    expect(screen.getByText('Return to Home')).toBeTruthy();
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
   });
 

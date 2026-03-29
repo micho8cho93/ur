@@ -25,23 +25,19 @@ const DICE_UNMARKED = require('../../assets/dice/dice_unmarked.png');
 
 const ALL_REELS_SPINNING = Array.from({ length: SLOT_DICE_COUNT }, () => true);
 const ALL_REELS_STOPPED = Array.from({ length: SLOT_DICE_COUNT }, () => false);
-const SLOT_REEL_DECELERATE_EASING = Easing.out(Easing.cubic);
-const SLOT_REEL_SNAP_EASING = Easing.out(Easing.quad);
+const SLOT_REEL_DECELERATE_EASING = Easing.bezier(0.14, 0.78, 0.2, 1);
+const SLOT_REEL_LANDING_EASING = Easing.out(Easing.quad);
 const scaleDuration = (durationMs: number) => Math.round(durationMs * SLOT_DICE_TIMING_SCALE);
 const SPIN_STRIP_LEAD_STEPS = 12;
 const SPIN_STRIP_TAIL_STEPS = 12;
-const SPIN_STRIP_TRAVEL_STEPS = 48;
-const SPIN_LOOP_TRAVEL_STEPS = 18;
+const SPIN_LOOP_TRAVEL_STEPS = 5;
 const SPIN_STRIP_START_STEP = SPIN_STRIP_LEAD_STEPS;
-const SPIN_STRIP_FACE_COUNT = SPIN_STRIP_START_STEP + SPIN_STRIP_TRAVEL_STEPS + SPIN_STRIP_TAIL_STEPS;
-const SETTLED_STRIP_STEP = SPIN_STRIP_START_STEP + 4;
-const STOP_EXTRA_SPIN_STEPS = 8;
-const STOP_SNAP_DURATION_MS = scaleDuration(64);
-const LANDING_BOUNCE_DIP_MS = scaleDuration(16);
-const LANDING_BOUNCE_PEAK_MS = scaleDuration(18);
-const LANDING_BOUNCE_OUT_MS = scaleDuration(22);
-const LANDING_BOUNCE_DIP_SCALE = 0.985;
-const LANDING_BOUNCE_PEAK_SCALE = 1.018;
+const SETTLED_STRIP_STEP = SPIN_STRIP_START_STEP + SPIN_LOOP_TRAVEL_STEPS + 2;
+const MIN_STOP_TRAVEL_STEPS = 3.4;
+const LANDING_DROP_STEP_OFFSET = 0.2;
+const LANDING_DROP_DURATION_MS = scaleDuration(108);
+const SPIN_PHASE_TRIM_MS = scaleDuration(96);
+const CONTINUOUS_SPIN_BUFFER_MS = scaleDuration(140);
 const STOP_COMPLETION_BUFFER_MS = scaleDuration(140);
 const MIN_REEL_BOX_SIZE = 28;
 
@@ -59,6 +55,7 @@ type SlotDiceSceneProps = {
 
 type SlotReelProps = {
   boxSize: number;
+  durationMs: number;
   imageSize: number;
   index: number;
   onStopComplete?: (index: number) => void;
@@ -83,11 +80,28 @@ const getSettledStripStep = (targetMarked: boolean, spinSeedMarked: boolean) => 
   return SETTLED_STRIP_STEP % 2 === targetParity ? SETTLED_STRIP_STEP : SETTLED_STRIP_STEP + 1;
 };
 
+const getSettledStripOffset = (targetMarked: boolean, spinSeedMarked: boolean, boxSize: number) =>
+  -getSettledStripStep(targetMarked, spinSeedMarked) * boxSize;
+
 const getSpinStepDuration = (index: number) =>
   SLOT_DICE_SPIN_STEP_MS + index * SLOT_DICE_SPIN_STEP_VARIANCE_MS;
 
+const getContinuousSpinTravelSteps = (durationMs: number, index: number) => {
+  const stepDuration = getSpinStepDuration(index);
+  const spinWindowMs = Math.max(
+    stepDuration,
+    durationMs - SLOT_DICE_STOP_SETTLE_MS - SPIN_PHASE_TRIM_MS + CONTINUOUS_SPIN_BUFFER_MS,
+  );
+
+  return Math.max(
+    SPIN_LOOP_TRAVEL_STEPS,
+    Math.ceil(spinWindowMs / Math.max(stepDuration, 1)) + 4,
+  );
+};
+
 const SlotReel: React.FC<SlotReelProps> = ({
   boxSize,
+  durationMs,
   imageSize,
   index,
   onStopComplete,
@@ -98,9 +112,15 @@ const SlotReel: React.FC<SlotReelProps> = ({
   variant,
 }) => {
   const spinSeedMarked = (playbackId + index) % 2 === 0;
+  const spinTravelSteps = useMemo(
+    () => getContinuousSpinTravelSteps(durationMs, index),
+    [durationMs, index],
+  );
+  const spinStripFaceCount = SPIN_STRIP_START_STEP + spinTravelSteps + SPIN_STRIP_TAIL_STEPS;
+  const initialStripStep =
+    variant === 'start' ? 0 : getSettledStripStep(targetMarked, spinSeedMarked);
   const initialStripOffset =
-    variant === 'start' ? 0 : -getSettledStripStep(targetMarked, spinSeedMarked) * boxSize;
-  const pulseScale = useRef(new Animated.Value(1)).current;
+    variant === 'start' ? 0 : getSettledStripOffset(targetMarked, spinSeedMarked, boxSize);
   const spinOffset = useRef(new Animated.Value(initialStripOffset)).current;
   const spinOffsetValueRef = useRef(initialStripOffset);
   const settleAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
@@ -108,6 +128,8 @@ const SlotReel: React.FC<SlotReelProps> = ({
   const spinStateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousSpinningRef = useRef(spinning);
   const latestSpinningRef = useRef(spinning);
+  const settledStripStepRef = useRef<number | null>(variant === 'start' ? null : initialStripStep);
+  const [currentStripStep, setCurrentStripStep] = useState(initialStripStep);
   const [visibleMarked, setVisibleMarked] = useState(variant === 'start' ? false : targetMarked);
   latestSpinningRef.current = spinning;
 
@@ -123,10 +145,10 @@ const SlotReel: React.FC<SlotReelProps> = ({
 
   const spinStripFaces = useMemo(
     () =>
-      Array.from({ length: SPIN_STRIP_FACE_COUNT }, (_, faceIndex) =>
+      Array.from({ length: spinStripFaceCount }, (_, faceIndex) =>
         getStripMarkedForStep(faceIndex, spinSeedMarked),
       ),
-    [spinSeedMarked],
+    [spinSeedMarked, spinStripFaceCount],
   );
 
   const clearSpinStateTimer = useCallback(() => {
@@ -144,8 +166,7 @@ const SlotReel: React.FC<SlotReelProps> = ({
   const stopSettleAnimation = useCallback(() => {
     settleAnimationRef.current?.stop();
     settleAnimationRef.current = null;
-    pulseScale.stopAnimation();
-  }, [pulseScale]);
+  }, []);
 
   const stopAllAnimations = useCallback(() => {
     stopSpinLoop();
@@ -156,48 +177,53 @@ const SlotReel: React.FC<SlotReelProps> = ({
     (nextMarked: boolean, nextVariant: SlotDiceVariant) => {
       stopAllAnimations();
       setVisibleMarked(nextMarked);
+      const nextStep =
+        nextVariant === 'start'
+          ? 0
+          : settledStripStepRef.current ?? getSettledStripStep(nextMarked, spinSeedMarked);
+      settledStripStepRef.current = nextVariant === 'start' ? null : nextStep;
+      setCurrentStripStep(nextStep);
       const nextOffset =
         nextVariant === 'start'
           ? 0
-          : -getSettledStripStep(nextMarked, spinSeedMarked) * boxSize;
+          : -nextStep * boxSize;
       spinOffset.setValue(nextOffset);
       spinOffsetValueRef.current = nextOffset;
-      pulseScale.setValue(1);
     },
-    [boxSize, pulseScale, spinOffset, spinSeedMarked, stopAllAnimations],
+    [boxSize, spinOffset, spinSeedMarked, stopAllAnimations],
   );
 
   const startSpinLoop = useCallback(() => {
     stopSpinLoop();
     stopSettleAnimation();
     setVisibleMarked(false);
-    pulseScale.setValue(1);
+    settledStripStepRef.current = null;
+    setCurrentStripStep(SPIN_STRIP_START_STEP);
     const startOffset = -SPIN_STRIP_START_STEP * boxSize;
-    const loopEndOffset = -(SPIN_STRIP_START_STEP + SPIN_LOOP_TRAVEL_STEPS) * boxSize;
+    const stepDuration = getSpinStepDuration(index);
+    const loopEndOffset = -(SPIN_STRIP_START_STEP + spinTravelSteps) * boxSize;
     spinOffset.setValue(startOffset);
     spinOffsetValueRef.current = startOffset;
 
-    const stepDuration = getSpinStepDuration(index);
     spinStateTimerRef.current = setTimeout(() => {
       setVisibleMarked(getStripMarkedForStep(SPIN_STRIP_START_STEP + 1, spinSeedMarked));
+      setCurrentStripStep(SPIN_STRIP_START_STEP + 1);
       spinStateTimerRef.current = null;
     }, Math.max(28, stepDuration));
 
-    const animation = Animated.loop(
-      Animated.timing(spinOffset, {
-        toValue: loopEndOffset,
-        duration: stepDuration * SPIN_LOOP_TRAVEL_STEPS,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
+    const animation = Animated.timing(spinOffset, {
+      toValue: loopEndOffset,
+      duration: stepDuration * spinTravelSteps,
+      easing: Easing.linear,
+      useNativeDriver: true,
+    });
 
     spinAnimationRef.current = animation;
     animation.start();
   }, [
     boxSize,
     index,
-    pulseScale,
+    spinTravelSteps,
     stopSpinLoop,
     spinOffset,
     spinSeedMarked,
@@ -218,92 +244,62 @@ const SlotReel: React.FC<SlotReelProps> = ({
       spinAnimationRef.current?.stop();
       spinAnimationRef.current = null;
       clearSpinStateTimer();
-      spinOffset.stopAnimation((stoppedOffset) => {
-        const currentOffset =
-          typeof stoppedOffset === 'number' && Number.isFinite(stoppedOffset)
-            ? stoppedOffset
-            : spinOffsetValueRef.current;
-        spinOffset.setValue(currentOffset);
-        spinOffsetValueRef.current = currentOffset;
+      spinOffset.stopAnimation();
+      const currentOffset = spinOffsetValueRef.current;
+      spinOffset.setValue(currentOffset);
+      spinOffsetValueRef.current = currentOffset;
 
-        const currentPosition = Math.max(0, -currentOffset / Math.max(boxSize, 1));
-        const targetParity = nextMarked === spinSeedMarked ? 0 : 1;
-        let finalStep = Math.ceil(currentPosition + STOP_EXTRA_SPIN_STEPS);
+      const currentPosition = Math.max(0, -currentOffset / Math.max(boxSize, 1));
+      const canonicalFinalStep = getSettledStripStep(nextMarked, spinSeedMarked);
+      const maxFinalStep =
+        spinStripFaceCount - 1 - ((spinStripFaceCount - 1 - canonicalFinalStep) % 2);
+      let finalStep = Math.ceil(Math.max(canonicalFinalStep, currentPosition + MIN_STOP_TRAVEL_STEPS));
 
-        if (finalStep % 2 !== targetParity) {
-          finalStep += 1;
+      if ((finalStep - canonicalFinalStep) % 2 !== 0) {
+        finalStep += 1;
+      }
+
+      finalStep = Math.min(finalStep, maxFinalStep);
+      settledStripStepRef.current = finalStep;
+      setCurrentStripStep(finalStep);
+      const finalOffset = -finalStep * boxSize;
+      const dropPeakStep = Math.min(
+        spinStripFaceCount - 1,
+        Math.max(finalStep + LANDING_DROP_STEP_OFFSET, currentPosition + 0.72),
+      );
+      const dropPeakOffset = -dropPeakStep * boxSize;
+      const decelerationDurationMs = Math.max(
+        140,
+        SLOT_DICE_STOP_SETTLE_MS -
+          LANDING_DROP_DURATION_MS,
+      );
+      const settleAnimation = Animated.sequence([
+        Animated.timing(spinOffset, {
+          toValue: dropPeakOffset,
+          duration: decelerationDurationMs,
+          easing: SLOT_REEL_DECELERATE_EASING,
+          useNativeDriver: true,
+        }),
+        Animated.timing(spinOffset, {
+          toValue: finalOffset,
+          duration: LANDING_DROP_DURATION_MS,
+          easing: SLOT_REEL_LANDING_EASING,
+          useNativeDriver: true,
+        }),
+      ]);
+
+      settleAnimationRef.current = settleAnimation;
+      settleAnimation.start(({ finished }) => {
+        settleAnimationRef.current = null;
+
+        if (!finished) {
+          return;
         }
 
-        const maxFinalStep = SPIN_STRIP_FACE_COUNT - 1;
-        if (finalStep > maxFinalStep) {
-          finalStep = maxFinalStep;
-          if (finalStep % 2 !== targetParity) {
-            finalStep = Math.max(0, finalStep - 1);
-          }
-        }
-
-        const finalOffset = -finalStep * boxSize;
-        const remainingSteps = Math.max(0.8, finalStep - currentPosition);
-        const snapStartStep = Math.min(
-          finalStep - 0.34,
-          Math.max(currentPosition + 1.4, finalStep - Math.max(0.34, remainingSteps * 0.16)),
-        );
-        const snapStartOffset = -snapStartStep * boxSize;
-        const landingBounceDurationMs =
-          LANDING_BOUNCE_DIP_MS + LANDING_BOUNCE_PEAK_MS + LANDING_BOUNCE_OUT_MS;
-        const decelerationDurationMs = Math.max(
-          150,
-          SLOT_DICE_STOP_SETTLE_MS - STOP_SNAP_DURATION_MS - landingBounceDurationMs,
-        );
-        const settleAnimation = Animated.sequence([
-          Animated.timing(spinOffset, {
-            toValue: snapStartOffset,
-            duration: decelerationDurationMs,
-            easing: SLOT_REEL_DECELERATE_EASING,
-            useNativeDriver: true,
-          }),
-          Animated.timing(spinOffset, {
-            toValue: finalOffset,
-            duration: STOP_SNAP_DURATION_MS,
-            easing: SLOT_REEL_SNAP_EASING,
-            useNativeDriver: true,
-          }),
-          Animated.sequence([
-            Animated.timing(pulseScale, {
-              toValue: LANDING_BOUNCE_DIP_SCALE,
-              duration: LANDING_BOUNCE_DIP_MS,
-              easing: Easing.out(Easing.quad),
-              useNativeDriver: true,
-            }),
-            Animated.timing(pulseScale, {
-              toValue: LANDING_BOUNCE_PEAK_SCALE,
-              duration: LANDING_BOUNCE_PEAK_MS,
-              easing: Easing.out(Easing.cubic),
-              useNativeDriver: true,
-            }),
-            Animated.timing(pulseScale, {
-              toValue: 1,
-              duration: LANDING_BOUNCE_OUT_MS,
-              easing: Easing.out(Easing.quad),
-              useNativeDriver: true,
-            }),
-          ]),
-        ]);
-
-        settleAnimationRef.current = settleAnimation;
-        settleAnimation.start(({ finished }) => {
-          settleAnimationRef.current = null;
-
-          if (!finished) {
-            return;
-          }
-
-          spinOffset.setValue(finalOffset);
-          spinOffsetValueRef.current = finalOffset;
-          setVisibleMarked(getMarkedFaceForOffset(finalOffset));
-          pulseScale.setValue(1);
-          onStopComplete?.(index);
-        });
+        spinOffset.setValue(finalOffset);
+        spinOffsetValueRef.current = finalOffset;
+        setVisibleMarked(getMarkedFaceForOffset(finalOffset));
+        onStopComplete?.(index);
       });
     },
     [
@@ -312,7 +308,7 @@ const SlotReel: React.FC<SlotReelProps> = ({
       getMarkedFaceForOffset,
       index,
       onStopComplete,
-      pulseScale,
+      spinStripFaceCount,
       spinOffset,
       spinSeedMarked,
       stopSettleAnimation,
@@ -369,7 +365,14 @@ const SlotReel: React.FC<SlotReelProps> = ({
   return (
     <Animated.View
       accessibilityRole="image"
-      accessibilityValue={{ text: accessibilityText }}
+      accessibilityValue={{
+        text: accessibilityText,
+        min: 0,
+        max: spinStripFaceCount - 1,
+        now: currentStripStep,
+      }}
+      renderToHardwareTextureAndroid
+      shouldRasterizeIOS
       style={[
         styles.reelWindow,
         presentation === 'stage' ? styles.reelWindowStage : styles.reelWindowEmbedded,
@@ -377,48 +380,58 @@ const SlotReel: React.FC<SlotReelProps> = ({
           borderRadius: Math.max(13, boxSize * 0.24),
           height: boxSize,
           width: boxSize,
-          transform: [{ scale: pulseScale }],
         },
       ]}
       testID={`slot-die-${index}`}
     >
       <View style={styles.reelInset} />
-      {variant === 'start' ? (
-        <View pointerEvents="none" style={styles.reelFace} testID={`slot-die-face-${index}`}>
-          <Image
-            source={DICE_UNMARKED}
-            style={[styles.dieImage, { height: imageSize, width: imageSize }]}
-            resizeMode="contain"
-            testID={`slot-die-image-${index}`}
-          />
-        </View>
-      ) : (
-        <Animated.View
-          pointerEvents="none"
-          testID={`slot-die-strip-${index}`}
-          style={[
-            styles.spinStrip,
-            {
-              height: boxSize * spinStripFaces.length,
-              transform: [{ translateY: spinOffset }],
-            },
-          ]}
-        >
-          {spinStripFaces.map((faceMarked, faceIndex) => (
-            <View
-              key={`${index}-${faceIndex}-${faceMarked ? 'marked' : 'unmarked'}`}
-              style={[styles.spinStripCell, { height: boxSize, width: boxSize }]}
-            >
-              <Image
-                source={faceMarked ? DICE_MARKED : DICE_UNMARKED}
-                style={[styles.dieImage, { height: imageSize, width: imageSize }]}
-                resizeMode="contain"
-                testID={`slot-die-strip-image-${index}-${faceIndex}`}
-              />
-            </View>
-          ))}
-        </Animated.View>
-      )}
+      <View
+        pointerEvents="none"
+        renderToHardwareTextureAndroid
+        shouldRasterizeIOS
+        style={styles.reelViewport}
+        testID={`slot-die-viewport-${index}`}
+      >
+        {variant === 'start' ? (
+          <View pointerEvents="none" style={styles.reelFace} testID={`slot-die-face-${index}`}>
+            <Image
+              source={DICE_UNMARKED}
+              style={[styles.dieImage, { height: imageSize, width: imageSize }]}
+              resizeMode="contain"
+              testID={`slot-die-image-${index}`}
+            />
+          </View>
+        ) : (
+          <Animated.View
+            pointerEvents="none"
+            renderToHardwareTextureAndroid
+            shouldRasterizeIOS
+            testID={`slot-die-strip-${index}`}
+            style={[
+              styles.spinStrip,
+              {
+                height: boxSize * spinStripFaces.length,
+                transform: [{ translateY: spinOffset }],
+              },
+            ]}
+          >
+            {spinStripFaces.map((faceMarked, faceIndex) => (
+              <View
+                key={`${index}-${faceIndex}-${faceMarked ? 'marked' : 'unmarked'}`}
+                style={[styles.spinStripCell, { height: boxSize }]}
+                testID={`slot-die-strip-cell-${index}-${faceIndex}`}
+              >
+                <Image
+                  source={faceMarked ? DICE_MARKED : DICE_UNMARKED}
+                  style={[styles.dieImage, { height: imageSize, width: imageSize }]}
+                  resizeMode="contain"
+                  testID={`slot-die-strip-image-${index}-${faceIndex}`}
+                />
+              </View>
+            ))}
+          </Animated.View>
+        )}
+      </View>
       <View style={styles.reelMaskTop} />
       <View style={styles.reelMaskBottom} />
       <View style={styles.reelHighlight} />
@@ -530,7 +543,10 @@ export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
     };
 
     const elapsedMs = Date.now() - startedAtRef.current;
-    const kickOffDelayMs = Math.max(0, durationMs - SLOT_DICE_TOTAL_STOP_MS - elapsedMs);
+    const kickOffDelayMs = Math.max(
+      0,
+      durationMs - SLOT_DICE_TOTAL_STOP_MS - SPIN_PHASE_TRIM_MS - elapsedMs,
+    );
 
     if (kickOffDelayMs === 0) {
       kickOffStopSequence();
@@ -629,6 +645,7 @@ export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
             <SlotReel
               key={`${playbackId}-${index}`}
               boxSize={boxSize}
+              durationMs={durationMs}
               imageSize={imageSize}
               index={index}
               onStopComplete={handleReelStopComplete}
@@ -681,6 +698,11 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
   },
+  reelViewport: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   reelFace: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
@@ -696,6 +718,7 @@ const styles = StyleSheet.create({
   spinStripCell: {
     alignItems: 'center',
     justifyContent: 'center',
+    width: '100%',
   },
   reelMaskTop: {
     position: 'absolute',

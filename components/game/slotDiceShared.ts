@@ -3,8 +3,8 @@ const scaleDuration = (durationMs: number) => Math.round(durationMs * SLOT_DICE_
 
 export const DEFAULT_DICE_ROLL_DURATION_MS = scaleDuration(520);
 export const SLOT_DICE_COUNT = 4;
-export const SLOT_DICE_SPIN_STEP_MS = scaleDuration(24);
-export const SLOT_DICE_SPIN_STEP_VARIANCE_MS = scaleDuration(2);
+export const SLOT_DICE_SPIN_STEP_MS = scaleDuration(16);
+export const SLOT_DICE_SPIN_STEP_VARIANCE_MS = scaleDuration(1);
 export const SLOT_DICE_STOP_STAGGER_MS = scaleDuration(48);
 export const SLOT_DICE_STOP_SETTLE_MS = scaleDuration(320);
 export const SLOT_DICE_STOP_BOUNCE_MS = 0;

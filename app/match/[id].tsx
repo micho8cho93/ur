@@ -501,10 +501,9 @@ export function GameRoom() {
 
     return presenceIds.size;
   }, [isOffline, matchPresences, userId]);
+  const hasOpponentJoined = !isOffline && (joinedPlayerCount >= 2 || gameState.winner !== null);
   const requiresOpponentPresence = isPrivateMatch || isTournamentMatch;
-  const isOpponentReadyToPlay = !requiresOpponentPresence || joinedPlayerCount >= 2 || gameState.winner !== null;
-  const isPrivateMatchReady = !isPrivateMatch || isOpponentReadyToPlay;
-  const isTournamentMatchReady = !isTournamentMatch || isOpponentReadyToPlay;
+  const isOpponentReadyToPlay = !requiresOpponentPresence || hasOpponentJoined;
   const isOnlineInteractionReady = isOffline || socketState === 'connected';
   const canRoll = isMyTurn && gameState.phase === 'rolling' && isOpponentReadyToPlay && isOnlineInteractionReady;
   const isMatchFinished = gameState.winner !== null || gameState.phase === 'ended';
@@ -512,32 +511,23 @@ export function GameRoom() {
     !isOffline &&
     onlineMatchEnd?.reason === 'forfeit_inactivity' &&
     isMatchFinished;
-  const privateMatchStatusText = useMemo(() => {
-    if (!isPrivateMatch) {
+  const onlineMatchStatusPillText = useMemo(() => {
+    if (isOffline) {
       return null;
     }
 
-    if (!isPrivateMatchReady) {
-      return isPrivateMatchHost
-        ? 'Waiting for the other player to arrive. The board stays locked until they do.'
-        : 'Waiting for the host to arrive. The board unlocks as soon as both of you are here.';
+    if (isPrivateMatch) {
+      return privateMatchCode ? `Private Match - ${privateMatchCode}` : 'Private Match';
     }
 
-    return isPrivateMatchHost
-      ? 'Opponent connected. Your private board is unlocked.'
-      : 'Host connected. Your private board is unlocked.';
-  }, [isPrivateMatch, isPrivateMatchHost, isPrivateMatchReady]);
-  const tournamentStatusText = useMemo(() => {
-    if (!isTournamentMatch) {
-      return null;
+    const opponentStatus = hasOpponentJoined ? 'Opponent Joined' : 'Waiting for Opponent';
+
+    if (isTournamentMatch) {
+      return `${tournamentDisplayName} - ${opponentStatus}`;
     }
 
-    if (!isTournamentMatchReady) {
-      return 'Waiting for opponent to join. The board stays locked until they do.';
-    }
-
-    return 'Opponent joined. Finish the match here and the tournament will carry you forward automatically.';
-  }, [isTournamentMatch, isTournamentMatchReady]);
+    return `Online Match - ${opponentStatus}`;
+  }, [hasOpponentJoined, isOffline, isPrivateMatch, isTournamentMatch, privateMatchCode, tournamentDisplayName]);
 
   const handleCopyPrivateCode = React.useCallback(async () => {
     if (!privateMatchCode) {
@@ -3631,22 +3621,20 @@ export function GameRoom() {
         ]}
       >
         <View style={[styles.stageWrap, { gap: stageGap }]}>
-          {isPrivateMatch ? (
-            <View pointerEvents="none" style={[styles.privateStatusBanner, isPrivateMatchReady ? styles.privateStatusBannerReady : null]}>
-              <Text style={styles.privateStatusEyebrow}>
-                {isPrivateMatchHost ? 'Private Match Code' : 'Joined Private Match'}
+          {onlineMatchStatusPillText ? (
+            <View
+              pointerEvents="none"
+              testID="online-match-status-pill"
+              style={[
+                styles.onlineStatusPill,
+                isPrivateMatch ? styles.onlineStatusPillPrivate : null,
+                isTournamentMatch ? styles.onlineStatusPillTournament : null,
+                !isPrivateMatch && hasOpponentJoined ? styles.onlineStatusPillReady : null,
+              ]}
+            >
+              <Text numberOfLines={1} style={styles.onlineStatusPillText}>
+                {onlineMatchStatusPillText}
               </Text>
-              {privateMatchCode ? <Text style={styles.privateStatusCode}>{privateMatchCode}</Text> : null}
-              {privateMatchStatusText ? <Text style={styles.privateStatusText}>{privateMatchStatusText}</Text> : null}
-            </View>
-          ) : null}
-          {isTournamentMatch ? (
-            <View pointerEvents="none" style={styles.tournamentStatusBanner}>
-              <Text style={styles.tournamentStatusEyebrow}>Tournament Match</Text>
-              <Text numberOfLines={1} style={styles.tournamentStatusName}>
-                {tournamentDisplayName}
-              </Text>
-              {tournamentStatusText ? <Text style={styles.tournamentStatusText}>{tournamentStatusText}</Text> : null}
             </View>
           ) : null}
           {tutorialObjectiveBanner ? (
@@ -4245,80 +4233,37 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: urTheme.spacing.sm,
   },
-  privateStatusBanner: {
+  onlineStatusPill: {
     alignSelf: 'center',
-    width: '100%',
-    maxWidth: 620,
+    maxWidth: '100%',
     marginTop: 4,
     marginBottom: urTheme.spacing.xs,
     paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.sm,
-    borderRadius: urTheme.radii.md,
+    paddingVertical: urTheme.spacing.xs,
+    borderRadius: urTheme.radii.pill,
     borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.42)',
-    backgroundColor: 'rgba(29, 19, 12, 0.82)',
+    borderColor: 'rgba(170, 196, 228, 0.28)',
+    backgroundColor: 'rgba(14, 24, 36, 0.82)',
     zIndex: 6,
   },
-  privateStatusBannerReady: {
-    backgroundColor: 'rgba(17, 35, 39, 0.84)',
-    borderColor: 'rgba(126, 177, 255, 0.34)',
+  onlineStatusPillPrivate: {
+    borderColor: 'rgba(217, 164, 65, 0.36)',
+    backgroundColor: 'rgba(29, 19, 12, 0.82)',
   },
-  privateStatusEyebrow: {
-    ...urTypography.label,
-    color: urTheme.colors.goldBright,
-    fontSize: 11,
-    letterSpacing: 0.8,
-    textAlign: 'center',
-    marginBottom: urTheme.spacing.xs,
-  },
-  privateStatusCode: {
-    color: urTheme.colors.parchment,
-    fontSize: 24,
-    lineHeight: 28,
-    letterSpacing: 2.1,
-    textAlign: 'center',
-    marginBottom: urTheme.spacing.xs,
-  },
-  privateStatusText: {
-    color: 'rgba(247, 229, 203, 0.82)',
-    fontSize: 11,
-    lineHeight: 17,
-    textAlign: 'center',
-  },
-  tournamentStatusBanner: {
-    alignSelf: 'center',
-    width: '100%',
-    maxWidth: 620,
-    marginTop: 4,
-    marginBottom: urTheme.spacing.xs,
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.sm,
-    borderRadius: urTheme.radii.md,
-    borderWidth: 1,
+  onlineStatusPillTournament: {
     borderColor: 'rgba(137, 193, 255, 0.32)',
     backgroundColor: 'rgba(9, 24, 41, 0.84)',
-    zIndex: 6,
   },
-  tournamentStatusEyebrow: {
+  onlineStatusPillReady: {
+    borderColor: 'rgba(126, 177, 255, 0.34)',
+    backgroundColor: 'rgba(17, 35, 39, 0.84)',
+  },
+  onlineStatusPillText: {
     ...urTypography.label,
-    color: 'rgba(216, 232, 251, 0.9)',
-    fontSize: 11,
-    letterSpacing: 0.8,
-    textAlign: 'center',
-    marginBottom: urTheme.spacing.xs,
-  },
-  tournamentStatusName: {
     color: urTheme.colors.parchment,
-    fontSize: 20,
-    lineHeight: 24,
-    textAlign: 'center',
-    fontWeight: '700',
-    marginBottom: urTheme.spacing.xs,
-  },
-  tournamentStatusText: {
-    color: 'rgba(216, 232, 251, 0.82)',
     fontSize: 11,
-    lineHeight: 17,
+    lineHeight: 14,
+    letterSpacing: 0.4,
     textAlign: 'center',
   },
   backdropLayer: {

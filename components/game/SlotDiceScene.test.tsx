@@ -15,10 +15,17 @@ const getMarkedCount = () =>
     .length;
 
 const getStripStep = (index: number) => {
+  const reelNode = screen.getByTestId(`slot-die-${index}`);
+  const accessibleStep = reelNode.props.accessibilityValue?.now;
+
+  if (typeof accessibleStep === 'number') {
+    return accessibleStep;
+  }
+
   const stripStyle = StyleSheet.flatten(screen.getByTestId(`slot-die-strip-${index}`).props.style) as {
     transform?: { translateY?: number | { __getValue?: () => number } }[];
   };
-  const reelStyle = StyleSheet.flatten(screen.getByTestId(`slot-die-${index}`).props.style) as {
+  const reelStyle = StyleSheet.flatten(reelNode.props.style) as {
     height: number;
   };
   const translateYValue = stripStyle.transform?.find(
@@ -173,6 +180,72 @@ describe('SlotDiceScene', () => {
     expect(stripStyle.top).toBe(0);
     expect(stripStyle.left).toBe(0);
     expect(stripStyle.right).toBe(0);
+  });
+
+  it('uses the same fill viewport for the static face and the landed strip', () => {
+    const view = render(
+      <SlotDiceScene
+        playbackId={30}
+        durationMs={720}
+        rollValue={null}
+        variant="start"
+      />,
+    );
+
+    const viewportStyle = StyleSheet.flatten(screen.getByTestId('slot-die-viewport-0').props.style) as {
+      bottom?: number;
+      left?: number;
+      position?: string;
+      right?: number;
+      top?: number;
+    };
+    const faceStyle = StyleSheet.flatten(screen.getByTestId('slot-die-face-0').props.style) as {
+      bottom?: number;
+      left?: number;
+      position?: string;
+      right?: number;
+      top?: number;
+    };
+
+    expect(viewportStyle.position).toBe('absolute');
+    expect(viewportStyle.top).toBe(0);
+    expect(viewportStyle.right).toBe(0);
+    expect(viewportStyle.bottom).toBe(0);
+    expect(viewportStyle.left).toBe(0);
+    expect(faceStyle.position).toBe('absolute');
+    expect(faceStyle.top).toBe(0);
+    expect(faceStyle.right).toBe(0);
+    expect(faceStyle.bottom).toBe(0);
+    expect(faceStyle.left).toBe(0);
+
+    view.rerender(
+      <SlotDiceScene
+        playbackId={30}
+        durationMs={720}
+        rollValue={2}
+        variant="settled"
+      />,
+    );
+
+    const stripStyle = StyleSheet.flatten(screen.getByTestId('slot-die-strip-0').props.style) as {
+      left?: number;
+      position?: string;
+      right?: number;
+      top?: number;
+      width?: string;
+    };
+    const stripCellStyle = StyleSheet.flatten(
+      screen.getByTestId('slot-die-strip-cell-0-0').props.style,
+    ) as {
+      width?: string;
+    };
+
+    expect(stripStyle.position).toBe('absolute');
+    expect(stripStyle.top).toBe(0);
+    expect(stripStyle.left).toBe(0);
+    expect(stripStyle.right).toBe(0);
+    expect(stripStyle.width).toBe('100%');
+    expect(stripCellStyle.width).toBe('100%');
   });
 
   it('keeps the reel window transparent while enlarging the die art and border treatment', () => {
@@ -362,7 +435,7 @@ describe('SlotDiceScene', () => {
     expect(screen.queryByTestId('slot-die-face-0')).toBeNull();
   });
 
-  it('snaps every reel to a whole-face stop when animated playback is promoted to settled', () => {
+  it('keeps every reel on the same landing step when animated playback is promoted to settled', () => {
     const view = render(
       <SlotDiceScene
         playbackId={29}
@@ -371,6 +444,12 @@ describe('SlotDiceScene', () => {
         variant="animated"
       />,
     );
+
+    act(() => {
+      jest.advanceTimersByTime(animatedLandingDurationMs);
+    });
+
+    const landingSteps = Array.from({ length: 4 }, (_, index) => getStripStep(index));
 
     view.rerender(
       <SlotDiceScene
@@ -382,8 +461,7 @@ describe('SlotDiceScene', () => {
     );
 
     Array.from({ length: 4 }, (_, index) => {
-      expect(getStripStep(index)).toBeGreaterThanOrEqual(16);
-      expect(getStripStep(index)).toBeLessThanOrEqual(17);
+      expect(getStripStep(index)).toBeCloseTo(landingSteps[index] ?? 0, 5);
     });
     expect(getMarkedCount()).toBe(2);
   });
