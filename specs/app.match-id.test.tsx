@@ -2361,6 +2361,89 @@ describe('GameRoom match dice stage', () => {
     expect(screen.queryByText('Enter Waiting Room')).toBeNull();
   });
 
+  it('resolves a stale final-win summary into a return-home tournament result modal', async () => {
+    mockSearchParams.id = 'tournament-stale-final-win';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-stale-final-win',
+    });
+    mockStoreState.matchId = 'tournament-stale-final-win';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockGetPublicTournamentStatus.mockResolvedValueOnce({
+      tournament: {
+        runId: 'run-1',
+        tournamentId: 'tournament-1',
+        name: 'Spring Open',
+        description: 'A public run.',
+        lifecycle: 'finalized',
+        startAt: '2026-03-27T09:00:00.000Z',
+        endAt: null,
+        updatedAt: '2026-03-27T10:00:00.000Z',
+        entrants: 2,
+        maxEntrants: 2,
+        gameMode: 'standard',
+        region: 'Global',
+        buyInLabel: 'Free',
+        prizeLabel: 'No prize listed',
+        membership: {
+          isJoined: true,
+          joinedAt: '2026-03-27T09:00:00.000Z',
+        },
+        participation: {
+          state: 'champion',
+          currentRound: 1,
+          currentEntryId: 'round-1-match-1',
+          activeMatchId: null,
+          finalPlacement: 1,
+          lastResult: 'win',
+          canLaunch: false,
+        },
+      },
+      standings: [],
+    });
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-stale-final-win', {
+        tournamentOutcome: 'advancing',
+        shouldEnterWaitingRoom: true,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Tournament Won')).toBeTruthy();
+    expect(screen.getByText('Return to Home Page')).toBeTruthy();
+    expect(screen.queryByText('Enter Waiting Room')).toBeNull();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Return to Home Page'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockGetPublicTournamentStatus).toHaveBeenCalledWith('run-1');
+    expect(mockRouterReplace).toHaveBeenCalledWith('/');
+    expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
+  });
+
   it('auto-enters the waiting room after 15 seconds when the victory modal is untouched', async () => {
     mockSearchParams.id = 'tournament-auto-enter';
     mockSearchParams.offline = '0';
@@ -2407,9 +2490,94 @@ describe('GameRoom match dice stage', () => {
     await act(async () => {
       jest.advanceTimersByTime(15_000);
       await Promise.resolve();
+      await Promise.resolve();
     });
 
     expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
+  });
+
+  it('resolves a stale final-win summary before auto-entry and keeps the return-home modal visible', async () => {
+    mockSearchParams.id = 'tournament-auto-finalized';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-auto-finalized',
+    });
+    mockStoreState.matchId = 'tournament-auto-finalized';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockGetPublicTournamentStatus.mockResolvedValueOnce({
+      tournament: {
+        runId: 'run-1',
+        tournamentId: 'tournament-1',
+        name: 'Spring Open',
+        description: 'A public run.',
+        lifecycle: 'finalized',
+        startAt: '2026-03-27T09:00:00.000Z',
+        endAt: null,
+        updatedAt: '2026-03-27T10:00:00.000Z',
+        entrants: 2,
+        maxEntrants: 2,
+        gameMode: 'standard',
+        region: 'Global',
+        buyInLabel: 'Free',
+        prizeLabel: 'No prize listed',
+        membership: {
+          isJoined: true,
+          joinedAt: '2026-03-27T09:00:00.000Z',
+        },
+        participation: {
+          state: 'champion',
+          currentRound: 1,
+          currentEntryId: 'round-1-match-1',
+          activeMatchId: null,
+          finalPlacement: 1,
+          lastResult: 'win',
+          canLaunch: false,
+        },
+      },
+      standings: [],
+    });
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-auto-finalized', {
+        tournamentOutcome: 'advancing',
+        shouldEnterWaitingRoom: true,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Tournament Won')).toBeTruthy();
+    expect(screen.getByText('Return to Home Page')).toBeTruthy();
+    expect(screen.queryByText('Enter Waiting Room')).toBeNull();
+
+    await act(async () => {
+      jest.advanceTimersByTime(15_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockGetPublicTournamentStatus).toHaveBeenCalledWith('run-1');
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    expect(screen.getByText('Return to Home Page')).toBeTruthy();
+    expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
   });
 
   it('keeps the regular win flow exit action visible while challenge rewards stay collapsed', async () => {
@@ -2559,7 +2727,11 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    fireEvent.press(screen.getByText('Enter Waiting Room'));
+    await act(async () => {
+      fireEvent.press(screen.getByText('Enter Waiting Room'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     await act(async () => {
       fireEvent.press(screen.getByText('Launch next match'));
@@ -2617,7 +2789,11 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    fireEvent.press(screen.getByText('Enter Waiting Room'));
+    await act(async () => {
+      fireEvent.press(screen.getByText('Enter Waiting Room'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
     expect(screen.getByText('Rechecking for the next round...')).toBeTruthy();

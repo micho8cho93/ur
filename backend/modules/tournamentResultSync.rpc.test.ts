@@ -428,6 +428,88 @@ describe('tournament match result synchronization', () => {
     );
   });
 
+  it('marks final-match summaries as champion and runner-up when the final round completes before participant states catch up', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = createLogger();
+    const nk = createNakama();
+    const dispatcher = createDispatcher();
+    const ctx = { matchId: 'match-final-stale-participant-state' };
+
+    mockedProcessRankedMatchResult.mockReturnValueOnce(buildRatedResult(false));
+    mockedProcessCompletedAuthoritativeTournamentMatch.mockReturnValueOnce({
+      skipped: false,
+      duplicate: false,
+      record: {
+        counted: true,
+        summary: {
+          round: 1,
+        },
+      },
+      updatedRun: {
+        bracket: {
+          totalRounds: 1,
+        },
+      },
+      participantResolutions: [
+        {
+          userId: 'user-light',
+          state: 'waiting_next_round',
+          finalPlacement: null,
+        },
+        {
+          userId: 'user-dark',
+          state: 'eliminated',
+          finalPlacement: 2,
+        },
+      ],
+      finalizationResult: null,
+    } as ReturnType<typeof processCompletedAuthoritativeTournamentMatch>);
+
+    const initialized = runtime.matchInit(ctx, logger, nk, {
+      playerIds: ['user-light', 'user-dark'],
+      modeId: 'standard',
+      rankedMatch: true,
+      tournamentRunId: 'run-1',
+      tournamentId: 'tour-1',
+      tournamentRound: 1,
+      tournamentEntryId: 'round-1-match-1',
+    });
+
+    const state = attachPresences({
+      ...initialized.state,
+      gameState: {
+        ...initialized.state.gameState,
+        phase: 'ended',
+        winner: 'light',
+      },
+    });
+
+    runtime.matchLoop(ctx, logger, nk, dispatcher, 1, state, []);
+
+    const rewardSummaryPayloads = dispatcher.broadcastMessage.mock.calls
+      .filter(([opCode]) => opCode === MatchOpCode.TOURNAMENT_REWARD_SUMMARY)
+      .map(([, payload]) => JSON.parse(payload as string)) as Array<{
+        playerUserId: string;
+        tournamentOutcome: string;
+        shouldEnterWaitingRoom: boolean;
+      }>;
+
+    expect(rewardSummaryPayloads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          playerUserId: 'user-light',
+          tournamentOutcome: 'champion',
+          shouldEnterWaitingRoom: false,
+        }),
+        expect.objectContaining({
+          playerUserId: 'user-dark',
+          tournamentOutcome: 'runner_up',
+          shouldEnterWaitingRoom: false,
+        }),
+      ]),
+    );
+  });
+
   it('retries tournament synchronization when a finished player leaves the match', () => {
     const runtime = globalThis as RuntimeGlobals;
     const logger = createLogger();

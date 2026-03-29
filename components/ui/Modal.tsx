@@ -17,8 +17,8 @@ interface ModalProps {
   visible: boolean;
   title: string;
   message?: string;
-  actionLabel: string;
-  onAction: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
   children?: React.ReactNode;
   maxWidth?: number;
 }
@@ -41,7 +41,7 @@ export const Modal: React.FC<ModalProps> = ({
   );
 
   return (
-    <RNModal transparent visible={visible} animationType="fade" onRequestClose={onAction}>
+    <RNModal transparent visible={visible} animationType="fade" onRequestClose={onAction ?? (() => undefined)}>
       <View style={[styles.backdrop, isMobileWeb && styles.backdropMobileWeb]}>
         <View testID="shared-modal-sheet" style={[styles.sheet, isMobileWeb && styles.sheetMobileWeb, { maxWidth: resolvedMaxWidth, maxHeight: resolvedMaxHeight }]}>
           <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
@@ -64,9 +64,11 @@ export const Modal: React.FC<ModalProps> = ({
             </View>
           </ScrollView>
 
-          <View style={styles.buttonWrap}>
-            <Button title={actionLabel} onPress={onAction} />
-          </View>
+          {actionLabel && onAction ? (
+            <View style={styles.buttonWrap}>
+              <Button title={actionLabel} onPress={onAction} />
+            </View>
+          ) : null}
         </View>
       </View>
     </RNModal>

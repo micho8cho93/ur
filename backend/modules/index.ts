@@ -2255,6 +2255,8 @@ const resolveTournamentRewardOutcome = (
     tournamentProcessingResult,
   } = params;
   const finalizationResult = tournamentProcessingResult.finalizationResult;
+  const completedRound = tournamentProcessingResult.record?.summary.round ?? null;
+  const totalRounds = tournamentProcessingResult.updatedRun?.bracket?.totalRounds ?? null;
 
   if (finalizationResult) {
     if (finalizationResult.championUserId === playerUserId) {
@@ -2268,6 +2270,15 @@ const resolveTournamentRewardOutcome = (
     if (participantState === "runner_up" || !didWin) {
       return "runner_up";
     }
+  }
+
+  if (
+    tournamentProcessingResult.record?.counted === true &&
+    typeof completedRound === "number" &&
+    typeof totalRounds === "number" &&
+    completedRound === totalRounds
+  ) {
+    return didWin ? "champion" : "runner_up";
   }
 
   if (participantState === "champion") {
