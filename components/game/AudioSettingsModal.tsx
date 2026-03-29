@@ -185,6 +185,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const { width } = useWindowDimensions();
   const isWeb = Platform.OS === 'web';
   const isMobileWeb = isWeb && width < 760;
+  const isCompactSheet = width < 480;
 
   if (!visible) {
     return null;
@@ -192,9 +193,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
   const sheet = (
     <View
+      testID="audio-settings-sheet"
       style={[
         styles.sheet,
         isMobileWeb && styles.sheetMobileWeb,
+        isCompactSheet && styles.sheetCompact,
       ]}
       accessibilityViewIsModal
     >
@@ -204,11 +207,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       <View style={styles.border} />
 
       <Text style={styles.title}>Match Settings</Text>
-      <Text style={styles.subtitle}>
+      <Text style={[styles.subtitle, isCompactSheet && styles.subtitleCompact]}>
         Tune the match atmosphere, visual pacing, and how much of the rolling flow happens automatically.
       </Text>
 
       <ScrollView
+        testID="audio-settings-scroll"
         style={styles.scroll}
         alwaysBounceVertical={false}
         contentContainerStyle={styles.optionList}
@@ -415,6 +419,10 @@ const styles = StyleSheet.create({
     maxWidth: 520,
     maxHeight: '88%',
   },
+  sheetCompact: {
+    paddingHorizontal: urTheme.spacing.md,
+    paddingTop: urTheme.spacing.md,
+  },
   texture: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.22,
@@ -451,6 +459,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: urTheme.spacing.xs,
     marginBottom: urTheme.spacing.md,
+  },
+  subtitleCompact: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   scroll: {
     flexGrow: 0,

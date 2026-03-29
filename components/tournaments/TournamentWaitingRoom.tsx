@@ -5,7 +5,7 @@ import type { TournamentAdvanceFlowPhase } from '@/src/tournaments/useTournament
 import type { PublicTournamentStanding } from '@/src/tournaments/types';
 import type { TournamentMatchRewardSummaryPayload } from '@/shared/urMatchProtocol';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 type TournamentWaitingRoomProps = {
   visible: boolean;
@@ -189,6 +189,10 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
   onReturnToMainPage,
   onLaunchNextMatch,
 }) => {
+  const { width, height } = useWindowDimensions();
+  const isCompactViewport = width < 760 || height < 760;
+  const isVeryShortViewport = height < 680;
+  const isMobileWeb = Platform.OS === 'web' && width < 760;
   const showExitActions = phase === 'eliminated' || phase === 'finalized';
   const [cardIndex, setCardIndex] = useState(0);
   const [rotationCycle, setRotationCycle] = useState(0);
@@ -248,73 +252,92 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
       <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
       <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.inlayTexture} />
       <View style={styles.overlay} />
-      <View style={styles.innerFrame} />
+      <View style={[styles.innerFrame, isCompactViewport && styles.innerFrameCompact]} />
 
-      <View style={styles.chrome}>
-        <View style={styles.headerBlock}>
-          <Text style={styles.eyebrow}>{showExitActions ? 'Tournament Complete' : 'Tournament Waiting Room'}</Text>
-          <Text numberOfLines={2} style={styles.title}>
-            {tournamentName}
-          </Text>
-          <Text style={styles.bodyCopy}>
-            {showExitActions
-              ? 'Your tournament run is over and the final standings are now locked.'
-              : 'The next match will start automatically as soon as the bracket is ready.'}
-          </Text>
-        </View>
+      <ScrollView
+        testID="tournament-waiting-room-scroll"
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isCompactViewport ? styles.scrollContentCompact : styles.scrollContentCentered,
+        ]}
+        alwaysBounceVertical={false}
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+      >
+        <View
+          style={[
+            styles.chrome,
+            isCompactViewport && styles.chromeCompact,
+            isVeryShortViewport && styles.chromeVeryShort,
+            isMobileWeb && styles.chromeMobileWeb,
+          ]}
+        >
+          <View style={styles.headerBlock}>
+            <Text style={styles.eyebrow}>{showExitActions ? 'Tournament Complete' : 'Tournament Waiting Room'}</Text>
+            <Text numberOfLines={isCompactViewport ? 3 : 2} style={[styles.title, isCompactViewport && styles.titleCompact]}>
+              {tournamentName}
+            </Text>
+            <Text style={[styles.bodyCopy, isCompactViewport && styles.bodyCopyCompact]}>
+              {showExitActions
+                ? 'Your tournament run is over and the final standings are now locked.'
+                : 'The next match will start automatically as soon as the bracket is ready.'}
+            </Text>
+          </View>
 
-        <View style={styles.pillRow}>
-          {typeof derivedRound === 'number' ? (
-            <View style={styles.infoPill}>
-              <Text style={styles.infoPillText}>Round {derivedRound}</Text>
-            </View>
-          ) : null}
-          {typeof currentStanding?.rank === 'number' ? (
-            <View style={styles.infoPill}>
-              <Text style={styles.infoPillText}>Rank #{currentStanding.rank}</Text>
-            </View>
-          ) : null}
-          {phase === 'ready' || phase === 'launching' ? (
-            <View style={[styles.infoPill, styles.matchFoundPill]}>
-              <Text style={[styles.infoPillText, styles.matchFoundPillText]}>
-                {phase === 'launching' ? 'Joining match' : 'Match found'}
+          <View style={styles.pillRow}>
+            {typeof derivedRound === 'number' ? (
+              <View style={styles.infoPill}>
+                <Text style={styles.infoPillText}>Round {derivedRound}</Text>
+              </View>
+            ) : null}
+            {typeof currentStanding?.rank === 'number' ? (
+              <View style={styles.infoPill}>
+                <Text style={styles.infoPillText}>Rank #{currentStanding.rank}</Text>
+              </View>
+            ) : null}
+            {phase === 'ready' || phase === 'launching' ? (
+              <View style={[styles.infoPill, styles.matchFoundPill]}>
+                <Text style={[styles.infoPillText, styles.matchFoundPillText]}>
+                  {phase === 'launching' ? 'Joining match' : 'Match found'}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.statusBlock}>
+            <Text style={[styles.statusText, isCompactViewport && styles.statusTextCompact]}>{statusText}</Text>
+            {subtleStatusText ? <Text style={[styles.subtleStatusText, isCompactViewport && styles.helperTextCompact]}>{subtleStatusText}</Text> : null}
+            {retryMessage ? <Text style={[styles.retryText, isCompactViewport && styles.helperTextCompact]}>{retryMessage}</Text> : null}
+            {phase === 'finalized' && typeof finalPlacement === 'number' ? (
+              <Text style={styles.finalPlacementText}>
+                {isChampion ? 'Final placement: Champion' : `Final placement: #${finalPlacement}`}
               </Text>
-            </View>
-          ) : null}
-        </View>
+            ) : null}
+          </View>
 
-        <View style={styles.statusBlock}>
-          <Text style={styles.statusText}>{statusText}</Text>
-          {subtleStatusText ? <Text style={styles.subtleStatusText}>{subtleStatusText}</Text> : null}
-          {retryMessage ? <Text style={styles.retryText}>{retryMessage}</Text> : null}
-          {phase === 'finalized' && typeof finalPlacement === 'number' ? (
-            <Text style={styles.finalPlacementText}>
-              {isChampion ? 'Final placement: Champion' : `Final placement: #${finalPlacement}`}
+          <View style={styles.cardWrap}>
+            <View style={[styles.card, isCompactViewport && styles.cardCompact, { borderColor: `${activeCard.accent}4D` }]}>
+              <Text style={[styles.cardEyebrow, { color: activeCard.accent }]}>{activeCard.eyebrow}</Text>
+              <Text style={[styles.cardTitle, isCompactViewport && styles.cardTitleCompact]}>{activeCard.title}</Text>
+              <Text style={[styles.cardBody, isCompactViewport && styles.cardBodyCompact]}>{activeCard.body}</Text>
+            </View>
+          </View>
+
+          {!showExitActions ? (
+            <Text style={[styles.footerCopy, isCompactViewport && styles.helperTextCompact]}>
+              Stay here while the rotation advances. If the next board is already ready, launch begins on the next card
+              boundary.
             </Text>
           ) : null}
+
+          {showExitActions ? (
+            <View style={styles.buttonWrap}>
+              <Button title="Return to Main Page" onPress={onReturnToMainPage} />
+            </View>
+          ) : null}
         </View>
-
-        <View style={styles.cardWrap}>
-          <View style={[styles.card, { borderColor: `${activeCard.accent}4D` }]}>
-            <Text style={[styles.cardEyebrow, { color: activeCard.accent }]}>{activeCard.eyebrow}</Text>
-            <Text style={styles.cardTitle}>{activeCard.title}</Text>
-            <Text style={styles.cardBody}>{activeCard.body}</Text>
-          </View>
-        </View>
-
-        {!showExitActions ? (
-          <Text style={styles.footerCopy}>
-            Stay here while the rotation advances. If the next board is already ready, launch begins on the next card
-            boundary.
-          </Text>
-        ) : null}
-
-        {showExitActions ? (
-          <View style={styles.buttonWrap}>
-            <Button title="Return to Main Page" onPress={onReturnToMainPage} />
-          </View>
-        ) : null}
-      </View>
+      </ScrollView>
     </View>
   );
 };
@@ -348,6 +371,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(246, 214, 151, 0.16)',
   },
+  innerFrameCompact: {
+    top: 10,
+    right: 10,
+    bottom: 10,
+    left: 10,
+    borderRadius: 20,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  scrollContentCentered: {
+    justifyContent: 'center',
+  },
+  scrollContentCompact: {
+    justifyContent: 'flex-start',
+  },
   chrome: {
     flex: 1,
     alignItems: 'center',
@@ -355,6 +397,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: urTheme.spacing.lg,
     paddingVertical: urTheme.spacing.xl,
     gap: urTheme.spacing.md,
+  },
+  chromeCompact: {
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.lg,
+    gap: urTheme.spacing.sm,
+  },
+  chromeVeryShort: {
+    paddingVertical: urTheme.spacing.md,
+  },
+  chromeMobileWeb: {
+    minHeight: '100%',
   },
   headerBlock: {
     alignItems: 'center',
@@ -374,11 +427,19 @@ const styles = StyleSheet.create({
     lineHeight: 38,
     textAlign: 'center',
   },
+  titleCompact: {
+    fontSize: 26,
+    lineHeight: 31,
+  },
   bodyCopy: {
     color: 'rgba(236, 229, 214, 0.82)',
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
+  },
+  bodyCopyCompact: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   pillRow: {
     flexDirection: 'row',
@@ -419,6 +480,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+  statusTextCompact: {
+    fontSize: 17,
+    lineHeight: 23,
+  },
   subtleStatusText: {
     color: 'rgba(216, 232, 251, 0.82)',
     fontSize: 13,
@@ -430,6 +495,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     textAlign: 'center',
+  },
+  helperTextCompact: {
+    fontSize: 12,
+    lineHeight: 17,
   },
   finalPlacementText: {
     ...urTypography.label,
@@ -463,6 +532,12 @@ const styles = StyleSheet.create({
       elevation: 14,
     }),
   },
+  cardCompact: {
+    minHeight: 200,
+    borderRadius: 22,
+    paddingHorizontal: urTheme.spacing.lg,
+    paddingVertical: urTheme.spacing.lg,
+  },
   cardEyebrow: {
     ...urTypography.label,
     fontSize: 11,
@@ -476,11 +551,19 @@ const styles = StyleSheet.create({
     lineHeight: 40,
     textAlign: 'center',
   },
+  cardTitleCompact: {
+    fontSize: 28,
+    lineHeight: 34,
+  },
   cardBody: {
     color: 'rgba(244, 236, 220, 0.86)',
     fontSize: 16,
     lineHeight: 23,
     textAlign: 'center',
+  },
+  cardBodyCompact: {
+    fontSize: 14,
+    lineHeight: 20,
   },
   footerCopy: {
     maxWidth: 640,

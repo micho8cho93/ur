@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
@@ -18,13 +18,16 @@ export const EloMatchSummaryPanel: React.FC<EloMatchSummaryPanelProps> = ({
   pending = false,
   unchangedReason = null,
 }) => {
+  const { width } = useWindowDimensions();
+  const useCompactLayout = width < 420;
+
   if (result) {
     const isPositive = result.player.delta >= 0;
 
     return (
       <View style={styles.card}>
         <Text style={styles.eyebrow}>Ranked Elo</Text>
-        <View style={styles.resultRow}>
+        <View style={[styles.resultRow, useCompactLayout && styles.resultRowCompact]}>
           <View>
             <Text style={[styles.deltaValue, isPositive ? styles.deltaPositive : styles.deltaNegative]}>
               {formatDelta(result.player.delta)} Elo
@@ -98,6 +101,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: urTheme.spacing.sm,
+  },
+  resultRowCompact: {
+    flexWrap: 'wrap',
   },
   deltaValue: {
     ...urTypography.title,

@@ -604,6 +604,7 @@ export function GameRoom() {
   const [tournamentWaitingRoomCountdownMs, setTournamentWaitingRoomCountdownMs] = React.useState<number | null>(null);
   const [showAudioSettings, setShowAudioSettings] = React.useState(false);
   const [showTopMenu, setShowTopMenu] = React.useState(false);
+  const [showMatchStatusInfo, setShowMatchStatusInfo] = React.useState(false);
   const [matchChallengeSummary, setMatchChallengeSummary] = React.useState<MatchChallengeRewardSummary | null>(null);
   const [matchRewardsErrorMessage, setMatchRewardsErrorMessage] = React.useState<string | null>(null);
   const [isRefreshingMatchRewards, setIsRefreshingMatchRewards] = React.useState(false);
@@ -1449,6 +1450,7 @@ export function GameRoom() {
       !introsComplete ||
       showAudioSettings ||
       showTopMenu ||
+      showMatchStatusInfo ||
       showWinModal ||
       gameState.winner !== null ||
       gameState.phase === 'ended'
@@ -1496,6 +1498,7 @@ export function GameRoom() {
     rollingVisual,
     scheduleTutorialProgress,
     showAudioSettings,
+    showMatchStatusInfo,
     showTopMenu,
     showWinModal,
     triggerTutorialRoll,
@@ -1805,6 +1808,7 @@ export function GameRoom() {
     }
 
     setShowTopMenu(false);
+    setShowMatchStatusInfo(false);
   }, [showAudioSettings, showWinModal, tutorialCoachVisible]);
   useEffect(() => {
     boardImageLayoutRef.current = null;
@@ -2072,6 +2076,7 @@ export function GameRoom() {
       rollButtonLatchPhase !== 'idle' ||
       showAudioSettings ||
       showTopMenu ||
+      showMatchStatusInfo ||
       showWinModal
     ) {
       return;
@@ -2096,6 +2101,7 @@ export function GameRoom() {
     rollButtonLatchPhase,
     rollingVisual,
     showAudioSettings,
+    showMatchStatusInfo,
     showTopMenu,
     showWinModal,
     triggerLocalRoll,
@@ -2814,6 +2820,7 @@ export function GameRoom() {
     }
 
     setShowTopMenu(false);
+    setShowMatchStatusInfo(false);
     leaveCurrentMatch();
     setShowWinModal(false);
     reset();
@@ -2887,6 +2894,8 @@ export function GameRoom() {
   const isWebLayout = Platform.OS === 'web';
   const isMobileLayout = matchStageViewportMode.useMobileLayout;
   const isMobileWebLayout = isWebLayout && isMobileLayout;
+  const showMobileWebStatusInfoButton = isMobileWebLayout && Boolean(onlineMatchStatusPillText);
+  const showInlineMatchStatusPopover = showMobileWebStatusInfoButton && showMatchStatusInfo;
   const useMobileSideReserveRails = matchStageViewportMode.useMobileSideReserveRails;
   const showWebSideDiceVisual = Platform.OS === 'web' && useSideColumns;
   const reserveTrayScale = matchStageViewportMode.isTabletLandscape ? 0.94 : tabletPortraitTuning.trayScale;
@@ -2965,7 +2974,7 @@ export function GameRoom() {
   const stageGap = viewportHeight < 760 ? urTheme.spacing.xs : urTheme.spacing.sm;
   const viewportTopPadding = 0;
   const viewportBottomPadding = Math.max(insets.bottom, urTheme.spacing.xs);
-  const topChromeHeight = 36;
+  const topChromeHeight = isMobileWebLayout ? 30 : 36;
   const webTopChromeTopInset = Math.max(insets.top, urTheme.spacing.xs);
   const mobileTopChromeOffset = 0;
   const topChromeTop = isWebLayout && boardTargetFrame
@@ -2988,6 +2997,7 @@ export function GameRoom() {
     mobileScoreRowHeight,
     isMobileLayout ? Math.round(urTheme.spacing.md + 34) : 56,
   );
+  const compactTopChromeIconSize = isMobileWebLayout ? 17 : 20;
   const webDiceVisualTopInset = showWebSideDiceVisual ? scoreOverlayTop + measuredScoreRowHeight : 0;
   const webDiceVisualSlotHeight = showWebSideDiceVisual
     ? Math.max(0, supportColumnTopInset - webDiceVisualTopInset)
@@ -3298,6 +3308,14 @@ export function GameRoom() {
     fullMatchPresentationReady ||
     hasPlayedBoardDropIntro ||
     shouldForceMatchPresentationReveal;
+
+  useEffect(() => {
+    if (showMobileWebStatusInfoButton) {
+      return;
+    }
+
+    setShowMatchStatusInfo(false);
+  }, [showMobileWebStatusInfoButton]);
 
   useEffect(() => {
     syncBoardTargetFrame();
@@ -3844,8 +3862,21 @@ export function GameRoom() {
         </View>
       ) : null}
 
-      <View style={[styles.topChrome, useInlineTopChromeLayout && styles.topChromeMobile, { top: topChromeTop - mobileHeaderLift }]}>
-        <View style={[styles.topChromeLeft, useInlineTopChromeLayout && styles.topChromeLeftMobile]}>
+      <View
+        style={[
+          styles.topChrome,
+          useInlineTopChromeLayout && styles.topChromeMobile,
+          isMobileWebLayout && styles.topChromeCompact,
+          { top: topChromeTop - mobileHeaderLift },
+        ]}
+      >
+        <View
+          style={[
+            styles.topChromeLeft,
+            useInlineTopChromeLayout && styles.topChromeLeftMobile,
+            isMobileWebLayout && styles.topChromeLeftCompact,
+          ]}
+        >
           {canUseTopExit ? (
             <Pressable
               onPress={handleExit}
@@ -3855,17 +3886,24 @@ export function GameRoom() {
                 styles.topChromeIconButton,
                 isWebLayout && styles.topChromeIconButtonWeb,
                 isMobileLayout && styles.topChromeIconButtonMobile,
+                isMobileWebLayout && styles.topChromeIconButtonCompact,
                 pressed && styles.headerHelpButtonPressed,
               ]}
             >
               <MaterialIcons
                 name="arrow-back"
-                size={20}
+                size={compactTopChromeIconSize}
                 color={isMobileLayout || isWebLayout ? urTheme.colors.ivory : TOP_CHROME_ACCENT}
               />
             </Pressable>
           ) : (
-            <View style={[styles.topChromeIconButton, styles.topChromeExitSpacer]} />
+            <View
+              style={[
+                styles.topChromeIconButton,
+                isMobileWebLayout && styles.topChromeIconButtonCompact,
+                styles.topChromeExitSpacer,
+              ]}
+            />
           )}
           <View style={[styles.topChromeTitleStack, useInlineTopChromeLayout && styles.topChromeTitleStackMobile]}>
             <Text
@@ -3874,6 +3912,7 @@ export function GameRoom() {
                 styles.topChromeTitle,
                 (isMobileLayout || isWebLayout) && styles.topChromeTitleMobile,
                 useInlineTopChromeLayout && styles.topChromeTitleInlineMobile,
+                isMobileWebLayout && styles.topChromeTitleCompact,
               ]}
             >
               {matchTitle}
@@ -3885,6 +3924,7 @@ export function GameRoom() {
           <Pressable
             onPress={() => {
               resumeAnnouncementCuesFromInteraction();
+              setShowMatchStatusInfo(false);
               setShowTopMenu((current) => !current);
             }}
             accessibilityRole="button"
@@ -3893,12 +3933,13 @@ export function GameRoom() {
               styles.topChromeIconButton,
               isWebLayout && styles.topChromeIconButtonWeb,
               isMobileLayout && styles.headerHelpButtonMobile,
+              isMobileWebLayout && styles.topChromeIconButtonCompact,
               pressed && styles.headerHelpButtonPressed,
             ]}
           >
             <MaterialIcons
               name="more-vert"
-              size={20}
+              size={compactTopChromeIconSize}
               color={isMobileLayout || isWebLayout ? urTheme.colors.ivory : TOP_CHROME_ACCENT}
             />
           </Pressable>
@@ -3949,7 +3990,33 @@ export function GameRoom() {
         </View>
       </View>
 
-      {showTopMenu && <Pressable style={styles.topMenuScrim} onPress={() => setShowTopMenu(false)} />}
+      {(showTopMenu || showInlineMatchStatusPopover) ? (
+        <Pressable
+          style={styles.topMenuScrim}
+          onPress={() => {
+            setShowTopMenu(false);
+            setShowMatchStatusInfo(false);
+          }}
+        />
+      ) : null}
+      {showInlineMatchStatusPopover ? (
+        <View
+          testID="mobile-match-status-popover"
+          style={[
+            styles.mobileMatchStatusPopover,
+            isPrivateMatch ? styles.onlineStatusPillPrivate : null,
+            isTournamentMatch ? styles.onlineStatusPillTournament : null,
+            !isPrivateMatch && hasOpponentJoined ? styles.onlineStatusPillReady : null,
+            {
+              top: mobileScoreOverlayTop - mobileHeaderLift + measuredScoreRowHeight + urTheme.spacing.xs,
+              left: mobileScoreRowInset,
+              right: mobileScoreRowInset,
+            },
+          ]}
+        >
+          <Text style={styles.mobileMatchStatusPopoverText}>{onlineMatchStatusPillText}</Text>
+        </View>
+      ) : null}
 
       <View
         style={[
@@ -3962,7 +4029,7 @@ export function GameRoom() {
         ]}
       >
         <View style={[styles.stageWrap, { gap: stageGap }]}>
-          {onlineMatchStatusPillText ? (
+          {onlineMatchStatusPillText && !showMobileWebStatusInfoButton ? (
             <View
               pointerEvents="none"
               testID="online-match-status-pill"
@@ -3984,7 +4051,7 @@ export function GameRoom() {
             </View>
           ) : null}
           <View
-            pointerEvents="none"
+            pointerEvents={showMobileWebStatusInfoButton ? 'box-none' : 'none'}
             style={[
               styles.scoreRow,
               styles.scoreRowOverlay,
@@ -3998,15 +4065,17 @@ export function GameRoom() {
               setMobileScoreRowHeight((current) => (current === nextHeight ? current : nextHeight));
             }}
           >
-            <EdgeScore
-              side="light"
-              title={scoreTitles.light}
-              score={gameState.light.finishedCount}
-              maxScore={pieceCountPerSide}
-              active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
-            />
+            <View pointerEvents="none" style={styles.scoreIndicatorSlot}>
+              <EdgeScore
+                side="light"
+                title={scoreTitles.light}
+                score={gameState.light.finishedCount}
+                maxScore={pieceCountPerSide}
+                active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
+              />
+            </View>
             {isMobileLayout && isTurnTimerEnabled ? (
-              <View style={styles.scoreTimerSlot}>
+              <View pointerEvents="none" style={styles.scoreTimerSlot}>
                 <GameStageHUD
                   isMyTurn={isMyTurn}
                   canRoll={canRoll}
@@ -4022,30 +4091,50 @@ export function GameRoom() {
                 />
               </View>
             ) : null}
-            {showMobileWebDetachedDarkScore ? (
-              <EdgeScore
-                side="dark"
-                title={scoreTitles.dark}
-                score={gameState.dark.finishedCount}
-                maxScore={pieceCountPerSide}
-                active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
-                align="right"
-                style={[
-                  isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined,
-                  styles.mobileDetachedScoreGhost,
+            {showMobileWebStatusInfoButton ? (
+              <Pressable
+                testID="mobile-match-status-button"
+                accessibilityRole="button"
+                accessibilityLabel="Show match status"
+                onPress={() => {
+                  resumeAnnouncementCuesFromInteraction();
+                  setShowTopMenu(false);
+                  setShowMatchStatusInfo((current) => !current);
+                }}
+                style={({ pressed }) => [
+                  styles.scoreInfoButton,
+                  pressed && styles.scoreInfoButtonPressed,
                 ]}
-              />
-            ) : (
-              <EdgeScore
-                side="dark"
-                title={scoreTitles.dark}
-                score={gameState.dark.finishedCount}
-                maxScore={pieceCountPerSide}
-                active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
-                align="right"
-                style={isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined}
-              />
-            )}
+              >
+                <MaterialIcons name="info-outline" size={15} color={urTheme.colors.ivory} />
+              </Pressable>
+            ) : null}
+            <View pointerEvents="none" style={styles.scoreIndicatorSlot}>
+              {showMobileWebDetachedDarkScore ? (
+                <EdgeScore
+                  side="dark"
+                  title={scoreTitles.dark}
+                  score={gameState.dark.finishedCount}
+                  maxScore={pieceCountPerSide}
+                  active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
+                  align="right"
+                  style={[
+                    isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined,
+                    styles.mobileDetachedScoreGhost,
+                  ]}
+                />
+              ) : (
+                <EdgeScore
+                  side="dark"
+                  title={scoreTitles.dark}
+                  score={gameState.dark.finishedCount}
+                  maxScore={pieceCountPerSide}
+                  active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
+                  align="right"
+                  style={isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined}
+                />
+              )}
+            </View>
           </View>
 
           {useSideColumns ? (
@@ -4614,6 +4703,24 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textAlign: 'center',
   },
+  mobileMatchStatusPopover: {
+    position: 'absolute',
+    zIndex: 7,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.sm,
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(170, 196, 228, 0.28)',
+    backgroundColor: 'rgba(14, 24, 36, 0.94)',
+  },
+  mobileMatchStatusPopoverText: {
+    ...urTypography.label,
+    color: urTheme.colors.parchment,
+    fontSize: 11,
+    lineHeight: 15,
+    letterSpacing: 0.35,
+    textAlign: 'center',
+  },
   backdropLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 0,
@@ -4710,6 +4817,9 @@ const styles = StyleSheet.create({
   topChromeMobile: {
     alignItems: 'center',
   },
+  topChromeCompact: {
+    gap: urTheme.spacing.xs,
+  },
   topChromeLeft: {
     flex: 1,
     minWidth: 0,
@@ -4719,6 +4829,9 @@ const styles = StyleSheet.create({
   },
   topChromeLeftMobile: {
     alignItems: 'center',
+  },
+  topChromeLeftCompact: {
+    gap: 4,
   },
   topChromeTitleStack: {
     flex: 1,
@@ -4764,6 +4877,12 @@ const styles = StyleSheet.create({
       elevation: 6,
     }),
   },
+  topChromeIconButtonCompact: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.8,
+  },
   topChromeExitSpacer: {
     opacity: 0,
   },
@@ -4785,6 +4904,11 @@ const styles = StyleSheet.create({
   topChromeTitleInlineMobile: {
     lineHeight: 16,
   },
+  topChromeTitleCompact: {
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.25,
+  },
   scoreRow: {
     width: '100%',
     flexDirection: 'row',
@@ -4800,6 +4924,9 @@ const styles = StyleSheet.create({
   mobileDetachedScoreGhost: {
     opacity: 0,
   },
+  scoreIndicatorSlot: {
+    flexShrink: 0,
+  },
   scoreRowOverlay: {
     position: 'absolute',
     left: urTheme.spacing.xs,
@@ -4809,6 +4936,27 @@ const styles = StyleSheet.create({
   scoreRowOverlayMobile: {
     left: urTheme.spacing.xs,
     right: urTheme.spacing.xs,
+  },
+  scoreInfoButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.4,
+    borderColor: 'rgba(248, 225, 184, 0.56)',
+    backgroundColor: 'rgba(15, 22, 32, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    ...boxShadow({
+      color: '#000',
+      opacity: 0.18,
+      offset: { width: 0, height: 1 },
+      blurRadius: 4,
+      elevation: 2,
+    }),
+  },
+  scoreInfoButtonPressed: {
+    opacity: 0.82,
   },
   practiceRewardLabel: {
     marginBottom: urTheme.spacing.sm,

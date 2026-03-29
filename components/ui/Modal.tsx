@@ -1,7 +1,16 @@
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { boxShadow } from '@/constants/styleEffects';
 import React from 'react';
-import { Image, Modal as RNModal, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  Modal as RNModal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { Button } from './Button';
 
 interface ModalProps {
@@ -23,18 +32,37 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   maxWidth = 380,
 }) => {
+  const { width, height } = useWindowDimensions();
+  const isMobileWeb = Platform.OS === 'web' && width < 760;
+  const resolvedMaxWidth = Math.min(maxWidth, Math.max(280, width - (isMobileWeb ? 20 : 32)));
+  const resolvedMaxHeight = Math.max(
+    320,
+    Math.min(height - (isMobileWeb ? 20 : 32), Math.round(height * (isMobileWeb ? 0.92 : 0.86))),
+  );
+
   return (
     <RNModal transparent visible={visible} animationType="fade" onRequestClose={onAction}>
-      <View style={styles.backdrop}>
-        <View style={[styles.sheet, { maxWidth }]}>
+      <View style={[styles.backdrop, isMobileWeb && styles.backdropMobileWeb]}>
+        <View testID="shared-modal-sheet" style={[styles.sheet, isMobileWeb && styles.sheetMobileWeb, { maxWidth: resolvedMaxWidth, maxHeight: resolvedMaxHeight }]}>
           <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
           <Image source={urTextures.border} resizeMode="repeat" style={styles.borderTexture} />
           <View style={styles.sheetGlow} />
           <View style={styles.border} />
 
-          <Text style={styles.title}>{title}</Text>
-          {message ? <Text style={styles.message}>{message}</Text> : null}
-          {children}
+          <ScrollView
+            testID="shared-modal-scroll"
+            style={styles.contentScroll}
+            contentContainerStyle={styles.contentScrollContent}
+            alwaysBounceVertical={false}
+            bounces={false}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.contentStack}>
+              <Text style={styles.title}>{title}</Text>
+              {message ? <Text style={styles.message}>{message}</Text> : null}
+              {children}
+            </View>
+          </ScrollView>
 
           <View style={styles.buttonWrap}>
             <Button title={actionLabel} onPress={onAction} />
@@ -53,6 +81,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: urTheme.spacing.md,
   },
+  backdropMobileWeb: {
+    justifyContent: 'flex-start',
+    paddingTop: urTheme.spacing.lg,
+    paddingBottom: urTheme.spacing.sm,
+  },
   sheet: {
     width: '100%',
     maxWidth: 380,
@@ -70,6 +103,11 @@ const styles = StyleSheet.create({
       blurRadius: 18,
       elevation: 12,
     }),
+  },
+  sheetMobileWeb: {
+    paddingHorizontal: urTheme.spacing.md,
+    paddingTop: urTheme.spacing.md,
+    paddingBottom: urTheme.spacing.sm,
   },
   texture: {
     ...StyleSheet.absoluteFillObject,
@@ -108,7 +146,20 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     marginBottom: urTheme.spacing.lg,
   },
+  contentScroll: {
+    width: '100%',
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  contentScrollContent: {
+    flexGrow: 1,
+  },
+  contentStack: {
+    width: '100%',
+    alignItems: 'stretch',
+  },
   buttonWrap: {
     width: '100%',
+    marginTop: urTheme.spacing.md,
   },
 });

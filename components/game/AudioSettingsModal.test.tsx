@@ -1,5 +1,7 @@
 import React from 'react';
+import * as ReactNative from 'react-native';
 import { render, screen } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 import { AudioSettingsModal } from './AudioSettingsModal';
 
 const baseProps = {
@@ -32,6 +34,21 @@ const baseProps = {
 };
 
 describe('AudioSettingsModal', () => {
+  let useWindowDimensionsSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    useWindowDimensionsSpy = jest.spyOn(ReactNative, 'useWindowDimensions');
+    useWindowDimensionsSpy.mockReturnValue({ width: 1024, height: 768, scale: 1, fontScale: 1 });
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'ios',
+    });
+  });
+
+  afterEach(() => {
+    useWindowDimensionsSpy.mockRestore();
+  });
+
   it('hides the timer-length picker when requested for online play', () => {
     render(
       <AudioSettingsModal
@@ -56,5 +73,18 @@ describe('AudioSettingsModal', () => {
 
     expect(screen.getByText('Turn Timer')).toBeTruthy();
     expect(screen.getByText('Turn Timer Length')).toBeTruthy();
+  });
+
+  it('tightens the sheet padding on compact mobile web viewports', () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+    useWindowDimensionsSpy.mockReturnValue({ width: 390, height: 844, scale: 1, fontScale: 1 });
+
+    render(<AudioSettingsModal {...baseProps} />);
+
+    expect(screen.getByTestId('audio-settings-sheet')).toBeTruthy();
+    expect(screen.getByTestId('audio-settings-scroll')).toBeTruthy();
   });
 });

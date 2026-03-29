@@ -1430,6 +1430,77 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByText('Online Match - Opponent Joined')).toBeTruthy();
   });
 
+  it('uses an inline status info button instead of the top pill on mobile web', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+    const previousWindow = global.window;
+    const mockWindow = {
+      ...previousWindow,
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      innerWidth: 390,
+      innerHeight: 844,
+      visualViewport: {
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        width: 390,
+        height: 844,
+      },
+    } as typeof window;
+    Object.defineProperty(global, 'window', {
+      configurable: true,
+      value: mockWindow,
+    });
+
+    try {
+      mockSearchParams.id = 'private-mobile-web';
+      mockSearchParams.offline = '0';
+      mockSearchParams.privateMatch = '1';
+      mockSearchParams.privateHost = '1';
+      mockSearchParams.privateCode = 'ABCD12';
+      mockHasNakamaConfig.mockReturnValue(true);
+      mockIsNakamaEnabled.mockReturnValue(true);
+      mockSocketJoinMatch.mockResolvedValue({
+        self: { user_id: 'self-user' },
+        presences: [],
+        match_id: 'private-mobile-web',
+      });
+      mockStoreState.matchId = 'private-mobile-web';
+      mockStoreState.userId = 'self-user';
+      mockStoreState.matchPresences = ['self-user'];
+
+      render(<GameRoom />);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      act(() => {
+        jest.advanceTimersByTime(400);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(screen.queryByTestId('online-match-status-pill')).toBeNull();
+      expect(screen.queryByText('Private Match - ABCD12')).toBeNull();
+
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('mobile-match-status-button'));
+      });
+
+      expect(screen.getByTestId('mobile-match-status-popover')).toBeTruthy();
+      expect(screen.getByText('Private Match - ABCD12')).toBeTruthy();
+    } finally {
+      Object.defineProperty(global, 'window', {
+        configurable: true,
+        value: previousWindow,
+      });
+    }
+  });
+
   it('shows Opponent Forfeit when a private opponent leaves mid-match', async () => {
     mockSearchParams.id = 'private-2';
     mockSearchParams.offline = '0';

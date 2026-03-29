@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
+import * as ReactNative from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 import { createDefaultUserChallengeProgressSnapshot } from '@/shared/challenges';
 import { buildProgressionSnapshot } from '@/shared/progression';
@@ -59,12 +61,21 @@ const rewardSummary = {
 };
 
 describe('TournamentWaitingRoom', () => {
+  let useWindowDimensionsSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.useFakeTimers();
+    useWindowDimensionsSpy = jest.spyOn(ReactNative, 'useWindowDimensions');
+    useWindowDimensionsSpy.mockReturnValue({ width: 1024, height: 768, scale: 1, fontScale: 1 });
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'ios',
+    });
   });
 
   afterEach(() => {
     jest.useRealTimers();
+    useWindowDimensionsSpy.mockRestore();
   });
 
   it('renders the full-screen intermission state with the rotating reward card', () => {
@@ -192,5 +203,36 @@ describe('TournamentWaitingRoom', () => {
     expect(screen.getByText('Your tournament run has ended.')).toBeTruthy();
     expect(screen.getByText('Return to Main Page')).toBeTruthy();
     expect(handleExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('switches to the compact scroll-safe layout on narrow mobile web viewports', () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+    useWindowDimensionsSpy.mockReturnValue({ width: 390, height: 740, scale: 1, fontScale: 1 });
+
+    render(
+      <TournamentWaitingRoom
+        visible
+        phase="waiting"
+        tournamentName="Spring Open"
+        derivedRound={3}
+        statusText="Another match is still in progress."
+        subtleStatusText="The next board will launch automatically when both winners arrive."
+        retryMessage={null}
+        standings={standings}
+        currentStanding={standings[0]}
+        highlightOwnerId="user-1"
+        finalPlacement={null}
+        isChampion={false}
+        rewardSummary={rewardSummary}
+        onReturnToMainPage={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('tournament-waiting-room-scroll')).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByText('Spring Open').props.style).fontSize).toBe(26);
+    expect(StyleSheet.flatten(screen.getByText('+24').props.style).fontSize).toBe(28);
   });
 });

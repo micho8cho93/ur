@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/Button';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import React from 'react';
-import { Image, Modal as RNModal, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal as RNModal, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 interface PlayTutorialCoachModalProps {
   visible: boolean;
@@ -21,18 +21,33 @@ export const PlayTutorialCoachModal: React.FC<PlayTutorialCoachModalProps> = ({
   actionLabel = 'Continue',
   onContinue,
 }) => {
+  const { width, height } = useWindowDimensions();
+  const isMobileWeb = Platform.OS === 'web' && width < 760;
+  const resolvedMaxHeight = Math.max(
+    280,
+    Math.min(height - (isMobileWeb ? 20 : 32), Math.round(height * (isMobileWeb ? 0.9 : 0.84))),
+  );
+
   return (
     <RNModal transparent visible={visible} animationType="fade">
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+      <View style={[styles.backdrop, isMobileWeb && styles.backdropMobileWeb]}>
+        <View style={[styles.sheet, isMobileWeb && styles.sheetMobileWeb, { maxHeight: resolvedMaxHeight }]}>
           <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
           <Image source={urTextures.border} resizeMode="repeat" style={styles.borderTexture} />
           <View style={styles.sheetGlow} />
           <View style={styles.border} />
 
-          {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.body}>{body}</Text>
+          <ScrollView
+            style={styles.contentScroll}
+            contentContainerStyle={styles.contentScrollContent}
+            alwaysBounceVertical={false}
+            bounces={false}
+            showsVerticalScrollIndicator={false}
+          >
+            {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.body}>{body}</Text>
+          </ScrollView>
 
           <Button title={actionLabel} onPress={onContinue} />
         </View>
@@ -48,6 +63,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: urTheme.spacing.md,
+  },
+  backdropMobileWeb: {
+    justifyContent: 'flex-start',
+    paddingTop: urTheme.spacing.lg,
+    paddingBottom: urTheme.spacing.sm,
   },
   sheet: {
     width: '100%',
@@ -66,6 +86,10 @@ const styles = StyleSheet.create({
       blurRadius: 18,
       elevation: 12,
     }),
+  },
+  sheetMobileWeb: {
+    paddingHorizontal: urTheme.spacing.md,
+    paddingTop: urTheme.spacing.md,
   },
   texture: {
     ...StyleSheet.absoluteFillObject,
@@ -94,6 +118,14 @@ const styles = StyleSheet.create({
     ...urTypography.label,
     color: '#F3D9A6',
     fontSize: 11,
+  },
+  contentScroll: {
+    width: '100%',
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  contentScrollContent: {
+    gap: urTheme.spacing.sm,
   },
   title: {
     ...urTypography.title,

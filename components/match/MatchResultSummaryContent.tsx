@@ -9,7 +9,7 @@ import type { EloRatingChangeNotificationPayload } from '@/shared/elo';
 import type { ProgressionAwardResponse, ProgressionSnapshot } from '@/shared/progression';
 import type { TournamentMatchRewardSummaryPayload } from '@/shared/urMatchProtocol';
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 type MatchResultSummaryContentProps = {
   didPlayerWin: boolean;
@@ -56,6 +56,9 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
   tournamentRewardSummary = null,
   tournamentCountdownLabel = null,
 }) => {
+  const { width } = useWindowDimensions();
+  const useCompactRewardStats = width < 480;
+
   return (
     <>
       {didPlayerWin && isPracticeModeMatch && !isPrivateMatch && canSyncOfflineBotRewards && practiceModeRewardLabel ? (
@@ -71,7 +74,7 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
       {tournamentRewardSummary ? (
         <View style={styles.tournamentRewardCard}>
           <Text style={styles.tournamentRewardEyebrow}>Tournament Rewards Locked</Text>
-          <View style={styles.tournamentRewardStats}>
+          <View style={[styles.tournamentRewardStats, useCompactRewardStats && styles.tournamentRewardStatsCompact]}>
             <View style={styles.tournamentRewardStat}>
               <Text style={styles.tournamentRewardStatLabel}>Elo</Text>
               <Text style={styles.tournamentRewardStatValue}>{formatSignedValue(tournamentRewardSummary.eloDelta)}</Text>
@@ -196,6 +199,9 @@ const styles = StyleSheet.create({
   tournamentRewardStats: {
     flexDirection: 'row',
     gap: urTheme.spacing.sm,
+  },
+  tournamentRewardStatsCompact: {
+    flexDirection: 'column',
   },
   tournamentRewardStat: {
     flex: 1,
