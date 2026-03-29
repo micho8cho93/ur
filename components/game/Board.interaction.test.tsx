@@ -158,4 +158,49 @@ describe('Board interactions', () => {
     expect(onMakeMove).not.toHaveBeenCalled();
     expect(screen.getByTestId('board-preview-blocked')).toBeTruthy();
   });
+
+  it('suppresses move affordances and interaction when motion is frozen', () => {
+    const state = createInitialState();
+    state.currentTurn = 'light';
+    state.phase = 'moving';
+    state.rollValue = 1;
+    setOnlyActivePiece(state, 'light', 0, 0);
+    setAllPiecesFinished(state, 'dark');
+
+    const validMoves = getValidMoves(state, 1);
+    const onMakeMove = jest.fn();
+
+    const { queryByTestId, rerender } = render(
+      <Board
+        autoMoveHintEnabled
+        gameStateOverride={state}
+        validMovesOverride={validMoves}
+        onMakeMoveOverride={onMakeMove}
+        playerColorOverride="light"
+      />,
+    );
+
+    expect(queryByTestId('board-preview-destination')).toBeTruthy();
+
+    fireEvent.press(screen.getByTestId('tile-2-3'));
+    expect(onMakeMove).toHaveBeenCalledTimes(1);
+
+    onMakeMove.mockClear();
+
+    rerender(
+      <Board
+        autoMoveHintEnabled
+        freezeMotion
+        gameStateOverride={state}
+        validMovesOverride={validMoves}
+        onMakeMoveOverride={onMakeMove}
+        playerColorOverride="light"
+      />,
+    );
+
+    expect(queryByTestId('board-preview-destination')).toBeNull();
+
+    fireEvent.press(screen.getByTestId('tile-2-3'));
+    expect(onMakeMove).not.toHaveBeenCalled();
+  });
 });

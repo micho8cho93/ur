@@ -1815,6 +1815,9 @@ describe('GameRoom match dice stage', () => {
         ([props]) => props.visible === true && props.title === 'Defeat' && props.message === 'You forfeited due to inactivity.',
       ),
     ).toBe(true);
+    expect(
+      mockBoard.mock.calls.some(([props]) => props.freezeMotion === true),
+    ).toBe(true);
   });
 
   it('refreshes Elo from RPC after a ranked online match ends', async () => {

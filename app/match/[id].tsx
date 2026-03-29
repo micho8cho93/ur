@@ -483,6 +483,11 @@ export function GameRoom() {
   const isTournamentMatchReady = !isTournamentMatch || isOpponentReadyToPlay;
   const isOnlineInteractionReady = isOffline || socketState === 'connected';
   const canRoll = isMyTurn && gameState.phase === 'rolling' && isOpponentReadyToPlay && isOnlineInteractionReady;
+  const isMatchFinished = gameState.winner !== null || gameState.phase === 'ended';
+  const shouldFreezeForfeitMotion =
+    !isOffline &&
+    onlineMatchEnd?.reason === 'forfeit_inactivity' &&
+    isMatchFinished;
   const privateMatchStatusText = useMemo(() => {
     if (!isPrivateMatch) {
       return null;
@@ -3046,6 +3051,7 @@ export function GameRoom() {
           onMakeMoveOverride={handleBoardMove}
           onInteraction={resumeAnnouncementCuesFromInteraction}
           allowInteraction={isOnlineInteractionReady}
+          freezeMotion={shouldFreezeForfeitMotion}
           boardScale={boardScale}
           orientation="vertical"
           onBoardImageLayout={handleLiveBoardImageLayout}
@@ -3063,6 +3069,7 @@ export function GameRoom() {
       boardScale={boardScale}
       orientation="vertical"
       allowInteraction={false}
+      freezeMotion={shouldFreezeForfeitMotion}
     />
   );
 
@@ -3195,7 +3202,7 @@ export function GameRoom() {
             side="dark"
             score={gameState.dark.finishedCount}
             maxScore={pieceCountPerSide}
-            active={introsComplete && !isMyTurn}
+            active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
             align="right"
           />
         </View>
@@ -3453,7 +3460,7 @@ export function GameRoom() {
               side="light"
               score={gameState.light.finishedCount}
               maxScore={pieceCountPerSide}
-              active={introsComplete && isMyTurn}
+              active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
             />
             {isMobileLayout && isTurnTimerEnabled ? (
               <View style={styles.scoreTimerSlot}>
@@ -3477,7 +3484,7 @@ export function GameRoom() {
                 side="dark"
                 score={gameState.dark.finishedCount}
                 maxScore={pieceCountPerSide}
-                active={introsComplete && !isMyTurn}
+                active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
                 align="right"
                 style={[
                   isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined,
@@ -3489,7 +3496,7 @@ export function GameRoom() {
                 side="dark"
                 score={gameState.dark.finishedCount}
                 maxScore={pieceCountPerSide}
-                active={introsComplete && !isMyTurn}
+                active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
                 align="right"
                 style={isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined}
               />
@@ -3533,7 +3540,7 @@ export function GameRoom() {
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={lightReserve}
                   totalCount={pieceCountPerSide}
-                  active={introsComplete && isMyTurn}
+                  active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
                   hideReservePieces={shouldHideReservePieces}
                   onReserveSlotsLayout={setLightReserveSlots}
                 />
@@ -3620,7 +3627,7 @@ export function GameRoom() {
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={darkReserve}
                   totalCount={pieceCountPerSide}
-                  active={introsComplete && !isMyTurn}
+                  active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
                   hideReservePieces={shouldHideReservePieces}
                   onReserveSlotsLayout={setDarkReserveSlots}
                 />
@@ -3694,7 +3701,7 @@ export function GameRoom() {
                       piecePixelSize={scaledReservePiecePixelSize}
                       reserveCount={lightReserve}
                       totalCount={pieceCountPerSide}
-                      active={introsComplete && isMyTurn}
+                      active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
                       hideReservePieces={shouldHideReservePieces}
                       onReserveSlotsLayout={setLightReserveSlots}
                       onRailFrameLayout={handleLightTrayFrameLayout}
@@ -3735,7 +3742,7 @@ export function GameRoom() {
                       piecePixelSize={scaledReservePiecePixelSize}
                       reserveCount={darkReserve}
                       totalCount={pieceCountPerSide}
-                      active={introsComplete && !isMyTurn}
+                      active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
                       hideReservePieces={shouldHideReservePieces}
                       onReserveSlotsLayout={setDarkReserveSlots}
                       onRailFrameLayout={handleDarkTrayFrameLayout}
@@ -3801,7 +3808,7 @@ export function GameRoom() {
                         piecePixelSize={scaledReservePiecePixelSize}
                         reserveCount={lightReserve}
                         totalCount={pieceCountPerSide}
-                        active={introsComplete && isMyTurn}
+                        active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
                         hideReservePieces={shouldHideReservePieces}
                         onReserveSlotsLayout={setLightReserveSlots}
                       />
@@ -3815,7 +3822,7 @@ export function GameRoom() {
                         piecePixelSize={scaledReservePiecePixelSize}
                         reserveCount={darkReserve}
                         totalCount={pieceCountPerSide}
-                        active={introsComplete && !isMyTurn}
+                        active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
                         hideReservePieces={shouldHideReservePieces}
                         onReserveSlotsLayout={setDarkReserveSlots}
                       />

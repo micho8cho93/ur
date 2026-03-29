@@ -47,6 +47,7 @@ interface BoardProps {
   onMakeMoveOverride?: (move: MoveAction) => void;
   playerColorOverride?: PlayerColor | null;
   allowInteraction?: boolean;
+  freezeMotion?: boolean;
   onInteraction?: () => void;
   onBoardImageLayout?: (layout: BoardImageLayoutFrame) => void;
 }
@@ -272,6 +273,7 @@ export const Board: React.FC<BoardProps> = ({
   onMakeMoveOverride,
   playerColorOverride,
   allowInteraction = true,
+  freezeMotion = false,
   onInteraction,
   onBoardImageLayout,
 }) => {
@@ -301,6 +303,9 @@ export const Board: React.FC<BoardProps> = ({
   const notifyInteraction = React.useCallback(() => {
     onInteraction?.();
   }, [onInteraction]);
+  const clearAnimatedMove = React.useCallback(() => {
+    setAnimatedMove(null);
+  }, []);
   const isVertical = orientation === 'vertical';
   const displayRows = isVertical ? BOARD_COLS : BOARD_ROWS;
   const displayCols = isVertical ? BOARD_ROWS : BOARD_COLS;
@@ -584,7 +589,7 @@ export const Board: React.FC<BoardProps> = ({
     assignedPlayerColor ? mapIndexToCoord(assignedPlayerColor, index, r, c) : false;
 
   const isMyTurn = assignedPlayerColor !== null && gameState.currentTurn === assignedPlayerColor;
-  const isInteractiveTurn = allowInteraction && isMyTurn;
+  const isInteractiveTurn = !freezeMotion && allowInteraction && isMyTurn;
 
   const spawnMove = useMemo(
     () => validMoves.find((move) => move.fromIndex === -1) ?? null,
@@ -698,10 +703,6 @@ export const Board: React.FC<BoardProps> = ({
     return segments;
   }, [previewPoints]);
   const previewDestinationPoint = previewPoints[previewPoints.length - 1] ?? null;
-  const clearAnimatedMove = React.useCallback(() => {
-    setAnimatedMove(null);
-  }, []);
-
   const boardArtLayout = useMemo<BoardArtImageLayout>(() => {
     // Fit artwork from gameplay grid measurements so visuals follow interaction geometry.
     const cropWidthRatio = Math.max(0.01, 1 - BOARD_ART_ALIGNMENT.insetLeft - BOARD_ART_ALIGNMENT.insetRight);
@@ -771,11 +772,15 @@ export const Board: React.FC<BoardProps> = ({
   })();
 
   useEffect(() => {
+    if (freezeMotion) {
+      return;
+    }
+
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-  }, [gameState.history.length]);
+  }, [freezeMotion, gameState.history.length]);
 
   useEffect(() => {
-    if (!spawnMove) {
+    if (freezeMotion || !spawnMove) {
       cancelAnimation(cuePulse);
       cuePulse.value = withTiming(0, { duration: urTheme.motion.duration.fast });
       return;
@@ -789,10 +794,10 @@ export const Board: React.FC<BoardProps> = ({
       -1,
       true,
     );
-  }, [cuePulse, spawnMove]);
+  }, [cuePulse, freezeMotion, spawnMove]);
 
   useEffect(() => {
-    if (!isInteractiveTurn || !hasScoringMove) {
+    if (freezeMotion || !isInteractiveTurn || !hasScoringMove) {
       cancelAnimation(scoreCuePulse);
       scoreCuePulse.value = withTiming(0, { duration: urTheme.motion.duration.fast });
       return;
@@ -806,10 +811,10 @@ export const Board: React.FC<BoardProps> = ({
       -1,
       true,
     );
-  }, [hasScoringMove, isInteractiveTurn, scoreCuePulse]);
+  }, [freezeMotion, hasScoringMove, isInteractiveTurn, scoreCuePulse]);
 
   useEffect(() => {
-    if (!previewState) {
+    if (freezeMotion || !previewState) {
       cancelAnimation(previewPulse);
       previewPulse.value = withTiming(0, { duration: urTheme.motion.duration.fast });
       return;
@@ -823,7 +828,7 @@ export const Board: React.FC<BoardProps> = ({
       -1,
       true,
     );
-  }, [previewPulse, previewState]);
+  }, [freezeMotion, previewPulse, previewState]);
 
   useEffect(() => {
     if (!selectedMove) return;
@@ -867,6 +872,15 @@ export const Board: React.FC<BoardProps> = ({
   }, [gameState.currentTurn, gameState.phase, gameState.rollValue]);
 
   useEffect(() => {
+    if (freezeMotion) {
+      setSelectedMove(null);
+      setHoveredMove(null);
+      setBlockedPreview(null);
+      clearAnimatedMove();
+      previousGameStateRef.current = gameState;
+      return;
+    }
+
     const previousGameState = previousGameStateRef.current;
 
     if (!previousGameState) {
@@ -927,10 +941,10 @@ export const Board: React.FC<BoardProps> = ({
     }
 
     previousGameStateRef.current = gameState;
-  }, [buildAnimatedMove, gameState]);
+  }, [buildAnimatedMove, clearAnimatedMove, freezeMotion, gameState]);
 
   useEffect(() => {
-    if (!animatedMove) {
+    if (freezeMotion || !animatedMove) {
       cancelAnimation(movingPieceProgress);
       cancelAnimation(movingPieceLift);
       cancelAnimation(movingPieceImpact);
@@ -941,6 +955,9 @@ export const Board: React.FC<BoardProps> = ({
       movingPieceImpact.value = 0;
       movingPieceLanding.value = 0;
       capturedPieceCrush.value = 0;
+      if (freezeMotion && animatedMove) {
+        clearAnimatedMove();
+      }
       return;
     }
 
@@ -1022,6 +1039,7 @@ export const Board: React.FC<BoardProps> = ({
       cancelAnimation(capturedPieceCrush);
     };
   }, [
+    freezeMotion,
     animatedMove,
     capturedPieceCrush,
     clearAnimatedMove,
@@ -1528,7 +1546,7 @@ export const Board: React.FC<BoardProps> = ({
         </View>
       </View>
 
-      {(previewSegments.length > 0 || previewDestinationPoint) && (
+      {!freezeMotion && (previewSegments.length > 0 || previewDestinationPoint) && (
         <View
           pointerEvents="none"
           style={styles.previewLayer}
@@ -1567,7 +1585,7 @@ export const Board: React.FC<BoardProps> = ({
         </View>
       )}
 
-      {previewDestinationPoint && validPreview && isMoveValid(validPreview) ? (
+      {!freezeMotion && previewDestinationPoint && validPreview && isMoveValid(validPreview) ? (
         <Pressable
           onPress={handlePreviewDestinationPress}
           testID="board-preview-destination"
@@ -1584,7 +1602,7 @@ export const Board: React.FC<BoardProps> = ({
         />
       ) : null}
 
-      {animatedMove ? (
+      {!freezeMotion && animatedMove ? (
         <View pointerEvents="none" style={styles.movingPieceLayer}>
           {animatedMove.isCaptureMove && animatedMove.capturedPiece ? (
             <Animated.View testID="board-captured-piece" style={[styles.capturedPiece, capturedPieceStyle]}>
@@ -1647,7 +1665,7 @@ export const Board: React.FC<BoardProps> = ({
         </Pressable>
       )}
 
-      {spawnCueAnchor && (
+      {!freezeMotion && spawnCueAnchor && (
         <Pressable
           onPress={handleSpawnCuePress}
           onHoverIn={handleSpawnCueHoverIn}
