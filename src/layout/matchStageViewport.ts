@@ -38,6 +38,10 @@ export interface MatchStageTabletPortraitTuning {
   trayScale: number;
 }
 
+export interface MatchStageTopAlignedFrame {
+  y: number;
+}
+
 export const resolveMatchStageViewportMode = ({
   width,
   height,
@@ -129,4 +133,30 @@ export const resolveMatchStageTabletPortraitTuning = (
     rollButtonWidthRatio: 0.235,
     trayScale: 1.08,
   };
+};
+
+export const resolveMobileWebBoardTrayAlignmentCorrection = ({
+  boardFrame,
+  currentCorrection,
+  darkTrayFrame,
+  lightTrayFrame,
+}: {
+  boardFrame: MatchStageTopAlignedFrame | null;
+  currentCorrection: number;
+  darkTrayFrame: MatchStageTopAlignedFrame | null;
+  lightTrayFrame: MatchStageTopAlignedFrame | null;
+}): number => {
+  if (!boardFrame || !lightTrayFrame || !darkTrayFrame) {
+    return 0;
+  }
+
+  const trayTop = Math.min(lightTrayFrame.y, darkTrayFrame.y);
+  const boardTop = boardFrame.y;
+  const delta = Math.round(boardTop - trayTop);
+
+  if (Math.abs(delta) <= 1) {
+    return currentCorrection;
+  }
+
+  return Math.max(0, Math.min(96, currentCorrection + delta));
 };

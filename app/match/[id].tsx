@@ -71,6 +71,7 @@ import {
 } from '@/src/match/playerTitles';
 import { useGameStore } from '@/store/useGameStore';
 import {
+  resolveMobileWebBoardTrayAlignmentCorrection,
   resolveMatchStageSideColumnWidth,
   resolveMatchStageTabletPortraitTuning,
   resolveMatchStageViewportHorizontalPadding,
@@ -647,6 +648,7 @@ export function GameRoom() {
   const [showReserveCascadeIntro, setShowReserveCascadeIntro] = React.useState(false);
   const [hasPlayedReserveCascadeIntro, setHasPlayedReserveCascadeIntro] = React.useState(false);
   const [mobileContentVerticalShift, setMobileContentVerticalShift] = React.useState(0);
+  const [mobileBoardTrayAlignmentCorrection, setMobileBoardTrayAlignmentCorrection] = React.useState(0);
   const [hasResolvedMobileContentShift, setHasResolvedMobileContentShift] = React.useState(false);
   const hasMeasuredReserveTargets = lightReserveSlots.length > 0 || darkReserveSlots.length > 0;
   const shouldSkipReserveCascadeIntro = hasPlayedBoardDropIntro && !hasMeasuredReserveTargets;
@@ -2929,9 +2931,11 @@ export function GameRoom() {
       ),
     )
     : 0;
-  const mobileWebBoardTrayAlignmentLift = isMobileWebLayout && useMobileSideReserveRails
+  const mobileWebBoardTrayAlignmentBaseLift = isMobileWebLayout && useMobileSideReserveRails
     ? Math.max(8, Math.round(mobileReserveColumnWidth * 0.16))
     : 0;
+  const mobileWebBoardTrayAlignmentLift =
+    mobileWebBoardTrayAlignmentBaseLift + mobileBoardTrayAlignmentCorrection;
   const boardWidthLimitByLayout = useSideColumns
     ? Math.max(
       224,
@@ -3279,6 +3283,29 @@ export function GameRoom() {
     hasResolvedMobileContentShift,
     isMobileLayout,
     mobileWebUnderBoardDiceFrame,
+    useMobileSideReserveRails,
+  ]);
+  useEffect(() => {
+    if (!isMobileWebLayout || !useMobileSideReserveRails) {
+      setMobileBoardTrayAlignmentCorrection((current) => (current === 0 ? current : 0));
+      return;
+    }
+
+    setMobileBoardTrayAlignmentCorrection((current) => {
+      const next = resolveMobileWebBoardTrayAlignmentCorrection({
+        boardFrame: boardTargetFrame,
+        currentCorrection: current,
+        darkTrayFrame,
+        lightTrayFrame,
+      });
+
+      return current === next ? current : next;
+    });
+  }, [
+    boardTargetFrame,
+    darkTrayFrame,
+    isMobileWebLayout,
+    lightTrayFrame,
     useMobileSideReserveRails,
   ]);
   const mobileContentShiftSettled =

@@ -1,4 +1,5 @@
 import {
+  resolveMobileWebBoardTrayAlignmentCorrection,
   resolveMatchStageSideColumnWidth,
   resolveMatchStageTabletPortraitTuning,
   resolveMatchStageViewportHorizontalPadding,
@@ -118,5 +119,40 @@ describe('resolveMatchStageTabletPortraitTuning', () => {
       rollButtonWidthRatio: 0.235,
       trayScale: 1.08,
     });
+  });
+});
+
+describe('resolveMobileWebBoardTrayAlignmentCorrection', () => {
+  it('adds lift when the measured board top sits below the tray tops', () => {
+    expect(
+      resolveMobileWebBoardTrayAlignmentCorrection({
+        boardFrame: { y: 220 },
+        currentCorrection: 8,
+        darkTrayFrame: { y: 196 },
+        lightTrayFrame: { y: 198 },
+      }),
+    ).toBe(32);
+  });
+
+  it('holds the current lift once the board is aligned within tolerance', () => {
+    expect(
+      resolveMobileWebBoardTrayAlignmentCorrection({
+        boardFrame: { y: 198 },
+        currentCorrection: 24,
+        darkTrayFrame: { y: 198 },
+        lightTrayFrame: { y: 197 },
+      }),
+    ).toBe(24);
+  });
+
+  it('resets when a measurement is missing', () => {
+    expect(
+      resolveMobileWebBoardTrayAlignmentCorrection({
+        boardFrame: null,
+        currentCorrection: 24,
+        darkTrayFrame: { y: 198 },
+        lightTrayFrame: { y: 197 },
+      }),
+    ).toBe(0);
   });
 });
