@@ -1,5 +1,6 @@
 import {
   resolveMatchStageSideColumnWidth,
+  resolveMatchStageTabletPortraitTuning,
   resolveMatchStageViewportMode,
 } from './matchStageViewport';
 
@@ -75,3 +76,26 @@ describe('resolveMatchStageSideColumnWidth', () => {
   });
 });
 
+describe('resolveMatchStageTabletPortraitTuning', () => {
+  it('keeps the current mobile-side-rail sizing for non-tablet-portrait layouts', () => {
+    expect(resolveMatchStageTabletPortraitTuning(false)).toEqual({
+      boardLiftViewportRatio: 0.042,
+      mobileSideBoardScaleMultiplier: 0.8,
+      reservePieceScale: 0.84,
+      rollButtonMaxSize: 102,
+      rollButtonMinSize: 84,
+      rollButtonWidthRatio: 0.22,
+    });
+  });
+
+  it('downscales the board, pieces, and controls for tablet portrait', () => {
+    expect(resolveMatchStageTabletPortraitTuning(true)).toEqual({
+      boardLiftViewportRatio: 0.05,
+      mobileSideBoardScaleMultiplier: 0.64,
+      reservePieceScale: 0.72,
+      rollButtonMaxSize: 88,
+      rollButtonMinSize: 72,
+      rollButtonWidthRatio: 0.18,
+    });
+  });
+});

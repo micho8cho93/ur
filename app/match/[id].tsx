@@ -71,6 +71,7 @@ import {
 import { useGameStore } from '@/store/useGameStore';
 import {
   resolveMatchStageSideColumnWidth,
+  resolveMatchStageTabletPortraitTuning,
   resolveMatchStageViewportMode,
 } from '@/src/layout/matchStageViewport';
 import { resolveVisibleViewportSize } from '@/src/layout/matchViewport';
@@ -2602,6 +2603,10 @@ export function GameRoom() {
     () => resolveMatchStageViewportMode({ width: viewportWidth, height: viewportHeight }),
     [viewportHeight, viewportWidth],
   );
+  const tabletPortraitTuning = useMemo(
+    () => resolveMatchStageTabletPortraitTuning(matchStageViewportMode.isTabletPortrait),
+    [matchStageViewportMode.isTabletPortrait],
+  );
   const useSideColumns = matchStageViewportMode.useSideColumns;
   const isWebLayout = Platform.OS === 'web';
   const isMobileLayout = matchStageViewportMode.useMobileLayout;
@@ -2659,14 +2664,17 @@ export function GameRoom() {
     0.24,
     Math.min(mobileBoardScaleCap, (targetBoardWidth / Math.max(boardBaseWidth, 1)) * mobileBoardScaleBoost),
   );
-  const boardScale = useMobileSideReserveRails ? baseBoardScale * 0.8 : baseBoardScale;
+  const boardScale = useMobileSideReserveRails
+    ? baseBoardScale * tabletPortraitTuning.mobileSideBoardScaleMultiplier
+    : baseBoardScale;
   const reservePiecePixelSize = useMemo(
     () => getBoardPiecePixelSize({ viewportWidth, boardScale, orientation: 'vertical' }),
     [boardScale, viewportWidth],
   );
   const compactSupportUi = viewportWidth <= 1024;
+  const compactReservePieceScale = viewportWidth < 760 ? 0.864 : tabletPortraitTuning.reservePieceScale;
   const scaledReservePiecePixelSize = compactSupportUi
-    ? Math.max(12, Math.round(reservePiecePixelSize * (viewportWidth < 760 ? 0.864 : 0.84)))
+    ? Math.max(12, Math.round(reservePiecePixelSize * compactReservePieceScale))
     : reservePiecePixelSize;
   const stageGap = viewportHeight < 760 ? urTheme.spacing.xs : urTheme.spacing.sm;
   const viewportTopPadding = 0;
@@ -2737,7 +2745,7 @@ export function GameRoom() {
     : 0;
   const mobileBoardTopGap = Math.max(2, Math.round(viewportHeight * 0.003));
   const mobileWebBoardLift = useMobileSideReserveRails
-    ? Math.max(urTheme.spacing.sm, Math.round(viewportHeight * 0.042))
+    ? Math.max(urTheme.spacing.sm, Math.round(viewportHeight * tabletPortraitTuning.boardLiftViewportRatio))
     : 0;
   const mobileHeaderLift = mobileWebBoardLift;
   const mobileChromeToScoreGap = isMobileLayout
@@ -2775,7 +2783,13 @@ export function GameRoom() {
     ? 0
     : 0;
   const mobileWebRollButtonArtSize = useMobileSideReserveRails
-    ? Math.min(Math.max(Math.round(stageContentWidth * 0.22), 84), 102)
+    ? Math.min(
+      Math.max(
+        Math.round(stageContentWidth * tabletPortraitTuning.rollButtonWidthRatio),
+        tabletPortraitTuning.rollButtonMinSize,
+      ),
+      tabletPortraitTuning.rollButtonMaxSize,
+    )
     : 0;
   const mobileDiceDockWidth = useMobileSideReserveRails
     ? mobileWebRollButtonArtSize

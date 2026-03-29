@@ -22,6 +22,15 @@ export interface MatchStageSideColumnWidthInput {
   viewportWidth: number;
 }
 
+export interface MatchStageTabletPortraitTuning {
+  boardLiftViewportRatio: number;
+  mobileSideBoardScaleMultiplier: number;
+  reservePieceScale: number;
+  rollButtonMaxSize: number;
+  rollButtonMinSize: number;
+  rollButtonWidthRatio: number;
+}
+
 export const resolveMatchStageViewportMode = ({
   width,
   height,
@@ -65,4 +74,28 @@ export const resolveMatchStageSideColumnWidth = ({
   }
 
   return Math.max(72, Math.round(baseWidth * TABLET_LANDSCAPE_SIDE_COLUMN_SCALE));
+};
+
+export const resolveMatchStageTabletPortraitTuning = (
+  isTabletPortrait: boolean,
+): MatchStageTabletPortraitTuning => {
+  if (!isTabletPortrait) {
+    return {
+      boardLiftViewportRatio: 0.042,
+      mobileSideBoardScaleMultiplier: 0.8,
+      reservePieceScale: 0.84,
+      rollButtonMaxSize: 102,
+      rollButtonMinSize: 84,
+      rollButtonWidthRatio: 0.22,
+    };
+  }
+
+  return {
+    boardLiftViewportRatio: 0.05,
+    mobileSideBoardScaleMultiplier: 0.64,
+    reservePieceScale: 0.72,
+    rollButtonMaxSize: 88,
+    rollButtonMinSize: 72,
+    rollButtonWidthRatio: 0.18,
+  };
 };
