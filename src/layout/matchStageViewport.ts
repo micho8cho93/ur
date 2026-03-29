@@ -5,7 +5,8 @@ const TABLET_MIN_SHORT_SIDE = MOBILE_LAYOUT_BREAKPOINT;
 const TABLET_MAX_SHORT_SIDE = 1024;
 const TABLET_MAX_LONG_SIDE = 1366;
 const TABLET_LANDSCAPE_SIDE_COLUMN_SCALE = 0.64;
-const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING = 24;
+const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_RATIO = 0.08;
+const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_MIN = 24;
 
 export interface MatchStageViewportMode {
   isMobileHandset: boolean;
@@ -77,9 +78,19 @@ export const resolveMatchStageSideColumnWidth = ({
   return Math.max(72, Math.round(baseWidth * TABLET_LANDSCAPE_SIDE_COLUMN_SCALE));
 };
 
-export const resolveMatchStageViewportHorizontalPadding = (
-  isTabletLandscape: boolean,
-): number => (isTabletLandscape ? TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING : 0);
+export const resolveMatchStageViewportHorizontalPadding = ({
+  isTabletLandscape,
+  viewportWidth,
+}: {
+  isTabletLandscape: boolean;
+  viewportWidth: number;
+}): number =>
+  isTabletLandscape
+    ? Math.max(
+      TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_MIN,
+      Math.round(Math.max(0, viewportWidth) * TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_RATIO),
+    )
+    : 0;
 
 export const resolveMatchStageTabletPortraitTuning = (
   isTabletPortrait: boolean,
@@ -96,11 +107,11 @@ export const resolveMatchStageTabletPortraitTuning = (
   }
 
   return {
-    boardLiftViewportRatio: 0.05,
-    mobileSideBoardScaleMultiplier: 0.8,
-    reservePieceScale: 0.88,
-    rollButtonMaxSize: 100,
-    rollButtonMinSize: 82,
-    rollButtonWidthRatio: 0.21,
+    boardLiftViewportRatio: 0.048,
+    mobileSideBoardScaleMultiplier: 0.76,
+    reservePieceScale: 0.84,
+    rollButtonMaxSize: 98,
+    rollButtonMinSize: 80,
+    rollButtonWidthRatio: 0.205,
   };
 };

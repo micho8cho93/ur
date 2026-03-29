@@ -2602,7 +2602,10 @@ export function GameRoom() {
     () => resolveMatchStageViewportMode({ width: viewportWidth, height: viewportHeight }),
     [viewportHeight, viewportWidth],
   );
-  const viewportHorizontalPadding = resolveMatchStageViewportHorizontalPadding(matchStageViewportMode.isTabletLandscape);
+  const viewportHorizontalPadding = resolveMatchStageViewportHorizontalPadding({
+    isTabletLandscape: matchStageViewportMode.isTabletLandscape,
+    viewportWidth,
+  });
   const stageContentWidth = Math.min(Math.max(viewportWidth - viewportHorizontalPadding * 2, 0), urTheme.layout.stage.maxWidth);
   const tabletPortraitTuning = useMemo(
     () => resolveMatchStageTabletPortraitTuning(matchStageViewportMode.isTabletPortrait),

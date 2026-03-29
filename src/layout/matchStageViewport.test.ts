@@ -79,11 +79,11 @@ describe('resolveMatchStageSideColumnWidth', () => {
 
 describe('resolveMatchStageViewportHorizontalPadding', () => {
   it('adds side breathing room on tablet landscape', () => {
-    expect(resolveMatchStageViewportHorizontalPadding(true)).toBe(24);
+    expect(resolveMatchStageViewportHorizontalPadding({ isTabletLandscape: true, viewportWidth: 1194 })).toBe(96);
   });
 
   it('keeps other layouts flush with the existing viewport padding logic', () => {
-    expect(resolveMatchStageViewportHorizontalPadding(false)).toBe(0);
+    expect(resolveMatchStageViewportHorizontalPadding({ isTabletLandscape: false, viewportWidth: 1194 })).toBe(0);
   });
 });
 
@@ -101,12 +101,12 @@ describe('resolveMatchStageTabletPortraitTuning', () => {
 
   it('downscales the board, pieces, and controls for tablet portrait', () => {
     expect(resolveMatchStageTabletPortraitTuning(true)).toEqual({
-      boardLiftViewportRatio: 0.05,
-      mobileSideBoardScaleMultiplier: 0.8,
-      reservePieceScale: 0.88,
-      rollButtonMaxSize: 100,
-      rollButtonMinSize: 82,
-      rollButtonWidthRatio: 0.21,
+      boardLiftViewportRatio: 0.048,
+      mobileSideBoardScaleMultiplier: 0.76,
+      reservePieceScale: 0.84,
+      rollButtonMaxSize: 98,
+      rollButtonMinSize: 80,
+      rollButtonWidthRatio: 0.205,
     });
   });
 });
