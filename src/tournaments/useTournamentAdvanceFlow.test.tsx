@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react-native';
 import React from 'react';
 import { Text } from 'react-native';
 
-import type { PublicTournamentStanding } from '@/src/tournaments/types';
+import type { PublicTournamentStanding, TournamentParticipationState } from '@/src/tournaments/types';
 import { useTournamentAdvanceFlow, type UseTournamentAdvanceFlowResult } from './useTournamentAdvanceFlow';
 
 const mockGetPublicTournamentStatus = jest.fn();
@@ -86,13 +86,34 @@ const buildStanding = (overrides: Partial<PublicTournamentStanding>): PublicTour
   ...overrides,
 });
 
-const buildSnapshot = (standings: PublicTournamentStanding[], lifecycle: 'open' | 'finalized' | 'closed' = 'open') => ({
+const buildParticipation = (
+  overrides: Partial<TournamentParticipationState> = {},
+): TournamentParticipationState => ({
+  state: 'waiting_next_round',
+  currentRound: 3,
+  currentEntryId: 'entry-3',
+  activeMatchId: null,
+  finalPlacement: null,
+  lastResult: 'win',
+  canLaunch: false,
+  ...overrides,
+});
+
+const buildSnapshot = (
+  standings: PublicTournamentStanding[],
+  options: {
+    lifecycle?: 'open' | 'finalized' | 'closed';
+    isLocked?: boolean;
+    currentRound?: number | null;
+    participation?: TournamentParticipationState;
+  } = {},
+) => ({
   tournament: {
     runId: 'run-1',
     tournamentId: 'tournament-1',
     name: 'Spring Open',
     description: 'A public run.',
-    lifecycle,
+    lifecycle: options.lifecycle ?? 'open',
     startAt: '2026-03-27T09:00:00.000Z',
     endAt: null,
     updatedAt: '2026-03-27T10:00:00.000Z',
@@ -102,10 +123,13 @@ const buildSnapshot = (standings: PublicTournamentStanding[], lifecycle: 'open' 
     region: 'Global',
     buyInLabel: 'Free',
     prizeLabel: 'No prize listed',
+    isLocked: options.isLocked ?? true,
+    currentRound: options.currentRound ?? options.participation?.currentRound ?? 3,
     membership: {
       isJoined: true,
       joinedAt: '2026-03-27T09:00:00.000Z',
     },
+    participation: options.participation ?? buildParticipation(),
   },
   standings,
 });
@@ -132,14 +156,22 @@ describe('useTournamentAdvanceFlow', () => {
     jest.useRealTimers();
   });
 
-  it('starts in waiting after a tournament win while standings catch up', async () => {
+  it('starts in waiting after a tournament win while the bracket result catches up', async () => {
     mockGetPublicTournamentStatus.mockResolvedValue(
-      buildSnapshot([
-        buildStanding({
-          matchId: 'previous-match',
-          updatedAt: '2026-03-27T09:40:00.000Z',
-        }),
-      ]),
+      buildSnapshot(
+        [
+          buildStanding({
+            matchId: 'previous-match',
+            updatedAt: '2026-03-27T09:40:00.000Z',
+          }),
+        ],
+        {
+          participation: buildParticipation({
+            lastResult: null,
+            canLaunch: false,
+          }),
+        },
+      ),
     );
 
     render(<HookHarness {...baseProps} />);
@@ -149,22 +181,30 @@ describe('useTournamentAdvanceFlow', () => {
     });
 
     expect(screen.getByTestId('phase').props.children).toBe('waiting');
-    expect(screen.getByTestId('status').props.children).toBe('Recording your victory in the standings...');
+    expect(screen.getByTestId('status').props.children).toBe('Recording your victory in the bracket...');
     expect(mockLaunchTournamentMatch).not.toHaveBeenCalled();
   });
 
-  it('waits for corroborating standings movement before launching and then finalizes with replace navigation', async () => {
+  it('launches the next round once the bracket marks the player ready', async () => {
     mockGetPublicTournamentStatus.mockResolvedValue(
-      buildSnapshot([
-        buildStanding({ ownerId: 'user-1', username: 'Michel' }),
-        buildStanding({
-          ownerId: 'user-2',
-          username: 'Opponent',
-          rank: 5,
-          matchId: 'match-opponent',
-          updatedAt: '2026-03-27T10:02:00.000Z',
-        }),
-      ]),
+      buildSnapshot(
+        [
+          buildStanding({ ownerId: 'user-1', username: 'Michel' }),
+          buildStanding({
+            ownerId: 'user-2',
+            username: 'Opponent',
+            rank: 5,
+            matchId: 'match-opponent',
+            updatedAt: '2026-03-27T10:02:00.000Z',
+          }),
+        ],
+        {
+          participation: buildParticipation({
+            canLaunch: true,
+            lastResult: 'win',
+          }),
+        },
+      ),
     );
     mockLaunchTournamentMatch.mockResolvedValue({
       matchId: 'match-next',
@@ -212,16 +252,24 @@ describe('useTournamentAdvanceFlow', () => {
 
   it('keeps launch attempts single-flight while a ready launch is still pending', async () => {
     mockGetPublicTournamentStatus.mockResolvedValue(
-      buildSnapshot([
-        buildStanding({ ownerId: 'user-1', username: 'Michel' }),
-        buildStanding({
-          ownerId: 'user-2',
-          username: 'Opponent',
-          rank: 5,
-          matchId: 'match-opponent',
-          updatedAt: '2026-03-27T10:02:00.000Z',
-        }),
-      ]),
+      buildSnapshot(
+        [
+          buildStanding({ ownerId: 'user-1', username: 'Michel' }),
+          buildStanding({
+            ownerId: 'user-2',
+            username: 'Opponent',
+            rank: 5,
+            matchId: 'match-opponent',
+            updatedAt: '2026-03-27T10:02:00.000Z',
+          }),
+        ],
+        {
+          participation: buildParticipation({
+            canLaunch: true,
+            lastResult: 'win',
+          }),
+        },
+      ),
     );
 
     const deferredLaunch = createDeferred<{
@@ -276,25 +324,41 @@ describe('useTournamentAdvanceFlow', () => {
   it('falls back to retrying and resumes polling with backoff after a soft launch failure', async () => {
     mockGetPublicTournamentStatus
       .mockResolvedValueOnce(
-        buildSnapshot([
-          buildStanding({ ownerId: 'user-1', username: 'Michel' }),
-          buildStanding({
-            ownerId: 'user-2',
-            username: 'Opponent',
-            rank: 5,
-            matchId: 'match-opponent',
-            updatedAt: '2026-03-27T10:02:00.000Z',
-          }),
-        ]),
+        buildSnapshot(
+          [
+            buildStanding({ ownerId: 'user-1', username: 'Michel' }),
+            buildStanding({
+              ownerId: 'user-2',
+              username: 'Opponent',
+              rank: 5,
+              matchId: 'match-opponent',
+              updatedAt: '2026-03-27T10:02:00.000Z',
+            }),
+          ],
+          {
+            participation: buildParticipation({
+              canLaunch: true,
+              lastResult: 'win',
+            }),
+          },
+        ),
       )
       .mockResolvedValueOnce(
-        buildSnapshot([
-          buildStanding({
-            ownerId: 'user-1',
-            username: 'Michel',
-            updatedAt: '2026-03-27T10:04:00.000Z',
-          }),
-        ]),
+        buildSnapshot(
+          [
+            buildStanding({
+              ownerId: 'user-1',
+              username: 'Michel',
+              updatedAt: '2026-03-27T10:04:00.000Z',
+            }),
+          ],
+          {
+            participation: buildParticipation({
+              canLaunch: false,
+              lastResult: 'win',
+            }),
+          },
+        ),
       );
     mockLaunchTournamentMatch.mockRejectedValue(new Error('Next round not ready yet.'));
 
@@ -343,15 +407,23 @@ describe('useTournamentAdvanceFlow', () => {
 
     await act(async () => {
       deferredStatus.resolve(
-        buildSnapshot([
-          buildStanding({ ownerId: 'user-1', username: 'Michel' }),
-        ]),
+        buildSnapshot(
+          [
+            buildStanding({ ownerId: 'user-1', username: 'Michel' }),
+          ],
+          {
+            participation: buildParticipation({
+              canLaunch: false,
+            }),
+          },
+        ),
       );
       await flush();
     });
 
-    expect(latestState?.isActive).toBe(false);
-    expect(latestState?.tournament).toBeNull();
+    const resolvedLatestState = latestState as UseTournamentAdvanceFlowResult | null;
+    expect(resolvedLatestState?.isActive).toBe(false);
+    expect(resolvedLatestState?.tournament).toBeNull();
     expect(mockLaunchTournamentMatch).not.toHaveBeenCalled();
   });
 
@@ -365,7 +437,14 @@ describe('useTournamentAdvanceFlow', () => {
             rank: 1,
           }),
         ],
-        'finalized',
+        {
+          lifecycle: 'finalized',
+          participation: buildParticipation({
+            state: 'champion',
+            finalPlacement: 1,
+            canLaunch: false,
+          }),
+        },
       ),
     );
 
@@ -384,21 +463,41 @@ describe('useTournamentAdvanceFlow', () => {
   it('tracks a local loss until the run is explicitly eliminated', async () => {
     mockGetPublicTournamentStatus
       .mockResolvedValueOnce(
-        buildSnapshot([
-          buildStanding({
-            result: null,
-            matchId: null,
-            updatedAt: null,
-          }),
-        ]),
+        buildSnapshot(
+          [
+            buildStanding({
+              result: null,
+              matchId: null,
+              updatedAt: null,
+            }),
+          ],
+          {
+            participation: buildParticipation({
+              state: 'waiting_next_round',
+              lastResult: null,
+              canLaunch: false,
+              finalPlacement: null,
+            }),
+          },
+        ),
       )
       .mockResolvedValueOnce(
-        buildSnapshot([
-          buildStanding({
-            result: 'loss',
-            rank: 4,
-          }),
-        ]),
+        buildSnapshot(
+          [
+            buildStanding({
+              result: 'loss',
+              rank: 4,
+            }),
+          ],
+          {
+            participation: buildParticipation({
+              state: 'eliminated',
+              lastResult: 'loss',
+              finalPlacement: 4,
+              canLaunch: false,
+            }),
+          },
+        ),
       );
 
     render(<HookHarness {...baseProps} didPlayerWin={false} />);
@@ -408,7 +507,7 @@ describe('useTournamentAdvanceFlow', () => {
     });
 
     expect(screen.getByTestId('phase').props.children).toBe('waiting');
-    expect(screen.getByTestId('status').props.children).toBe('Recording the final result in the standings...');
+    expect(screen.getByTestId('status').props.children).toBe('Recording the final tournament result...');
     expect(mockLaunchTournamentMatch).not.toHaveBeenCalled();
 
     await act(async () => {

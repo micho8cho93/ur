@@ -87,6 +87,19 @@ export const useTournamentDetail = (runId: string | null) => {
     }
   }, [bumpRevision, refresh, runId]);
 
+  const launchTournament = useCallback(
+    async (selectedTournament: PublicTournamentDetail) => {
+      setErrorMessage(null);
+
+      try {
+        await launchMatch(selectedTournament);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'Unable to launch tournament match.');
+      }
+    },
+    [launchMatch],
+  );
+
   return {
     tournament,
     standings,
@@ -97,6 +110,6 @@ export const useTournamentDetail = (runId: string | null) => {
     launchingRunId,
     refresh,
     joinTournament,
-    launchMatch,
+    launchMatch: launchTournament,
   };
 };

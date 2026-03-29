@@ -4,7 +4,7 @@ import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import type { TournamentAdvanceFlowPhase } from '@/src/tournaments/useTournamentAdvanceFlow';
 import type { PublicTournamentStanding } from '@/src/tournaments/types';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 type TournamentWaitingRoomProps = {
@@ -20,10 +20,17 @@ type TournamentWaitingRoomProps = {
   highlightOwnerId: string | null;
   finalPlacement: number | null;
   isChampion: boolean;
-  onBackToStandings: () => void;
   onReturnToMainPage: () => void;
   children?: React.ReactNode;
 };
+
+const WAITING_ROOM_FACTS = [
+  'The Royal Game of Ur was played in Mesopotamia nearly 4,500 years ago.',
+  'One of the best-known Ur boards was found in the Royal Tombs of Ur.',
+  'Rosette tiles are special safe spaces and often grant another roll.',
+  'Ancient cuneiform tablets helped historians reconstruct surviving rule sets.',
+  'Ur was one of the great Sumerian cities of the ancient Near East.',
+] as const;
 
 const buildTitle = (phase: TournamentAdvanceFlowPhase, isChampion: boolean): string => {
   if (phase === 'finalized') {
@@ -34,7 +41,11 @@ const buildTitle = (phase: TournamentAdvanceFlowPhase, isChampion: boolean): str
     return 'Tournament Run Ended';
   }
 
-  return 'Victory Secured';
+  if (phase === 'ready' || phase === 'launching') {
+    return 'Next Round Ready';
+  }
+
+  return 'Tournament Intermission';
 };
 
 const buildBodyCopy = (
@@ -58,7 +69,7 @@ const buildBodyCopy = (
     return 'Your tournament run is complete. The latest standings stay visible here while you review the result.';
   }
 
-  return 'Stay here while the next round forms. Standings remain live and your post-match rewards stay visible during the intermission.';
+  return 'Stay here while the bracket advances. Your place is locked and the next board will open automatically.';
 };
 
 export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
@@ -74,7 +85,6 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
   highlightOwnerId,
   finalPlacement,
   isChampion,
-  onBackToStandings,
   children,
   onReturnToMainPage,
 }) => {
@@ -82,6 +92,22 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
   const cueScale = useRef(new Animated.Value(phase === 'ready' || phase === 'launching' ? 1 : 0.98)).current;
   const cueGlow = useRef(new Animated.Value(phase === 'ready' || phase === 'launching' ? 1 : 0)).current;
   const showExitActions = phase === 'eliminated' || phase === 'finalized';
+  const [factIndex, setFactIndex] = useState(0);
+
+  useEffect(() => {
+    if (!visible || showExitActions) {
+      return undefined;
+    }
+
+    setFactIndex(0);
+    const intervalId = setInterval(() => {
+      setFactIndex((current) => (current + 1) % WAITING_ROOM_FACTS.length);
+    }, 3_600);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [showExitActions, visible]);
 
   useEffect(() => {
     const activeCue = phase === 'ready' || phase === 'launching';
@@ -206,9 +232,16 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
 
           {children ? <View style={styles.summaryWrap}>{children}</View> : null}
 
+          {!showExitActions ? (
+            <View style={styles.factCard}>
+              <Text style={styles.factEyebrow}>Royal Archive</Text>
+              <Text style={styles.factText}>{WAITING_ROOM_FACTS[factIndex]}</Text>
+            </View>
+          ) : null}
+
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Live Standings</Text>
-            <Text style={styles.sectionSubtitle}>Top of the board, with your latest public rank highlighted.</Text>
+            <Text style={styles.sectionSubtitle}>The bracket board stays visible while the tournament updates.</Text>
           </View>
 
           <TournamentStandingsTable
@@ -219,7 +252,6 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
           />
 
           <View style={styles.buttonStack}>
-            <Button title="Back to Standings" variant="outline" onPress={onBackToStandings} />
             {showExitActions ? <Button title="Return to Main Page" onPress={onReturnToMainPage} /> : null}
           </View>
         </ScrollView>
@@ -376,6 +408,25 @@ const styles = StyleSheet.create({
   },
   summaryWrap: {
     gap: urTheme.spacing.sm,
+  },
+  factCard: {
+    borderRadius: urTheme.radii.md,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.md,
+    gap: urTheme.spacing.xs,
+    backgroundColor: 'rgba(18, 27, 39, 0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(240, 201, 101, 0.2)',
+  },
+  factEyebrow: {
+    ...urTypography.label,
+    color: '#F6D697',
+    fontSize: 10,
+  },
+  factText: {
+    color: '#F8ECD6',
+    fontSize: 14,
+    lineHeight: 20,
   },
   sectionHeader: {
     gap: 4,

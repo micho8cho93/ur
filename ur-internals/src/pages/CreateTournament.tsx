@@ -6,6 +6,11 @@ import {
   getTournamentStructureDescription,
   TOURNAMENT_STRUCTURE_OPTIONS,
 } from '../tournamentStructure'
+import {
+  formatSingleEliminationRoundLabel,
+  getSingleEliminationRoundCount,
+  TOURNAMENT_SIZE_OPTIONS,
+} from '../tournamentSizing'
 
 type FormState = {
   runId: string
@@ -13,8 +18,6 @@ type FormState = {
   gameMode: string
   entrants: string
   startAt: string
-  durationMinutes: string
-  maxNumScore: string
   joinRequired: boolean
   enableRanks: boolean
   xpPerMatchWin: string
@@ -28,8 +31,6 @@ const initialState: FormState = {
   gameMode: 'standard',
   entrants: '32',
   startAt: '',
-  durationMinutes: '120',
-  maxNumScore: '7',
   joinRequired: true,
   enableRanks: true,
   xpPerMatchWin: '100',
@@ -64,10 +65,9 @@ export function CreateTournamentPage() {
     setError(null)
 
     const entrants = Number(form.entrants)
-    const durationMinutes = Number(form.durationMinutes)
-    const maxNumScore = Number(form.maxNumScore)
     const xpPerMatchWin = Number(form.xpPerMatchWin)
     const xpForTournamentChampion = Number(form.xpForTournamentChampion)
+    const roundCount = getSingleEliminationRoundCount(entrants)
 
     if (!form.name.trim()) {
       setError('Tournament name is required.')
@@ -84,13 +84,8 @@ export function CreateTournamentPage() {
       return
     }
 
-    if (!Number.isFinite(durationMinutes) || durationMinutes < 5) {
-      setError('Duration must be at least 5 minutes.')
-      return
-    }
-
-    if (!Number.isFinite(maxNumScore) || maxNumScore < 1) {
-      setError('Counted matches per player must be at least 1.')
+    if (roundCount < 1) {
+      setError('Entrant cap must be a supported power-of-two bracket size.')
       return
     }
 
@@ -114,8 +109,6 @@ export function CreateTournamentPage() {
         gameMode: form.gameMode,
         entrants,
         startAt: new Date(form.startAt).toISOString(),
-        durationMinutes,
-        maxNumScore,
         joinRequired: form.joinRequired,
         enableRanks: form.enableRanks,
         xpPerMatchWin: Math.floor(xpPerMatchWin),
@@ -137,7 +130,7 @@ export function CreateTournamentPage() {
       <PageHeader
         eyebrow="CreateTournament"
         title="Create a tournament run"
-        description="Creates a draft tournament run in Nakama. Drafts stay hidden from public players until you open them from the admin dashboard."
+        description="Creates a draft single-elimination tournament run in Nakama. Drafts stay hidden from public players until you open them from the admin dashboard."
         actions={
           <Link to="/tournaments" className="button">
             Cancel
@@ -204,43 +197,28 @@ export function CreateTournamentPage() {
 
             <div className="field">
               <label htmlFor="entrants">Entrant cap</label>
-              <input
+              <select
                 id="entrants"
                 name="entrants"
-                type="number"
-                min="2"
                 value={form.entrants}
                 onChange={(event) => updateField('entrants', event)}
                 required
-              />
-            </div>
-
-            <div className="field">
-              <label htmlFor="durationMinutes">Duration (minutes)</label>
-              <input
-                id="durationMinutes"
-                name="durationMinutes"
-                type="number"
-                min="5"
-                value={form.durationMinutes}
-                onChange={(event) => updateField('durationMinutes', event)}
-                required
-              />
-            </div>
-
-            <div className="field">
-              <label htmlFor="maxNumScore">Counted matches per player</label>
-              <input
-                id="maxNumScore"
-                name="maxNumScore"
-                type="number"
-                min="1"
-                value={form.maxNumScore}
-                onChange={(event) => updateField('maxNumScore', event)}
-                required
-              />
+              >
+                {TOURNAMENT_SIZE_OPTIONS.map((size) => {
+                  const roundCount = getSingleEliminationRoundCount(size)
+                  return (
+                    <option key={size} value={size}>
+                      {size} players • {formatSingleEliminationRoundLabel(roundCount)}
+                    </option>
+                  )
+                })}
+              </select>
               <span className="muted">
-                One counted tournament result is written for each completed tournament match by a player.
+                Single-elimination only. The bracket will use{' '}
+                {formatSingleEliminationRoundLabel(
+                  getSingleEliminationRoundCount(Number(form.entrants)),
+                )}{' '}
+                and finalize automatically when a winner is decided.
               </span>
             </div>
 

@@ -23,8 +23,7 @@ export interface Tournament {
   joinRequired: boolean
   enableRanks: boolean
   operator: TournamentOperator
-  durationSeconds: number
-  maxNumScore: number
+  roundCount: number
   xpPerMatchWin: number
   xpForTournamentChampion: number
 }
@@ -57,8 +56,6 @@ export interface CreateTournamentInput {
   gameMode: string
   entrants: number
   startAt: string
-  durationMinutes: number
-  maxNumScore: number
   joinRequired: boolean
   enableRanks: boolean
   xpPerMatchWin: number

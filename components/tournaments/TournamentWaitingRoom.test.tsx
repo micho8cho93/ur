@@ -36,7 +36,7 @@ const standings: PublicTournamentStanding[] = [
 ];
 
 describe('TournamentWaitingRoom', () => {
-  it('renders the waiting state with the current player highlighted', () => {
+  it('renders the locked intermission state with the current player highlighted', () => {
     render(
       <TournamentWaitingRoom
         visible
@@ -51,7 +51,6 @@ describe('TournamentWaitingRoom', () => {
         highlightOwnerId="user-1"
         finalPlacement={null}
         isChampion={false}
-        onBackToStandings={jest.fn()}
         onReturnToMainPage={jest.fn()}
       />,
     );
@@ -60,11 +59,11 @@ describe('TournamentWaitingRoom', () => {
     expect(screen.getByText('Spring Open')).toBeTruthy();
     expect(screen.getByText('Another match is still in progress.')).toBeTruthy();
     expect(screen.getByText('YOU')).toBeTruthy();
+    expect(screen.getByText('Royal Archive')).toBeTruthy();
+    expect(screen.queryByText('Back to Standings')).toBeNull();
   });
 
-  it('shows the ready state and calls the fallback action', () => {
-    const handleBack = jest.fn();
-
+  it('shows the ready state without exposing a standings escape hatch', () => {
     render(
       <TournamentWaitingRoom
         visible
@@ -79,19 +78,19 @@ describe('TournamentWaitingRoom', () => {
         highlightOwnerId="user-1"
         finalPlacement={null}
         isChampion={false}
-        onBackToStandings={handleBack}
         onReturnToMainPage={jest.fn()}
       />,
     );
 
-    fireEvent.press(screen.getByText('Back to Standings'));
-
     expect(screen.getByText('Next round ready')).toBeTruthy();
     expect(screen.getByText('The next match was not ready yet.')).toBeTruthy();
-    expect(handleBack).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Back to Standings')).toBeNull();
+    expect(screen.getByText('Royal Archive')).toBeTruthy();
   });
 
   it('renders finalized champion copy when the tournament is complete', () => {
+    const handleExit = jest.fn();
+
     render(
       <TournamentWaitingRoom
         visible
@@ -106,18 +105,20 @@ describe('TournamentWaitingRoom', () => {
         highlightOwnerId="user-1"
         finalPlacement={1}
         isChampion
-        onBackToStandings={jest.fn()}
-        onReturnToMainPage={jest.fn()}
+        onReturnToMainPage={handleExit}
       />,
     );
+
+    fireEvent.press(screen.getByText('Return to Main Page'));
 
     expect(screen.getByText('Champion Crowned')).toBeTruthy();
     expect(screen.getByText('Final placement: Champion')).toBeTruthy();
     expect(screen.getByText('Return to Main Page')).toBeTruthy();
+    expect(screen.queryByText('Royal Archive')).toBeNull();
+    expect(handleExit).toHaveBeenCalledTimes(1);
   });
 
   it('renders eliminated actions for a finished run', () => {
-    const handleBack = jest.fn();
     const handleExit = jest.fn();
 
     render(
@@ -134,16 +135,15 @@ describe('TournamentWaitingRoom', () => {
         highlightOwnerId="user-1"
         finalPlacement={4}
         isChampion={false}
-        onBackToStandings={handleBack}
         onReturnToMainPage={handleExit}
       />,
     );
 
-    fireEvent.press(screen.getByText('Back to Standings'));
     fireEvent.press(screen.getByText('Return to Main Page'));
 
     expect(screen.getByText('Tournament Run Ended')).toBeTruthy();
-    expect(handleBack).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Back to Standings')).toBeNull();
+    expect(screen.queryByText('Royal Archive')).toBeNull();
     expect(handleExit).toHaveBeenCalledTimes(1);
   });
 });

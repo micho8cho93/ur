@@ -1,6 +1,14 @@
 import { listTournamentAuditEntries, runAuditedAdminRpc } from "./audit";
 import { assertAdmin } from "./auth";
 import {
+  assertPowerOfTwoTournamentSize,
+  getSingleEliminationRoundCount,
+  normalizeTournamentBracketState,
+  normalizeTournamentRunRegistration,
+  type TournamentBracketState,
+  type TournamentRunRegistration,
+} from "./bracket";
+import {
   getActorLabel,
   parseJsonPayload,
   readNumberField,
@@ -53,6 +61,8 @@ export type TournamentRunRecord = {
   closedAt: string | null;
   finalizedAt: string | null;
   finalSnapshot: TournamentStandingsSnapshot | null;
+  registrations: TournamentRunRegistration[];
+  bracket: TournamentBracketState | null;
 };
 
 type TournamentRunIndexRecord = {
@@ -102,13 +112,12 @@ export const RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG = "rpc_admin_get_tournament_audi
 const DEFAULT_CATEGORY = 0;
 const DEFAULT_SORT_ORDER: SortOrder = "desc";
 const DEFAULT_OPERATOR: Operator = "best";
-const DEFAULT_DURATION_SECONDS = 3600;
+export const AUTO_TOURNAMENT_DURATION_SECONDS = 31_536_000;
+const DEFAULT_DURATION_SECONDS = AUTO_TOURNAMENT_DURATION_SECONDS;
 const DEFAULT_MAX_SIZE = 1024;
-const DEFAULT_MAX_NUM_SCORE = 3;
 const DEFAULT_STANDINGS_LIMIT = 100;
 export const MAX_STANDINGS_LIMIT = 10000;
 const MAX_RUN_LIST_LIMIT = 100;
-const TOURNAMENT_MATCH_QUEUE_COLLECTION = "tournament_match_queue";
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 const readBooleanField = (value: unknown, keys: string[]): boolean | null => {
@@ -249,7 +258,7 @@ export const normalizeRunRecord = (value: unknown, fallbackId?: string): Tournam
     maxSize: clampInteger(readNumberField(record, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1000000),
     maxNumScore: clampInteger(
       readNumberField(record, ["maxNumScore", "max_num_score"]),
-      DEFAULT_MAX_NUM_SCORE,
+      1,
       1,
       1000000,
     ),
@@ -264,6 +273,12 @@ export const normalizeRunRecord = (value: unknown, fallbackId?: string): Tournam
     closedAt: readStringField(record, ["closedAt", "closed_at"]),
     finalizedAt: readStringField(record, ["finalizedAt", "finalized_at"]),
     finalSnapshot: normalizeStandingsSnapshot(record.finalSnapshot),
+    registrations: Array.isArray(record.registrations)
+      ? record.registrations
+          .map((entry) => normalizeTournamentRunRegistration(entry))
+          .filter((entry): entry is TournamentRunRegistration => Boolean(entry))
+      : [],
+    bracket: normalizeTournamentBracketState(record.bracket),
   };
 };
 
@@ -362,7 +377,7 @@ const writeRunIndex = (nk: RuntimeNakama, index: TournamentRunIndexRecord, versi
   ]);
 };
 
-const updateRunWithRetry = (
+export const updateRunWithRetry = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
   runId: string,
@@ -647,7 +662,7 @@ const deleteRunWithRetry = (
           key: run.runId,
         },
         {
-          collection: TOURNAMENT_MATCH_QUEUE_COLLECTION,
+          collection: "tournament_match_queue",
           key: run.runId,
           userId: SYSTEM_USER_ID,
         },
@@ -780,6 +795,12 @@ export const rpcAdminCreateTournamentRun = (
           title,
           indexState.index.runIds,
         );
+        const startTime = clampInteger(readNumberField(parsed, ["startTime", "start_time"]), 0, 0, 2147483647);
+        const maxSize = clampInteger(readNumberField(parsed, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1000000);
+        assertPowerOfTwoTournamentSize(maxSize);
+        const duration = AUTO_TOURNAMENT_DURATION_SECONDS;
+        const maxNumScore = getSingleEliminationRoundCount(maxSize);
+        const endTime = startTime > 0 ? startTime + duration : 0;
         const run: TournamentRunRecord = {
           runId,
           tournamentId: runId,
@@ -791,16 +812,11 @@ export const rpcAdminCreateTournamentRun = (
           operator: normalizeOperator(readStringField(parsed, ["operator"])),
           resetSchedule: readStringField(parsed, ["resetSchedule", "reset_schedule"]) ?? "",
           metadata: readMetadataField(parsed, ["metadata"]),
-          startTime: clampInteger(readNumberField(parsed, ["startTime", "start_time"]), 0, 0, 2147483647),
-          endTime: clampInteger(readNumberField(parsed, ["endTime", "end_time"]), 0, 0, 2147483647),
-          duration: clampInteger(readNumberField(parsed, ["duration"]), DEFAULT_DURATION_SECONDS, 1, 2147483647),
-          maxSize: clampInteger(readNumberField(parsed, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1000000),
-          maxNumScore: clampInteger(
-            readNumberField(parsed, ["maxNumScore", "max_num_score"]),
-            DEFAULT_MAX_NUM_SCORE,
-            1,
-            1000000,
-          ),
+          startTime,
+          endTime,
+          duration,
+          maxSize,
+          maxNumScore,
           joinRequired: readBooleanField(parsed, ["joinRequired", "join_required"]) ?? true,
           enableRanks: readBooleanField(parsed, ["enableRanks", "enable_ranks"]) ?? true,
           lifecycle: "draft",
@@ -812,6 +828,8 @@ export const rpcAdminCreateTournamentRun = (
           closedAt: null,
           finalizedAt: null,
           finalSnapshot: null,
+          registrations: [],
+          bracket: null,
         };
         const nextIndex: TournamentRunIndexRecord = {
           runIds: [run.runId].concat(indexState.index.runIds),
@@ -876,6 +894,8 @@ export const rpcAdminOpenTournament = (
 
       let createdTournament = false;
       const run = updateRunWithRetry(_nk, _logger, runId, (current) => {
+        assertPowerOfTwoTournamentSize(current.maxSize);
+
         if (current.lifecycle === "finalized") {
           throw new Error("A finalized tournament run cannot be reopened.");
         }

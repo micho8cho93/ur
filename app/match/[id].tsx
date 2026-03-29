@@ -98,7 +98,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useFonts } from 'expo-font';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Image, Platform, Pressable, Share, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { BackHandler, Image, Platform, Pressable, Share, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const UR_BG_IMAGE = require('../../assets/images/ur_bg.png');
@@ -231,7 +231,6 @@ export function GameRoom() {
     tournamentId,
     tournamentName,
     tournamentRound,
-    tournamentReturnTarget,
   } = useLocalSearchParams<{
     id?: string | string[];
     offline?: string | string[];
@@ -245,7 +244,6 @@ export function GameRoom() {
     tournamentId?: string | string[];
     tournamentName?: string | string[];
     tournamentRound?: string | string[];
-    tournamentReturnTarget?: string | string[];
   }>();
   const router = useRouter();
   const { width, height } = useWindowDimensions();
@@ -292,10 +290,6 @@ export function GameRoom() {
   const tournamentRoundParam = useMemo(
     () => (Array.isArray(tournamentRound) ? tournamentRound[0] : tournamentRound),
     [tournamentRound],
-  );
-  const tournamentReturnTargetParam = useMemo(
-    () => (Array.isArray(tournamentReturnTarget) ? tournamentReturnTarget[0] : tournamentReturnTarget),
-    [tournamentReturnTarget],
   );
   const resolvedBotDifficulty = useMemo(
     () => (isBotDifficulty(botDifficultyParam) ? botDifficultyParam : DEFAULT_BOT_DIFFICULTY),
@@ -533,7 +527,7 @@ export function GameRoom() {
       return 'Waiting for opponent to join. The board stays locked until they do.';
     }
 
-    return 'Opponent joined. Finish the match here, then return to the standings or advance automatically.';
+    return 'Opponent joined. Finish the match here and the tournament will carry you forward automatically.';
   }, [isTournamentMatch, isTournamentMatchReady]);
 
   const handleCopyPrivateCode = React.useCallback(async () => {
@@ -666,6 +660,10 @@ export function GameRoom() {
     tutorialScriptStepIndex < PLAYTHROUGH_TUTORIAL_SCRIPT.length
       ? PLAYTHROUGH_TUTORIAL_SCRIPT[tutorialScriptStepIndex]
       : null;
+  const tutorialPendingActionStep =
+    tutorialPendingStep?.kind === 'ROLL' || tutorialPendingStep?.kind === 'MOVE'
+      ? tutorialPendingStep
+      : null;
   const tutorialCoachVisible =
     tutorialCoachPhase === 'opening' ||
     tutorialCoachPhase === 'lesson_result' ||
@@ -724,10 +722,57 @@ export function GameRoom() {
   const showTournamentWaitingRoom =
     showWinModal &&
     isTournamentMatch &&
-    (didPlayerWin ||
-      tournamentAdvanceFlow.phase === 'eliminated' ||
-      tournamentAdvanceFlow.phase === 'finalized');
-  const shouldRenderResultModal = showWinModal && !showTournamentWaitingRoom;
+    didPlayerWin &&
+    !['eliminated', 'finalized'].includes(tournamentAdvanceFlow.phase);
+  const isTournamentResultModal =
+    showWinModal &&
+    isTournamentMatch &&
+    (tournamentAdvanceFlow.phase === 'eliminated' || tournamentAdvanceFlow.phase === 'finalized');
+  const shouldRenderResultModal = showWinModal && (!isTournamentMatch || isTournamentResultModal);
+  const tournamentResultModalTitle = useMemo(() => {
+    if (!isTournamentResultModal) {
+      return winModalTitle;
+    }
+
+    if (tournamentAdvanceFlow.phase === 'eliminated') {
+      return 'Tournament Eliminated';
+    }
+
+    if (tournamentAdvanceFlow.isChampion) {
+      return 'Tournament Champion';
+    }
+
+    return 'Tournament Complete';
+  }, [isTournamentResultModal, tournamentAdvanceFlow.isChampion, tournamentAdvanceFlow.phase, winModalTitle]);
+  const tournamentResultModalMessage = useMemo(() => {
+    if (!isTournamentResultModal) {
+      return winModalMessage;
+    }
+
+    if (tournamentAdvanceFlow.phase === 'eliminated') {
+      return onlineMatchEnd?.reason === 'forfeit_inactivity'
+        ? 'You forfeited due to inactivity and were eliminated from the tournament.'
+        : 'Your tournament run has ended.';
+    }
+
+    if (tournamentAdvanceFlow.isChampion) {
+      return 'You won the final and claimed the tournament crown.';
+    }
+
+    if (tournamentAdvanceFlow.finalPlacement === 2) {
+      return 'The final is complete. You finished the tournament as runner-up.';
+    }
+
+    return 'The tournament bracket is complete and your final result is locked in.';
+  }, [
+    isTournamentResultModal,
+    onlineMatchEnd?.reason,
+    tournamentAdvanceFlow.finalPlacement,
+    tournamentAdvanceFlow.isChampion,
+    tournamentAdvanceFlow.phase,
+    winModalMessage,
+  ]);
+  const canUseTopExit = !isTournamentMatch || showWinModal;
 
   const cueSystemReady = ancientCueFontLoaded || Boolean(ancientCueFontError);
   const cueFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : undefined;
@@ -1268,7 +1313,7 @@ export function GameRoom() {
     if (
       !isPlaythroughTutorialMatch ||
       tutorialCoachPhase !== 'lesson_play' ||
-      tutorialPendingStep?.player !== 'dark' ||
+      tutorialPendingActionStep?.player !== 'dark' ||
       !introsComplete ||
       showAudioSettings ||
       showTopMenu ||
@@ -1279,7 +1324,7 @@ export function GameRoom() {
       return;
     }
 
-    if (tutorialPendingStep.kind === 'ROLL') {
+    if (tutorialPendingActionStep.kind === 'ROLL') {
       if (gameState.phase !== 'rolling' || gameState.currentTurn !== 'dark' || rollingVisual) {
         return;
       }
@@ -1323,7 +1368,7 @@ export function GameRoom() {
     showWinModal,
     triggerTutorialRoll,
     tutorialCoachPhase,
-    tutorialPendingStep,
+    tutorialPendingActionStep,
   ]);
   useEffect(() => {
     if (gameState.winner) {
@@ -2489,16 +2534,7 @@ export function GameRoom() {
   };
 
   const handleExit = () => {
-    setShowTopMenu(false);
-    leaveCurrentMatch();
-    setShowWinModal(false);
-    reset();
-    router.replace('/');
-  };
-
-  const handleReturnToTournament = () => {
-    if (!tournamentRunIdParam || tournamentReturnTargetParam !== 'detail') {
-      handleExit();
+    if (isTournamentMatch && !showWinModal) {
       return;
     }
 
@@ -2506,16 +2542,20 @@ export function GameRoom() {
     leaveCurrentMatch();
     setShowWinModal(false);
     reset();
-    router.replace(
-      {
-        pathname: '/tournaments/[runId]',
-        params: {
-          runId: tournamentRunIdParam,
-          refreshedAt: String(Date.now()),
-        },
-      } as never,
-    );
+    router.replace('/');
   };
+
+  useEffect(() => {
+    if (!isTournamentMatch || showWinModal) {
+      return;
+    }
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => {
+      subscription.remove();
+    };
+  }, [isTournamentMatch, showWinModal]);
+
   const renderSharedResultSummary = () => (
     <MatchResultSummaryContent
       didPlayerWin={didPlayerWin}
@@ -3328,23 +3368,27 @@ export function GameRoom() {
 
       <View style={[styles.topChrome, useInlineTopChromeLayout && styles.topChromeMobile, { top: topChromeTop - mobileHeaderLift }]}>
         <View style={[styles.topChromeLeft, useInlineTopChromeLayout && styles.topChromeLeftMobile]}>
-          <Pressable
-            onPress={handleExit}
-            accessibilityRole="button"
-            accessibilityLabel="Exit game"
-            style={({ pressed }) => [
-              styles.topChromeIconButton,
-              isWebLayout && styles.topChromeIconButtonWeb,
-              isMobileLayout && styles.topChromeIconButtonMobile,
-              pressed && styles.headerHelpButtonPressed,
-            ]}
-          >
-            <MaterialIcons
-              name="arrow-back"
-              size={20}
-              color={isMobileLayout || isWebLayout ? urTheme.colors.ivory : TOP_CHROME_ACCENT}
-            />
-          </Pressable>
+          {canUseTopExit ? (
+            <Pressable
+              onPress={handleExit}
+              accessibilityRole="button"
+              accessibilityLabel="Exit game"
+              style={({ pressed }) => [
+                styles.topChromeIconButton,
+                isWebLayout && styles.topChromeIconButtonWeb,
+                isMobileLayout && styles.topChromeIconButtonMobile,
+                pressed && styles.headerHelpButtonPressed,
+              ]}
+            >
+              <MaterialIcons
+                name="arrow-back"
+                size={20}
+                color={isMobileLayout || isWebLayout ? urTheme.colors.ivory : TOP_CHROME_ACCENT}
+              />
+            </Pressable>
+          ) : (
+            <View style={[styles.topChromeIconButton, styles.topChromeExitSpacer]} />
+          )}
           <View style={[styles.topChromeTitleStack, useInlineTopChromeLayout && styles.topChromeTitleStackMobile]}>
             <Text
               numberOfLines={1}
@@ -3938,20 +3982,12 @@ export function GameRoom() {
 
       <Modal
         visible={shouldRenderResultModal}
-        title={winModalTitle}
-        message={winModalMessage}
-        actionLabel="Return to Menu"
+        title={isTournamentResultModal ? tournamentResultModalTitle : winModalTitle}
+        message={isTournamentResultModal ? tournamentResultModalMessage : winModalMessage}
+        actionLabel={isTournamentResultModal ? 'Return to Home' : 'Return to Menu'}
         onAction={handleExit}
         maxWidth={520}
       >
-        {isTournamentMatch ? (
-          <Button
-            title="Back to Standings"
-            variant="outline"
-            style={styles.tournamentReturnButton}
-            onPress={handleReturnToTournament}
-          />
-        ) : null}
         {renderSharedResultSummary()}
       </Modal>
 
@@ -3968,7 +4004,6 @@ export function GameRoom() {
         highlightOwnerId={tournamentPlayerUserId}
         finalPlacement={tournamentAdvanceFlow.finalPlacement}
         isChampion={tournamentAdvanceFlow.isChampion}
-        onBackToStandings={handleReturnToTournament}
         onReturnToMainPage={handleExit}
       >
         {renderSharedResultSummary()}
@@ -4263,6 +4298,9 @@ const styles = StyleSheet.create({
       blurRadius: 3,
       elevation: 6,
     }),
+  },
+  topChromeExitSpacer: {
+    opacity: 0,
   },
   topChromeTitle: {
     ...urTypography.label,

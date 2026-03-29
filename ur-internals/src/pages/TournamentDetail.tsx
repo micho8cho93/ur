@@ -12,6 +12,7 @@ import {
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
 import { getTournamentStructureLabel } from '../tournamentStructure'
+import { formatSingleEliminationRoundLabel } from '../tournamentSizing'
 import type { AuditLogEntry } from '../types/audit'
 import type { Tournament, TournamentEntry, TournamentStandings } from '../types/tournament'
 
@@ -299,8 +300,8 @@ export function TournamentDetailPage() {
             </strong>
           </div>
           <div className="metric-card">
-            <span className="meta-label">Counted matches per player</span>
-            <strong>{tournament.maxNumScore}</strong>
+            <span className="meta-label">Bracket rounds</span>
+            <strong>{formatSingleEliminationRoundLabel(tournament.roundCount)}</strong>
           </div>
           <div className="metric-card">
             <span className="meta-label">XP per match win</span>
@@ -352,8 +353,8 @@ export function TournamentDetailPage() {
               <strong>{tournament.xpForTournamentChampion}</strong>
             </div>
             <div className="metric-card">
-              <span className="meta-label">End time</span>
-              <strong>{formatDateTime(tournament.endAt)}</strong>
+              <span className="meta-label">Finish rule</span>
+              <strong>Automatic on champion</strong>
             </div>
           </div>
         </article>

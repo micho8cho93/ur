@@ -131,6 +131,19 @@ export const useTournamentList = ({ featured = false, limit = 50 }: UseTournamen
     [featured, now, tournaments],
   );
 
+  const launchTournament = useCallback(
+    async (tournament: PublicTournamentSummary) => {
+      setErrorMessage(null);
+
+      try {
+        await launchMatch(tournament);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'Unable to launch tournament match.');
+      }
+    },
+    [launchMatch],
+  );
+
   return {
     tournaments: displayedTournaments,
     isLoading,
@@ -140,6 +153,6 @@ export const useTournamentList = ({ featured = false, limit = 50 }: UseTournamen
     launchingRunId,
     refresh,
     joinTournament,
-    launchMatch,
+    launchMatch: launchTournament,
   };
 };

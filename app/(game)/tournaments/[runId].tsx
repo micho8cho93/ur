@@ -169,7 +169,11 @@ export default function TournamentDetailScreen() {
                       ? 'The lobby is still filling. Tournament matches unlock once the field is full, so you can stay here or return to Play Online while you wait.'
                       : primary?.waitReason === 'start'
                         ? 'The field is ready. Tournament matches will unlock as soon as the scheduled start time arrives.'
-                        : 'You can launch a tournament match from this screen whenever you are ready.'}
+                        : primary?.waitReason === 'bracket'
+                          ? 'Your place is locked in. Stay ready while the rest of the bracket settles and your next match becomes available.'
+                          : tournament.participation.state === 'in_match'
+                            ? 'Your tournament board is already assigned. Resume it from this screen.'
+                            : 'You can continue your tournament from this screen whenever your next board is ready.'}
                   </Text>
                 </View>
               )}

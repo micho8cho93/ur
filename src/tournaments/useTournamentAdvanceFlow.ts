@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from 'react';
 const TOURNAMENT_WAIT_POLL_INTERVAL_MS = 4_000;
 const TOURNAMENT_LAUNCH_RETRY_BACKOFF_MS = 6_000;
 const TOURNAMENT_LAUNCH_RETRY_BACKOFF_MAX_MS = 12_000;
-const RECENT_RESULT_WINDOW_MS = 10 * 60 * 1_000;
 const READY_CUE_OPPONENT_FOUND_MS = 260;
 const READY_CUE_JOINING_MS = 720;
 
@@ -45,22 +44,13 @@ export type UseTournamentAdvanceFlowResult = {
   isChampion: boolean;
 };
 
-const parseIsoTime = (value: string | null | undefined): number | null => {
-  if (!value) {
-    return null;
-  }
-
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
 const isSoftLaunchFailure = (error: unknown): { message: string; soft: boolean } => {
   const message = error instanceof Error ? error.message : 'The next match was not ready yet.';
 
   return {
     message,
     soft:
-      /ready|wait|progress|pending|queue|opponent|match|launch/i.test(message) ||
+      /ready|wait|progress|pending|queue|opponent|match|launch|bracket/i.test(message) ||
       /empty/i.test(message),
   };
 };
@@ -82,40 +72,6 @@ const getCurrentStanding = (
   playerUserId: string | null,
 ): PublicTournamentStanding | null => standings.find((entry) => entry.ownerId === playerUserId) ?? null;
 
-const hasCompatibleOpponentResult = (
-  standings: PublicTournamentStanding[],
-  playerUserId: string,
-  playerStanding: PublicTournamentStanding,
-  finishedMatchId: string | null,
-): boolean => {
-  if (typeof playerStanding.round !== 'number' || playerStanding.updatedAt === null) {
-    return false;
-  }
-
-  const playerUpdatedAtMs = parseIsoTime(playerStanding.updatedAt);
-
-  return standings.some((entry) => {
-    if (entry.ownerId === playerUserId || entry.result === null) {
-      return false;
-    }
-
-    if (typeof entry.round !== 'number' || entry.round !== playerStanding.round) {
-      return false;
-    }
-
-    if (finishedMatchId && entry.matchId === finishedMatchId) {
-      return false;
-    }
-
-    const entryUpdatedAtMs = parseIsoTime(entry.updatedAt);
-    if (playerUpdatedAtMs !== null && entryUpdatedAtMs !== null) {
-      return entryUpdatedAtMs + RECENT_RESULT_WINDOW_MS >= playerUpdatedAtMs;
-    }
-
-    return entry.matchId !== null;
-  });
-};
-
 export const useTournamentAdvanceFlow = ({
   enabled,
   runId,
@@ -134,7 +90,7 @@ export const useTournamentAdvanceFlow = ({
   const [currentStanding, setCurrentStanding] = useState<PublicTournamentStanding | null>(null);
   const [derivedRound, setDerivedRound] = useState<number | null>(initialRound);
   const [statusText, setStatusText] = useState('Waiting for the next round to settle.');
-  const [subtleStatusText, setSubtleStatusText] = useState<string | null>('Refreshing tournament standings.');
+  const [subtleStatusText, setSubtleStatusText] = useState<string | null>('Refreshing tournament status.');
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
   const [finalPlacement, setFinalPlacement] = useState<number | null>(null);
   const [isChampion, setIsChampion] = useState(false);
@@ -199,7 +155,7 @@ export const useTournamentAdvanceFlow = ({
       setStandings([]);
       setCurrentStanding(null);
       setDerivedRound(initialRound);
-      setStatusText(didPlayerWin ? 'Waiting for the next round to settle.' : 'Waiting for the final tournament result to settle.');
+      setStatusText(didPlayerWin ? 'Waiting for the next round to settle.' : 'Waiting for the tournament result to settle.');
       setSubtleStatusText(null);
       setRetryMessage(null);
       setFinalPlacement(null);
@@ -215,7 +171,7 @@ export const useTournamentAdvanceFlow = ({
       const sequence = refreshSequenceRef.current + 1;
       refreshSequenceRef.current = sequence;
       setPhase((current) => (current === 'retrying' ? current : 'refreshing'));
-      setSubtleStatusText((current) => current ?? 'Refreshing tournament standings.');
+      setSubtleStatusText((current) => current ?? 'Refreshing tournament status.');
 
       void getPublicTournamentStatus(runId)
         .then((snapshot) => {
@@ -229,9 +185,12 @@ export const useTournamentAdvanceFlow = ({
           }
 
           const nextStanding = getCurrentStanding(snapshot.standings, playerUserId);
-          const nextRound = nextStanding?.round ?? initialRound ?? null;
-          const nextPlacement = nextStanding?.rank ?? null;
-          const nextChampion = snapshot.tournament.lifecycle === 'finalized' && nextPlacement === 1;
+          const participation = snapshot.tournament.participation;
+          const nextRound = participation.currentRound ?? nextStanding?.round ?? initialRound ?? null;
+          const nextPlacement = participation.finalPlacement ?? nextStanding?.rank ?? null;
+          const nextChampion =
+            participation.state === 'champion' ||
+            (snapshot.tournament.lifecycle === 'finalized' && nextPlacement === 1);
 
           setTournament(snapshot.tournament);
           setStandings(snapshot.standings);
@@ -240,54 +199,61 @@ export const useTournamentAdvanceFlow = ({
           setFinalPlacement(nextPlacement);
           setIsChampion(nextChampion);
 
-          if (snapshot.tournament.lifecycle === 'finalized' || snapshot.tournament.lifecycle === 'closed') {
+          if (
+            snapshot.tournament.lifecycle === 'finalized' ||
+            snapshot.tournament.lifecycle === 'closed' ||
+            participation.state === 'champion' ||
+            participation.state === 'runner_up'
+          ) {
             stoppedRef.current = true;
             clearPollTimeout();
             clearReadyTimeouts();
             setPhase('finalized');
             setStatusText(buildFinalizedStatusText(nextChampion, nextPlacement));
-            setSubtleStatusText(nextChampion ? 'Your run is complete and the final standings are locked.' : 'Final standings are now locked.');
+            setSubtleStatusText(
+              nextChampion
+                ? 'Your run is complete and the final standings are locked.'
+                : 'Final standings are now locked.',
+            );
             setRetryMessage(null);
             return;
           }
 
-          if (nextStanding?.result === 'loss') {
+          if (participation.state === 'eliminated') {
             stoppedRef.current = true;
             clearPollTimeout();
             clearReadyTimeouts();
             setPhase('eliminated');
             setStatusText('Your tournament run has ended.');
-            setSubtleStatusText('Return to the standings to review the final board.');
+            setSubtleStatusText('Your final result is locked in.');
             setRetryMessage(null);
             return;
           }
 
           if (!didPlayerWin) {
             setPhase('waiting');
-            setStatusText('Recording the final result in the standings...');
-            setSubtleStatusText('Waiting for the tournament board to confirm your placement.');
+            setStatusText('Recording the final tournament result...');
+            setSubtleStatusText('Waiting for the bracket to confirm your placement.');
+            setRetryMessage(null);
             scheduleRefresh(refreshStatus);
             return;
           }
 
-          const playerResultRecorded =
-            nextStanding?.result === 'win' && nextStanding.matchId === finishedMatchId;
-          const opponentReady =
-            nextStanding !== null &&
-            hasCompatibleOpponentResult(snapshot.standings, playerUserId, nextStanding, finishedMatchId);
-
-          if (!playerResultRecorded) {
+          if (participation.lastResult !== 'win') {
             setPhase('waiting');
-            setStatusText('Recording your victory in the standings...');
-            setSubtleStatusText('Waiting for the completed match to appear in tournament records.');
+            setStatusText('Recording your victory in the bracket...');
+            setSubtleStatusText('Waiting for the completed match to publish its tournament result.');
+            setRetryMessage(null);
             scheduleRefresh(refreshStatus);
             return;
           }
 
-          if (!opponentReady) {
+          if (!participation.canLaunch) {
+            launchInFlightRef.current = false;
             setPhase('waiting');
             setStatusText('Another match is still in progress.');
-            setSubtleStatusText('Standings stay live here while the next pairing settles.');
+            setSubtleStatusText('The next bracket slot will open automatically when both winners arrive.');
+            setRetryMessage(null);
             scheduleRefresh(refreshStatus);
             return;
           }
@@ -386,7 +352,7 @@ export const useTournamentAdvanceFlow = ({
                 clearReadyTimeouts();
                 setPhase(failure.soft ? 'retrying' : 'waiting');
                 setStatusText('Rechecking for the next round...');
-                setSubtleStatusText('The launch was not ready yet, so standings polling has resumed.');
+                setSubtleStatusText('The launch was not ready yet, so tournament polling has resumed.');
                 setRetryMessage(failure.message);
                 scheduleRefresh(refreshStatus, retryBackoffMsRef.current);
               });
@@ -404,7 +370,7 @@ export const useTournamentAdvanceFlow = ({
 
           const message = error instanceof Error ? error.message : 'Unable to refresh tournament status.';
           setPhase('retrying');
-          setStatusText('Reconnecting to tournament standings...');
+          setStatusText('Reconnecting to tournament status...');
           setSubtleStatusText('Keeping the current board visible while the refresh retries.');
           setRetryMessage(message);
           scheduleRefresh(refreshStatus, retryBackoffMsRef.current);
@@ -413,27 +379,32 @@ export const useTournamentAdvanceFlow = ({
 
     setPhase('waiting');
     setStatusText(
-      didPlayerWin ? 'Recording your victory in the standings...' : 'Recording the final result in the standings...',
+      didPlayerWin ? 'Recording your victory in the bracket...' : 'Recording the final tournament result...',
     );
     setSubtleStatusText(
       didPlayerWin
-        ? 'Waiting for the tournament board to refresh.'
-        : 'Waiting for the tournament board to confirm your placement.',
+        ? 'Waiting for the tournament bracket to refresh.'
+        : 'Waiting for the tournament bracket to confirm your placement.',
     );
     setRetryMessage(null);
-    void refreshStatus();
+    setFinalPlacement(null);
+    setIsChampion(false);
+
+    refreshStatus();
 
     return () => {
-      stoppedRef.current = true;
-      clearPollTimeout();
-      clearReadyTimeouts();
+      if (flowTokenRef.current === flowToken) {
+        clearPollTimeout();
+        clearReadyTimeouts();
+        launchInFlightRef.current = false;
+      }
     };
   }, [
+    didPlayerWin,
     enabled,
     finalizeMatchLaunch,
     finishedMatchId,
     gameMode,
-    didPlayerWin,
     initialRound,
     playerUserId,
     runId,
@@ -442,7 +413,7 @@ export const useTournamentAdvanceFlow = ({
   ]);
 
   return {
-    isActive: Boolean(enabled && runId && tournamentId && playerUserId && finishedMatchId),
+    isActive: enabled && Boolean(runId && tournamentId && playerUserId && finishedMatchId),
     phase,
     tournament,
     standings,

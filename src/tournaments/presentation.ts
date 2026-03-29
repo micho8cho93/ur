@@ -4,16 +4,27 @@ import type { PublicTournamentSummary } from '@/src/tournaments/types';
 export type TournamentChipTone = 'neutral' | 'info' | 'success' | 'warning';
 
 export type TournamentChipState = {
-  label: 'Open' | 'Starting soon' | 'Full';
+  label: 'Open' | 'Starting soon' | 'Full' | 'Locked' | 'In Progress';
   tone: TournamentChipTone;
 };
 
 export type TournamentPrimaryState = {
-  label: 'Join' | 'Full' | 'Play Tournament Match' | 'Waiting for lobby to fill' | 'Tournament starts soon';
+  label:
+    | 'Join'
+    | 'Full'
+    | 'Tournament Locked'
+    | 'Play Tournament Match'
+    | 'Resume Tournament Match'
+    | 'Continue Tournament'
+    | 'Tournament In Progress'
+    | 'Waiting for lobby to fill'
+    | 'Tournament starts soon'
+    | 'Eliminated'
+    | 'Tournament Complete';
   disabled: boolean;
   intent: 'join' | 'play' | 'none';
   loading?: boolean;
-  waitReason?: 'lobby' | 'start' | null;
+  waitReason?: 'lobby' | 'start' | 'bracket' | null;
 };
 
 const safeParseTime = (value: string): number => {
@@ -43,6 +54,10 @@ export const isTournamentVisibleForPlay = (
   now = Date.now(),
 ): boolean => tournament.lifecycle === 'open' && !hasTournamentEnded(tournament, now);
 
+export const isTournamentLocked = (
+  tournament: Pick<PublicTournamentSummary, 'isLocked'>,
+): boolean => tournament.isLocked;
+
 export const isTournamentFull = (tournament: Pick<PublicTournamentSummary, 'entrants' | 'maxEntrants'>): boolean =>
   tournament.maxEntrants > 0 && tournament.entrants >= tournament.maxEntrants;
 
@@ -52,6 +67,20 @@ export const isTournamentReadyToLaunch = (
 ): boolean => isTournamentFull(tournament) && hasTournamentStarted(tournament, now);
 
 export const getTournamentChipState = (tournament: PublicTournamentSummary, now = Date.now()): TournamentChipState => {
+  if (tournament.membership.isJoined && tournament.participation.state && tournament.participation.state !== 'lobby') {
+    return {
+      label: 'In Progress',
+      tone: 'info',
+    };
+  }
+
+  if (isTournamentLocked(tournament) && !tournament.membership.isJoined) {
+    return {
+      label: 'Locked',
+      tone: 'warning',
+    };
+  }
+
   if (isTournamentFull(tournament) && !tournament.membership.isJoined) {
     return {
       label: 'Full',
@@ -112,6 +141,56 @@ export const buildTournamentPrizeSummary = (tournament: Pick<PublicTournamentSum
   `${tournament.buyInLabel} • ${tournament.prizeLabel}`;
 
 const getJoinedTournamentPrimaryState = (tournament: PublicTournamentSummary, now = Date.now()): TournamentPrimaryState => {
+  if (tournament.participation.state === 'in_match' && tournament.participation.activeMatchId) {
+    return {
+      label: 'Resume Tournament Match',
+      disabled: false,
+      intent: 'play',
+      loading: false,
+      waitReason: null,
+    };
+  }
+
+  if (tournament.participation.state === 'waiting_next_round') {
+    if (tournament.participation.canLaunch) {
+      return {
+        label: 'Continue Tournament',
+        disabled: false,
+        intent: 'play',
+        loading: false,
+        waitReason: null,
+      };
+    }
+
+    return {
+      label: 'Tournament In Progress',
+      disabled: true,
+      intent: 'none',
+      loading: true,
+      waitReason: 'bracket',
+    };
+  }
+
+  if (tournament.participation.state === 'eliminated') {
+    return {
+      label: 'Eliminated',
+      disabled: true,
+      intent: 'none',
+      loading: false,
+      waitReason: null,
+    };
+  }
+
+  if (tournament.participation.state === 'runner_up' || tournament.participation.state === 'champion') {
+    return {
+      label: 'Tournament Complete',
+      disabled: true,
+      intent: 'none',
+      loading: false,
+      waitReason: null,
+    };
+  }
+
   if (isTournamentReadyToLaunch(tournament, now)) {
     return {
       label: 'Play Tournament Match',
@@ -145,6 +224,14 @@ export const getTournamentCardPrimaryState = (
   tournament: PublicTournamentSummary,
   now = Date.now(),
 ): TournamentPrimaryState => {
+  if (isTournamentLocked(tournament) && !tournament.membership.isJoined) {
+    return {
+      label: 'Tournament Locked',
+      disabled: true,
+      intent: 'none',
+    };
+  }
+
   if (isTournamentFull(tournament) && !tournament.membership.isJoined) {
     return {
       label: 'Full',
@@ -168,6 +255,14 @@ export const getTournamentDetailPrimaryState = (
   tournament: PublicTournamentSummary,
   now = Date.now(),
 ): TournamentPrimaryState => {
+  if (isTournamentLocked(tournament) && !tournament.membership.isJoined) {
+    return {
+      label: 'Tournament Locked',
+      disabled: true,
+      intent: 'none',
+    };
+  }
+
   if (isTournamentFull(tournament) && !tournament.membership.isJoined) {
     return {
       label: 'Full',

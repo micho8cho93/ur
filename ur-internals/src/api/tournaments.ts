@@ -8,6 +8,10 @@ import type {
   TournamentStandings,
   TournamentStatus,
 } from '../types/tournament'
+import {
+  AUTO_TOURNAMENT_DURATION_SECONDS,
+  getSingleEliminationRoundCount,
+} from '../tournamentSizing'
 import { callRpc } from './client'
 import {
   asRecord,
@@ -98,6 +102,21 @@ function normalizeTournament(runValue: unknown, nakamaTournamentValue: unknown):
       readNumberField(run, ['endTime', 'end_time']),
     null,
   )
+  const maxEntrants = Math.max(
+    0,
+    Math.floor(
+      readNumberField(nakamaTournament, ['maxSize', 'max_size']) ??
+        readNumberField(run, ['maxSize', 'max_size']) ??
+        0,
+    ),
+  )
+  const roundCount = Math.max(
+    0,
+    Math.floor(
+      readNumberField(run, ['maxNumScore', 'max_num_score']) ??
+        getSingleEliminationRoundCount(maxEntrants),
+    ),
+  )
 
   return {
     id,
@@ -107,14 +126,7 @@ function normalizeTournament(runValue: unknown, nakamaTournamentValue: unknown):
     status: mapTournamentStatus(readStringField(run, ['lifecycle'])),
     gameMode: readStringField(metadata, ['gameMode', 'game_mode']) ?? 'standard',
     entrants: Math.max(0, Math.floor(readNumberField(nakamaTournament, ['size']) ?? 0)),
-    maxEntrants: Math.max(
-      0,
-      Math.floor(
-        readNumberField(nakamaTournament, ['maxSize', 'max_size']) ??
-          readNumberField(run, ['maxSize', 'max_size']) ??
-          0,
-      ),
-    ),
+    maxEntrants,
     startAt: startAt ?? createdAt,
     endAt,
     buyIn: readStringField(metadata, ['buyIn', 'buy_in']) ?? 'Free',
@@ -128,8 +140,7 @@ function normalizeTournament(runValue: unknown, nakamaTournamentValue: unknown):
     joinRequired: readBooleanField(run, ['joinRequired', 'join_required']) !== false,
     enableRanks: readBooleanField(run, ['enableRanks', 'enable_ranks']) !== false,
     operator: mapOperator(readStringField(run, ['operator'])),
-    durationSeconds: Math.max(0, Math.floor(readNumberField(run, ['duration']) ?? 0)),
-    maxNumScore: Math.max(0, Math.floor(readNumberField(run, ['maxNumScore', 'max_num_score']) ?? 0)),
+    roundCount,
     xpPerMatchWin: Math.max(
       0,
       Math.floor(
@@ -247,6 +258,8 @@ export async function getTournamentStandings(
 }
 
 export async function createTournament(input: CreateTournamentInput): Promise<Tournament> {
+  const roundCount = getSingleEliminationRoundCount(input.entrants)
+
   if (env.useMockData) {
     await wait(220)
 
@@ -267,8 +280,9 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
       gameMode: input.gameMode,
       entrants: 0,
       maxEntrants: input.entrants,
+      roundCount,
       startAt: input.startAt,
-      endAt: new Date(Date.parse(input.startAt) + input.durationMinutes * 60_000).toISOString(),
+      endAt: null,
       buyIn: 'Free',
       region: 'Global',
       prizePool: 'Not configured',
@@ -280,15 +294,12 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
       joinRequired: input.joinRequired,
       enableRanks: input.enableRanks,
       operator: 'incr',
-      durationSeconds: input.durationMinutes * 60,
-      maxNumScore: input.maxNumScore,
       xpPerMatchWin: input.xpPerMatchWin,
       xpForTournamentChampion: input.xpForTournamentChampion,
     }
   }
 
   const startTime = Math.floor(new Date(input.startAt).getTime() / 1000)
-  const durationSeconds = Math.max(300, Math.floor(input.durationMinutes * 60))
 
   const response = await callRpc<{ run?: unknown; nakamaTournament?: unknown }>(
     RPC_ADMIN_CREATE_TOURNAMENT_RUN,
@@ -307,10 +318,10 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
         xpForTournamentChampion: input.xpForTournamentChampion,
       },
       startTime,
-      endTime: startTime + durationSeconds,
-      duration: durationSeconds,
       maxSize: input.entrants,
-      maxNumScore: input.maxNumScore,
+      endTime: startTime > 0 ? startTime + AUTO_TOURNAMENT_DURATION_SECONDS : 0,
+      duration: AUTO_TOURNAMENT_DURATION_SECONDS,
+      maxNumScore: roundCount,
       joinRequired: input.joinRequired,
       enableRanks: input.enableRanks,
     },

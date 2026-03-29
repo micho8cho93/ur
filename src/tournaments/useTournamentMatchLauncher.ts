@@ -82,10 +82,14 @@ export const useTournamentMatchLauncher = () => {
 
       try {
         const result = await launchTournamentMatch(tournament.runId);
+        if (!result.matchId) {
+          throw new Error(result.statusMessage ?? 'Tournament match is not ready yet.');
+        }
         finalizeMatchLaunch(tournament, result, {
           navigationMode: 'push',
           returnTarget: 'detail',
         });
+        return result;
       } finally {
         setLaunchingRunId((current) => (current === tournament.runId ? null : current));
       }

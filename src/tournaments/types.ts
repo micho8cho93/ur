@@ -3,6 +3,16 @@ export type TournamentMembershipState = {
   joinedAt: string | null;
 };
 
+export type TournamentParticipationState = {
+  state: 'lobby' | 'in_match' | 'waiting_next_round' | 'eliminated' | 'runner_up' | 'champion' | null;
+  currentRound: number | null;
+  currentEntryId: string | null;
+  activeMatchId: string | null;
+  finalPlacement: number | null;
+  lastResult: 'win' | 'loss' | null;
+  canLaunch: boolean;
+};
+
 export type PublicTournamentSummary = {
   runId: string;
   tournamentId: string;
@@ -18,7 +28,10 @@ export type PublicTournamentSummary = {
   region: string;
   buyInLabel: string;
   prizeLabel: string;
+  isLocked: boolean;
+  currentRound: number | null;
   membership: TournamentMembershipState;
+  participation: TournamentParticipationState;
 };
 
 export type PublicTournamentDetail = PublicTournamentSummary;

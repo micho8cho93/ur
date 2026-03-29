@@ -1,4 +1,5 @@
 import {
+  AUTO_TOURNAMENT_DURATION_SECONDS,
   rpcAdminDeleteTournament,
   rpcAdminCreateTournamentRun,
   rpcAdminFinalizeTournament,
@@ -159,10 +160,7 @@ describe("admin tournament run creation", () => {
             buyIn: "Free",
           },
           startTime: 1_774_572_800,
-          endTime: 1_774_580_000,
-          duration: 7_200,
           maxSize: 32,
-          maxNumScore: 7,
           joinRequired: true,
           enableRanks: true,
         }),
@@ -195,6 +193,10 @@ describe("admin tournament run creation", () => {
         runId: "spring-crown-2026",
         tournamentId: "spring-crown-2026",
         title: "Spring Crown 2026",
+        duration: AUTO_TOURNAMENT_DURATION_SECONDS,
+        endTime: 1_774_572_800 + AUTO_TOURNAMENT_DURATION_SECONDS,
+        maxSize: 32,
+        maxNumScore: 5,
       }),
     );
 

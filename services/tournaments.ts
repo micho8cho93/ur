@@ -8,6 +8,7 @@ import type {
   PublicTournamentSummary,
   TournamentMatchLaunchResult,
   TournamentMembershipState,
+  TournamentParticipationState,
 } from '@/src/tournaments/types';
 
 const RPC_LIST_PUBLIC_TOURNAMENTS = 'list_public_tournaments';
@@ -158,6 +159,30 @@ const normalizeMembershipState = (value: unknown): TournamentMembershipState => 
   };
 };
 
+const normalizeParticipationState = (value: unknown): TournamentParticipationState => {
+  const record = asRecord(value);
+  const state = readStringField(record, ['state']);
+  const lastResult = readStringField(record, ['lastResult', 'last_result']);
+
+  return {
+    state:
+      state === 'lobby' ||
+      state === 'in_match' ||
+      state === 'waiting_next_round' ||
+      state === 'eliminated' ||
+      state === 'runner_up' ||
+      state === 'champion'
+        ? state
+        : null,
+    currentRound: readNumberField(record, ['currentRound', 'current_round']),
+    currentEntryId: readStringField(record, ['currentEntryId', 'current_entry_id']),
+    activeMatchId: readStringField(record, ['activeMatchId', 'active_match_id']),
+    finalPlacement: readNumberField(record, ['finalPlacement', 'final_placement']),
+    lastResult: lastResult === 'win' || lastResult === 'loss' ? lastResult : null,
+    canLaunch: record?.canLaunch === true,
+  };
+};
+
 const normalizePublicTournament = (value: unknown): PublicTournamentDetail => {
   const record = asRecord(value) ?? {};
 
@@ -183,7 +208,10 @@ const normalizePublicTournament = (value: unknown): PublicTournamentDetail => {
     region: readStringField(record, ['region']) ?? 'Global',
     buyInLabel: readStringField(record, ['buyInLabel', 'buy_in_label']) ?? 'Free',
     prizeLabel: readStringField(record, ['prizeLabel', 'prize_label']) ?? 'No prize listed',
+    isLocked: record.isLocked === true,
+    currentRound: readNumberField(record, ['currentRound', 'current_round']),
     membership: normalizeMembershipState(record.membership),
+    participation: normalizeParticipationState(record.participation),
   };
 };
 

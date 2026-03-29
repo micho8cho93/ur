@@ -10,24 +10,18 @@ import {
   getStorageObjectVersion,
   maybeSetStorageVersion,
 } from "../progression";
+import { completeTournamentBracketMatch } from "./bracket";
 import { readNumberField, readStringField } from "./definitions";
-import { finalizeTournamentRun, getNakamaTournamentById } from "./admin";
+import {
+  finalizeTournamentRun,
+  getNakamaTournamentById,
+  normalizeRunRecord,
+  updateRunWithRetry,
+  type TournamentRunRecord,
+} from "./admin";
 import type { RuntimeLogger, RuntimeMetadata, RuntimeNakama } from "./types";
 
-type TournamentOperator = "best" | "set" | "incr";
-type TournamentRunLifecycle = "draft" | "open" | "closed" | "finalized";
 type RuntimeRecord = Record<string, unknown>;
-
-type TournamentRunSnapshot = {
-  runId: string;
-  tournamentId: string;
-  title: string;
-  lifecycle: TournamentRunLifecycle;
-  operator: TournamentOperator;
-  joinRequired: boolean;
-  metadata: RuntimeMetadata;
-  updatedAt: string;
-};
 
 type TournamentRecordWriteSummary = {
   userId: string;
@@ -115,55 +109,12 @@ export type TournamentMatchProcessResult = {
 export const TOURNAMENT_RUNS_COLLECTION = "tournament_runs";
 export const TOURNAMENT_MATCH_RESULTS_COLLECTION = "tournament_match_results";
 
-const normalizeOperator = (value: unknown): TournamentOperator => {
-  if (value === "set" || value === "incr" || value === "best") {
-    return value;
-  }
-
-  return "best";
-};
-
-const normalizeRunLifecycle = (value: unknown): TournamentRunLifecycle => {
-  if (value === "draft" || value === "open" || value === "closed" || value === "finalized") {
-    return value;
-  }
-
-  return "draft";
-};
-
 const normalizeMetadata = (value: unknown): RuntimeMetadata => asRecord(value) ?? {};
-
-const normalizeRunSnapshot = (value: unknown, fallbackRunId: string): TournamentRunSnapshot | null => {
-  const record = asRecord(value);
-  if (!record) {
-    return null;
-  }
-
-  const runId = readStringField(record, ["runId", "run_id"]) ?? fallbackRunId;
-  const tournamentId = readStringField(record, ["tournamentId", "tournament_id"]) ?? runId;
-  const title = readStringField(record, ["title"]);
-  const updatedAt = readStringField(record, ["updatedAt", "updated_at"]);
-
-  if (!runId || !tournamentId || !title || !updatedAt) {
-    return null;
-  }
-
-  return {
-    runId,
-    tournamentId,
-    title,
-    lifecycle: normalizeRunLifecycle(readStringField(record, ["lifecycle"]) ?? "draft"),
-    operator: normalizeOperator(readStringField(record, ["operator"]) ?? "best"),
-    joinRequired: record.joinRequired !== false,
-    metadata: normalizeMetadata(record.metadata),
-    updatedAt,
-  };
-};
 
 const readTournamentRunState = (
   nk: RuntimeNakama,
   runId: string,
-): { object: RuntimeStorageObject | null; value: RuntimeRecord | null; run: TournamentRunSnapshot | null } => {
+): { object: RuntimeStorageObject | null; value: RuntimeRecord | null; run: TournamentRunRecord | null } => {
   const objects = nk.storageRead([
     {
       collection: TOURNAMENT_RUNS_COLLECTION,
@@ -176,7 +127,7 @@ const readTournamentRunState = (
   return {
     object,
     value,
-    run: normalizeRunSnapshot(object?.value ?? null, runId),
+    run: normalizeRunRecord(object?.value ?? null, runId),
   };
 };
 
@@ -197,7 +148,7 @@ const readTournamentMatchResultObject = (
 const buildTournamentMatchResultId = (context: TournamentMatchContext, matchId: string): string =>
   `${context.runId}:${matchId}`;
 
-const mapOperatorToOverride = (operator: TournamentOperator): number => {
+const mapOperatorToOverride = (operator: TournamentRunRecord["operator"]): number => {
   if (operator === "best") {
     return 1;
   }
@@ -215,7 +166,7 @@ const mapOperatorToOverride = (operator: TournamentOperator): number => {
 
 const buildInvalidReason = (
   completion: AuthoritativeTournamentMatchCompletion,
-  run: TournamentRunSnapshot | null,
+  run: TournamentRunRecord | null,
 ): string | null => {
   if (!completion.winningColor || !completion.winnerUserId || !completion.loserUserId) {
     return "Match winner could not be determined.";
@@ -322,7 +273,7 @@ const resolveUsernames = (
 
 const ensureTournamentJoined = (
   nk: RuntimeNakama,
-  run: TournamentRunSnapshot,
+  run: TournamentRunRecord,
   players: TournamentMatchPlayerSummary[],
   usernames: Record<string, string>,
 ): void => {
@@ -337,7 +288,7 @@ const ensureTournamentJoined = (
 
 const submitTournamentScores = (
   nk: RuntimeNakama,
-  run: TournamentRunSnapshot,
+  run: TournamentRunRecord,
   completion: AuthoritativeTournamentMatchCompletion,
   usernames: Record<string, string>,
 ): TournamentRecordWriteSummary[] => {
@@ -458,6 +409,40 @@ const readTournamentEntrantCount = (value: unknown): number => {
   return typeof entrants === "number" && Number.isFinite(entrants) ? Math.max(0, Math.floor(entrants)) : 0;
 };
 
+const updateTournamentRunBracket = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  completion: AuthoritativeTournamentMatchCompletion,
+): TournamentRunRecord | null => {
+  if (
+    !completion.context ||
+    !completion.winnerUserId ||
+    !completion.loserUserId
+  ) {
+    return null;
+  }
+
+  return updateRunWithRetry(nk, logger, completion.context.runId, (current) => {
+    if (!current.bracket) {
+      return current;
+    }
+
+    const nextBracket = completeTournamentBracketMatch(current.bracket, {
+      entryId: completion.context?.entryId ?? null,
+      matchId: completion.matchId,
+      winnerUserId: completion.winnerUserId ?? "",
+      loserUserId: completion.loserUserId ?? "",
+      completedAt: completion.completedAt,
+    });
+
+    return {
+      ...current,
+      updatedAt: completion.completedAt,
+      bracket: nextBracket,
+    };
+  });
+};
+
 const maybeAutoFinalizeTournamentRun = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
@@ -467,6 +452,23 @@ const maybeAutoFinalizeTournamentRun = (
   const run = runState.run;
 
   if (!run || run.lifecycle === "finalized") {
+    return;
+  }
+
+  if (run.bracket?.finalizedAt) {
+    try {
+      const result = finalizeTournamentRun(logger, nk, run.runId, {});
+      logger.info(
+        "Auto-finalized tournament run %s after bracket completion.",
+        result.run.runId,
+      );
+    } catch (error) {
+      logger.warn(
+        "Unable to auto-finalize tournament run %s after bracket completion: %s",
+        run.runId,
+        getErrorMessage(error),
+      );
+    }
     return;
   }
 
@@ -623,6 +625,7 @@ export const processCompletedAuthoritativeTournamentMatch = (
     try {
       updateTournamentRunMetadata(nk, logger, runState.run.runId, record);
       if (record.counted) {
+        updateTournamentRunBracket(nk, logger, completion);
         maybeAutoFinalizeTournamentRun(nk, logger, runState.run.runId);
       }
     } catch (error) {
