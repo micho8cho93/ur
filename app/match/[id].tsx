@@ -118,8 +118,9 @@ const MATCH_AMBIENT_EFFECTS = {
 const TOP_CHROME_ACCENT = '#C89820';
 const TOP_CHROME_BORDER = urTheme.colors.cedar;
 const VISUAL_TURN_TIMER_WARNING_THRESHOLD = 0.22;
-const MOBILE_WEB_REEL_BOX_SCALE = 1.2;
-const MOBILE_WEB_REEL_DICE_IMAGE_SCALE = 1 / MOBILE_WEB_REEL_BOX_SCALE;
+const MOBILE_WEB_REEL_BOX_SCALE = 1.55;
+const MOBILE_WEB_REEL_DICE_SIZE_SCALE = 1.2;
+const MOBILE_WEB_REEL_DICE_IMAGE_SCALE = MOBILE_WEB_REEL_DICE_SIZE_SCALE / MOBILE_WEB_REEL_BOX_SCALE;
 const MOBILE_WEB_ROLL_BUTTON_SCALE = 1.2;
 const MATCH_CUE_FONT_FAMILY = 'CinzelDecorativeBold';
 const HOURGLASS_HEIGHT_RATIO = 156 / 100;
@@ -2638,6 +2639,9 @@ export function GameRoom() {
       ),
     )
     : 0;
+  const mobileWebBoardTrayAlignmentLift = isMobileWebLayout && useMobileSideReserveRails
+    ? Math.max(8, Math.round(mobileReserveColumnWidth * 0.16))
+    : 0;
   const boardWidthLimitByLayout = useSideColumns
     ? Math.max(
       224,
@@ -3924,7 +3928,15 @@ export function GameRoom() {
                   </View>
                 ) : null}
 
-                <View style={styles.boardCenterColumn}>
+                <View
+                  style={[
+                    styles.boardCenterColumn,
+                    mobileWebBoardTrayAlignmentLift > 0 && {
+                      marginTop: -mobileWebBoardTrayAlignmentLift,
+                      marginBottom: mobileWebBoardTrayAlignmentLift,
+                    },
+                  ]}
+                >
                   <View
                     style={[styles.boardViewport]}
                     onLayout={(event) => {
