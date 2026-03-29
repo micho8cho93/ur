@@ -2,8 +2,9 @@ import { create } from 'zustand';
 import { BotDifficulty, DEFAULT_BOT_DIFFICULTY } from '@/logic/bot/types';
 import { DEFAULT_MATCH_CONFIG, type MatchConfig } from '@/logic/matchConfigs';
 import { GameState, MoveAction, PlayerColor } from '@/logic/types';
-import { EloRatingChangeNotificationPayload } from '@/shared/elo';
-import { ProgressionAwardResponse } from '@/shared/progression';
+import { UserChallengeProgressRpcResponse } from '@/shared/challenges';
+import { EloRatingChangeNotificationPayload, EloRatingProfileRpcResponse } from '@/shared/elo';
+import { ProgressionAwardResponse, ProgressionSnapshot } from '@/shared/progression';
 import { MatchEndPayload, StateSnapshotPayload, StateSnapshotPlayers } from '@/shared/urMatchProtocol';
 import { createInitialState, getValidMoves, applyMove, rollDice } from '@/logic/engine';
 import { MatchPresenceEvent, Session } from '@heroiclabs/nakama-js';
@@ -41,6 +42,9 @@ interface GameStore {
   authoritativeSnapshotReceivedAtMs: number | null;
   lastProgressionAward: ProgressionAwardResponse | null;
   lastEloRatingChange: EloRatingChangeNotificationPayload | null;
+  lastProgressionSnapshot: { matchId: string; progression: ProgressionSnapshot } | null;
+  lastEloRatingProfileSnapshot: { matchId: string; profile: EloRatingProfileRpcResponse } | null;
+  lastChallengeProgressSnapshot: { matchId: string; progress: UserChallengeProgressRpcResponse } | null;
   socketState: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
   rollCommandSender: RollCommandSender;
   moveCommandSender: MoveCommandSender;
@@ -60,6 +64,13 @@ interface GameStore {
   updateMatchPresences: (event: MatchPresenceEvent) => void;
   setLastProgressionAward: (award: ProgressionAwardResponse | null) => void;
   setLastEloRatingChange: (change: EloRatingChangeNotificationPayload | null) => void;
+  setLastProgressionSnapshot: (snapshot: { matchId: string; progression: ProgressionSnapshot } | null) => void;
+  setLastEloRatingProfileSnapshot: (
+    snapshot: { matchId: string; profile: EloRatingProfileRpcResponse } | null,
+  ) => void;
+  setLastChallengeProgressSnapshot: (
+    snapshot: { matchId: string; progress: UserChallengeProgressRpcResponse } | null,
+  ) => void;
   setSocketState: (status: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error') => void;
   setRollCommandSender: (sender: RollCommandSender) => void;
   setMoveCommandSender: (sender: MoveCommandSender) => void;
@@ -100,6 +111,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   ...EMPTY_AUTHORITATIVE_ONLINE_STATE,
   lastProgressionAward: null,
   lastEloRatingChange: null,
+  lastProgressionSnapshot: null,
+  lastEloRatingProfileSnapshot: null,
+  lastChallengeProgressSnapshot: null,
   socketState: 'idle',
   rollCommandSender: null,
   moveCommandSender: null,
@@ -115,6 +129,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ...EMPTY_AUTHORITATIVE_ONLINE_STATE,
       lastProgressionAward: null,
       lastEloRatingChange: null,
+      lastProgressionSnapshot: null,
+      lastEloRatingProfileSnapshot: null,
+      lastChallengeProgressSnapshot: null,
       socketState: 'idle',
       serverRevision: 0,
       playerColor: null,
@@ -219,6 +236,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ lastEloRatingChange: change });
   },
 
+  setLastProgressionSnapshot: (snapshot) => {
+    set({ lastProgressionSnapshot: snapshot });
+  },
+
+  setLastEloRatingProfileSnapshot: (snapshot) => {
+    set({ lastEloRatingProfileSnapshot: snapshot });
+  },
+
+  setLastChallengeProgressSnapshot: (snapshot) => {
+    set({ lastChallengeProgressSnapshot: snapshot });
+  },
+
   setSocketState: (status) => {
     set({ socketState: status });
   },
@@ -241,6 +270,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ...EMPTY_AUTHORITATIVE_ONLINE_STATE,
       lastProgressionAward: null,
       lastEloRatingChange: null,
+      lastProgressionSnapshot: null,
+      lastEloRatingProfileSnapshot: null,
+      lastChallengeProgressSnapshot: null,
       socketState: 'idle',
       rollCommandSender: null,
       moveCommandSender: null,

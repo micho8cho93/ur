@@ -649,6 +649,68 @@ export const isChallengeDefinition = (value: unknown): value is ChallengeDefinit
   );
 };
 
+export const isUserChallengeState = (value: unknown): value is UserChallengeState => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const state = value as UserChallengeState;
+  return (
+    isChallengeId(state.challengeId) &&
+    typeof state.completed === "boolean" &&
+    (typeof state.completedAt === "string" || state.completedAt === null) &&
+    (typeof state.completedMatchId === "string" || state.completedMatchId === null) &&
+    typeof state.rewardXp === "number" &&
+    (typeof state.progressCurrent === "number" || state.progressCurrent === null) &&
+    (typeof state.progressTarget === "number" || state.progressTarget === null) &&
+    (typeof state.progressLabel === "string" || state.progressLabel === null)
+  );
+};
+
+export const isUserChallengeProgressStats = (value: unknown): value is UserChallengeProgressStats => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const stats = value as UserChallengeProgressStats;
+  return (
+    typeof stats.totalGamesPlayed === "number" &&
+    typeof stats.totalWins === "number" &&
+    typeof stats.currentWinStreak === "number" &&
+    typeof stats.currentTournamentWinStreak === "number" &&
+    (typeof stats.dailyGameBucket === "string" || stats.dailyGameBucket === null) &&
+    typeof stats.dailyGameCount === "number"
+  );
+};
+
+export const isUserChallengeProgressSnapshot = (
+  value: unknown
+): value is UserChallengeProgressSnapshot => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const snapshot = value as UserChallengeProgressSnapshot;
+  if (
+    typeof snapshot.totalCompleted !== "number" ||
+    typeof snapshot.totalRewardedXp !== "number" ||
+    typeof snapshot.updatedAt !== "string" ||
+    !isUserChallengeProgressStats(snapshot.stats) ||
+    typeof snapshot.challenges !== "object" ||
+    snapshot.challenges === null
+  ) {
+    return false;
+  }
+
+  return CHALLENGE_DEFINITIONS.every((definition) =>
+    isUserChallengeState(snapshot.challenges[definition.id])
+  );
+};
+
+export const isUserChallengeProgressRpcResponse = (
+  value: unknown
+): value is UserChallengeProgressRpcResponse => isUserChallengeProgressSnapshot(value);
+
 export const isSubmitCompletedBotMatchRpcResponse = (
   value: unknown
 ): value is SubmitCompletedBotMatchRpcResponse => {

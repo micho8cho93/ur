@@ -1,6 +1,6 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
-import { Text } from 'react-native';
+import { Pressable, Text } from 'react-native';
 
 import type { PublicTournamentStanding, TournamentParticipationState } from '@/src/tournaments/types';
 import { useTournamentAdvanceFlow, type UseTournamentAdvanceFlowResult } from './useTournamentAdvanceFlow';
@@ -8,7 +8,6 @@ import { useTournamentAdvanceFlow, type UseTournamentAdvanceFlowResult } from '.
 const mockGetPublicTournamentStatus = jest.fn();
 const mockLaunchTournamentMatch = jest.fn();
 const mockFinalizeMatchLaunch = jest.fn();
-const READY_JOINING_DELAY_MS = 720;
 const mockTournamentMatchLauncher = {
   finalizeMatchLaunch: (...args: unknown[]) => mockFinalizeMatchLaunch(...args),
 };
@@ -46,6 +45,9 @@ function HookHarness({ onState, ...props }: HarnessProps) {
     <>
       <Text testID="phase">{state.phase}</Text>
       <Text testID="status">{state.statusText}</Text>
+      <Pressable testID="launch-button" onPress={() => void state.launchNextMatch()}>
+        <Text>Launch</Text>
+      </Pressable>
     </>
   );
 }
@@ -229,9 +231,10 @@ describe('useTournamentAdvanceFlow', () => {
     });
 
     expect(screen.getByTestId('phase').props.children).toBe('ready');
+    expect(mockLaunchTournamentMatch).not.toHaveBeenCalled();
 
     await act(async () => {
-      jest.advanceTimersByTime(READY_JOINING_DELAY_MS);
+      fireEvent.press(screen.getByTestId('launch-button'));
       await flush();
     });
 
@@ -293,7 +296,8 @@ describe('useTournamentAdvanceFlow', () => {
 
     await act(async () => {
       await flush();
-      jest.advanceTimersByTime(READY_JOINING_DELAY_MS);
+      fireEvent.press(screen.getByTestId('launch-button'));
+      fireEvent.press(screen.getByTestId('launch-button'));
       await flush();
       jest.advanceTimersByTime(10_000);
       await flush();
@@ -366,7 +370,7 @@ describe('useTournamentAdvanceFlow', () => {
 
     await act(async () => {
       await flush();
-      jest.advanceTimersByTime(READY_JOINING_DELAY_MS);
+      fireEvent.press(screen.getByTestId('launch-button'));
       await flush();
     });
 

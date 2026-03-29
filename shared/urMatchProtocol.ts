@@ -1,10 +1,18 @@
 import { GameState, MoveAction, PlayerColor } from "../logic/types";
 import {
+  isUserChallengeProgressRpcResponse,
+  UserChallengeProgressRpcResponse,
+} from "./challenges";
+import {
+  EloRatingProfileRpcResponse,
   EloRatingChangeNotificationPayload,
+  isEloRatingProfileRpcResponse,
   isEloRatingChangeNotificationPayload,
 } from "./elo";
 import {
+  isProgressionSnapshot,
   isProgressionAwardNotificationPayload,
+  ProgressionSnapshot,
   ProgressionAwardNotificationPayload,
 } from "./progression";
 
@@ -15,6 +23,7 @@ export const MatchOpCode = {
   SERVER_ERROR: 101,
   PROGRESSION_AWARD: 102,
   ELO_RATING_UPDATE: 103,
+  TOURNAMENT_REWARD_SUMMARY: 104,
 } as const;
 
 export type MatchOpCodeValue = (typeof MatchOpCode)[keyof typeof MatchOpCode];
@@ -82,10 +91,45 @@ export type ServerErrorPayload = {
   revision?: number;
 };
 
-export type ServerMatchPayload = StateSnapshotPayload | ServerErrorPayload;
+export type TournamentMatchRewardSummaryOutcome =
+  | "advancing"
+  | "eliminated"
+  | "runner_up"
+  | "champion";
+
+export type TournamentMatchRewardSummaryPayload = {
+  type: "tournament_match_reward_summary";
+  matchId: string;
+  tournamentRunId: string;
+  tournamentId: string;
+  round: number | null;
+  playerUserId: string;
+  didWin: boolean;
+  tournamentOutcome: TournamentMatchRewardSummaryOutcome;
+  eloProfile: EloRatingProfileRpcResponse;
+  eloOld: number;
+  eloNew: number;
+  eloDelta: number;
+  totalXpOld: number;
+  totalXpNew: number;
+  totalXpDelta: number;
+  challengeCompletionCount: number;
+  challengeXpDelta: number;
+  shouldEnterWaitingRoom: boolean;
+  progression: ProgressionSnapshot;
+  challengeProgress: UserChallengeProgressRpcResponse;
+};
+
+export type ServerMatchPayload =
+  | StateSnapshotPayload
+  | ServerErrorPayload
+  | TournamentMatchRewardSummaryPayload;
 export type MatchProgressionPayload = ProgressionAwardNotificationPayload;
 export type MatchEloRatingPayload = EloRatingChangeNotificationPayload;
-export type ExtendedServerMatchPayload = ServerMatchPayload | MatchProgressionPayload | MatchEloRatingPayload;
+export type ExtendedServerMatchPayload =
+  | ServerMatchPayload
+  | MatchProgressionPayload
+  | MatchEloRatingPayload;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -181,8 +225,43 @@ export const isServerErrorPayload = (value: unknown): value is ServerErrorPayloa
   typeof value.code === "string" &&
   typeof value.message === "string";
 
+const isTournamentMatchRewardSummaryOutcome = (
+  value: unknown,
+): value is TournamentMatchRewardSummaryOutcome =>
+  value === "advancing" ||
+  value === "eliminated" ||
+  value === "runner_up" ||
+  value === "champion";
+
+export const isTournamentMatchRewardSummaryPayload = (
+  value: unknown,
+): value is TournamentMatchRewardSummaryPayload =>
+  isRecord(value) &&
+  value.type === "tournament_match_reward_summary" &&
+  typeof value.matchId === "string" &&
+  typeof value.tournamentRunId === "string" &&
+  typeof value.tournamentId === "string" &&
+  (typeof value.round === "number" || value.round === null) &&
+  typeof value.playerUserId === "string" &&
+  typeof value.didWin === "boolean" &&
+  isTournamentMatchRewardSummaryOutcome(value.tournamentOutcome) &&
+  isEloRatingProfileRpcResponse(value.eloProfile) &&
+  isFiniteNumber(value.eloOld) &&
+  isFiniteNumber(value.eloNew) &&
+  isFiniteNumber(value.eloDelta) &&
+  isFiniteNumber(value.totalXpOld) &&
+  isFiniteNumber(value.totalXpNew) &&
+  isFiniteNumber(value.totalXpDelta) &&
+  isFiniteNumber(value.challengeCompletionCount) &&
+  isFiniteNumber(value.challengeXpDelta) &&
+  typeof value.shouldEnterWaitingRoom === "boolean" &&
+  isProgressionSnapshot(value.progression) &&
+  isUserChallengeProgressRpcResponse(value.challengeProgress);
+
 export const isServerMatchPayload = (value: unknown): value is ServerMatchPayload =>
-  isStateSnapshotPayload(value) || isServerErrorPayload(value);
+  isStateSnapshotPayload(value) ||
+  isServerErrorPayload(value) ||
+  isTournamentMatchRewardSummaryPayload(value);
 
 export const isExtendedServerMatchPayload = (value: unknown): value is ExtendedServerMatchPayload =>
   isServerMatchPayload(value) ||

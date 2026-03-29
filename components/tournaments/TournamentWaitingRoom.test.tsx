@@ -1,6 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
+import { createDefaultUserChallengeProgressSnapshot } from '@/shared/challenges';
+import { buildProgressionSnapshot } from '@/shared/progression';
 import type { PublicTournamentStanding } from '@/src/tournaments/types';
 import { TournamentWaitingRoom } from './TournamentWaitingRoom';
 
@@ -19,24 +21,53 @@ const standings: PublicTournamentStanding[] = [
     updatedAt: '2026-03-27T10:00:00.000Z',
     metadata: {},
   },
-  {
-    rank: 2,
-    ownerId: 'user-2',
-    username: 'Opponent',
-    score: 8,
-    subscore: 2,
-    attempts: 3,
-    maxAttempts: 3,
-    matchId: 'match-2',
-    round: 3,
-    result: 'win',
-    updatedAt: '2026-03-27T10:01:00.000Z',
-    metadata: {},
-  },
 ];
 
+const rewardSummary = {
+  type: 'tournament_match_reward_summary' as const,
+  matchId: 'match-1',
+  tournamentRunId: 'run-1',
+  tournamentId: 'tournament-1',
+  round: 3,
+  playerUserId: 'user-1',
+  didWin: true,
+  tournamentOutcome: 'advancing' as const,
+  eloProfile: {
+    leaderboardId: 'elo_global',
+    userId: 'user-1',
+    usernameDisplay: 'Michel',
+    eloRating: 1224,
+    ratedGames: 11,
+    ratedWins: 7,
+    ratedLosses: 4,
+    provisional: false,
+    rank: 18,
+    lastRatedMatchId: 'match-1',
+    lastRatedAt: '2026-03-27T10:00:00.000Z',
+  },
+  eloOld: 1200,
+  eloNew: 1224,
+  eloDelta: 24,
+  totalXpOld: 500,
+  totalXpNew: 690,
+  totalXpDelta: 190,
+  challengeCompletionCount: 2,
+  challengeXpDelta: 90,
+  shouldEnterWaitingRoom: true,
+  progression: buildProgressionSnapshot(690),
+  challengeProgress: createDefaultUserChallengeProgressSnapshot('2026-03-27T10:00:00.000Z'),
+};
+
 describe('TournamentWaitingRoom', () => {
-  it('renders the locked intermission state with the current player highlighted', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('renders the full-screen intermission state with the rotating reward card', () => {
     render(
       <TournamentWaitingRoom
         visible
@@ -44,48 +75,65 @@ describe('TournamentWaitingRoom', () => {
         tournamentName="Spring Open"
         derivedRound={3}
         statusText="Another match is still in progress."
-        subtleStatusText="Standings stay live here while the next pairing settles."
+        subtleStatusText="The next board will launch automatically when both winners arrive."
         retryMessage={null}
         standings={standings}
         currentStanding={standings[0]}
         highlightOwnerId="user-1"
         finalPlacement={null}
         isChampion={false}
+        rewardSummary={rewardSummary}
         onReturnToMainPage={jest.fn()}
       />,
     );
 
     expect(screen.getByTestId('tournament-waiting-room')).toBeTruthy();
+    expect(screen.getByText('Tournament Waiting Room')).toBeTruthy();
     expect(screen.getByText('Spring Open')).toBeTruthy();
+    expect(screen.getByText('Round 3')).toBeTruthy();
     expect(screen.getByText('Another match is still in progress.')).toBeTruthy();
-    expect(screen.getByText('YOU')).toBeTruthy();
-    expect(screen.getByText('Royal Archive')).toBeTruthy();
-    expect(screen.queryByText('Back to Standings')).toBeNull();
+    expect(screen.getByText('Elo Locked')).toBeTruthy();
+    expect(screen.getByText('+24')).toBeTruthy();
+    expect(screen.queryByText('Return to Main Page')).toBeNull();
   });
 
-  it('shows the ready state without exposing a standings escape hatch', () => {
+  it('rotates to the next card every 15 seconds and launches on a card boundary', () => {
+    const handleLaunch = jest.fn();
+
     render(
       <TournamentWaitingRoom
         visible
         phase="ready"
         tournamentName="Spring Open"
         derivedRound={3}
-        statusText="Next round ready"
-        subtleStatusText="Opponent found."
-        retryMessage="The next match was not ready yet."
+        statusText="Match found"
+        subtleStatusText="The next board will launch on the current card boundary."
+        retryMessage={null}
         standings={standings}
         currentStanding={standings[0]}
         highlightOwnerId="user-1"
         finalPlacement={null}
         isChampion={false}
+        rewardSummary={rewardSummary}
         onReturnToMainPage={jest.fn()}
+        onLaunchNextMatch={handleLaunch}
       />,
     );
 
-    expect(screen.getByText('Next round ready')).toBeTruthy();
-    expect(screen.getByText('The next match was not ready yet.')).toBeTruthy();
-    expect(screen.queryByText('Back to Standings')).toBeNull();
-    expect(screen.getByText('Royal Archive')).toBeTruthy();
+    expect(screen.getByText('Elo Locked')).toBeTruthy();
+
+    act(() => {
+      jest.advanceTimersByTime(15_000);
+    });
+
+    expect(handleLaunch).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('XP Locked')).toBeTruthy();
+
+    act(() => {
+      jest.advanceTimersByTime(15_000);
+    });
+
+    expect(screen.getByText('Challenges Locked')).toBeTruthy();
   });
 
   it('renders finalized champion copy when the tournament is complete', () => {
@@ -105,16 +153,15 @@ describe('TournamentWaitingRoom', () => {
         highlightOwnerId="user-1"
         finalPlacement={1}
         isChampion
+        rewardSummary={rewardSummary}
         onReturnToMainPage={handleExit}
       />,
     );
 
     fireEvent.press(screen.getByText('Return to Main Page'));
 
-    expect(screen.getByText('Champion Crowned')).toBeTruthy();
     expect(screen.getByText('Final placement: Champion')).toBeTruthy();
     expect(screen.getByText('Return to Main Page')).toBeTruthy();
-    expect(screen.queryByText('Royal Archive')).toBeNull();
     expect(handleExit).toHaveBeenCalledTimes(1);
   });
 
@@ -128,22 +175,22 @@ describe('TournamentWaitingRoom', () => {
         tournamentName="Spring Open"
         derivedRound={3}
         statusText="Your tournament run has ended."
-        subtleStatusText="Return to the standings to review the final board."
+        subtleStatusText="Your final result is locked in."
         retryMessage={null}
         standings={standings}
         currentStanding={standings[0]}
         highlightOwnerId="user-1"
         finalPlacement={4}
         isChampion={false}
+        rewardSummary={null}
         onReturnToMainPage={handleExit}
       />,
     );
 
     fireEvent.press(screen.getByText('Return to Main Page'));
 
-    expect(screen.getByText('Tournament Run Ended')).toBeTruthy();
-    expect(screen.queryByText('Back to Standings')).toBeNull();
-    expect(screen.queryByText('Royal Archive')).toBeNull();
+    expect(screen.getByText('Your tournament run has ended.')).toBeTruthy();
+    expect(screen.getByText('Return to Main Page')).toBeTruthy();
     expect(handleExit).toHaveBeenCalledTimes(1);
   });
 });

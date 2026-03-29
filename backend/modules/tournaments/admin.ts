@@ -27,6 +27,7 @@ import {
   getErrorMessage,
   getStorageObjectVersion,
   maybeSetStorageVersion,
+  type XpRewardResult,
 } from "../progression";
 import type { RuntimeContext, RuntimeLogger, RuntimeMetadata, RuntimeNakama } from "./types";
 
@@ -94,6 +95,7 @@ export type FinalizeTournamentRunResult = {
   finalSnapshot: TournamentStandingsSnapshot;
   disabledRanks: boolean;
   championUserId: string | null;
+  championRewardResult: (XpRewardResult & { source: "tournament_champion" }) | null;
 };
 
 export const RUNS_COLLECTION = "tournament_runs";
@@ -583,6 +585,7 @@ export const finalizeTournamentRun = (
 
   const effectiveSnapshot = run.finalSnapshot ?? finalSnapshot;
   const championUserId = resolveChampionUserId(effectiveSnapshot);
+  let championRewardResult: (XpRewardResult & { source: "tournament_champion" }) | null = null;
 
   if (championUserId) {
     const rewardSettings = resolveTournamentXpRewardSettings(run.metadata);
@@ -591,18 +594,18 @@ export const finalizeTournamentRun = (
       logger.info("Skipping tournament champion XP for %s because the configured reward is zero.", run.runId);
     } else {
       try {
-        const rewardResult = awardXpForTournamentChampion(nk, logger, {
+        championRewardResult = awardXpForTournamentChampion(nk, logger, {
           userId: championUserId,
           runId: run.runId,
           awardedXp: rewardSettings.xpForTournamentChampion,
         });
 
-        if (!rewardResult.duplicate) {
+        if (!championRewardResult.duplicate) {
           logger.info(
             "Awarded tournament champion XP to %s for run %s. total=%d",
             championUserId,
             run.runId,
-            rewardResult.newTotalXp,
+            championRewardResult.newTotalXp,
           );
         }
       } catch (error) {
@@ -624,6 +627,7 @@ export const finalizeTournamentRun = (
     finalSnapshot: effectiveSnapshot,
     disabledRanks,
     championUserId,
+    championRewardResult,
   };
 };
 

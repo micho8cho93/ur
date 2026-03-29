@@ -24,17 +24,20 @@ const getErrorMessage = (error: unknown): string =>
 export const EloRatingProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const { user, isLoading: isAuthLoading, isUsernameOnboardingLoading, isUsernameOnboardingRequired } = useAuth();
   const lastEloRatingChange = useGameStore((state) => state.lastEloRatingChange);
+  const lastEloRatingProfileSnapshot = useGameStore((state) => state.lastEloRatingProfileSnapshot);
   const [ratingProfile, setRatingProfile] = useState<EloRatingProfileRpcResponse | null>(null);
   const [status, setStatus] = useState<EloRatingStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeUserIdRef = useRef<string | null>(null);
   const appliedUpdateKeyRef = useRef<string | null>(null);
+  const appliedProfileSnapshotKeyRef = useRef<string | null>(null);
   const requestIdRef = useRef(0);
 
   const resetState = useCallback(() => {
     requestIdRef.current += 1;
     activeUserIdRef.current = null;
     appliedUpdateKeyRef.current = null;
+    appliedProfileSnapshotKeyRef.current = null;
     setRatingProfile(null);
     setStatus('idle');
     setErrorMessage(null);
@@ -129,6 +132,24 @@ export const EloRatingProvider: React.FC<PropsWithChildren> = ({ children }) => 
     setStatus('ready');
     setErrorMessage(null);
   }, [lastEloRatingChange, ratingProfile?.lastRatedAt, user]);
+
+  useEffect(() => {
+    if (!user || !lastEloRatingProfileSnapshot) {
+      return;
+    }
+
+    const snapshotKey = `${lastEloRatingProfileSnapshot.matchId}:${lastEloRatingProfileSnapshot.profile.eloRating}:${lastEloRatingProfileSnapshot.profile.rank ?? 'none'}`;
+    if (appliedProfileSnapshotKeyRef.current === snapshotKey) {
+      return;
+    }
+
+    appliedProfileSnapshotKeyRef.current = snapshotKey;
+    activeUserIdRef.current = user.id;
+    requestIdRef.current += 1;
+    setRatingProfile(lastEloRatingProfileSnapshot.profile);
+    setStatus('ready');
+    setErrorMessage(null);
+  }, [lastEloRatingProfileSnapshot, user]);
 
   const value = useMemo<EloContextValue>(
     () => ({

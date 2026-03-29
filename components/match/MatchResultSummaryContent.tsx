@@ -3,9 +3,11 @@ import { EloMatchSummaryPanel } from '@/components/elo/EloMatchSummaryPanel';
 import { ProgressionAwardSummary } from '@/components/progression/ProgressionAwardSummary';
 import { XPDisplay } from '@/components/challenges/XPDisplay';
 import { urTheme, urTypography } from '@/constants/urTheme';
+import { formatProgressionXp } from '@/src/progression/progressionDisplay';
 import type { MatchChallengeRewardSummary } from '@/src/challenges/challengeUi';
 import type { EloRatingChangeNotificationPayload } from '@/shared/elo';
 import type { ProgressionAwardResponse, ProgressionSnapshot } from '@/shared/progression';
+import type { TournamentMatchRewardSummaryPayload } from '@/shared/urMatchProtocol';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -27,7 +29,11 @@ type MatchResultSummaryContentProps = {
   shouldShowChallengeRewards: boolean;
   matchChallengeSummary: MatchChallengeRewardSummary | null;
   matchRewardsErrorMessage: string | null;
+  tournamentRewardSummary?: TournamentMatchRewardSummaryPayload | null;
+  tournamentCountdownLabel?: string | null;
 };
+
+const formatSignedValue = (value: number) => `${value >= 0 ? '+' : ''}${Math.trunc(value)}`;
 
 export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps> = ({
   didPlayerWin,
@@ -47,6 +53,8 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
   shouldShowChallengeRewards,
   matchChallengeSummary,
   matchRewardsErrorMessage,
+  tournamentRewardSummary = null,
+  tournamentCountdownLabel = null,
 }) => {
   return (
     <>
@@ -60,7 +68,46 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
           <Text style={styles.privateRewardLabelText}>Private Match: Reduced XP Reward</Text>
         </View>
       ) : null}
-      {!isPlaythroughTutorialMatch ? (
+      {tournamentRewardSummary ? (
+        <View style={styles.tournamentRewardCard}>
+          <Text style={styles.tournamentRewardEyebrow}>Tournament Rewards Locked</Text>
+          <View style={styles.tournamentRewardStats}>
+            <View style={styles.tournamentRewardStat}>
+              <Text style={styles.tournamentRewardStatLabel}>Elo</Text>
+              <Text style={styles.tournamentRewardStatValue}>{formatSignedValue(tournamentRewardSummary.eloDelta)}</Text>
+              <Text style={styles.tournamentRewardStatDetail}>
+                {`${tournamentRewardSummary.eloOld} -> ${tournamentRewardSummary.eloNew}`}
+              </Text>
+            </View>
+            <View style={styles.tournamentRewardStat}>
+              <Text style={styles.tournamentRewardStatLabel}>XP</Text>
+              <Text style={styles.tournamentRewardStatValue}>
+                {`${tournamentRewardSummary.totalXpDelta >= 0 ? '+' : ''}${formatProgressionXp(
+                  Math.abs(tournamentRewardSummary.totalXpDelta),
+                )}`}
+              </Text>
+              <Text style={styles.tournamentRewardStatDetail}>
+                {`${formatProgressionXp(tournamentRewardSummary.totalXpOld)} -> ${formatProgressionXp(
+                  tournamentRewardSummary.totalXpNew,
+                )}`}
+              </Text>
+            </View>
+            <View style={styles.tournamentRewardStat}>
+              <Text style={styles.tournamentRewardStatLabel}>Challenges</Text>
+              <Text style={styles.tournamentRewardStatValue}>{String(tournamentRewardSummary.challengeCompletionCount)}</Text>
+              <Text style={styles.tournamentRewardStatDetail}>
+                {tournamentRewardSummary.challengeXpDelta > 0
+                  ? `+${formatProgressionXp(tournamentRewardSummary.challengeXpDelta)} XP`
+                  : 'No bonus XP'}
+              </Text>
+            </View>
+          </View>
+          {tournamentCountdownLabel ? (
+            <Text style={styles.tournamentCountdownText}>{tournamentCountdownLabel}</Text>
+          ) : null}
+        </View>
+      ) : null}
+      {!isPlaythroughTutorialMatch && !tournamentRewardSummary ? (
         <EloMatchSummaryPanel
           result={isRankedHumanMatch ? lastEloRatingChange : null}
           pending={isRankedHumanMatch && !lastEloRatingChange}
@@ -76,7 +123,7 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
             compact
             style={styles.matchRewardsXpDisplay}
           />
-          {didPlayerWin ? (
+          {didPlayerWin && !tournamentRewardSummary ? (
             <ProgressionAwardSummary
               progression={progression}
               award={lastProgressionAward}
@@ -129,6 +176,58 @@ const styles = StyleSheet.create({
     ...urTypography.label,
     color: 'rgba(216, 232, 251, 0.96)',
     fontSize: 11,
+    textAlign: 'center',
+  },
+  tournamentRewardCard: {
+    width: '100%',
+    marginBottom: urTheme.spacing.sm,
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(240, 201, 101, 0.32)',
+    backgroundColor: 'rgba(16, 25, 36, 0.82)',
+    padding: urTheme.spacing.md,
+    gap: urTheme.spacing.sm,
+  },
+  tournamentRewardEyebrow: {
+    ...urTypography.label,
+    color: '#F4D9A8',
+    fontSize: 10,
+  },
+  tournamentRewardStats: {
+    flexDirection: 'row',
+    gap: urTheme.spacing.sm,
+  },
+  tournamentRewardStat: {
+    flex: 1,
+    borderRadius: urTheme.radii.md,
+    backgroundColor: 'rgba(7, 12, 18, 0.48)',
+    borderWidth: 1,
+    borderColor: 'rgba(216, 232, 251, 0.12)',
+    paddingHorizontal: urTheme.spacing.sm,
+    paddingVertical: urTheme.spacing.sm,
+    gap: 4,
+  },
+  tournamentRewardStatLabel: {
+    ...urTypography.label,
+    color: 'rgba(216, 232, 251, 0.74)',
+    fontSize: 10,
+  },
+  tournamentRewardStatValue: {
+    ...urTypography.subtitle,
+    color: '#F8ECD6',
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '700',
+  },
+  tournamentRewardStatDetail: {
+    color: 'rgba(247, 229, 203, 0.72)',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  tournamentCountdownText: {
+    color: 'rgba(216, 232, 251, 0.86)',
+    fontSize: 12,
+    lineHeight: 17,
     textAlign: 'center',
   },
 });

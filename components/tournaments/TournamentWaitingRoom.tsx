@@ -1,11 +1,11 @@
-import { TournamentStandingsTable } from '@/components/tournaments/TournamentStandingsTable';
 import { Button } from '@/components/ui/Button';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import type { TournamentAdvanceFlowPhase } from '@/src/tournaments/useTournamentAdvanceFlow';
 import type { PublicTournamentStanding } from '@/src/tournaments/types';
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { TournamentMatchRewardSummaryPayload } from '@/shared/urMatchProtocol';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Image, StyleSheet, Text, View } from 'react-native';
 
 type TournamentWaitingRoomProps = {
   visible: boolean;
@@ -20,56 +20,131 @@ type TournamentWaitingRoomProps = {
   highlightOwnerId: string | null;
   finalPlacement: number | null;
   isChampion: boolean;
+  rewardSummary?: TournamentMatchRewardSummaryPayload | null;
   onReturnToMainPage: () => void;
+  onLaunchNextMatch?: () => Promise<void> | void;
   children?: React.ReactNode;
 };
 
-const WAITING_ROOM_FACTS = [
-  'The Royal Game of Ur was played in Mesopotamia nearly 4,500 years ago.',
-  'One of the best-known Ur boards was found in the Royal Tombs of Ur.',
-  'Rosette tiles are special safe spaces and often grant another roll.',
-  'Ancient cuneiform tablets helped historians reconstruct surviving rule sets.',
-  'Ur was one of the great Sumerian cities of the ancient Near East.',
-] as const;
-
-const buildTitle = (phase: TournamentAdvanceFlowPhase, isChampion: boolean): string => {
-  if (phase === 'finalized') {
-    return isChampion ? 'Champion Crowned' : 'Tournament Complete';
-  }
-
-  if (phase === 'eliminated') {
-    return 'Tournament Run Ended';
-  }
-
-  if (phase === 'ready' || phase === 'launching') {
-    return 'Next Round Ready';
-  }
-
-  return 'Tournament Intermission';
+type WaitingRoomCard = {
+  key: string;
+  eyebrow: string;
+  title: string;
+  body: string;
+  accent: string;
 };
 
-const buildBodyCopy = (
-  phase: TournamentAdvanceFlowPhase,
-  isChampion: boolean,
-  finalPlacement: number | null,
-): string => {
-  if (phase === 'finalized') {
-    if (isChampion) {
-      return 'The bracket is settled and your run finished at the top. Your rewards stay visible below while the final standings lock in.';
-    }
+const CARD_DURATION_MS = 15_000;
 
-    if (typeof finalPlacement === 'number') {
-      return `The tournament has concluded. Your final placement is rank ${finalPlacement}.`;
-    }
+const ROYAL_GAME_OF_UR_FACTS = [
+  'Archaeologists uncovered one of the best-known Ur boards in the Royal Tombs of Ur.',
+  'Rosette tiles are safe spaces and often grant another roll in surviving rule sets.',
+  'Cuneiform tablets helped historians reconstruct playable Royal Game of Ur rules.',
+  'The game flourished in Mesopotamia about 4,500 years ago and later spread widely.',
+] as const;
 
-    return 'The tournament has concluded and the final standings are now locked.';
+const MESOPOTAMIA_FACTS = [
+  'Ur stood near the Euphrates and was one of the great Sumerian cities of the ancient world.',
+  'Mesopotamian scribes recorded trade, law, and ritual on clay tablets in cuneiform.',
+  'Temple economies and long-distance trade helped Mesopotamian cities grow into major powers.',
+  'Mesopotamia is often called the cradle of cities because of its early urban civilizations.',
+] as const;
+
+const buildCards = (
+  rewardSummary: TournamentMatchRewardSummaryPayload | null,
+  rotationCycle: number,
+): WaitingRoomCard[] => {
+  const urFact = ROYAL_GAME_OF_UR_FACTS[rotationCycle % ROYAL_GAME_OF_UR_FACTS.length];
+  const mesopotamiaFact = MESOPOTAMIA_FACTS[rotationCycle % MESOPOTAMIA_FACTS.length];
+
+  if (!rewardSummary) {
+    return [
+      {
+        key: 'elo',
+        eyebrow: 'Reward Sync',
+        title: 'Elo update locked',
+        body: 'Your post-match rating is being confirmed for the next round.',
+        accent: '#A7D3FF',
+      },
+      {
+        key: 'xp',
+        eyebrow: 'Reward Sync',
+        title: 'XP update locked',
+        body: 'Your progression total is being reconciled before the next board opens.',
+        accent: '#F6D697',
+      },
+      {
+        key: 'challenge',
+        eyebrow: 'Reward Sync',
+        title: 'Challenge archive syncing',
+        body: 'Challenge completions are being finalized while the bracket advances.',
+        accent: '#E7B56A',
+      },
+      {
+        key: 'ur',
+        eyebrow: 'Royal Game of Ur',
+        title: 'Archive Note',
+        body: urFact,
+        accent: '#C5E4FF',
+      },
+      {
+        key: 'mesopotamia',
+        eyebrow: 'Mesopotamia',
+        title: 'World Note',
+        body: mesopotamiaFact,
+        accent: '#F1C975',
+      },
+    ];
   }
 
-  if (phase === 'eliminated') {
-    return 'Your tournament run is complete. The latest standings stay visible here while you review the result.';
-  }
+  const eloDeltaLabel = `${rewardSummary.eloDelta >= 0 ? '+' : ''}${rewardSummary.eloDelta}`;
+  const xpDeltaLabel = `${rewardSummary.totalXpDelta >= 0 ? '+' : ''}${rewardSummary.totalXpDelta} XP`;
+  const challengeTitle =
+    rewardSummary.challengeCompletionCount > 0
+      ? `${rewardSummary.challengeCompletionCount} challenge${rewardSummary.challengeCompletionCount === 1 ? '' : 's'} completed`
+      : 'No new challenges this round';
+  const challengeBody =
+    rewardSummary.challengeXpDelta > 0
+      ? `Challenge rewards added +${rewardSummary.challengeXpDelta} XP to your record.`
+      : 'Your challenge archive is up to date for this match.';
 
-  return 'Stay here while the bracket advances. Your place is locked and the next board will open automatically.';
+  return [
+    {
+      key: 'elo',
+      eyebrow: 'Elo Locked',
+      title: eloDeltaLabel,
+      body: `Rating moved from ${rewardSummary.eloOld} to ${rewardSummary.eloNew}.`,
+      accent: '#A7D3FF',
+    },
+    {
+      key: 'xp',
+      eyebrow: 'XP Locked',
+      title: xpDeltaLabel,
+      body: `Total XP now sits at ${rewardSummary.totalXpNew}.`,
+      accent: '#F6D697',
+    },
+    {
+      key: 'challenge',
+      eyebrow: 'Challenges Locked',
+      title: challengeTitle,
+      body: challengeBody,
+      accent: '#E7B56A',
+    },
+    {
+      key: 'ur',
+      eyebrow: 'Royal Game of Ur',
+      title: 'Archive Note',
+      body: urFact,
+      accent: '#C5E4FF',
+    },
+    {
+      key: 'mesopotamia',
+      eyebrow: 'Mesopotamia',
+      title: 'World Note',
+      body: mesopotamiaFact,
+      accent: '#F1C975',
+    },
+  ];
 };
 
 export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
@@ -80,90 +155,59 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
   statusText,
   subtleStatusText,
   retryMessage,
-  standings,
   currentStanding,
-  highlightOwnerId,
   finalPlacement,
   isChampion,
-  children,
+  rewardSummary = null,
   onReturnToMainPage,
+  onLaunchNextMatch,
 }) => {
-  const cueOpacity = useRef(new Animated.Value(phase === 'ready' || phase === 'launching' ? 1 : 0)).current;
-  const cueScale = useRef(new Animated.Value(phase === 'ready' || phase === 'launching' ? 1 : 0.98)).current;
-  const cueGlow = useRef(new Animated.Value(phase === 'ready' || phase === 'launching' ? 1 : 0)).current;
   const showExitActions = phase === 'eliminated' || phase === 'finalized';
-  const [factIndex, setFactIndex] = useState(0);
+  const [cardIndex, setCardIndex] = useState(0);
+  const [rotationCycle, setRotationCycle] = useState(0);
+  const launchTriggeredRef = useRef(false);
+  const cards = useMemo(() => buildCards(rewardSummary, rotationCycle), [rewardSummary, rotationCycle]);
+  const activeCard = cards[cardIndex] ?? cards[0];
 
   useEffect(() => {
-    if (!visible || showExitActions) {
-      return undefined;
-    }
+    launchTriggeredRef.current = false;
 
-    setFactIndex(0);
-    const intervalId = setInterval(() => {
-      setFactIndex((current) => (current + 1) % WAITING_ROOM_FACTS.length);
-    }, 3_600);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [showExitActions, visible]);
-
-  useEffect(() => {
-    const activeCue = phase === 'ready' || phase === 'launching';
-
-    if (activeCue) {
-      cueOpacity.setValue(0.45);
-      cueScale.setValue(0.985);
-      cueGlow.setValue(0.2);
-
-      Animated.parallel([
-        Animated.timing(cueOpacity, {
-          toValue: 1,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-        Animated.spring(cueScale, {
-          toValue: 1,
-          friction: 8,
-          tension: 110,
-          useNativeDriver: true,
-        }),
-        Animated.sequence([
-          Animated.timing(cueGlow, {
-            toValue: 1,
-            duration: 260,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cueGlow, {
-            toValue: 0.42,
-            duration: 420,
-            useNativeDriver: true,
-          }),
-        ]),
-      ]).start();
-
+    if (!visible) {
       return;
     }
 
-    Animated.parallel([
-      Animated.timing(cueOpacity, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-      Animated.timing(cueScale, {
-        toValue: 0.98,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-      Animated.timing(cueGlow, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [cueGlow, cueOpacity, cueScale, phase]);
+    setCardIndex(0);
+    setRotationCycle(0);
+
+    if (showExitActions) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      if (phase === 'ready' && onLaunchNextMatch && !launchTriggeredRef.current) {
+        launchTriggeredRef.current = true;
+        void onLaunchNextMatch();
+      }
+
+      setCardIndex((current) => {
+        const next = (current + 1) % cards.length;
+        if (next === 0) {
+          setRotationCycle((cycle) => cycle + 1);
+        }
+        return next;
+      });
+    }, CARD_DURATION_MS);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [cards.length, onLaunchNextMatch, phase, showExitActions, visible]);
+
+  useEffect(() => {
+    if (phase !== 'ready' && phase !== 'launching') {
+      launchTriggeredRef.current = false;
+    }
+  }, [phase]);
 
   if (!visible) {
     return null;
@@ -171,90 +215,71 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
 
   return (
     <View testID="tournament-waiting-room" style={styles.backdrop}>
-      <Animated.View
-        style={[
-          styles.cueGlow,
-          {
-            opacity: cueGlow,
-            transform: [{ scale: cueScale }],
-          },
-        ]}
-      />
-      <View style={styles.sheet}>
-        <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
-        <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.inlayTexture} />
-        <View style={styles.border} />
+      <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
+      <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.inlayTexture} />
+      <View style={styles.overlay} />
+      <View style={styles.innerFrame} />
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-          <View style={styles.headerBlock}>
-            <Text style={styles.eyebrow}>Tournament Advance</Text>
-            <Text style={styles.title}>{buildTitle(phase, isChampion)}</Text>
-            <Text numberOfLines={2} style={styles.tournamentName}>
-              {tournamentName}
-            </Text>
-            <Text style={styles.bodyCopy}>{buildBodyCopy(phase, isChampion, finalPlacement)}</Text>
-          </View>
+      <View style={styles.chrome}>
+        <View style={styles.headerBlock}>
+          <Text style={styles.eyebrow}>Tournament Waiting Room</Text>
+          <Text numberOfLines={2} style={styles.title}>
+            {tournamentName}
+          </Text>
+          <Text style={styles.bodyCopy}>The next match will start automatically as soon as the bracket is ready.</Text>
+        </View>
 
-          <Animated.View
-            style={[
-              styles.statusCard,
-              {
-                opacity: cueOpacity.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.9, 1],
-                }),
-                transform: [{ scale: cueScale }],
-              },
-              (phase === 'ready' || phase === 'launching') && styles.statusCardReady,
-            ]}
-          >
-            <View style={styles.statusHeader}>
-              {typeof derivedRound === 'number' ? (
-                <View style={styles.roundPill}>
-                  <Text style={styles.roundPillText}>Round {derivedRound}</Text>
-                </View>
-              ) : null}
-              {typeof currentStanding?.rank === 'number' ? (
-                <View style={styles.rankPill}>
-                  <Text style={styles.rankPillText}>Your Rank #{currentStanding.rank}</Text>
-                </View>
-              ) : null}
-            </View>
-            <Text style={styles.statusText}>{statusText}</Text>
-            {subtleStatusText ? <Text style={styles.subtleStatusText}>{subtleStatusText}</Text> : null}
-            {retryMessage ? <Text style={styles.retryText}>{retryMessage}</Text> : null}
-            {phase === 'finalized' && typeof finalPlacement === 'number' ? (
-              <Text style={styles.finalPlacementText}>
-                {isChampion ? 'Final placement: Champion' : `Final placement: #${finalPlacement}`}
-              </Text>
-            ) : null}
-          </Animated.View>
-
-          {children ? <View style={styles.summaryWrap}>{children}</View> : null}
-
-          {!showExitActions ? (
-            <View style={styles.factCard}>
-              <Text style={styles.factEyebrow}>Royal Archive</Text>
-              <Text style={styles.factText}>{WAITING_ROOM_FACTS[factIndex]}</Text>
+        <View style={styles.pillRow}>
+          {typeof derivedRound === 'number' ? (
+            <View style={styles.infoPill}>
+              <Text style={styles.infoPillText}>Round {derivedRound}</Text>
             </View>
           ) : null}
+          {typeof currentStanding?.rank === 'number' ? (
+            <View style={styles.infoPill}>
+              <Text style={styles.infoPillText}>Rank #{currentStanding.rank}</Text>
+            </View>
+          ) : null}
+          {phase === 'ready' || phase === 'launching' ? (
+            <View style={[styles.infoPill, styles.matchFoundPill]}>
+              <Text style={[styles.infoPillText, styles.matchFoundPillText]}>
+                {phase === 'launching' ? 'Joining match' : 'Match found'}
+              </Text>
+            </View>
+          ) : null}
+        </View>
 
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Live Standings</Text>
-            <Text style={styles.sectionSubtitle}>The bracket board stays visible while the tournament updates.</Text>
+        <View style={styles.statusBlock}>
+          <Text style={styles.statusText}>{statusText}</Text>
+          {subtleStatusText ? <Text style={styles.subtleStatusText}>{subtleStatusText}</Text> : null}
+          {retryMessage ? <Text style={styles.retryText}>{retryMessage}</Text> : null}
+          {phase === 'finalized' && typeof finalPlacement === 'number' ? (
+            <Text style={styles.finalPlacementText}>
+              {isChampion ? 'Final placement: Champion' : `Final placement: #${finalPlacement}`}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={styles.cardWrap}>
+          <View style={[styles.card, { borderColor: `${activeCard.accent}4D` }]}>
+            <Text style={[styles.cardEyebrow, { color: activeCard.accent }]}>{activeCard.eyebrow}</Text>
+            <Text style={styles.cardTitle}>{activeCard.title}</Text>
+            <Text style={styles.cardBody}>{activeCard.body}</Text>
           </View>
+        </View>
 
-          <TournamentStandingsTable
-            entries={standings}
-            emptyMessage="Tournament standings will appear here as soon as the run publishes them."
-            highlightOwnerId={highlightOwnerId}
-            presentation="preview"
-          />
+        {!showExitActions ? (
+          <Text style={styles.footerCopy}>
+            Stay here while the rotation advances. If the next board is already ready, launch begins on the next card
+            boundary.
+          </Text>
+        ) : null}
 
-          <View style={styles.buttonStack}>
-            {showExitActions ? <Button title="Return to Main Page" onPress={onReturnToMainPage} /> : null}
+        {showExitActions ? (
+          <View style={styles.buttonWrap}>
+            <Button title="Return to Main Page" onPress={onReturnToMainPage} />
           </View>
-        </ScrollView>
+        ) : null}
       </View>
     </View>
   );
@@ -264,124 +289,93 @@ const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 20,
-    backgroundColor: 'rgba(4, 8, 14, 0.78)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: urTheme.spacing.md,
-  },
-  cueGlow: {
-    position: 'absolute',
-    width: '84%',
-    maxWidth: 760,
-    height: '78%',
-    maxHeight: 720,
-    borderRadius: 32,
-    backgroundColor: 'rgba(96, 154, 240, 0.12)',
-  },
-  sheet: {
-    width: '100%',
-    maxWidth: 760,
-    maxHeight: '92%',
-    borderRadius: urTheme.radii.lg,
     overflow: 'hidden',
-    borderWidth: 1.2,
-    borderColor: 'rgba(216, 232, 251, 0.24)',
-    backgroundColor: 'rgba(8, 14, 24, 0.96)',
-    ...boxShadow({
-      color: '#000',
-      opacity: 0.32,
-      offset: { width: 0, height: 14 },
-      blurRadius: 20,
-      elevation: 14,
-    }),
+    backgroundColor: '#08111C',
   },
   texture: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.1,
+    opacity: 0.16,
   },
   inlayTexture: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.06,
+    opacity: 0.08,
   },
-  border: {
+  overlay: {
     ...StyleSheet.absoluteFillObject,
-    margin: urTheme.spacing.xs,
-    borderRadius: urTheme.radii.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 232, 192, 0.16)',
+    backgroundColor: 'rgba(5, 10, 18, 0.76)',
   },
-  content: {
-    padding: urTheme.spacing.lg,
+  innerFrame: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    bottom: 16,
+    left: 16,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(246, 214, 151, 0.16)',
+  },
+  chrome: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: urTheme.spacing.lg,
+    paddingVertical: urTheme.spacing.xl,
     gap: urTheme.spacing.md,
   },
   headerBlock: {
+    alignItems: 'center',
     gap: urTheme.spacing.xs,
+    maxWidth: 720,
   },
   eyebrow: {
     ...urTypography.label,
     color: '#D9ECFF',
     fontSize: 11,
+    letterSpacing: 1.1,
   },
   title: {
     ...urTypography.title,
     color: '#F8ECD6',
-    fontSize: 30,
-    lineHeight: 36,
-  },
-  tournamentName: {
-    ...urTypography.subtitle,
-    color: '#F0C965',
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 32,
+    lineHeight: 38,
+    textAlign: 'center',
   },
   bodyCopy: {
     color: 'rgba(236, 229, 214, 0.82)',
     fontSize: 14,
     lineHeight: 20,
+    textAlign: 'center',
   },
-  statusCard: {
-    borderRadius: urTheme.radii.lg,
-    padding: urTheme.spacing.md,
-    gap: urTheme.spacing.xs,
-    backgroundColor: 'rgba(14, 23, 37, 0.86)',
-    borderWidth: 1,
-    borderColor: 'rgba(163, 205, 255, 0.22)',
-  },
-  statusCardReady: {
-    borderColor: 'rgba(240, 201, 101, 0.36)',
-    backgroundColor: 'rgba(19, 31, 49, 0.92)',
-  },
-  statusHeader: {
+  pillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'center',
     gap: urTheme.spacing.xs,
-    marginBottom: urTheme.spacing.xs,
   },
-  roundPill: {
+  infoPill: {
     borderRadius: urTheme.radii.pill,
     paddingHorizontal: urTheme.spacing.sm,
-    paddingVertical: 5,
-    backgroundColor: 'rgba(70, 120, 194, 0.24)',
+    paddingVertical: 6,
     borderWidth: 1,
-    borderColor: 'rgba(163, 205, 255, 0.24)',
+    borderColor: 'rgba(163, 205, 255, 0.2)',
+    backgroundColor: 'rgba(10, 21, 36, 0.72)',
   },
-  roundPillText: {
+  infoPillText: {
     ...urTypography.label,
     color: '#DAECFF',
     fontSize: 10,
   },
-  rankPill: {
-    borderRadius: urTheme.radii.pill,
-    paddingHorizontal: urTheme.spacing.sm,
-    paddingVertical: 5,
-    backgroundColor: 'rgba(166, 112, 24, 0.26)',
-    borderWidth: 1,
-    borderColor: 'rgba(247, 220, 161, 0.24)',
+  matchFoundPill: {
+    backgroundColor: 'rgba(181, 128, 38, 0.24)',
+    borderColor: 'rgba(246, 214, 151, 0.24)',
   },
-  rankPillText: {
-    ...urTypography.label,
+  matchFoundPillText: {
     color: '#F9E6BC',
-    fontSize: 10,
+  },
+  statusBlock: {
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: 660,
   },
   statusText: {
     ...urTypography.subtitle,
@@ -389,61 +383,81 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 26,
     fontWeight: '700',
+    textAlign: 'center',
   },
   subtleStatusText: {
     color: 'rgba(216, 232, 251, 0.82)',
     fontSize: 13,
     lineHeight: 18,
+    textAlign: 'center',
   },
   retryText: {
-    color: 'rgba(247, 220, 161, 0.88)',
+    color: 'rgba(247, 220, 161, 0.9)',
     fontSize: 12,
     lineHeight: 17,
+    textAlign: 'center',
   },
   finalPlacementText: {
     ...urTypography.label,
     color: '#F0C965',
     fontSize: 11,
-    marginTop: urTheme.spacing.xs,
+    marginTop: 2,
   },
-  summaryWrap: {
+  cardWrap: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 1,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 560,
+    minHeight: 260,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(9, 16, 26, 0.9)',
+    paddingHorizontal: urTheme.spacing.xl,
+    paddingVertical: urTheme.spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: urTheme.spacing.sm,
+    ...boxShadow({
+      color: '#000',
+      opacity: 0.32,
+      offset: { width: 0, height: 16 },
+      blurRadius: 24,
+      elevation: 14,
+    }),
   },
-  factCard: {
-    borderRadius: urTheme.radii.md,
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.md,
-    gap: urTheme.spacing.xs,
-    backgroundColor: 'rgba(18, 27, 39, 0.88)',
-    borderWidth: 1,
-    borderColor: 'rgba(240, 201, 101, 0.2)',
-  },
-  factEyebrow: {
+  cardEyebrow: {
     ...urTypography.label,
-    color: '#F6D697',
-    fontSize: 10,
+    fontSize: 11,
+    letterSpacing: 1.1,
+    textAlign: 'center',
   },
-  factText: {
+  cardTitle: {
+    ...urTypography.title,
     color: '#F8ECD6',
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 34,
+    lineHeight: 40,
+    textAlign: 'center',
   },
-  sectionHeader: {
-    gap: 4,
+  cardBody: {
+    color: 'rgba(244, 236, 220, 0.86)',
+    fontSize: 16,
+    lineHeight: 23,
+    textAlign: 'center',
   },
-  sectionTitle: {
-    ...urTypography.subtitle,
-    color: '#F8ECD6',
-    fontSize: 18,
-    lineHeight: 24,
-    fontWeight: '700',
-  },
-  sectionSubtitle: {
-    color: 'rgba(216, 232, 251, 0.74)',
+  footerCopy: {
+    maxWidth: 640,
+    color: 'rgba(216, 232, 251, 0.72)',
     fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 18,
+    textAlign: 'center',
   },
-  buttonStack: {
-    gap: urTheme.spacing.sm,
+  buttonWrap: {
+    width: '100%',
+    maxWidth: 420,
+    marginTop: urTheme.spacing.sm,
   },
 });

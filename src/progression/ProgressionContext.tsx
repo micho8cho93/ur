@@ -24,17 +24,20 @@ const getErrorMessage = (error: unknown): string =>
 export const ProgressionProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const { user, isLoading: isAuthLoading } = useAuth();
   const lastProgressionAward = useGameStore((state) => state.lastProgressionAward);
+  const lastProgressionSnapshot = useGameStore((state) => state.lastProgressionSnapshot);
   const [progression, setProgression] = useState<ProgressionSnapshot | null>(null);
   const [status, setStatus] = useState<ProgressionStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeUserIdRef = useRef<string | null>(null);
   const appliedAwardKeyRef = useRef<string | null>(null);
+  const appliedSnapshotKeyRef = useRef<string | null>(null);
   const requestIdRef = useRef(0);
 
   const resetState = useCallback(() => {
     requestIdRef.current += 1;
     activeUserIdRef.current = null;
     appliedAwardKeyRef.current = null;
+    appliedSnapshotKeyRef.current = null;
     setProgression(null);
     setStatus('idle');
     setErrorMessage(null);
@@ -111,6 +114,24 @@ export const ProgressionProvider: React.FC<PropsWithChildren> = ({ children }) =
     setStatus('ready');
     setErrorMessage(null);
   }, [lastProgressionAward, user]);
+
+  useEffect(() => {
+    if (!user || !lastProgressionSnapshot) {
+      return;
+    }
+
+    const snapshotKey = `${lastProgressionSnapshot.matchId}:${lastProgressionSnapshot.progression.totalXp}`;
+    if (appliedSnapshotKeyRef.current === snapshotKey) {
+      return;
+    }
+
+    appliedSnapshotKeyRef.current = snapshotKey;
+    activeUserIdRef.current = user.id;
+    requestIdRef.current += 1;
+    setProgression(lastProgressionSnapshot.progression);
+    setStatus('ready');
+    setErrorMessage(null);
+  }, [lastProgressionSnapshot, user]);
 
   const value = useMemo<ProgressionContextValue>(
     () => ({

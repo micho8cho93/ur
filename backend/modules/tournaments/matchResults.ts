@@ -10,13 +10,18 @@ import {
   getStorageObjectVersion,
   maybeSetStorageVersion,
 } from "../progression";
-import { completeTournamentBracketMatch } from "./bracket";
+import {
+  completeTournamentBracketMatch,
+  getTournamentBracketParticipant,
+  type TournamentBracketParticipantState,
+} from "./bracket";
 import { readNumberField, readStringField } from "./definitions";
 import {
   finalizeTournamentRun,
   getNakamaTournamentById,
   normalizeRunRecord,
   updateRunWithRetry,
+  type FinalizeTournamentRunResult,
   type TournamentRunRecord,
 } from "./admin";
 import type { RuntimeLogger, RuntimeMetadata, RuntimeNakama } from "./types";
@@ -100,10 +105,19 @@ export type TournamentMatchResultRecord = {
   errorMessage: string | null;
 };
 
+export type TournamentMatchParticipantResolution = {
+  userId: string;
+  state: TournamentBracketParticipantState | null;
+  finalPlacement: number | null;
+};
+
 export type TournamentMatchProcessResult = {
   skipped: boolean;
   duplicate: boolean;
   record: TournamentMatchResultRecord | null;
+  updatedRun: TournamentRunRecord | null;
+  participantResolutions: TournamentMatchParticipantResolution[];
+  finalizationResult: FinalizeTournamentRunResult | null;
 };
 
 export const TOURNAMENT_RUNS_COLLECTION = "tournament_runs";
@@ -447,12 +461,12 @@ const maybeAutoFinalizeTournamentRun = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
   runId: string,
-): void => {
+): FinalizeTournamentRunResult | null => {
   const runState = readTournamentRunState(nk, runId);
   const run = runState.run;
 
   if (!run || run.lifecycle === "finalized") {
-    return;
+    return null;
   }
 
   if (run.bracket?.finalizedAt) {
@@ -462,6 +476,7 @@ const maybeAutoFinalizeTournamentRun = (
         "Auto-finalized tournament run %s after bracket completion.",
         result.run.runId,
       );
+      return result;
     } catch (error) {
       logger.warn(
         "Unable to auto-finalize tournament run %s after bracket completion: %s",
@@ -469,7 +484,7 @@ const maybeAutoFinalizeTournamentRun = (
         getErrorMessage(error),
       );
     }
-    return;
+    return null;
   }
 
   const countedMatchCount = Math.max(
@@ -479,7 +494,7 @@ const maybeAutoFinalizeTournamentRun = (
   const entrantCount = readTournamentEntrantCount(getNakamaTournamentById(nk, run.tournamentId));
 
   if (entrantCount < 2 || countedMatchCount < entrantCount - 1) {
-    return;
+    return null;
   }
 
   try {
@@ -490,6 +505,7 @@ const maybeAutoFinalizeTournamentRun = (
       countedMatchCount,
       entrantCount,
     );
+    return result;
   } catch (error) {
     logger.warn(
       "Unable to auto-finalize tournament run %s after match completion: %s",
@@ -497,7 +513,23 @@ const maybeAutoFinalizeTournamentRun = (
       getErrorMessage(error),
     );
   }
+
+  return null;
 };
+
+const buildParticipantResolutions = (
+  run: TournamentRunRecord | null,
+  players: TournamentMatchPlayerSummary[],
+): TournamentMatchParticipantResolution[] =>
+  players.map((player) => {
+    const participant = getTournamentBracketParticipant(run?.bracket ?? null, player.userId);
+
+    return {
+      userId: player.userId,
+      state: participant?.state ?? null,
+      finalPlacement: participant?.finalPlacement ?? null,
+    };
+  });
 
 export const resolveTournamentMatchContextFromParams = (
   params: Record<string, unknown>,
@@ -543,16 +575,23 @@ export const processCompletedAuthoritativeTournamentMatch = (
       skipped: true,
       duplicate: false,
       record: null,
+      updatedRun: null,
+      participantResolutions: [],
+      finalizationResult: null,
     };
   }
 
   const resultId = buildTournamentMatchResultId(completion.context, completion.matchId);
   if (readTournamentMatchResultObject(nk, resultId)) {
     logger.info("Skipping duplicate tournament result for %s", resultId);
+    const duplicateRun = readTournamentRunState(nk, completion.context.runId).run;
     return {
       skipped: false,
       duplicate: true,
       record: null,
+      updatedRun: duplicateRun,
+      participantResolutions: buildParticipantResolutions(duplicateRun, completion.players),
+      finalizationResult: null,
     };
   }
 
@@ -611,22 +650,29 @@ export const processCompletedAuthoritativeTournamentMatch = (
   } catch (error) {
     if (readTournamentMatchResultObject(nk, resultId)) {
       logger.info("Skipping duplicate tournament result after concurrent write for %s", resultId);
+      const duplicateRun = readTournamentRunState(nk, completion.context.runId).run;
       return {
         skipped: false,
         duplicate: true,
         record: null,
+        updatedRun: duplicateRun,
+        participantResolutions: buildParticipantResolutions(duplicateRun, completion.players),
+        finalizationResult: null,
       };
     }
 
     throw error;
   }
 
+  let updatedRun = runState.run;
+  let finalizationResult: FinalizeTournamentRunResult | null = null;
+
   if (runState.run) {
     try {
       updateTournamentRunMetadata(nk, logger, runState.run.runId, record);
       if (record.counted) {
-        updateTournamentRunBracket(nk, logger, completion);
-        maybeAutoFinalizeTournamentRun(nk, logger, runState.run.runId);
+        updatedRun = updateTournamentRunBracket(nk, logger, completion) ?? updatedRun;
+        finalizationResult = maybeAutoFinalizeTournamentRun(nk, logger, runState.run.runId);
       }
     } catch (error) {
       logger.warn(
@@ -636,11 +682,19 @@ export const processCompletedAuthoritativeTournamentMatch = (
         getErrorMessage(error),
       );
     }
+
+    updatedRun =
+      finalizationResult?.run ??
+      readTournamentRunState(nk, runState.run.runId).run ??
+      updatedRun;
   }
 
   return {
     skipped: false,
     duplicate: false,
     record,
+    updatedRun,
+    participantResolutions: buildParticipantResolutions(updatedRun, completion.players),
+    finalizationResult,
   };
 };

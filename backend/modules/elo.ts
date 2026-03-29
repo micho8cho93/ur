@@ -335,6 +335,22 @@ const buildLeaderboardEntryFromProfile = (profile: EloProfile, rank: number | nu
   rank,
 });
 
+export const getEloRatingProfileForUser = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  userId: string,
+): EloRatingProfileRpcResponse => {
+  const profileState = ensureEloProfileObject(nk, logger, userId);
+  const rank = syncEloLeaderboardRecords(nk, logger, [profileState.profile])[userId] ?? null;
+
+  return {
+    leaderboardId: ELO_LEADERBOARD_ID,
+    ...buildLeaderboardEntryFromProfile(profileState.profile, rank),
+    lastRatedMatchId: profileState.profile.lastRatedMatchId,
+    lastRatedAt: profileState.profile.lastRatedAt,
+  };
+};
+
 const getLeaderboardRecordRank = (record: unknown): number | null => {
   const rank = readNumberField(record, ["rank"]);
   return typeof rank === "number" ? rank : null;

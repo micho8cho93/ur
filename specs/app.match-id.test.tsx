@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { createInitialState, getValidMoves } from '@/logic/engine';
 import type { GameState, MoveAction } from '@/logic/types';
 import { CHALLENGE_DEFINITIONS, createDefaultUserChallengeProgressSnapshot } from '@/shared/challenges';
+import { buildProgressionSnapshot } from '@/shared/progression';
 
 const mockMatchDiceRollStage = jest.fn(({ rolling, visible }: { rolling: boolean; visible: boolean }) => {
   const { Text } = require('react-native');
@@ -31,12 +32,14 @@ const mockModal = jest.fn(
     title,
     message,
     actionLabel,
+    onAction,
     children,
   }: {
     visible?: boolean;
     title?: string;
     message?: string;
     actionLabel?: string;
+    onAction?: () => void;
     children?: React.ReactNode;
   }) => {
     const { Pressable, Text, View } = require('react-native');
@@ -49,7 +52,7 @@ const mockModal = jest.fn(
         {message ? <Text>{message}</Text> : null}
         {children}
         {actionLabel ? (
-          <Pressable>
+          <Pressable onPress={onAction}>
             <Text>{actionLabel}</Text>
           </Pressable>
         ) : null}
@@ -103,6 +106,9 @@ const mockSetMatchPresences = jest.fn();
 const mockSetSocketState = jest.fn();
 const mockSetRollCommandSender = jest.fn();
 const mockSetMoveCommandSender = jest.fn();
+const mockSetLastProgressionSnapshot = jest.fn();
+const mockSetLastEloRatingProfileSnapshot = jest.fn();
+const mockSetLastChallengeProgressSnapshot = jest.fn();
 const mockGetMatchPreferences = jest.fn();
 const mockUpdateMatchPreferences = jest.fn();
 const mockConnectSocketWithRetry = jest.fn();
@@ -128,6 +134,7 @@ let mockTournamentAdvanceFlowState = {
   currentStanding: null as unknown,
   finalPlacement: null as number | null,
   isChampion: false,
+  launchNextMatch: jest.fn(() => Promise.resolve()),
 };
 let mockTournamentAdvanceFlowShouldFinalize = false;
 let mockTournamentAdvanceFlowDidFinalize = false;
@@ -174,6 +181,11 @@ const mockStoreState = {
   authoritativeAfkRemainingMs: null,
   authoritativeMatchEnd: null,
   authoritativeSnapshotReceivedAtMs: null,
+  lastProgressionAward: null,
+  lastEloRatingChange: null,
+  lastProgressionSnapshot: null,
+  lastEloRatingProfileSnapshot: null,
+  lastChallengeProgressSnapshot: null,
   moveCommandSender: null,
   nakamaSession: null,
   onlineMode: 'offline' as const,
@@ -191,6 +203,11 @@ const mockStoreState = {
   setMoveCommandSender: mockSetMoveCommandSender,
   setNakamaSession: jest.fn(),
   setOnlineMode: mockSetOnlineMode,
+  setLastProgressionAward: jest.fn(),
+  setLastEloRatingChange: jest.fn(),
+  setLastProgressionSnapshot: mockSetLastProgressionSnapshot,
+  setLastEloRatingProfileSnapshot: mockSetLastEloRatingProfileSnapshot,
+  setLastChallengeProgressSnapshot: mockSetLastChallengeProgressSnapshot,
   setPlayerColor: mockSetPlayerColor,
   setRollCommandSender: mockSetRollCommandSender,
   setServerRevision: jest.fn(),
@@ -417,22 +434,19 @@ jest.mock('@/components/tournaments/TournamentWaitingRoom', () => {
     TournamentWaitingRoom: ({
       visible,
       statusText,
-      onBackToStandings,
       onReturnToMainPage,
-      children,
+      onLaunchNextMatch,
     }: {
       visible?: boolean;
       statusText?: string;
-      onBackToStandings?: () => void;
       onReturnToMainPage?: () => void;
-      children?: React.ReactNode;
+      onLaunchNextMatch?: () => void;
     }) =>
       visible ? (
         <View testID="mock-tournament-waiting-room">
           {statusText ? <Text>{statusText}</Text> : null}
-          {children}
-          <Pressable onPress={onBackToStandings}>
-            <Text>Back to Standings</Text>
+          <Pressable onPress={onLaunchNextMatch}>
+            <Text>Launch next match</Text>
           </Pressable>
           <Pressable onPress={onReturnToMainPage}>
             <Text>Return to Main Page</Text>
@@ -677,6 +691,64 @@ const configureCompletedMatchChallenges = (matchId: string) => {
   };
 };
 
+const emitTournamentRewardSummary = (
+  matchId: string,
+  overrides: Partial<{
+    didWin: boolean;
+    tournamentOutcome: 'advancing' | 'eliminated' | 'runner_up' | 'champion';
+    totalXpDelta: number;
+    challengeCompletionCount: number;
+    challengeXpDelta: number;
+    shouldEnterWaitingRoom: boolean;
+    totalXpOld: number;
+    totalXpNew: number;
+  }> = {},
+) => {
+  const totalXpOld = overrides.totalXpOld ?? 500;
+  const totalXpNew = overrides.totalXpNew ?? totalXpOld + (overrides.totalXpDelta ?? 100);
+  const challengeProgress =
+    mockChallengeProgress ?? createDefaultUserChallengeProgressSnapshot('2026-03-27T12:00:00.000Z');
+
+  mockSocket.onmatchdata?.({
+    match_id: matchId,
+    op_code: 104,
+    data: JSON.stringify({
+      type: 'tournament_match_reward_summary',
+      matchId,
+      tournamentRunId: 'run-1',
+      tournamentId: 'tournament-1',
+      round: 2,
+      playerUserId: 'self-user',
+      didWin: overrides.didWin ?? true,
+      tournamentOutcome: overrides.tournamentOutcome ?? 'advancing',
+      eloProfile: {
+        leaderboardId: 'elo_global',
+        userId: 'self-user',
+        usernameDisplay: 'Michel',
+        eloRating: 1218,
+        ratedGames: 11,
+        ratedWins: 7,
+        ratedLosses: 4,
+        provisional: false,
+        rank: 18,
+        lastRatedMatchId: matchId,
+        lastRatedAt: '2026-03-27T12:00:00.000Z',
+      },
+      eloOld: 1200,
+      eloNew: 1218,
+      eloDelta: 18,
+      totalXpOld,
+      totalXpNew,
+      totalXpDelta: overrides.totalXpDelta ?? totalXpNew - totalXpOld,
+      challengeCompletionCount: overrides.challengeCompletionCount ?? 0,
+      challengeXpDelta: overrides.challengeXpDelta ?? 0,
+      shouldEnterWaitingRoom: overrides.shouldEnterWaitingRoom ?? true,
+      progression: buildProgressionSnapshot(totalXpNew),
+      challengeProgress,
+    }),
+  });
+};
+
 describe('GameRoom match dice stage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -768,6 +840,7 @@ describe('GameRoom match dice stage', () => {
       currentStanding: null,
       finalPlacement: null,
       isChampion: false,
+      launchNextMatch: jest.fn(() => Promise.resolve()),
     };
     mockTournamentAdvanceFlowShouldFinalize = false;
     mockTournamentAdvanceFlowDidFinalize = false;
@@ -1998,11 +2071,11 @@ describe('GameRoom match dice stage', () => {
     mockSearchParams.tournamentReturnTarget = 'detail';
     mockHasNakamaConfig.mockReturnValue(true);
     mockIsNakamaEnabled.mockReturnValue(true);
-    mockTournamentAdvanceFlowState = {
-      ...mockTournamentAdvanceFlowState,
-      phase: 'eliminated',
-      statusText: 'Your tournament run has ended.',
-    };
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-loss',
+    });
     mockStoreState.matchId = 'tournament-loss';
     mockStoreState.userId = 'self-user';
     mockStoreState.playerColor = 'light';
@@ -2018,6 +2091,14 @@ describe('GameRoom match dice stage', () => {
 
     await act(async () => {
       await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-loss', {
+        didWin: false,
+        tournamentOutcome: 'eliminated',
+        totalXpDelta: 0,
+        shouldEnterWaitingRoom: false,
+      });
+      await Promise.resolve();
     });
 
     expect(screen.getByText('Tournament Eliminated')).toBeTruthy();
@@ -2026,7 +2107,7 @@ describe('GameRoom match dice stage', () => {
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
   });
 
-  it('enters the tournament waiting room after a tournament win instead of showing the old modal path', () => {
+  it('shows the tournament victory modal before entering the waiting room', async () => {
     mockSearchParams.id = 'tournament-win';
     mockSearchParams.offline = '0';
     mockSearchParams.tournamentRunId = 'run-1';
@@ -2035,6 +2116,11 @@ describe('GameRoom match dice stage', () => {
     mockSearchParams.tournamentReturnTarget = 'detail';
     mockHasNakamaConfig.mockReturnValue(true);
     mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-win',
+    });
     mockStoreState.matchId = 'tournament-win';
     mockStoreState.userId = 'self-user';
     mockStoreState.playerColor = 'light';
@@ -2053,9 +2139,70 @@ describe('GameRoom match dice stage', () => {
 
     render(<GameRoom />);
 
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-win', {
+        tournamentOutcome: 'advancing',
+        shouldEnterWaitingRoom: true,
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Victory')).toBeTruthy();
+    expect(screen.getByText('Enter Waiting Room')).toBeTruthy();
+    expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
+  });
+
+  it('auto-enters the waiting room after 15 seconds when the victory modal is untouched', async () => {
+    mockSearchParams.id = 'tournament-auto-enter';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-auto-enter',
+    });
+    mockStoreState.matchId = 'tournament-auto-enter';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockTournamentAdvanceFlowState = {
+      ...mockTournamentAdvanceFlowState,
+      phase: 'waiting',
+      statusText: 'Recording your victory in the standings...',
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-auto-enter', {
+        tournamentOutcome: 'advancing',
+        shouldEnterWaitingRoom: true,
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Enter Waiting Room')).toBeTruthy();
+    expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
+
+    await act(async () => {
+      jest.advanceTimersByTime(15_000);
+      await Promise.resolve();
+    });
+
     expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
-    expect(screen.getByText('Recording your victory in the standings...')).toBeTruthy();
-    expect(screen.queryByText('Victory')).toBeNull();
   });
 
   it('keeps the regular win flow exit action visible while challenge rewards stay collapsed', async () => {
@@ -2098,7 +2245,7 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByText(definitions[1].name)).toBeTruthy();
   });
 
-  it('keeps Back to Standings visible in the tournament waiting room while challenge rewards stay collapsed', async () => {
+  it('shows tournament challenge rewards in the victory modal before the waiting room opens', async () => {
     const matchId = 'tournament-challenge-win';
     const { definitions, totalXp } = configureCompletedMatchChallenges(matchId);
 
@@ -2132,17 +2279,28 @@ describe('GameRoom match dice stage', () => {
     render(<GameRoom />);
 
     await act(async () => {
-      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary(matchId, {
+        tournamentOutcome: 'advancing',
+        challengeCompletionCount: 2,
+        challengeXpDelta: totalXp,
+        totalXpDelta: 100 + totalXp,
+        totalXpOld: 500,
+        totalXpNew: 600 + totalXp,
+        shouldEnterWaitingRoom: true,
+      });
+      await Promise.resolve();
     });
 
-    expect(await screen.findByText('Back to Standings')).toBeTruthy();
+    expect(await screen.findByText('Enter Waiting Room')).toBeTruthy();
     expect(screen.getByText(`+${totalXp} XP from challenges`)).toBeTruthy();
     expect(screen.getByText('Show 2 completed challenges')).toBeTruthy();
     expect(screen.queryByText(definitions[0].name)).toBeNull();
     expect(screen.queryByText(definitions[1].name)).toBeNull();
   });
 
-  it('uses route replacement when tournament auto-advance succeeds', () => {
+  it('uses route replacement when tournament waiting-room launch succeeds', async () => {
     mockSearchParams.id = 'tournament-auto-next';
     mockSearchParams.offline = '0';
     mockSearchParams.tournamentRunId = 'run-1';
@@ -2163,12 +2321,43 @@ describe('GameRoom match dice stage', () => {
     mockRefreshChallenges.mockImplementation(() => new Promise(() => {}));
     mockTournamentAdvanceFlowState = {
       ...mockTournamentAdvanceFlowState,
-      phase: 'launching',
-      statusText: 'Joining next match...',
+      phase: 'ready',
+      statusText: 'Match found',
+      launchNextMatch: jest.fn(() => {
+        mockFinalizeTournamentMatch(
+          {
+            runId: 'run-1',
+            tournamentId: 'tournament-1',
+          },
+          {
+            matchId: 'match-next',
+          },
+          {
+            navigationMode: 'replace',
+          },
+        );
+        return Promise.resolve();
+      }),
     };
-    mockTournamentAdvanceFlowShouldFinalize = true;
 
     render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-auto-next', {
+        tournamentOutcome: 'advancing',
+        shouldEnterWaitingRoom: true,
+      });
+      await Promise.resolve();
+    });
+
+    fireEvent.press(screen.getByText('Enter Waiting Room'));
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Launch next match'));
+      await Promise.resolve();
+    });
 
     expect(mockFinalizeTournamentMatch).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2184,7 +2373,7 @@ describe('GameRoom match dice stage', () => {
     );
   });
 
-  it('returns to waiting/retry when tournament auto-launch fails instead of hard-failing', () => {
+  it('keeps the waiting room visible when the boundary launch is still retrying', async () => {
     mockSearchParams.id = 'tournament-auto-retry';
     mockSearchParams.offline = '0';
     mockSearchParams.tournamentRunId = 'run-1';
@@ -2210,6 +2399,18 @@ describe('GameRoom match dice stage', () => {
     };
 
     render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-auto-retry', {
+        tournamentOutcome: 'advancing',
+        shouldEnterWaitingRoom: true,
+      });
+      await Promise.resolve();
+    });
+
+    fireEvent.press(screen.getByText('Enter Waiting Room'));
 
     expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
     expect(screen.getByText('Rechecking for the next round...')).toBeTruthy();

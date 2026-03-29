@@ -3,6 +3,7 @@ import React, { PropsWithChildren, createContext, useCallback, useEffect, useMem
 import { getChallengeDefinitions, getUserChallengeProgress } from '@/services/challenges';
 import type { ChallengeDefinition, UserChallengeProgressRpcResponse } from '@/shared/challenges';
 import { useAuth } from '@/src/auth/useAuth';
+import { useGameStore } from '@/store/useGameStore';
 
 export type ChallengesStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -26,16 +27,19 @@ const getErrorMessage = (error: unknown): string =>
 
 export const ChallengesProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const { user, isLoading: isAuthLoading } = useAuth();
+  const lastChallengeProgressSnapshot = useGameStore((state) => state.lastChallengeProgressSnapshot);
   const [definitions, setDefinitions] = useState<ChallengeDefinition[]>([]);
   const [progress, setProgress] = useState<UserChallengeProgressRpcResponse | null>(null);
   const [status, setStatus] = useState<ChallengesStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeUserIdRef = useRef<string | null>(null);
+  const appliedSnapshotKeyRef = useRef<string | null>(null);
   const requestIdRef = useRef(0);
 
   const resetState = useCallback(() => {
     requestIdRef.current += 1;
     activeUserIdRef.current = null;
+    appliedSnapshotKeyRef.current = null;
     setDefinitions([]);
     setProgress(null);
     setStatus('idle');
@@ -103,6 +107,24 @@ export const ChallengesProvider: React.FC<PropsWithChildren> = ({ children }) =>
       void refresh();
     }
   }, [isAuthLoading, refresh, resetState, user]);
+
+  useEffect(() => {
+    if (!user || !lastChallengeProgressSnapshot) {
+      return;
+    }
+
+    const snapshotKey = `${lastChallengeProgressSnapshot.matchId}:${lastChallengeProgressSnapshot.progress.updatedAt}:${lastChallengeProgressSnapshot.progress.totalCompleted}`;
+    if (appliedSnapshotKeyRef.current === snapshotKey) {
+      return;
+    }
+
+    appliedSnapshotKeyRef.current = snapshotKey;
+    activeUserIdRef.current = user.id;
+    requestIdRef.current += 1;
+    setProgress(lastChallengeProgressSnapshot.progress);
+    setStatus('ready');
+    setErrorMessage(null);
+  }, [lastChallengeProgressSnapshot, user]);
 
   const value = useMemo<ChallengesContextValue>(
     () => ({

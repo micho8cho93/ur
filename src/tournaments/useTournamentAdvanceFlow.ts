@@ -1,13 +1,11 @@
 import { getPublicTournamentStatus, launchTournamentMatch } from '@/services/tournaments';
 import { useTournamentMatchLauncher } from '@/src/tournaments/useTournamentMatchLauncher';
 import type { PublicTournamentDetail, PublicTournamentStanding } from '@/src/tournaments/types';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const TOURNAMENT_WAIT_POLL_INTERVAL_MS = 4_000;
 const TOURNAMENT_LAUNCH_RETRY_BACKOFF_MS = 6_000;
 const TOURNAMENT_LAUNCH_RETRY_BACKOFF_MAX_MS = 12_000;
-const READY_CUE_OPPONENT_FOUND_MS = 260;
-const READY_CUE_JOINING_MS = 720;
 
 export type TournamentAdvanceFlowPhase =
   | 'waiting'
@@ -42,6 +40,7 @@ export type UseTournamentAdvanceFlowResult = {
   retryMessage: string | null;
   finalPlacement: number | null;
   isChampion: boolean;
+  launchNextMatch: () => Promise<void>;
 };
 
 const isSoftLaunchFailure = (error: unknown): { message: string; soft: boolean } => {
@@ -96,6 +95,7 @@ export const useTournamentAdvanceFlow = ({
   const [isChampion, setIsChampion] = useState(false);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const readyTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const refreshStatusRef = useRef<(() => void) | null>(null);
   const isMountedRef = useRef(false);
   const stoppedRef = useRef(false);
   const flowTokenRef = useRef(0);
@@ -137,8 +137,105 @@ export const useTournamentAdvanceFlow = ({
       stoppedRef.current = true;
       clearPollTimeout();
       clearReadyTimeouts();
+      refreshStatusRef.current = null;
     };
   }, []);
+
+  const launchNextMatch = useCallback(async () => {
+    if (
+      !enabled ||
+      !runId ||
+      !tournamentId ||
+      !playerUserId ||
+      !finishedMatchId ||
+      stoppedRef.current ||
+      launchInFlightRef.current
+    ) {
+      return;
+    }
+
+    launchInFlightRef.current = true;
+    clearPollTimeout();
+    clearReadyTimeouts();
+    setPhase('launching');
+    setStatusText('Joining next match...');
+    setSubtleStatusText('Carrying your tournament session into the next round.');
+    setRetryMessage(null);
+
+    const flowToken = flowTokenRef.current;
+    const launchAttemptSequence = launchSequenceRef.current + 1;
+    launchSequenceRef.current = launchAttemptSequence;
+
+    try {
+      const result = await launchTournamentMatch(runId);
+
+      if (
+        !isMountedRef.current ||
+        stoppedRef.current ||
+        flowTokenRef.current !== flowToken ||
+        launchSequenceRef.current !== launchAttemptSequence
+      ) {
+        return;
+      }
+
+      if (!result.matchId || result.matchId === finishedMatchId) {
+        throw new Error(result.statusMessage ?? 'The next match is not ready yet.');
+      }
+
+      stoppedRef.current = true;
+      clearPollTimeout();
+      clearReadyTimeouts();
+
+      finalizeMatchLaunch(
+        {
+          runId,
+          tournamentId,
+          gameMode,
+          name: tournament?.name ?? tournamentName,
+        },
+        result,
+        {
+          navigationMode: 'replace',
+          returnTarget: 'detail',
+        },
+      );
+    } catch (error) {
+      if (
+        !isMountedRef.current ||
+        stoppedRef.current ||
+        flowTokenRef.current !== flowToken ||
+        launchSequenceRef.current !== launchAttemptSequence
+      ) {
+        return;
+      }
+
+      const failure = isSoftLaunchFailure(error);
+      launchInFlightRef.current = false;
+      retryBackoffMsRef.current = Math.min(
+        retryBackoffMsRef.current * 2,
+        TOURNAMENT_LAUNCH_RETRY_BACKOFF_MAX_MS,
+      );
+      clearReadyTimeouts();
+      setPhase(failure.soft ? 'retrying' : 'waiting');
+      setStatusText('Rechecking for the next round...');
+      setSubtleStatusText('The launch was not ready yet, so tournament polling has resumed.');
+      setRetryMessage(failure.message);
+
+      if (refreshStatusRef.current) {
+        scheduleRefresh(refreshStatusRef.current, retryBackoffMsRef.current);
+      }
+    }
+  }, [
+    enabled,
+    finalizeMatchLaunch,
+    finishedMatchId,
+    gameMode,
+    playerUserId,
+    runId,
+    tournament,
+    tournamentId,
+    tournamentName,
+  ]);
 
   useEffect(() => {
     const flowToken = flowTokenRef.current + 1;
@@ -258,105 +355,13 @@ export const useTournamentAdvanceFlow = ({
             return;
           }
 
-          if (launchInFlightRef.current) {
-            return;
-          }
-
-          launchInFlightRef.current = true;
           clearPollTimeout();
           clearReadyTimeouts();
           setPhase('ready');
-          setStatusText('Next round ready');
-          setSubtleStatusText('Opponent found.');
+          setStatusText('Match found');
+          setSubtleStatusText('The next board will launch on the current card boundary.');
           setRetryMessage(null);
-
-          const launchAttemptSequence = launchSequenceRef.current + 1;
-          launchSequenceRef.current = launchAttemptSequence;
-
-          const continueReadyCue = (delayMs: number, callback: () => void) => {
-            const timer = setTimeout(() => {
-              if (
-                !isMountedRef.current ||
-                stoppedRef.current ||
-                flowTokenRef.current !== flowToken ||
-                launchSequenceRef.current !== launchAttemptSequence
-              ) {
-                return;
-              }
-
-              callback();
-            }, delayMs);
-
-            readyTimeoutsRef.current.push(timer);
-          };
-
-          continueReadyCue(READY_CUE_OPPONENT_FOUND_MS, () => {
-            setStatusText('Opponent found');
-            setSubtleStatusText('Joining the next board.');
-          });
-
-          continueReadyCue(READY_CUE_JOINING_MS, () => {
-            setPhase('launching');
-            setStatusText('Joining next match...');
-            setSubtleStatusText('Carrying your tournament session into the next round.');
-
-            void launchTournamentMatch(runId)
-              .then((result) => {
-                if (
-                  !isMountedRef.current ||
-                  stoppedRef.current ||
-                  flowTokenRef.current !== flowToken ||
-                  launchSequenceRef.current !== launchAttemptSequence
-                ) {
-                  return;
-                }
-
-                if (!result.matchId || result.matchId === finishedMatchId) {
-                  throw new Error(result.statusMessage ?? 'The next match is not ready yet.');
-                }
-
-                stoppedRef.current = true;
-                clearPollTimeout();
-                clearReadyTimeouts();
-
-                finalizeMatchLaunch(
-                  {
-                    runId,
-                    tournamentId,
-                    gameMode,
-                    name: snapshot.tournament.name ?? tournamentName,
-                  },
-                  result,
-                  {
-                    navigationMode: 'replace',
-                    returnTarget: 'detail',
-                  },
-                );
-              })
-              .catch((error) => {
-                if (
-                  !isMountedRef.current ||
-                  stoppedRef.current ||
-                  flowTokenRef.current !== flowToken ||
-                  launchSequenceRef.current !== launchAttemptSequence
-                ) {
-                  return;
-                }
-
-                const failure = isSoftLaunchFailure(error);
-                launchInFlightRef.current = false;
-                retryBackoffMsRef.current = Math.min(
-                  retryBackoffMsRef.current * 2,
-                  TOURNAMENT_LAUNCH_RETRY_BACKOFF_MAX_MS,
-                );
-                clearReadyTimeouts();
-                setPhase(failure.soft ? 'retrying' : 'waiting');
-                setStatusText('Rechecking for the next round...');
-                setSubtleStatusText('The launch was not ready yet, so tournament polling has resumed.');
-                setRetryMessage(failure.message);
-                scheduleRefresh(refreshStatus, retryBackoffMsRef.current);
-              });
-          });
+          return;
         })
         .catch((error) => {
           if (
@@ -377,6 +382,8 @@ export const useTournamentAdvanceFlow = ({
         });
     };
 
+    refreshStatusRef.current = refreshStatus;
+
     setPhase('waiting');
     setStatusText(
       didPlayerWin ? 'Recording your victory in the bracket...' : 'Recording the final tournament result...',
@@ -396,6 +403,7 @@ export const useTournamentAdvanceFlow = ({
       if (flowTokenRef.current === flowToken) {
         clearPollTimeout();
         clearReadyTimeouts();
+        refreshStatusRef.current = null;
         launchInFlightRef.current = false;
       }
     };
@@ -424,5 +432,6 @@ export const useTournamentAdvanceFlow = ({
     retryMessage,
     finalPlacement,
     isChampion,
+    launchNextMatch,
   };
 };

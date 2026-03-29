@@ -93,10 +93,12 @@ import {
   MatchOpCode,
   MoveRequestPayload,
   RollRequestPayload,
+  TournamentMatchRewardSummaryPayload,
   decodePayload,
   encodePayload,
   isServerErrorPayload,
   isStateSnapshotPayload,
+  isTournamentMatchRewardSummaryPayload,
 } from '@/shared/urMatchProtocol';
 import { MatchData, MatchPresenceEvent, Socket } from '@heroiclabs/nakama-js';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -132,6 +134,8 @@ const TUTORIAL_BOT_ROLL_DELAY_MS = 850 * TUTORIAL_PACING_MULTIPLIER;
 const TUTORIAL_BOT_MOVE_DELAY_MS = 1200 * TUTORIAL_PACING_MULTIPLIER;
 const TUTORIAL_NO_MOVE_DELAY_MS = 850 * TUTORIAL_PACING_MULTIPLIER;
 const ONLINE_MATCH_REWARD_REFRESH_RETRY_MS = 1200;
+const TOURNAMENT_REWARD_SUMMARY_FALLBACK_MS = 4_000;
+const TOURNAMENT_REWARD_MODAL_COUNTDOWN_MS = 15_000;
 const SHOULD_BYPASS_CINEMATIC_INTROS = process.env.NODE_ENV === 'test';
 
 const measureViewInWindow = (
@@ -405,7 +409,10 @@ export function GameRoom() {
   const setMatchPresences = useGameStore((state) => state.setMatchPresences);
   const updateMatchPresences = useGameStore((state) => state.updateMatchPresences);
   const setLastProgressionAward = useGameStore((state) => state.setLastProgressionAward);
+  const setLastProgressionSnapshot = useGameStore((state) => state.setLastProgressionSnapshot);
   const setLastEloRatingChange = useGameStore((state) => state.setLastEloRatingChange);
+  const setLastEloRatingProfileSnapshot = useGameStore((state) => state.setLastEloRatingProfileSnapshot);
+  const setLastChallengeProgressSnapshot = useGameStore((state) => state.setLastChallengeProgressSnapshot);
   const setSocketState = useGameStore((state) => state.setSocketState);
   const socketState = useGameStore((state) => state.socketState);
   const setRollCommandSender = useGameStore((state) => state.setRollCommandSender);
@@ -552,6 +559,11 @@ export function GameRoom() {
   }, [privateMatchCode]);
 
   const [showWinModal, setShowWinModal] = React.useState(false);
+  const [tournamentRewardSummary, setTournamentRewardSummary] =
+    React.useState<TournamentMatchRewardSummaryPayload | null>(null);
+  const [tournamentRewardFallbackActive, setTournamentRewardFallbackActive] = React.useState(false);
+  const [hasEnteredTournamentWaitingRoom, setHasEnteredTournamentWaitingRoom] = React.useState(false);
+  const [tournamentWaitingRoomCountdownMs, setTournamentWaitingRoomCountdownMs] = React.useState<number | null>(null);
   const [showAudioSettings, setShowAudioSettings] = React.useState(false);
   const [showTopMenu, setShowTopMenu] = React.useState(false);
   const [matchChallengeSummary, setMatchChallengeSummary] = React.useState<MatchChallengeRewardSummary | null>(null);
@@ -606,7 +618,15 @@ export function GameRoom() {
   const [tutorialCoachPhase, setTutorialCoachPhase] = React.useState<TutorialCoachPhase>('idle');
   const [tutorialLessonIndex, setTutorialLessonIndex] = React.useState(0);
   const [tutorialScriptStepIndex, setTutorialScriptStepIndex] = React.useState(0);
-  const shouldTrackTournamentAdvanceFlow = showWinModal && isTournamentMatch;
+  const isTournamentRewardSummaryPrimary = Boolean(tournamentRewardSummary) && !tournamentRewardFallbackActive;
+  const tournamentOutcome = tournamentRewardSummary?.tournamentOutcome ?? null;
+  const shouldTrackTournamentAdvanceFlow =
+    showWinModal &&
+    isTournamentMatch &&
+    ((isTournamentRewardSummaryPrimary &&
+      tournamentOutcome === 'advancing' &&
+      tournamentRewardSummary?.shouldEnterWaitingRoom === true) ||
+      (!isTournamentRewardSummaryPrimary && tournamentRewardFallbackActive && didPlayerWin));
   const isScriptedTutorialPhase =
     isPlaythroughTutorialMatch &&
     tutorialCoachPhase !== 'idle' &&
@@ -721,16 +741,50 @@ export function GameRoom() {
   const showTournamentWaitingRoom =
     showWinModal &&
     isTournamentMatch &&
-    didPlayerWin &&
-    !['eliminated', 'finalized'].includes(tournamentAdvanceFlow.phase);
+    ((isTournamentRewardSummaryPrimary &&
+      tournamentOutcome === 'advancing' &&
+      tournamentRewardSummary?.shouldEnterWaitingRoom === true &&
+      hasEnteredTournamentWaitingRoom) ||
+      (!isTournamentRewardSummaryPrimary &&
+        tournamentRewardFallbackActive &&
+        didPlayerWin &&
+        !['eliminated', 'finalized'].includes(tournamentAdvanceFlow.phase)));
+  const showTournamentAdvanceModal =
+    showWinModal &&
+    isTournamentMatch &&
+    isTournamentRewardSummaryPrimary &&
+    tournamentOutcome === 'advancing' &&
+    tournamentRewardSummary?.shouldEnterWaitingRoom === true &&
+    !hasEnteredTournamentWaitingRoom;
   const isTournamentResultModal =
     showWinModal &&
     isTournamentMatch &&
-    (tournamentAdvanceFlow.phase === 'eliminated' || tournamentAdvanceFlow.phase === 'finalized');
-  const shouldRenderResultModal = showWinModal && (!isTournamentMatch || isTournamentResultModal);
+    ((isTournamentRewardSummaryPrimary && tournamentOutcome !== 'advancing') ||
+      (!isTournamentRewardSummaryPrimary &&
+        tournamentRewardFallbackActive &&
+        (tournamentAdvanceFlow.phase === 'eliminated' || tournamentAdvanceFlow.phase === 'finalized')));
+  const shouldRenderResultModal =
+    showWinModal &&
+    (!isTournamentMatch || showTournamentAdvanceModal || isTournamentResultModal);
   const tournamentResultModalTitle = useMemo(() => {
-    if (!isTournamentResultModal) {
+    if (!isTournamentMatch || (!showTournamentAdvanceModal && !isTournamentResultModal)) {
       return winModalTitle;
+    }
+
+    if (showTournamentAdvanceModal) {
+      return 'Victory';
+    }
+
+    if (isTournamentRewardSummaryPrimary) {
+      if (tournamentOutcome === 'eliminated') {
+        return 'Tournament Eliminated';
+      }
+
+      if (tournamentOutcome === 'champion') {
+        return 'Tournament Champion';
+      }
+
+      return 'Tournament Complete';
     }
 
     if (tournamentAdvanceFlow.phase === 'eliminated') {
@@ -742,10 +796,39 @@ export function GameRoom() {
     }
 
     return 'Tournament Complete';
-  }, [isTournamentResultModal, tournamentAdvanceFlow.isChampion, tournamentAdvanceFlow.phase, winModalTitle]);
+  }, [
+    isTournamentMatch,
+    isTournamentResultModal,
+    isTournamentRewardSummaryPrimary,
+    showTournamentAdvanceModal,
+    tournamentAdvanceFlow.isChampion,
+    tournamentAdvanceFlow.phase,
+    tournamentOutcome,
+    winModalTitle,
+  ]);
   const tournamentResultModalMessage = useMemo(() => {
-    if (!isTournamentResultModal) {
+    if (!isTournamentMatch || (!showTournamentAdvanceModal && !isTournamentResultModal)) {
       return winModalMessage;
+    }
+
+    if (showTournamentAdvanceModal) {
+      return 'Your rewards are locked in. Enter the waiting room and the next match will launch automatically when the bracket is ready.';
+    }
+
+    if (isTournamentRewardSummaryPrimary) {
+      if (tournamentOutcome === 'eliminated') {
+        return onlineMatchEnd?.reason === 'forfeit_inactivity'
+          ? 'You forfeited due to inactivity and were eliminated from the tournament.'
+          : 'Your tournament run has ended.';
+      }
+
+      if (tournamentOutcome === 'champion') {
+        return 'You won the final and claimed the tournament crown.';
+      }
+
+      if (tournamentOutcome === 'runner_up') {
+        return 'The final is complete. You finished the tournament as runner-up.';
+      }
     }
 
     if (tournamentAdvanceFlow.phase === 'eliminated') {
@@ -764,14 +847,26 @@ export function GameRoom() {
 
     return 'The tournament bracket is complete and your final result is locked in.';
   }, [
+    isTournamentMatch,
     isTournamentResultModal,
+    isTournamentRewardSummaryPrimary,
     onlineMatchEnd?.reason,
+    showTournamentAdvanceModal,
     tournamentAdvanceFlow.finalPlacement,
     tournamentAdvanceFlow.isChampion,
     tournamentAdvanceFlow.phase,
+    tournamentOutcome,
     winModalMessage,
   ]);
-  const canUseTopExit = !isTournamentMatch || showWinModal;
+  const tournamentCountdownLabel = useMemo(() => {
+    if (!showTournamentAdvanceModal || tournamentWaitingRoomCountdownMs === null) {
+      return null;
+    }
+
+    const remainingSeconds = Math.max(0, Math.ceil(tournamentWaitingRoomCountdownMs / 1000));
+    return `Entering the waiting room automatically in ${remainingSeconds}s.`;
+  }, [showTournamentAdvanceModal, tournamentWaitingRoomCountdownMs]);
+  const canUseTopExit = !isTournamentMatch || isTournamentResultModal;
 
   const cueSystemReady = ancientCueFontLoaded || Boolean(ancientCueFontError);
   const cueFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : undefined;
@@ -1376,6 +1471,74 @@ export function GameRoom() {
   }, [gameState.winner]);
 
   useEffect(() => {
+    setTournamentRewardSummary(null);
+    setTournamentRewardFallbackActive(false);
+    setHasEnteredTournamentWaitingRoom(false);
+    setTournamentWaitingRoomCountdownMs(null);
+  }, [matchId]);
+
+  useEffect(() => {
+    if (!showWinModal || !isTournamentMatch || tournamentRewardSummary || tournamentRewardFallbackActive) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setTournamentRewardFallbackActive(true);
+    }, TOURNAMENT_REWARD_SUMMARY_FALLBACK_MS);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [
+    isTournamentMatch,
+    showWinModal,
+    tournamentRewardFallbackActive,
+    tournamentRewardSummary,
+  ]);
+
+  useEffect(() => {
+    if (!showTournamentAdvanceModal) {
+      setTournamentWaitingRoomCountdownMs(null);
+      return;
+    }
+
+    const startedAt = Date.now();
+    setTournamentWaitingRoomCountdownMs(TOURNAMENT_REWARD_MODAL_COUNTDOWN_MS);
+
+    const interval = setInterval(() => {
+      const remainingMs = Math.max(0, TOURNAMENT_REWARD_MODAL_COUNTDOWN_MS - (Date.now() - startedAt));
+      setTournamentWaitingRoomCountdownMs(remainingMs);
+
+      if (remainingMs <= 0) {
+        setHasEnteredTournamentWaitingRoom(true);
+      }
+    }, 250);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [showTournamentAdvanceModal]);
+
+  useEffect(() => {
+    if (!tournamentRewardSummary) {
+      return;
+    }
+
+    void Promise.allSettled([
+      isRankedHumanMatch ? refreshElo({ silent: true }) : Promise.resolve(null),
+      refreshProgression({ silent: true }),
+      shouldShowChallengeRewards ? refreshChallenges({ silent: true }) : Promise.resolve(null),
+    ]);
+  }, [
+    isRankedHumanMatch,
+    refreshChallenges,
+    refreshElo,
+    refreshProgression,
+    shouldShowChallengeRewards,
+    tournamentRewardSummary,
+  ]);
+
+  useEffect(() => {
     if (
       !showWinModal ||
       !canSyncOfflineBotRewards ||
@@ -1505,6 +1668,10 @@ export function GameRoom() {
       return;
     }
 
+    if (isTournamentMatch && !tournamentRewardFallbackActive) {
+      return;
+    }
+
     if (isOffline || !matchId) {
       return;
     }
@@ -1584,6 +1751,7 @@ export function GameRoom() {
     isOffline,
     isRankedHumanMatch,
     isPrivateMatch,
+    isTournamentMatch,
     matchId,
     progressionError,
     refreshElo,
@@ -1591,6 +1759,7 @@ export function GameRoom() {
     refreshProgression,
     shouldShowChallengeRewards,
     showWinModal,
+    tournamentRewardFallbackActive,
   ]);
   useEffect(() => {
     if (!showAudioSettings && !showWinModal && !tutorialCoachVisible) {
@@ -2023,6 +2192,53 @@ export function GameRoom() {
         return;
       }
 
+      if (matchData.op_code === MatchOpCode.TOURNAMENT_REWARD_SUMMARY) {
+        if (!isTournamentMatchRewardSummaryPayload(payload)) {
+          return;
+        }
+
+        console.info('[Nakama][tournament_reward_summary]', {
+          matchId: payload.matchId,
+          outcome: payload.tournamentOutcome,
+          didWin: payload.didWin,
+          eloDelta: payload.eloDelta,
+          totalXpDelta: payload.totalXpDelta,
+          challengeCompletionCount: payload.challengeCompletionCount,
+          shouldEnterWaitingRoom: payload.shouldEnterWaitingRoom,
+        });
+
+        setTournamentRewardSummary(payload);
+        setTournamentRewardFallbackActive(false);
+        setLastProgressionSnapshot({
+          matchId: payload.matchId,
+          progression: payload.progression,
+        });
+        setLastEloRatingProfileSnapshot({
+          matchId: payload.matchId,
+          profile: payload.eloProfile,
+        });
+        setLastChallengeProgressSnapshot({
+          matchId: payload.matchId,
+          progress: payload.challengeProgress,
+        });
+        setMatchRewardsErrorMessage(null);
+        setIsRefreshingMatchRewards(false);
+
+        if (shouldShowChallengeRewards) {
+          setMatchChallengeSummary(
+            buildMatchChallengeRewardSummary(payload.matchId, challengeDefinitions, payload.challengeProgress),
+          );
+        } else {
+          setMatchChallengeSummary(null);
+        }
+
+        if (payload.tournamentOutcome !== 'advancing') {
+          setHasEnteredTournamentWaitingRoom(false);
+        }
+
+        return;
+      }
+
       if (matchData.op_code === MatchOpCode.PROGRESSION_AWARD) {
         if (!isProgressionAwardNotificationPayload(payload)) {
           return;
@@ -2156,16 +2372,27 @@ export function GameRoom() {
     };
   }, [
     applyServerSnapshot,
+    challengeDefinitions,
     isOffline,
     matchId,
     effectiveMatchToken,
     setMatchId,
+    setLastChallengeProgressSnapshot,
     setLastEloRatingChange,
+    setLastEloRatingProfileSnapshot,
     setLastProgressionAward,
+    setLastProgressionSnapshot,
+    setMatchChallengeSummary,
     setOnlineMode,
     setPlayerColor,
     setSocketState,
     setMatchPresences,
+    shouldShowChallengeRewards,
+    setTournamentRewardFallbackActive,
+    setTournamentRewardSummary,
+    setMatchRewardsErrorMessage,
+    setIsRefreshingMatchRewards,
+    setHasEnteredTournamentWaitingRoom,
     updateMatchPresences,
     userId,
   ]);
@@ -2532,8 +2759,12 @@ export function GameRoom() {
     }
   };
 
+  const handleEnterTournamentWaitingRoom = React.useCallback(() => {
+    setHasEnteredTournamentWaitingRoom(true);
+  }, []);
+
   const handleExit = () => {
-    if (isTournamentMatch && !showWinModal) {
+    if (isTournamentMatch && !isTournamentResultModal) {
       return;
     }
 
@@ -2545,7 +2776,7 @@ export function GameRoom() {
   };
 
   useEffect(() => {
-    if (!isTournamentMatch || showWinModal) {
+    if (!isTournamentMatch || isTournamentResultModal) {
       return;
     }
 
@@ -2553,7 +2784,7 @@ export function GameRoom() {
     return () => {
       subscription.remove();
     };
-  }, [isTournamentMatch, showWinModal]);
+  }, [isTournamentMatch, isTournamentResultModal]);
 
   const renderSharedResultSummary = () => (
     <MatchResultSummaryContent
@@ -2574,6 +2805,8 @@ export function GameRoom() {
       shouldShowChallengeRewards={shouldShowChallengeRewards}
       matchChallengeSummary={matchChallengeSummary}
       matchRewardsErrorMessage={matchRewardsErrorMessage}
+      tournamentRewardSummary={isTournamentRewardSummaryPrimary ? tournamentRewardSummary : null}
+      tournamentCountdownLabel={showTournamentAdvanceModal ? tournamentCountdownLabel : null}
     />
   );
 
@@ -4129,10 +4362,16 @@ export function GameRoom() {
 
       <Modal
         visible={shouldRenderResultModal}
-        title={isTournamentResultModal ? tournamentResultModalTitle : winModalTitle}
-        message={isTournamentResultModal ? tournamentResultModalMessage : winModalMessage}
-        actionLabel={isTournamentResultModal ? 'Return to Home' : 'Return to Menu'}
-        onAction={handleExit}
+        title={isTournamentMatch ? tournamentResultModalTitle : winModalTitle}
+        message={isTournamentMatch ? tournamentResultModalMessage : winModalMessage}
+        actionLabel={
+          showTournamentAdvanceModal
+            ? 'Enter Waiting Room'
+            : isTournamentResultModal
+              ? 'Return to Home'
+              : 'Return to Menu'
+        }
+        onAction={showTournamentAdvanceModal ? handleEnterTournamentWaitingRoom : handleExit}
         maxWidth={520}
       >
         {renderSharedResultSummary()}
@@ -4151,10 +4390,10 @@ export function GameRoom() {
         highlightOwnerId={tournamentPlayerUserId}
         finalPlacement={tournamentAdvanceFlow.finalPlacement}
         isChampion={tournamentAdvanceFlow.isChampion}
+        rewardSummary={isTournamentRewardSummaryPrimary ? tournamentRewardSummary : null}
         onReturnToMainPage={handleExit}
-      >
-        {renderSharedResultSummary()}
-      </TournamentWaitingRoom>
+        onLaunchNextMatch={tournamentAdvanceFlow.launchNextMatch}
+      />
 
       <AudioSettingsModal
         visible={showAudioSettings}
