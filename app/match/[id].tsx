@@ -25,7 +25,6 @@ import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/gam
 import { DEFAULT_DICE_ROLL_DURATION_MS } from '@/components/game/slotDiceShared';
 import { TournamentWaitingRoom } from '@/components/tournaments/TournamentWaitingRoom';
 import { PlayTutorialCoachModal } from '@/components/tutorial/PlayTutorialCoachModal';
-import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { boxShadow, textShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
@@ -70,7 +69,7 @@ import {
   getSnapshotScoreTitle,
 } from '@/src/match/playerTitles';
 import { useGameStore } from '@/store/useGameStore';
-import { resolveVisibleViewportSize } from '@/src/layout/matchViewport';
+import { resolveViewportDeviceProfile, resolveVisibleViewportSize } from '@/src/layout/matchViewport';
 import {
   PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL,
   PLAYTHROUGH_TUTORIAL_ID,
@@ -2595,11 +2594,15 @@ export function GameRoom() {
 
   const viewportHorizontalPadding = 0;
   const stageContentWidth = Math.min(Math.max(viewportWidth - viewportHorizontalPadding * 2, 0), urTheme.layout.stage.maxWidth);
-  const useSideColumns = viewportWidth >= 760;
+  const viewportDeviceProfile = useMemo(
+    () => resolveViewportDeviceProfile({ width: viewportWidth, height: viewportHeight }),
+    [viewportHeight, viewportWidth],
+  );
+  const useSideColumns = viewportWidth >= 760 && !viewportDeviceProfile.isTabletPortrait;
   const isWebLayout = Platform.OS === 'web';
-  const isMobileWebLayout = isWebLayout && viewportWidth < 760;
-  const isMobileLayout = viewportWidth < 760;
-  const useMobileSideReserveRails = viewportWidth < 760;
+  const isMobileWebLayout = isWebLayout && viewportDeviceProfile.isMobileWidth;
+  const isMobileLayout = viewportDeviceProfile.isMobileWidth || viewportDeviceProfile.isTabletPortrait;
+  const useMobileSideReserveRails = viewportDeviceProfile.isMobileWidth || viewportDeviceProfile.isTabletPortrait;
   const showWebSideDiceVisual = Platform.OS === 'web' && useSideColumns;
   const boardClusterGap = useSideColumns || useMobileSideReserveRails ? urTheme.spacing.xs : urTheme.spacing.sm;
   const sideColumnWidth = useSideColumns
