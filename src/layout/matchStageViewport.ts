@@ -4,9 +4,9 @@ const MOBILE_LAYOUT_BREAKPOINT = 760;
 const TABLET_MIN_SHORT_SIDE = MOBILE_LAYOUT_BREAKPOINT;
 const TABLET_MAX_SHORT_SIDE = 1024;
 const TABLET_MAX_LONG_SIDE = 1366;
-const TABLET_LANDSCAPE_SIDE_COLUMN_SCALE = 0.64;
-const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_RATIO = 0.08;
-const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_MIN = 24;
+const TABLET_LANDSCAPE_SIDE_COLUMN_SCALE = 0.9;
+const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_RATIO = 0.1;
+const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_MIN = 32;
 
 export interface MatchStageViewportMode {
   isMobileHandset: boolean;
@@ -26,11 +26,13 @@ export interface MatchStageSideColumnWidthInput {
 
 export interface MatchStageTabletPortraitTuning {
   boardLiftViewportRatio: number;
+  boardGapControlScale: number;
   mobileSideBoardScaleMultiplier: number;
   reservePieceScale: number;
   rollButtonMaxSize: number;
   rollButtonMinSize: number;
   rollButtonWidthRatio: number;
+  trayScale: number;
 }
 
 export const resolveMatchStageViewportMode = ({
@@ -98,20 +100,24 @@ export const resolveMatchStageTabletPortraitTuning = (
   if (!isTabletPortrait) {
     return {
       boardLiftViewportRatio: 0.042,
+      boardGapControlScale: 1,
       mobileSideBoardScaleMultiplier: 0.8,
       reservePieceScale: 0.84,
       rollButtonMaxSize: 102,
       rollButtonMinSize: 84,
       rollButtonWidthRatio: 0.22,
+      trayScale: 1,
     };
   }
 
   return {
-    boardLiftViewportRatio: 0.048,
-    mobileSideBoardScaleMultiplier: 0.76,
-    reservePieceScale: 0.84,
-    rollButtonMaxSize: 98,
-    rollButtonMinSize: 80,
-    rollButtonWidthRatio: 0.205,
+    boardLiftViewportRatio: 0.062,
+    boardGapControlScale: 1.5,
+    mobileSideBoardScaleMultiplier: 0.9,
+    reservePieceScale: 1.26,
+    rollButtonMaxSize: 147,
+    rollButtonMinSize: 120,
+    rollButtonWidthRatio: 0.3075,
+    trayScale: 1.5,
   };
 };

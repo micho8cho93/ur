@@ -72,6 +72,7 @@ interface PieceRailProps {
   tokenVariant?: 'light' | 'dark' | 'reserve';
   orientation?: 'horizontal' | 'vertical';
   piecePixelSize?: number;
+  trayScale?: number;
   reserveCount: number;
   totalCount?: number;
   active?: boolean;
@@ -193,6 +194,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   tokenVariant,
   orientation = 'horizontal',
   piecePixelSize,
+  trayScale = 1,
   reserveCount,
   totalCount = 7,
   active = false,
@@ -216,7 +218,8 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   const trayArtScale =
     TRAY_ART_FIT.scale *
     (isVertical ? (isMobile ? 0.92 : 1) : isMobile ? 0.78 : isTabletPortrait ? 0.92 : 1) *
-    (isCompactVerticalRail ? MOBILE_VERTICAL_TRAY_ART_SCALE : 1);
+    (isCompactVerticalRail ? MOBILE_VERTICAL_TRAY_ART_SCALE : 1) *
+    trayScale;
 
   useEffect(() => {
     if (active) {

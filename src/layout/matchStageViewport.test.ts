@@ -73,13 +73,13 @@ describe('resolveMatchStageSideColumnWidth', () => {
         stageContentWidth: 1024,
         viewportWidth: 1024,
       }),
-    ).toBe(157);
+    ).toBe(221);
   });
 });
 
 describe('resolveMatchStageViewportHorizontalPadding', () => {
   it('adds side breathing room on tablet landscape', () => {
-    expect(resolveMatchStageViewportHorizontalPadding({ isTabletLandscape: true, viewportWidth: 1194 })).toBe(96);
+    expect(resolveMatchStageViewportHorizontalPadding({ isTabletLandscape: true, viewportWidth: 1194 })).toBe(119);
   });
 
   it('keeps other layouts flush with the existing viewport padding logic', () => {
@@ -91,22 +91,26 @@ describe('resolveMatchStageTabletPortraitTuning', () => {
   it('keeps the current mobile-side-rail sizing for non-tablet-portrait layouts', () => {
     expect(resolveMatchStageTabletPortraitTuning(false)).toEqual({
       boardLiftViewportRatio: 0.042,
+      boardGapControlScale: 1,
       mobileSideBoardScaleMultiplier: 0.8,
       reservePieceScale: 0.84,
       rollButtonMaxSize: 102,
       rollButtonMinSize: 84,
       rollButtonWidthRatio: 0.22,
+      trayScale: 1,
     });
   });
 
-  it('downscales the board, pieces, and controls for tablet portrait', () => {
+  it('upscales the board-adjacent controls for tablet portrait web', () => {
     expect(resolveMatchStageTabletPortraitTuning(true)).toEqual({
-      boardLiftViewportRatio: 0.048,
-      mobileSideBoardScaleMultiplier: 0.76,
-      reservePieceScale: 0.84,
-      rollButtonMaxSize: 98,
-      rollButtonMinSize: 80,
-      rollButtonWidthRatio: 0.205,
+      boardLiftViewportRatio: 0.062,
+      boardGapControlScale: 1.5,
+      mobileSideBoardScaleMultiplier: 0.9,
+      reservePieceScale: 1.26,
+      rollButtonMaxSize: 147,
+      rollButtonMinSize: 120,
+      rollButtonWidthRatio: 0.3075,
+      trayScale: 1.5,
     });
   });
 });

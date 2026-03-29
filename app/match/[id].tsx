@@ -2854,14 +2854,22 @@ export function GameRoom() {
     );
 
     return {
-      diceViewportHeight: Math.max(0, mobileBoardGapLayout.diceFrame.width - laneInset * 2),
-      diceViewportWidth: Math.max(0, mobileBoardGapLayout.diceFrame.height - laneInset * 2),
+      diceViewportHeight: Math.round(
+        Math.max(0, mobileBoardGapLayout.diceFrame.width - laneInset * 2) * tabletPortraitTuning.boardGapControlScale,
+      ),
+      diceViewportWidth: Math.round(
+        Math.max(0, mobileBoardGapLayout.diceFrame.height - laneInset * 2) * tabletPortraitTuning.boardGapControlScale,
+      ),
       rollArtSize: Math.max(
         44,
-        Math.round(Math.min(mobileBoardGapLayout.rollFrame.width, mobileBoardGapLayout.rollFrame.height) * 0.82),
+        Math.round(
+          Math.min(mobileBoardGapLayout.rollFrame.width, mobileBoardGapLayout.rollFrame.height) *
+          0.82 *
+          tabletPortraitTuning.boardGapControlScale,
+        ),
       ),
     };
-  }, [mobileBoardGapLayout]);
+  }, [mobileBoardGapLayout, tabletPortraitTuning.boardGapControlScale]);
   const showMobileBoardGapDice =
     useMobileSideReserveRails && mobileBoardGapLayout !== null && mobileBoardGapControlMetrics !== null;
   const showMobileWebUnderBoardDiceOverlay =
@@ -3797,6 +3805,7 @@ export function GameRoom() {
                       tokenVariant="light"
                       orientation="vertical"
                       piecePixelSize={scaledReservePiecePixelSize}
+                      trayScale={tabletPortraitTuning.trayScale}
                       reserveCount={lightReserve}
                       totalCount={pieceCountPerSide}
                       active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
@@ -3838,6 +3847,7 @@ export function GameRoom() {
                       tokenVariant="dark"
                       orientation="vertical"
                       piecePixelSize={scaledReservePiecePixelSize}
+                      trayScale={tabletPortraitTuning.trayScale}
                       reserveCount={darkReserve}
                       totalCount={pieceCountPerSide}
                       active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
