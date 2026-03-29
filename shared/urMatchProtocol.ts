@@ -40,12 +40,19 @@ export type MatchEndPayload = {
   message?: string | null;
 };
 
+export type StateSnapshotPlayer = {
+  userId: string | null;
+  title: string | null;
+};
+
+export type StateSnapshotPlayers = Record<PlayerColor, StateSnapshotPlayer>;
+
 export type StateSnapshotPayload = {
   type: "state_snapshot";
   matchId: string;
   revision: number;
   gameState: GameState;
-  assignments: Record<string, PlayerColor>;
+  players: StateSnapshotPlayers;
   serverTimeMs?: number;
   turnDurationMs?: number;
   turnStartedAtMs?: number | null;
@@ -98,8 +105,14 @@ const isNullableFiniteNumber = (value: unknown): value is number | null =>
 const isOptional = <T>(value: unknown, guard: (candidate: unknown) => candidate is T): value is T | undefined =>
   typeof value === "undefined" || guard(value);
 
-const isAssignmentsRecord = (value: unknown): value is Record<string, PlayerColor> =>
-  isRecord(value) && Object.values(value).every(isPlayerColor);
+const isNullableString = (value: unknown): value is string | null =>
+  value === null || typeof value === "string";
+
+const isStateSnapshotPlayer = (value: unknown): value is StateSnapshotPlayer =>
+  isRecord(value) && isNullableString(value.userId) && isNullableString(value.title);
+
+const isStateSnapshotPlayers = (value: unknown): value is StateSnapshotPlayers =>
+  isRecord(value) && isStateSnapshotPlayer(value.light) && isStateSnapshotPlayer(value.dark);
 
 const isAfkAccumulatedPayload = (value: unknown): value is Record<PlayerColor, number> =>
   isRecord(value) && isFiniteNumber(value.light) && isFiniteNumber(value.dark);
@@ -141,7 +154,7 @@ export const isStateSnapshotPayload = (value: unknown): value is StateSnapshotPa
   typeof value.revision === "number" &&
   Number.isInteger(value.revision) &&
   isRecord(value.gameState) &&
-  isAssignmentsRecord(value.assignments) &&
+  isStateSnapshotPlayers(value.players) &&
   isOptional(value.serverTimeMs, isFiniteNumber) &&
   isOptional(value.turnDurationMs, isFiniteNumber) &&
   isOptional(value.turnStartedAtMs, isNullableFiniteNumber) &&

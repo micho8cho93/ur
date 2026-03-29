@@ -29,9 +29,15 @@ const makeSnapshot = (
   matchId: 'match-1',
   revision: 1,
   gameState: makeState(),
-  assignments: {
-    'light-user': 'light',
-    'dark-user': 'dark',
+  players: {
+    light: {
+      userId: 'light-user',
+      title: 'Michel',
+    },
+    dark: {
+      userId: 'dark-user',
+      title: 'Guest',
+    },
   },
   ...overrides,
 });
@@ -112,6 +118,10 @@ describe('useGameStore', () => {
       authoritativeActiveTimedPlayer: 'light-user',
       authoritativeActiveTimedPlayerColor: 'light',
       authoritativeActiveTimedPhase: 'rolling',
+      authoritativePlayers: {
+        light: { userId: 'light-user', title: 'Michel' },
+        dark: { userId: 'dark-user', title: 'Guest' },
+      },
       authoritativeAfkAccumulatedMs: { light: 0, dark: 20_000 },
       authoritativeAfkRemainingMs: 70_000,
       authoritativeMatchEnd: {
@@ -142,6 +152,7 @@ describe('useGameStore', () => {
     expect(state.authoritativeActiveTimedPlayer).toBeNull();
     expect(state.authoritativeActiveTimedPlayerColor).toBeNull();
     expect(state.authoritativeActiveTimedPhase).toBeNull();
+    expect(state.authoritativePlayers).toBeNull();
     expect(state.authoritativeAfkAccumulatedMs).toBeNull();
     expect(state.authoritativeAfkRemainingMs).toBeNull();
     expect(state.authoritativeMatchEnd).toBeNull();
@@ -255,6 +266,10 @@ describe('useGameStore', () => {
     expect(state.authoritativeActiveTimedPlayer).toBe('light-user');
     expect(state.authoritativeActiveTimedPlayerColor).toBe('light');
     expect(state.authoritativeActiveTimedPhase).toBe('moving');
+    expect(state.authoritativePlayers).toEqual({
+      light: { userId: 'light-user', title: 'Michel' },
+      dark: { userId: 'dark-user', title: 'Guest' },
+    });
     expect(state.authoritativeAfkAccumulatedMs).toEqual({ light: 0, dark: 25_000 });
     expect(state.authoritativeAfkRemainingMs).toBe(90_000);
     expect(state.authoritativeMatchEnd).toEqual({
@@ -455,6 +470,10 @@ describe('useGameStore', () => {
       authoritativeActiveTimedPlayer: 'dark-user',
       authoritativeActiveTimedPlayerColor: 'dark',
       authoritativeActiveTimedPhase: 'moving',
+      authoritativePlayers: {
+        light: { userId: 'light-user', title: 'Michel' },
+        dark: { userId: 'dark-user', title: 'Guest' },
+      },
       authoritativeAfkAccumulatedMs: { light: 10_000, dark: 20_000 },
       authoritativeAfkRemainingMs: 70_000,
       authoritativeMatchEnd: {
@@ -485,6 +504,7 @@ describe('useGameStore', () => {
     expect(state.authoritativeActiveTimedPlayer).toBeNull();
     expect(state.authoritativeActiveTimedPlayerColor).toBeNull();
     expect(state.authoritativeActiveTimedPhase).toBeNull();
+    expect(state.authoritativePlayers).toBeNull();
     expect(state.authoritativeAfkAccumulatedMs).toBeNull();
     expect(state.authoritativeAfkRemainingMs).toBeNull();
     expect(state.authoritativeMatchEnd).toBeNull();

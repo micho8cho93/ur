@@ -4,7 +4,7 @@ import { DEFAULT_MATCH_CONFIG, type MatchConfig } from '@/logic/matchConfigs';
 import { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { EloRatingChangeNotificationPayload } from '@/shared/elo';
 import { ProgressionAwardResponse } from '@/shared/progression';
-import { MatchEndPayload, StateSnapshotPayload } from '@/shared/urMatchProtocol';
+import { MatchEndPayload, StateSnapshotPayload, StateSnapshotPlayers } from '@/shared/urMatchProtocol';
 import { createInitialState, getValidMoves, applyMove, rollDice } from '@/logic/engine';
 import { MatchPresenceEvent, Session } from '@heroiclabs/nakama-js';
 
@@ -34,6 +34,7 @@ interface GameStore {
   authoritativeActiveTimedPlayer: string | null;
   authoritativeActiveTimedPlayerColor: PlayerColor | null;
   authoritativeActiveTimedPhase: GameState['phase'] | null;
+  authoritativePlayers: StateSnapshotPlayers | null;
   authoritativeAfkAccumulatedMs: Record<PlayerColor, number> | null;
   authoritativeAfkRemainingMs: number | null;
   authoritativeMatchEnd: MatchEndPayload | null;
@@ -76,6 +77,7 @@ const EMPTY_AUTHORITATIVE_ONLINE_STATE = {
   authoritativeActiveTimedPlayer: null,
   authoritativeActiveTimedPlayerColor: null,
   authoritativeActiveTimedPhase: null,
+  authoritativePlayers: null,
   authoritativeAfkAccumulatedMs: null,
   authoritativeAfkRemainingMs: null,
   authoritativeMatchEnd: null,
@@ -185,6 +187,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         authoritativeActiveTimedPlayer: snapshot.activeTimedPlayer ?? null,
         authoritativeActiveTimedPlayerColor: snapshot.activeTimedPlayerColor ?? null,
         authoritativeActiveTimedPhase: snapshot.activeTimedPhase ?? null,
+        authoritativePlayers: snapshot.players,
         authoritativeAfkAccumulatedMs: snapshot.afkAccumulatedMs
           ? { light: snapshot.afkAccumulatedMs.light, dark: snapshot.afkAccumulatedMs.dark }
           : null,

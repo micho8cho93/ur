@@ -71,6 +71,7 @@ import {
   normalizePrivateMatchCodeInput,
 } from "../../shared/privateMatchCode";
 import {
+  getUsernameOnboardingProfile,
   requireCompletedUsernameOnboarding,
   rpcClaimUsername,
   rpcGetUsernameOnboardingStatus,
@@ -133,6 +134,7 @@ declare namespace nkruntime {
 type MatchState = {
   presences: Record<string, Record<string, nkruntime.Presence>>;
   assignments: Record<string, PlayerColor>;
+  playerTitles: Record<string, string>;
   gameState: GameState;
   revision: number;
   started: boolean;
@@ -817,6 +819,34 @@ const removePresence = (state: MatchState, presence: nkruntime.Presence): void =
 const getUserIdForColor = (state: MatchState, color: PlayerColor): string | null =>
   Object.entries(state.assignments).find(([, assignedColor]) => assignedColor === color)?.[0] ?? null;
 
+const resolveAssignedPlayerTitle = (nk: nkruntime.Nakama, userId: string): string => {
+  try {
+    const profile = getUsernameOnboardingProfile(nk, userId);
+    if (profile.onboardingComplete && profile.usernameDisplay) {
+      return profile.usernameDisplay;
+    }
+  } catch {
+    // Fall back to the guest title when profile data is unavailable.
+  }
+
+  return "Guest";
+};
+
+const cacheAssignedPlayerTitle = (state: MatchState, nk: nkruntime.Nakama, userId: string): void => {
+  state.playerTitles[userId] = resolveAssignedPlayerTitle(nk, userId);
+};
+
+const buildSnapshotPlayer = (
+  state: MatchState,
+  color: PlayerColor,
+): StateSnapshotPayload["players"][PlayerColor] => {
+  const userId = getUserIdForColor(state, color);
+  return {
+    userId,
+    title: userId ? state.playerTitles[userId] ?? "Guest" : null,
+  };
+};
+
 const getOtherPlayerColor = (color: PlayerColor): PlayerColor =>
   color === "light" ? "dark" : "light";
 
@@ -1407,7 +1437,7 @@ function matchmakerMatched(
 function matchInit(
   _ctx: nkruntime.Context,
   _logger: nkruntime.Logger,
-  _nk: nkruntime.Nakama,
+  nk: nkruntime.Nakama,
   params: Record<string, unknown>
 ): { state: MatchState; tickRate: number; label: string } {
   const playerIds = Array.isArray(params.playerIds) ? (params.playerIds as string[]) : [];
@@ -1431,9 +1461,17 @@ function matchInit(
     assignments[playerIds[1]] = "dark";
   }
 
+  const playerTitles: Record<string, string> = {};
+  playerIds.forEach((userId) => {
+    if (typeof userId === "string" && userId.length > 0) {
+      playerTitles[userId] = resolveAssignedPlayerTitle(nk, userId);
+    }
+  });
+
   const state: MatchState = {
     presences: {},
     assignments,
+    playerTitles,
     gameState: createInitialState(getMatchConfig(modeId)),
     revision: 0,
     started: false,
@@ -1503,6 +1541,7 @@ function matchJoinAttempt(
 
   upsertPresence(state, presence);
   ensureAssignment(state, userId);
+  cacheAssignedPlayerTitle(state, nk, userId);
 
   return { state, accept: true };
 }
@@ -1510,7 +1549,7 @@ function matchJoinAttempt(
 function matchJoin(
   ctx: nkruntime.Context,
   logger: nkruntime.Logger,
-  _nk: nkruntime.Nakama,
+  nk: nkruntime.Nakama,
   dispatcher: nkruntime.MatchDispatcher,
   _tick: number,
   state: MatchState,
@@ -1524,6 +1563,7 @@ function matchJoin(
     }
     upsertPresence(state, presence);
     ensureAssignment(state, userId);
+    cacheAssignedPlayerTitle(state, nk, userId);
   });
 
   markMatchStartedIfReady(state, Date.now());
@@ -1600,6 +1640,7 @@ function matchLoop(
       }
 
       upsertPresence(state, message.sender);
+      cacheAssignedPlayerTitle(state, nk, senderUserId);
       const senderColor = state.assignments[senderUserId];
 
       if (!senderColor) {
@@ -2140,7 +2181,10 @@ function broadcastSnapshot(dispatcher: nkruntime.MatchDispatcher, state: MatchSt
     matchId,
     revision: state.revision,
     gameState: state.gameState,
-    assignments: state.assignments,
+    players: {
+      light: buildSnapshotPlayer(state, "light"),
+      dark: buildSnapshotPlayer(state, "dark"),
+    },
     serverTimeMs: nowMs,
     turnDurationMs: state.timer.turnDurationMs,
     turnStartedAtMs: state.timer.turnStartedAtMs,

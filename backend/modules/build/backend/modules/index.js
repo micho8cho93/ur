@@ -6798,6 +6798,27 @@ var getUserIdForColor = (state, color) => {
   var _a, _b;
   return (_b = (_a = Object.entries(state.assignments).find(([, assignedColor]) => assignedColor === color)) == null ? void 0 : _a[0]) != null ? _b : null;
 };
+var resolveAssignedPlayerTitle = (nk, userId) => {
+  try {
+    const profile = getUsernameOnboardingProfile(nk, userId);
+    if (profile.onboardingComplete && profile.usernameDisplay) {
+      return profile.usernameDisplay;
+    }
+  } catch (e) {
+  }
+  return "Guest";
+};
+var cacheAssignedPlayerTitle = (state, nk, userId) => {
+  state.playerTitles[userId] = resolveAssignedPlayerTitle(nk, userId);
+};
+var buildSnapshotPlayer = (state, color) => {
+  var _a;
+  const userId = getUserIdForColor(state, color);
+  return {
+    userId,
+    title: userId ? (_a = state.playerTitles[userId]) != null ? _a : "Guest" : null
+  };
+};
 var getOtherPlayerColor = (color) => color === "light" ? "dark" : "light";
 var getActiveAssignedUserCount = (state) => Object.keys(state.assignments).filter((userId) => getUserPresenceTargets(state, userId).length > 0).length;
 var canStartMatch = (state) => Object.keys(state.assignments).length >= MAX_PLAYERS && getActiveAssignedUserCount(state) >= MAX_PLAYERS;
@@ -7214,7 +7235,7 @@ function matchmakerMatched(_ctx, logger, nk, matched) {
     allowsChallengeRewards: true
   });
 }
-function matchInit(_ctx, _logger, _nk, params) {
+function matchInit(_ctx, _logger, nk, params) {
   const playerIds = Array.isArray(params.playerIds) ? params.playerIds : [];
   const modeId = resolveMatchModeId(params.modeId);
   const classification = buildMatchClassification(params, modeId);
@@ -7233,9 +7254,16 @@ function matchInit(_ctx, _logger, _nk, params) {
   if (playerIds[1]) {
     assignments[playerIds[1]] = "dark";
   }
+  const playerTitles = {};
+  playerIds.forEach((userId) => {
+    if (typeof userId === "string" && userId.length > 0) {
+      playerTitles[userId] = resolveAssignedPlayerTitle(nk, userId);
+    }
+  });
   const state = {
     presences: {},
     assignments,
+    playerTitles,
     gameState: createInitialState(getMatchConfig(modeId)),
     revision: 0,
     started: false,
@@ -7289,9 +7317,10 @@ function matchJoinAttempt(_ctx, logger, nk, _dispatcher, _tick, state, presence)
   }
   upsertPresence(state, presence);
   ensureAssignment(state, userId);
+  cacheAssignedPlayerTitle(state, nk, userId);
   return { state, accept: true };
 }
-function matchJoin(ctx, logger, _nk, dispatcher, _tick, state, presences) {
+function matchJoin(ctx, logger, nk, dispatcher, _tick, state, presences) {
   presences.forEach((presence) => {
     const userId = getPresenceUserId(presence);
     if (!userId) {
@@ -7300,6 +7329,7 @@ function matchJoin(ctx, logger, _nk, dispatcher, _tick, state, presences) {
     }
     upsertPresence(state, presence);
     ensureAssignment(state, userId);
+    cacheAssignedPlayerTitle(state, nk, userId);
   });
   markMatchStartedIfReady(state, Date.now());
   broadcastSnapshot(dispatcher, state, getMatchId(ctx));
@@ -7345,6 +7375,7 @@ function matchLoop(ctx, logger, nk, dispatcher, _tick, state, messages) {
         return;
       }
       upsertPresence(state, message.sender);
+      cacheAssignedPlayerTitle(state, nk, senderUserId);
       const senderColor = state.assignments[senderUserId];
       if (!senderColor) {
         sendError(
@@ -7738,7 +7769,10 @@ function broadcastSnapshot(dispatcher, state, matchId) {
     matchId,
     revision: state.revision,
     gameState: state.gameState,
-    assignments: state.assignments,
+    players: {
+      light: buildSnapshotPlayer(state, "light"),
+      dark: buildSnapshotPlayer(state, "dark")
+    },
     serverTimeMs: nowMs,
     turnDurationMs: state.timer.turnDurationMs,
     turnStartedAtMs: state.timer.turnStartedAtMs,

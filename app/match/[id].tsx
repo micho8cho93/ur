@@ -63,6 +63,12 @@ import {
 } from '@/src/offlineMatch/offlineMatchRewards';
 import { useProgression } from '@/src/progression/useProgression';
 import { useTournamentAdvanceFlow } from '@/src/tournaments/useTournamentAdvanceFlow';
+import {
+  getBotScoreTitle,
+  getHumanScoreTitle,
+  getPlayerColorForUserId,
+  getSnapshotScoreTitle,
+} from '@/src/match/playerTitles';
 import { useGameStore } from '@/store/useGameStore';
 import { resolveVisibleViewportSize } from '@/src/layout/matchViewport';
 import {
@@ -386,6 +392,7 @@ export function GameRoom() {
   const authoritativeTurnRemainingMs = useGameStore((state) => state.authoritativeTurnRemainingMs);
   const authoritativeActiveTimedPlayerColor = useGameStore((state) => state.authoritativeActiveTimedPlayerColor);
   const authoritativeActiveTimedPhase = useGameStore((state) => state.authoritativeActiveTimedPhase);
+  const authoritativePlayers = useGameStore((state) => state.authoritativePlayers);
   const authoritativeMatchEnd = useGameStore((state) => state.authoritativeMatchEnd);
   const authoritativeSnapshotReceivedAtMs = useGameStore((state) => state.authoritativeSnapshotReceivedAtMs);
   const applyServerSnapshot = useGameStore((state) => state.applyServerSnapshot);
@@ -418,6 +425,20 @@ export function GameRoom() {
   const isPracticeModeMatch = effectiveMatchConfig.isPracticeMode;
   const offlineBotRewardMode: CompletedBotMatchRewardMode | undefined =
     isPlaythroughTutorialMatch ? 'base_win_only' : undefined;
+  const humanScoreTitle = useMemo(() => getHumanScoreTitle(user), [user]);
+  const scoreTitles = useMemo<Record<PlayerColor, string>>(() => {
+    if (isOffline) {
+      return {
+        light: humanScoreTitle,
+        dark: getBotScoreTitle(resolvedBotDifficulty),
+      };
+    }
+
+    return {
+      light: getSnapshotScoreTitle(authoritativePlayers, 'light') ?? (playerColor === 'light' ? humanScoreTitle : 'LIGHT'),
+      dark: getSnapshotScoreTitle(authoritativePlayers, 'dark') ?? (playerColor === 'dark' ? humanScoreTitle : 'DARK'),
+    };
+  }, [authoritativePlayers, humanScoreTitle, isOffline, playerColor, resolvedBotDifficulty]);
   const practiceModeRewardLabel = isPracticeModeMatch ? getPracticeModeRewardLabel(effectiveMatchConfig) : null;
 
   const hasAssignedColor = playerColor === 'light' || playerColor === 'dark';
@@ -1924,13 +1945,13 @@ export function GameRoom() {
         if (!isStateSnapshotPayload(payload)) {
           return;
         }
-        const assignedColorFromSnapshot = userId
-          ? (payload.assignments[userId] as PlayerColor | undefined)
-          : undefined;
+        const assignedColorFromSnapshot = getPlayerColorForUserId(payload.players, userId);
         console.info('[Nakama][snapshot]', {
           matchId: payload.matchId,
           revision: payload.revision,
           assignedPlayerColor: assignedColorFromSnapshot ?? null,
+          lightPlayerTitle: payload.players.light.title ?? null,
+          darkPlayerTitle: payload.players.dark.title ?? null,
           phase: payload.gameState.phase,
           turn: payload.gameState.currentTurn,
           roll: payload.gameState.rollValue,
@@ -3200,6 +3221,7 @@ export function GameRoom() {
         >
           <EdgeScore
             side="dark"
+            title={scoreTitles.dark}
             score={gameState.dark.finishedCount}
             maxScore={pieceCountPerSide}
             active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
@@ -3458,6 +3480,7 @@ export function GameRoom() {
           >
             <EdgeScore
               side="light"
+              title={scoreTitles.light}
               score={gameState.light.finishedCount}
               maxScore={pieceCountPerSide}
               active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
@@ -3482,6 +3505,7 @@ export function GameRoom() {
             {showMobileWebDetachedDarkScore ? (
               <EdgeScore
                 side="dark"
+                title={scoreTitles.dark}
                 score={gameState.dark.finishedCount}
                 maxScore={pieceCountPerSide}
                 active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
@@ -3494,6 +3518,7 @@ export function GameRoom() {
             ) : (
               <EdgeScore
                 side="dark"
+                title={scoreTitles.dark}
                 score={gameState.dark.finishedCount}
                 maxScore={pieceCountPerSide}
                 active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}

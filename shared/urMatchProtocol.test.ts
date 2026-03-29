@@ -9,9 +9,15 @@ describe('urMatchProtocol', () => {
         matchId: 'match-1',
         revision: 3,
         gameState: createInitialState(),
-        assignments: {
-          'light-user': 'light',
-          'dark-user': 'dark',
+        players: {
+          light: {
+            userId: 'light-user',
+            title: 'Michel',
+          },
+          dark: {
+            userId: 'dark-user',
+            title: 'Guest',
+          },
         },
         serverTimeMs: 1_000,
         turnDurationMs: 10_000,
@@ -44,8 +50,15 @@ describe('urMatchProtocol', () => {
         matchId: 'match-1',
         revision: 3,
         gameState: createInitialState(),
-        assignments: {
-          'light-user': 'light',
+        players: {
+          light: {
+            userId: 'light-user',
+            title: 'Michel',
+          },
+          dark: {
+            userId: 'dark-user',
+            title: 42,
+          },
         },
         activeTimedPlayerColor: 'blue',
       }),
@@ -57,8 +70,15 @@ describe('urMatchProtocol', () => {
         matchId: 'match-1',
         revision: 3,
         gameState: createInitialState(),
-        assignments: {
-          'light-user': 'light',
+        players: {
+          light: {
+            userId: 'light-user',
+            title: 'Michel',
+          },
+          dark: {
+            userId: 'dark-user',
+            title: 'Guest',
+          },
         },
         afkAccumulatedMs: {
           light: '0',

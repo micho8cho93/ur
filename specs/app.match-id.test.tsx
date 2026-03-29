@@ -13,6 +13,14 @@ const mockGameStageHUD = jest.fn(() => {
   const { View } = require('react-native');
   return <View testID="mock-stage-hud" />;
 });
+const mockEdgeScore = jest.fn(({ title }: { title?: string }) => {
+  const { Text, View } = require('react-native');
+  return (
+    <View testID="mock-edge-score">
+      <Text>{title ?? 'UNTITLED'}</Text>
+    </View>
+  );
+});
 const mockAudioSettingsModal = jest.fn(() => {
   const { View } = require('react-native');
   return <View testID="mock-audio-settings" />;
@@ -161,6 +169,7 @@ const mockStoreState = {
   authoritativeActiveTimedPlayer: null,
   authoritativeActiveTimedPlayerColor: null,
   authoritativeActiveTimedPhase: null,
+  authoritativePlayers: null,
   authoritativeAfkAccumulatedMs: null,
   authoritativeAfkRemainingMs: null,
   authoritativeMatchEnd: null,
@@ -192,6 +201,41 @@ const mockStoreState = {
   userId: null,
   validMoves: [] as MoveAction[],
 };
+
+const mockAuthState = {
+  user: null as {
+    id: string;
+    username: string;
+    email: string | null;
+    provider: 'guest' | 'google';
+    avatarUrl: string | null;
+    createdAt: string;
+    nakamaUserId?: string;
+  } | null,
+  isLoading: false,
+  loginWithGoogle: jest.fn(),
+  loginAsGuest: jest.fn(),
+  logout: jest.fn(),
+  linkGoogleAccount: jest.fn(),
+};
+
+const makeSnapshotPlayers = (
+  overrides?: Partial<{
+    light: { userId: string | null; title: string | null };
+    dark: { userId: string | null; title: string | null };
+  }>,
+) => ({
+  light: {
+    userId: 'self-user',
+    title: 'Michel',
+    ...overrides?.light,
+  },
+  dark: {
+    userId: 'opponent-user',
+    title: 'Opponent',
+    ...overrides?.dark,
+  },
+});
 
 jest.mock('@/components/game/Board', () => {
   if (mockUseRealBoard) {
@@ -243,10 +287,8 @@ jest.mock('@/components/game/GameStageHUD', () => {
 });
 
 jest.mock('@/components/game/EdgeScore', () => {
-  const React = require('react');
-  const { View } = require('react-native');
   return {
-    EdgeScore: () => <View testID="mock-edge-score" />,
+    EdgeScore: (props: unknown) => mockEdgeScore(props as never),
   };
 });
 
@@ -479,14 +521,7 @@ jest.mock('@/src/challenges/useChallenges', () => ({
 }));
 
 jest.mock('@/src/auth/useAuth', () => ({
-  useAuth: () => ({
-    user: null,
-    isLoading: false,
-    loginWithGoogle: jest.fn(),
-    loginAsGuest: jest.fn(),
-    logout: jest.fn(),
-    linkGoogleAccount: jest.fn(),
-  }),
+  useAuth: () => mockAuthState,
 }));
 
 jest.mock('@/services/audio', () => ({
@@ -764,6 +799,7 @@ describe('GameRoom match dice stage', () => {
         authoritativeActiveTimedPlayer: snapshot.activeTimedPlayer ?? null,
         authoritativeActiveTimedPlayerColor: snapshot.activeTimedPlayerColor ?? null,
         authoritativeActiveTimedPhase: snapshot.activeTimedPhase ?? null,
+        authoritativePlayers: snapshot.players,
         authoritativeAfkAccumulatedMs: snapshot.afkAccumulatedMs ?? null,
         authoritativeAfkRemainingMs: snapshot.afkRemainingMs ?? null,
         authoritativeMatchEnd: snapshot.matchEnd ?? null,
@@ -788,10 +824,12 @@ describe('GameRoom match dice stage', () => {
     mockStoreState.authoritativeActiveTimedPlayer = null;
     mockStoreState.authoritativeActiveTimedPlayerColor = null;
     mockStoreState.authoritativeActiveTimedPhase = null;
+    mockStoreState.authoritativePlayers = null;
     mockStoreState.authoritativeAfkAccumulatedMs = null;
     mockStoreState.authoritativeAfkRemainingMs = null;
     mockStoreState.authoritativeMatchEnd = null;
     mockStoreState.authoritativeSnapshotReceivedAtMs = null;
+    mockAuthState.user = null;
     mockStoreState.setGameStateFromServer = jest.fn((nextState: GameState) => {
       mockStoreState.gameState = nextState;
       mockStoreState.validMoves =
@@ -1392,10 +1430,7 @@ describe('GameRoom match dice stage', () => {
             rollValue: 1,
             history: [],
           },
-          assignments: {
-            'self-user': 'light',
-            'opponent-user': 'dark',
-          },
+          players: makeSnapshotPlayers(),
           serverTimeMs: 1_000,
           turnDurationMs: 10_000,
           turnStartedAtMs: 1_000,
@@ -1431,10 +1466,7 @@ describe('GameRoom match dice stage', () => {
             rollValue: null,
             history: ['light moved to 3. Rosette: true'],
           },
-          assignments: {
-            'self-user': 'light',
-            'opponent-user': 'dark',
-          },
+          players: makeSnapshotPlayers(),
           serverTimeMs: 2_000,
           turnDurationMs: 10_000,
           turnStartedAtMs: 2_000,
@@ -1537,10 +1569,7 @@ describe('GameRoom match dice stage', () => {
             rollValue: 1,
             history: [],
           },
-          assignments: {
-            'self-user': 'light',
-            'opponent-user': 'dark',
-          },
+          players: makeSnapshotPlayers(),
           serverTimeMs: 1_000,
           turnDurationMs: 10_000,
           turnStartedAtMs: 1_000,
@@ -1576,10 +1605,7 @@ describe('GameRoom match dice stage', () => {
             rollValue: null,
             history: ['light moved to 3. Rosette: true'],
           },
-          assignments: {
-            'self-user': 'light',
-            'opponent-user': 'dark',
-          },
+          players: makeSnapshotPlayers(),
           serverTimeMs: 2_000,
           turnDurationMs: 10_000,
           turnStartedAtMs: 2_000,
@@ -1741,10 +1767,7 @@ describe('GameRoom match dice stage', () => {
             currentTurn: 'light',
             phase: 'rolling',
           },
-          assignments: {
-            'self-user': 'light',
-            'opponent-user': 'dark',
-          },
+          players: makeSnapshotPlayers(),
           serverTimeMs: 5_000,
           turnDurationMs: 10_000,
           turnStartedAtMs: 5_000,
@@ -2065,6 +2088,104 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
     expect(screen.getByText('Rechecking for the next round...')).toBeTruthy();
     expect(mockFinalizeTournamentMatch).not.toHaveBeenCalled();
+  });
+
+  it('passes human and bot titles to the score cards in offline matches', async () => {
+    mockSearchParams.id = 'local-score-titles';
+    mockSearchParams.offline = '1';
+    mockSearchParams.botDifficulty = 'medium';
+    mockStoreState.matchId = 'local-score-titles';
+    mockAuthState.user = {
+      id: 'user-1',
+      username: 'Michel',
+      email: null,
+      provider: 'google',
+      avatarUrl: null,
+      createdAt: '2026-03-29T00:00:00.000Z',
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      mockEdgeScore.mock.calls.some(
+        ([props]) => props.side === 'light' && props.title === 'Michel',
+      ),
+    ).toBe(true);
+    expect(
+      mockEdgeScore.mock.calls.some(
+        ([props]) => props.side === 'dark' && props.title === 'Medium Bot',
+      ),
+    ).toBe(true);
+  });
+
+  it('renders authoritative online score titles from snapshot player data', async () => {
+    mockSearchParams.id = 'online-score-titles';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-score-titles',
+    });
+    mockStoreState.matchId = 'online-score-titles';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockAuthState.user = {
+      id: 'user-1',
+      username: 'Fallback Name',
+      email: null,
+      provider: 'google',
+      avatarUrl: null,
+      createdAt: '2026-03-29T00:00:00.000Z',
+    };
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      mockSocket.onmatchdata?.({
+        match_id: 'online-score-titles',
+        op_code: 100,
+        data: JSON.stringify({
+          type: 'state_snapshot',
+          matchId: 'online-score-titles',
+          revision: 1,
+          gameState: {
+            ...baseGameState,
+            currentTurn: 'light',
+            phase: 'rolling',
+          },
+          players: makeSnapshotPlayers({
+            light: { title: 'RoyalMichel', userId: 'self-user' },
+            dark: { title: 'Guest', userId: 'opponent-user' },
+          }),
+        }),
+      });
+      await Promise.resolve();
+      view.rerender(<GameRoom />);
+    });
+
+    expect(
+      mockEdgeScore.mock.calls.some(
+        ([props]) => props.side === 'light' && props.title === 'RoyalMichel',
+      ),
+    ).toBe(true);
+    expect(
+      mockEdgeScore.mock.calls.some(
+        ([props]) => props.side === 'dark' && props.title === 'Guest',
+      ),
+    ).toBe(true);
   });
 
   it('hides timer-length settings for online matches while leaving offline timer settings available', async () => {

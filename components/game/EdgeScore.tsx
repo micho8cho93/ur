@@ -14,6 +14,7 @@ import { AnimatedScoreValue } from './AnimatedScoreValue';
 
 interface EdgeScoreProps {
   side: 'light' | 'dark';
+  title?: string;
   score: number;
   maxScore: number;
   active?: boolean;
@@ -38,6 +39,7 @@ const SIDE_ACCENTS = {
 
 export const EdgeScore: React.FC<EdgeScoreProps> = ({
   side,
+  title,
   score,
   maxScore,
   active = false,
@@ -49,6 +51,9 @@ export const EdgeScore: React.FC<EdgeScoreProps> = ({
   const isRightAligned = align === 'right';
   const accent = SIDE_ACCENTS[side];
   const celebration = useSharedValue(0);
+  const defaultTitle = side.toUpperCase();
+  const resolvedTitle = title?.trim() || defaultTitle;
+  const usesCustomTitle = resolvedTitle !== defaultTitle;
 
   const triggerCelebration = useCallback(() => {
     cancelAnimation(celebration);
@@ -81,7 +86,7 @@ export const EdgeScore: React.FC<EdgeScoreProps> = ({
   return (
     <Animated.View
       accessible
-      accessibilityLabel={`${side.toUpperCase()} score ${score} of ${maxScore}`}
+      accessibilityLabel={`${resolvedTitle} score ${score} of ${maxScore}`}
       style={[
         styles.wrap,
         isMobile && styles.mobileWrap,
@@ -100,8 +105,18 @@ export const EdgeScore: React.FC<EdgeScoreProps> = ({
       <View style={[styles.innerBorder, isMobile && styles.mobileInnerBorder]} />
 
       <View style={[styles.content, isRightAligned && styles.rightContent]}>
-        <Text style={[styles.label, isMobile && styles.mobileLabel, isRightAligned && styles.rightText]}>
-          {side.toUpperCase()}
+        <Text
+          adjustsFontSizeToFit
+          numberOfLines={1}
+          style={[
+            styles.label,
+            isMobile && styles.mobileLabel,
+            isRightAligned && styles.rightText,
+            usesCustomTitle && styles.namedLabel,
+            usesCustomTitle && isMobile && styles.mobileNamedLabel,
+          ]}
+        >
+          {resolvedTitle}
         </Text>
         <View style={[styles.scoreRow, isMobile && styles.mobileScoreRow, isRightAligned && styles.rightScoreRow]}>
           <AnimatedScoreValue
@@ -214,10 +229,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1.5,
   },
+  namedLabel: {
+    fontSize: 11,
+    letterSpacing: 0.45,
+  },
   mobileLabel: {
     fontSize: 7,
     lineHeight: 10,
     letterSpacing: 1.15,
+  },
+  mobileNamedLabel: {
+    fontSize: 8,
+    letterSpacing: 0.25,
   },
   scoreRow: {
     marginTop: 4,
