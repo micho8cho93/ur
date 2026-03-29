@@ -18,6 +18,8 @@ const MODE_ICONS: Record<Exclude<MatchModeId, 'standard'>, keyof typeof Material
   gameMode_1_piece: 'looks-one',
   gameMode_3_pieces: 'filter-3',
   gameMode_5_pieces: 'filter-5',
+  gameMode_finkel_rules: 'filter-7',
+  gameMode_capture: 'flash-on',
   gameMode_full_path: 'timeline',
 };
 

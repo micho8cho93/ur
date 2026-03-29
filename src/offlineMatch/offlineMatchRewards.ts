@@ -336,7 +336,7 @@ export const recordOfflineHistoryEntries = (
           playerMoveCount: current.playerMoveCount + 1,
           contestedTilesLandedCount:
             current.contestedTilesLandedCount +
-            (isContestedLanding(nextState.matchConfig.pathVariant, mover, toIndex) ? 1 : 0),
+            (isContestedLanding(nextState.matchConfig, mover, toIndex) ? 1 : 0),
         })),
         totalMoves: nextTelemetry.totalMoves + 1,
       };

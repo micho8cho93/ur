@@ -3,6 +3,7 @@ import { GameState, PlayerColor, Piece, Player, MoveAction } from './types';
 import { isRosette, isWarZone } from './constants';
 import { DEFAULT_MATCH_CONFIG, type MatchConfig } from './matchConfigs';
 import { getPathCoord, getPathLength } from './pathVariants';
+import { isProtectedFromCapture, shouldGrantExtraTurn } from './rules';
 
 export const INITIAL_PIECE_COUNT = DEFAULT_MATCH_CONFIG.pieceCountPerSide;
 
@@ -77,8 +78,7 @@ export const getValidMoves = (state: GameState, roll: number): MoveAction[] => {
         });
 
         if (opponentPiece) {
-            const targetIsRosette = isRosette(targetCoord.row, targetCoord.col);
-            if (targetIsRosette && isShared) {
+            if (isShared && isProtectedFromCapture(state.matchConfig, targetCoord)) {
                 continue;
             }
         }
@@ -104,6 +104,7 @@ export const applyMove = (state: GameState, move: MoveAction): GameState => {
         player.finishedCount++;
     }
 
+    let didCapture = false;
     if (move.toIndex < pathLength) {
         const targetCoord = getPathCoord(newState.matchConfig.pathVariant, player.color, move.toIndex);
         if (!targetCoord) {
@@ -119,6 +120,7 @@ export const applyMove = (state: GameState, move: MoveAction): GameState => {
         if (opponentPiece) {
             opponentPiece.position = -1;
             player.capturedCount++;
+            didCapture = true;
             newState.history.push(`${player.color} captured ${opponent.color}`);
         }
     }
@@ -133,7 +135,7 @@ export const applyMove = (state: GameState, move: MoveAction): GameState => {
 
     newState.history.push(`${player.color} moved to ${move.toIndex}. Rosette: ${isRosetteLanding}`);
 
-    if (isRosetteLanding) {
+    if (shouldGrantExtraTurn(newState.matchConfig, { didCapture, landedOnRosette: isRosetteLanding })) {
         newState.phase = 'rolling';
         newState.rollValue = null;
     } else {

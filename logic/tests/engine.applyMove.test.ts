@@ -1,5 +1,6 @@
 import { applyMove, createInitialState, INITIAL_PIECE_COUNT } from '@/logic/engine';
 import { PATH_LENGTH } from '@/logic/constants';
+import { getMatchConfig } from '@/logic/matchConfigs';
 
 describe('engine applyMove', () => {
   it('applies a normal move and changes turn', () => {
@@ -47,6 +48,22 @@ describe('engine applyMove', () => {
       'light captured dark',
       'light moved to 5. Rosette: false',
     ]);
+  });
+
+  it('grants another turn after a capture in Capture mode', () => {
+    const state = createInitialState(getMatchConfig('gameMode_capture'));
+    state.phase = 'moving';
+    state.rollValue = 1;
+    state.light.pieces[0].position = 4;
+    state.dark.pieces[0].position = 5;
+
+    const move = { pieceId: state.light.pieces[0].id, fromIndex: 4, toIndex: 5 };
+    const next = applyMove(state, move);
+
+    expect(next.currentTurn).toBe('light');
+    expect(next.phase).toBe('rolling');
+    expect(next.rollValue).toBeNull();
+    expect(next.dark.pieces[0].position).toBe(-1);
   });
 
   it('marks a piece finished and increments finished count on bearing off', () => {

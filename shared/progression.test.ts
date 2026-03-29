@@ -80,6 +80,8 @@ describe("progression helpers", () => {
     expect(getXpAwardAmount("practice_1_piece_win")).toBe(10);
     expect(getXpAwardAmount("practice_3_pieces_win")).toBe(20);
     expect(getXpAwardAmount("practice_5_pieces_win")).toBe(30);
+    expect(getXpAwardAmount("practice_finkel_rules_win")).toBe(40);
+    expect(getXpAwardAmount("practice_capture_win")).toBe(50);
     expect(getXpAwardAmount("practice_extended_path_win")).toBe(60);
     expect(getXpAwardAmount("practice_1_piece_win")).toBeLessThan(getXpAwardAmount("private_pvp_win"));
     expect(getXpAwardAmount("private_pvp_win")).toBeLessThan(getXpAwardAmount("bot_win"));

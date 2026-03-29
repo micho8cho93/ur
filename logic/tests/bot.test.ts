@@ -86,4 +86,30 @@ describe('bot difficulty selection', () => {
       toIndex: fullPathLength,
     });
   });
+
+  it('treats the shared rosette as capturable in Capture mode', () => {
+    const captureConfig = getMatchConfig('gameMode_capture');
+    const state = createInitialState(captureConfig);
+    state.currentTurn = 'dark';
+    state.phase = 'moving';
+    state.rollValue = 4;
+
+    setActivePieces(state, 'dark', {
+      0: 3,
+      1: 0,
+    });
+    setActivePieces(state, 'light', {
+      0: 7,
+    });
+
+    const expectedMove = {
+      pieceId: state.dark.pieces[0].id,
+      fromIndex: 3,
+      toIndex: 7,
+    };
+
+    expect(getBotMove(state, 4, 'medium')).toEqual(expectedMove);
+    expect(getBotMove(state, 4, 'hard')).toEqual(expectedMove);
+    expect(getBotMove(state, 4, 'perfect')).toEqual(expectedMove);
+  });
 });

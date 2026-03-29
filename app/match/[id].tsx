@@ -35,6 +35,7 @@ import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import { applyMove as applyEngineMove, getValidMoves } from '@/logic/engine';
 import {
   getMatchConfig,
+  getMatchRulesIntro,
   getPracticeModeRewardLabel,
 } from '@/logic/matchConfigs';
 import type { GameState, MoveAction, PlayerColor } from '@/logic/types';
@@ -474,6 +475,7 @@ export function GameRoom() {
   const tournamentDisplayName = tournamentNameParam ?? 'Tournament Match';
   const pieceCountPerSide = effectiveMatchConfig.pieceCountPerSide;
   const isPracticeModeMatch = effectiveMatchConfig.isPracticeMode;
+  const rulesIntro = useMemo(() => getMatchRulesIntro(effectiveMatchConfig.modeId), [effectiveMatchConfig.modeId]);
   const offlineBotRewardMode: CompletedBotMatchRewardMode | undefined =
     isPlaythroughTutorialMatch ? 'base_win_only' : undefined;
   const humanScoreTitle = useMemo(() => getHumanScoreTitle(user), [user]);
@@ -605,6 +607,7 @@ export function GameRoom() {
   const [showAudioSettings, setShowAudioSettings] = React.useState(false);
   const [showTopMenu, setShowTopMenu] = React.useState(false);
   const [showMatchStatusInfo, setShowMatchStatusInfo] = React.useState(false);
+  const [showRulesIntroModal, setShowRulesIntroModal] = React.useState(Boolean(rulesIntro));
   const [matchChallengeSummary, setMatchChallengeSummary] = React.useState<MatchChallengeRewardSummary | null>(null);
   const [matchRewardsErrorMessage, setMatchRewardsErrorMessage] = React.useState<string | null>(null);
   const [isRefreshingMatchRewards, setIsRefreshingMatchRewards] = React.useState(false);
@@ -1076,6 +1079,7 @@ export function GameRoom() {
 
       if (
         !introsComplete ||
+        showRulesIntroModal ||
         gameState.phase !== 'rolling' ||
         gameState.currentTurn !== tutorialPendingStep.player ||
         rollingVisual
@@ -1152,6 +1156,7 @@ export function GameRoom() {
       serverRevision,
       setGameStateFromServer,
       scheduleTutorialProgress,
+      showRulesIntroModal,
       tutorialCoachPhase,
       tutorialPendingStep,
     ],
@@ -1223,7 +1228,7 @@ export function GameRoom() {
   }, [clearTutorialProgressTimers, tutorialCoachPhase, tutorialLessonIndex]);
 
   const triggerLocalRoll = React.useCallback(() => {
-    if (!introsComplete || !canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
+    if (showRulesIntroModal || !introsComplete || !canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
       return;
     }
 
@@ -1258,6 +1263,7 @@ export function GameRoom() {
     rollButtonLatchPhase,
     rollingVisual,
     serverRevision,
+    showRulesIntroModal,
     introsComplete,
   ]);
 
@@ -1441,13 +1447,17 @@ export function GameRoom() {
     );
   }, []);
 
-  useGameLoop(isOffline && !isScriptedTutorialPhase && introsComplete);
+  useGameLoop(isOffline && !isScriptedTutorialPhase && introsComplete && !showRulesIntroModal);
+  useEffect(() => {
+    setShowRulesIntroModal(Boolean(rulesIntro));
+  }, [matchId, rulesIntro]);
   useEffect(() => {
     if (
       !isPlaythroughTutorialMatch ||
       tutorialCoachPhase !== 'lesson_play' ||
       tutorialPendingActionStep?.player !== 'dark' ||
       !introsComplete ||
+      showRulesIntroModal ||
       showAudioSettings ||
       showTopMenu ||
       showMatchStatusInfo ||
@@ -1499,6 +1509,7 @@ export function GameRoom() {
     scheduleTutorialProgress,
     showAudioSettings,
     showMatchStatusInfo,
+    showRulesIntroModal,
     showTopMenu,
     showWinModal,
     triggerTutorialRoll,
@@ -1803,13 +1814,13 @@ export function GameRoom() {
     tournamentRewardFallbackActive,
   ]);
   useEffect(() => {
-    if (!showAudioSettings && !showWinModal && !tutorialCoachVisible) {
+    if (!showAudioSettings && !showRulesIntroModal && !showWinModal && !tutorialCoachVisible) {
       return;
     }
 
     setShowTopMenu(false);
     setShowMatchStatusInfo(false);
-  }, [showAudioSettings, showWinModal, tutorialCoachVisible]);
+  }, [showAudioSettings, showRulesIntroModal, showWinModal, tutorialCoachVisible]);
   useEffect(() => {
     boardImageLayoutRef.current = null;
     tutorialHydratingStateRef.current = false;
@@ -2074,6 +2085,7 @@ export function GameRoom() {
       !canRoll ||
       rollingVisual ||
       rollButtonLatchPhase !== 'idle' ||
+      showRulesIntroModal ||
       showAudioSettings ||
       showTopMenu ||
       showMatchStatusInfo ||
@@ -2100,6 +2112,7 @@ export function GameRoom() {
     isScriptedTutorialPhase,
     rollButtonLatchPhase,
     rollingVisual,
+    showRulesIntroModal,
     showAudioSettings,
     showMatchStatusInfo,
     showTopMenu,
@@ -4556,6 +4569,15 @@ export function GameRoom() {
           onHidden={handleMatchCueHidden}
         />
       ) : null}
+
+      <Modal
+        visible={showRulesIntroModal && Boolean(rulesIntro)}
+        title={rulesIntro?.title ?? ''}
+        message={rulesIntro?.message}
+        actionLabel="Close"
+        onAction={() => setShowRulesIntroModal(false)}
+        maxWidth={520}
+      />
 
       <Modal
         visible={shouldRenderResultModal}

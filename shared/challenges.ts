@@ -1,6 +1,6 @@
-import { isRosette } from "../logic/constants";
 import { MatchModeId, isMatchModeId } from "../logic/matchConfigs";
 import { getPathCoord, getPathForColor, getPathLength } from "../logic/pathVariants";
+import { isContestedWarTile } from "../logic/rules";
 import { GameState, Player, PlayerColor } from "../logic/types";
 import { MAX_PROGRESSION_RANK, ProgressionAwardResponse, getRankForXp, isProgressionAwardResponse } from "./progression";
 
@@ -886,16 +886,12 @@ export const getSharedPathStartIndex = (
 };
 
 export const isContestedLanding = (
-  variant: GameState["matchConfig"]["pathVariant"],
+  matchConfig: Pick<GameState["matchConfig"], "pathVariant" | "rulesVariant">,
   playerColor: PlayerColor,
   targetIndex: number
 ): boolean => {
-  const coord = getPathCoord(variant, playerColor, targetIndex);
-  if (!coord || coord.row !== 1) {
-    return false;
-  }
-
-  return !isRosette(coord.row, coord.col);
+  const coord = getPathCoord(matchConfig.pathVariant, playerColor, targetIndex);
+  return isContestedWarTile(matchConfig, coord);
 };
 
 export const countActivePiecesOnBoard = (

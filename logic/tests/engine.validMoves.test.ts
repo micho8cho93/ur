@@ -1,5 +1,6 @@
 import { createInitialState, getValidMoves } from '@/logic/engine';
 import { PATH_LENGTH } from '@/logic/constants';
+import { getMatchConfig } from '@/logic/matchConfigs';
 import { GameState, PlayerColor } from '@/logic/types';
 
 const setOnlyActivePiece = (state: GameState, color: PlayerColor, pieceIndex: number, position: number) => {
@@ -122,5 +123,20 @@ describe('engine getValidMoves', () => {
     const moves = getValidMoves(state, 1);
 
     expect(moves).toEqual([]);
+  });
+
+  it('allows capturing an opponent on the shared rosette in Capture mode', () => {
+    const state = createInitialState(getMatchConfig('gameMode_capture'));
+    state.currentTurn = 'light';
+    setOnlyActivePiece(state, 'light', 0, 6);
+    setOnlyActivePiece(state, 'dark', 0, 7);
+
+    const moves = getValidMoves(state, 1);
+
+    expect(moves).toContainEqual({
+      pieceId: state.light.pieces[0].id,
+      fromIndex: 6,
+      toIndex: 7,
+    });
   });
 });

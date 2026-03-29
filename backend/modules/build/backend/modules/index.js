@@ -176,6 +176,14 @@ var XP_SOURCE_CONFIG = {
     amount: 30,
     description: "Authenticated 5-piece practice win reward."
   },
+  practice_finkel_rules_win: {
+    amount: 40,
+    description: "Authenticated Finkel Rules practice win reward."
+  },
+  practice_capture_win: {
+    amount: 50,
+    description: "Authenticated Capture practice win reward."
+  },
   practice_extended_path_win: {
     amount: 60,
     description: "Authenticated extended-path practice win reward."
@@ -328,6 +336,38 @@ var GAME_MODE_MATCH_CONFIGS = [
     selectionSubtitle: "Bot match with 5 pieces each"
   },
   {
+    modeId: "gameMode_finkel_rules",
+    displayName: "Finkel Rules",
+    pieceCountPerSide: 7,
+    rulesVariant: "standard",
+    allowsXp: true,
+    allowsOnline: false,
+    allowsChallenges: true,
+    allowsCoins: false,
+    allowsRankedStats: false,
+    offlineWinRewardSource: "practice_finkel_rules_win",
+    opponentType: "bot",
+    pathVariant: "default",
+    isPracticeMode: true,
+    selectionSubtitle: "Bot match with 7 pieces each using the regular rules"
+  },
+  {
+    modeId: "gameMode_capture",
+    displayName: "Capture",
+    pieceCountPerSide: 7,
+    rulesVariant: "capture",
+    allowsXp: true,
+    allowsOnline: false,
+    allowsChallenges: true,
+    allowsCoins: false,
+    allowsRankedStats: false,
+    offlineWinRewardSource: "practice_capture_win",
+    opponentType: "bot",
+    pathVariant: "default",
+    isPracticeMode: true,
+    selectionSubtitle: "Bot match with 7 pieces where captures grant extra rolls"
+  },
+  {
     modeId: "gameMode_full_path",
     displayName: "Extended Path",
     pieceCountPerSide: 7,
@@ -349,11 +389,23 @@ var MATCH_CONFIGS = {
   gameMode_1_piece: GAME_MODE_MATCH_CONFIGS[0],
   gameMode_3_pieces: GAME_MODE_MATCH_CONFIGS[1],
   gameMode_5_pieces: GAME_MODE_MATCH_CONFIGS[2],
-  gameMode_full_path: GAME_MODE_MATCH_CONFIGS[3]
+  gameMode_finkel_rules: GAME_MODE_MATCH_CONFIGS[3],
+  gameMode_capture: GAME_MODE_MATCH_CONFIGS[4],
+  gameMode_full_path: GAME_MODE_MATCH_CONFIGS[5]
 };
 var DEFAULT_MATCH_CONFIG = STANDARD_MATCH_CONFIG;
 var isMatchModeId = (value) => typeof value === "string" && value in MATCH_CONFIGS;
 var getMatchConfig = (modeId) => modeId && isMatchModeId(modeId) ? MATCH_CONFIGS[modeId] : DEFAULT_MATCH_CONFIG;
+
+// logic/rules.ts
+var resolveRulesVariant = (matchConfigOrVariant) => {
+  var _a;
+  return typeof matchConfigOrVariant === "string" ? matchConfigOrVariant : (_a = matchConfigOrVariant == null ? void 0 : matchConfigOrVariant.rulesVariant) != null ? _a : "standard";
+};
+var isSharedRosetteCoord = (coord) => Boolean(coord && isWarZone(coord.row, coord.col) && isRosette(coord.row, coord.col));
+var isProtectedFromCapture = (matchConfigOrVariant, coord) => resolveRulesVariant(matchConfigOrVariant) !== "capture" && isSharedRosetteCoord(coord);
+var isContestedWarTile = (matchConfigOrVariant, coord) => Boolean(coord && isWarZone(coord.row, coord.col) && !isProtectedFromCapture(matchConfigOrVariant, coord));
+var shouldGrantExtraTurn = (matchConfigOrVariant, options) => options.landedOnRosette || resolveRulesVariant(matchConfigOrVariant) === "capture" && options.didCapture;
 
 // logic/engine.ts
 var INITIAL_PIECE_COUNT = DEFAULT_MATCH_CONFIG.pieceCountPerSide;
@@ -415,8 +467,7 @@ var getValidMoves = (state, roll) => {
       return opCoord.row === targetCoord.row && opCoord.col === targetCoord.col;
     });
     if (opponentPiece) {
-      const targetIsRosette = isRosette(targetCoord.row, targetCoord.col);
-      if (targetIsRosette && isShared) {
+      if (isShared && isProtectedFromCapture(state.matchConfig, targetCoord)) {
         continue;
       }
     }
@@ -435,6 +486,7 @@ var applyMove = (state, move) => {
     piece.isFinished = true;
     player.finishedCount++;
   }
+  let didCapture = false;
   if (move.toIndex < pathLength) {
     const targetCoord = getPathCoord(newState.matchConfig.pathVariant, player.color, move.toIndex);
     if (!targetCoord) {
@@ -449,6 +501,7 @@ var applyMove = (state, move) => {
     if (opponentPiece) {
       opponentPiece.position = -1;
       player.capturedCount++;
+      didCapture = true;
       newState.history.push(`${player.color} captured ${opponent.color}`);
     }
   }
@@ -460,7 +513,7 @@ var applyMove = (state, move) => {
     }
   }
   newState.history.push(`${player.color} moved to ${move.toIndex}. Rosette: ${isRosetteLanding}`);
-  if (isRosetteLanding) {
+  if (shouldGrantExtraTurn(newState.matchConfig, { didCapture, landedOnRosette: isRosetteLanding })) {
     newState.phase = "rolling";
     newState.rollValue = null;
   } else {
@@ -2698,12 +2751,9 @@ var getSharedPathStartIndex = (modeIdOrVariant) => {
   const sharedIndex = path.findIndex((coord) => coord.row === 1);
   return sharedIndex >= 0 ? sharedIndex : path.length;
 };
-var isContestedLanding = (variant, playerColor, targetIndex) => {
-  const coord = getPathCoord(variant, playerColor, targetIndex);
-  if (!coord || coord.row !== 1) {
-    return false;
-  }
-  return !isRosette(coord.row, coord.col);
+var isContestedLanding = (matchConfig, playerColor, targetIndex) => {
+  const coord = getPathCoord(matchConfig.pathVariant, playerColor, targetIndex);
+  return isContestedWarTile(matchConfig, coord);
 };
 var countActivePiecesOnBoard = (player, pathLength) => player.pieces.filter((piece) => piece.position >= 0 && piece.position < pathLength && !piece.isFinished).length;
 var hasPlayerExitedStartingArea = (player, variant) => {

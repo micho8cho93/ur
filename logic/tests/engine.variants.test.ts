@@ -34,4 +34,25 @@ describe('engine variants', () => {
     expect(next.light.pieces[0].isFinished).toBe(true);
     expect(next.matchConfig.pathVariant).toBe('full-path');
   });
+
+  it('keeps the default path for Finkel Rules while using seven pieces per side', () => {
+    const finkelConfig = getMatchConfig('gameMode_finkel_rules');
+    const state = createInitialState(finkelConfig);
+
+    expect(state.matchConfig.modeId).toBe('gameMode_finkel_rules');
+    expect(state.matchConfig.pathVariant).toBe('default');
+    expect(state.light.pieces).toHaveLength(7);
+    expect(state.dark.pieces).toHaveLength(7);
+  });
+
+  it('uses the default path with the Capture rules variant', () => {
+    const captureConfig = getMatchConfig('gameMode_capture');
+    const state = createInitialState(captureConfig);
+
+    expect(state.matchConfig.modeId).toBe('gameMode_capture');
+    expect(state.matchConfig.rulesVariant).toBe('capture');
+    expect(state.matchConfig.pathVariant).toBe('default');
+    expect(state.light.pieces).toHaveLength(7);
+    expect(state.dark.pieces).toHaveLength(7);
+  });
 });

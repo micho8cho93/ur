@@ -52,6 +52,14 @@ export const XP_SOURCE_CONFIG = {
     amount: 30,
     description: "Authenticated 5-piece practice win reward.",
   },
+  practice_finkel_rules_win: {
+    amount: 40,
+    description: "Authenticated Finkel Rules practice win reward.",
+  },
+  practice_capture_win: {
+    amount: 50,
+    description: "Authenticated Capture practice win reward.",
+  },
   practice_extended_path_win: {
     amount: 60,
     description: "Authenticated extended-path practice win reward.",
@@ -64,6 +72,8 @@ export type BotMatchXpSource =
   | "practice_1_piece_win"
   | "practice_3_pieces_win"
   | "practice_5_pieces_win"
+  | "practice_finkel_rules_win"
+  | "practice_capture_win"
   | "practice_extended_path_win";
 
 export type ProgressionProfile = {

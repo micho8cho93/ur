@@ -1,6 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { createInitialState, getValidMoves } from '@/logic/engine';
+import { getMatchConfig } from '@/logic/matchConfigs';
 import type { GameState, MoveAction } from '@/logic/types';
 import { CHALLENGE_DEFINITIONS, createDefaultUserChallengeProgressSnapshot } from '@/shared/challenges';
 import { buildProgressionSnapshot } from '@/shared/progression';
@@ -759,6 +760,7 @@ describe('GameRoom match dice stage', () => {
     delete mockSearchParams.privateMatch;
     delete mockSearchParams.privateHost;
     delete mockSearchParams.privateCode;
+    delete mockSearchParams.modeId;
     delete mockSearchParams.tutorial;
     delete mockSearchParams.botDifficulty;
     delete mockSearchParams.tournamentRunId;
@@ -948,6 +950,44 @@ describe('GameRoom match dice stage', () => {
       }),
     );
     expect(mockSlotDiceScene).not.toHaveBeenCalled();
+  });
+
+  it('shows a rules intro modal for Capture mode and dismisses it with Close', async () => {
+    jest.useFakeTimers();
+    mockSearchParams.modeId = 'gameMode_capture';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      matchConfig: getMatchConfig('gameMode_capture'),
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Capture Mode')).toBeTruthy();
+    expect(screen.getByText(/shared middle rosette is no longer safe/i)).toBeTruthy();
+    fireEvent.press(screen.getByText('Close'));
+    expect(screen.queryByText('Capture Mode')).toBeNull();
+  });
+
+  it('shows a rules intro modal for Extended Path', async () => {
+    jest.useFakeTimers();
+    mockSearchParams.modeId = 'gameMode_full_path';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      matchConfig: getMatchConfig('gameMode_full_path'),
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getAllByText('Extended Path').length).toBeGreaterThan(0);
+    expect(screen.getByText(/longer path before bearing off/i)).toBeTruthy();
   });
 
   it('keeps the embedded dice visual mounted while an offline bot roll resolves on Android', async () => {

@@ -1,8 +1,9 @@
 import { applyMove, getValidMoves } from '../engine';
-import { isRosette, isWarZone } from '../constants';
+import { isRosette } from '../constants';
 import { GameState, MoveAction, Player, PlayerColor } from '../types';
 import { getPathCoord, getPathLength } from '../pathVariants';
 import { BotDifficulty, DEFAULT_BOT_DIFFICULTY } from './types';
+import { isContestedWarTile } from '../rules';
 
 type SearchContext = {
   rootColor: PlayerColor;
@@ -106,7 +107,7 @@ const countThreatenedPieces = (state: GameState, defenderColor: PlayerColor): nu
 
   return defender.pieces.reduce((count, piece) => {
     const coord = getPieceCoord(state, defenderColor, piece.position);
-    if (!coord || !isWarZone(coord.row, coord.col) || isRosette(coord.row, coord.col)) {
+    if (!isContestedWarTile(state.matchConfig, coord)) {
       return count;
     }
 
@@ -120,7 +121,7 @@ const countCaptureThreats = (state: GameState, attackerColor: PlayerColor): numb
 
   return defender.pieces.reduce((count, piece) => {
     const coord = getPieceCoord(state, defenderColor, piece.position);
-    if (!coord || !isWarZone(coord.row, coord.col) || isRosette(coord.row, coord.col)) {
+    if (!isContestedWarTile(state.matchConfig, coord)) {
       return count;
     }
 
@@ -178,7 +179,7 @@ const doesMoveCapture = (state: GameState, move: MoveAction): boolean => {
 
 const isMoveUnsafe = (state: GameState, moverColor: PlayerColor, move: MoveAction): boolean => {
   const coord = getPieceCoord(state, moverColor, move.toIndex);
-  if (!coord || !isWarZone(coord.row, coord.col) || isRosette(coord.row, coord.col)) {
+  if (!isContestedWarTile(state.matchConfig, coord)) {
     return false;
   }
 
