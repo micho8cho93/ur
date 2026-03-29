@@ -2,7 +2,7 @@ import { boxShadow } from '@/constants/styleEffects';
 import { urTheme } from '@/constants/urTheme';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import { getPathVariantDefinition } from '@/logic/pathVariants';
-import { GameState, MoveAction, PlayerColor } from '@/logic/types';
+import { Coordinates, GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { useGameStore } from '@/store/useGameStore';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -73,9 +73,15 @@ interface BoardOccupant {
 }
 
 interface AnimatedBoardMove {
+  capturedPiece: {
+    color: 'light' | 'dark';
+    id: string;
+  } | null;
   color: 'light' | 'dark';
   cumulativeDistances: number[];
   durationMs: number;
+  isCaptureMove: boolean;
+  isScoringMove: boolean;
   pieceId: string;
   points: Point[];
   totalDistance: number;
@@ -211,6 +217,28 @@ export const getBoardTileLandingOffset = ({
   };
 };
 
+export const getBoardScoreExitLogicalCoord = (path: readonly Coordinates[]): Coordinates | null => {
+  const finalCoord = path[path.length - 1];
+
+  if (!finalCoord) {
+    return null;
+  }
+
+  const previousCoord = path[path.length - 2];
+
+  if (!previousCoord) {
+    return {
+      row: finalCoord.row,
+      col: finalCoord.col - 1,
+    };
+  }
+
+  return {
+    row: finalCoord.row + (finalCoord.row - previousCoord.row),
+    col: finalCoord.col + (finalCoord.col - previousCoord.col),
+  };
+};
+
 // Gameplay geometry is canonical; adjust this object if the PNG asset changes.
 const BOARD_ART_ALIGNMENT: BoardArtAlignmentConfig = {
   offsetX: 0,
@@ -262,6 +290,9 @@ export const Board: React.FC<BoardProps> = ({
   const previewPulse = useSharedValue(0);
   const movingPieceProgress = useSharedValue(0);
   const movingPieceLift = useSharedValue(0);
+  const movingPieceImpact = useSharedValue(0);
+  const movingPieceLanding = useSharedValue(0);
+  const capturedPieceCrush = useSharedValue(0);
 
   const gameState = gameStateOverride ?? storeGameState;
   const validMoves = validMovesOverride ?? storeValidMoves;
@@ -422,12 +453,13 @@ export const Board: React.FC<BoardProps> = ({
     }
 
     if (index === pathLength) {
-      const finalCenter = getCellCenter(path[path.length - 1].row, path[path.length - 1].col);
-      const finishOffset = projectLogicalOffset(boardLayout.cellSize * 0.95, 0);
-      return {
-        x: finalCenter.x + finishOffset.x,
-        y: finalCenter.y + finishOffset.y,
-      };
+      const scoreExitCoord = getBoardScoreExitLogicalCoord(path);
+
+      if (!scoreExitCoord) {
+        return null;
+      }
+
+      return getCellCenter(scoreExitCoord.row, scoreExitCoord.col);
     }
 
     const coord = path[index];
@@ -486,7 +518,13 @@ export const Board: React.FC<BoardProps> = ({
   );
 
   const buildAnimatedMove = React.useCallback(
-    (color: 'light' | 'dark', pieceId: string, fromIndex: number, toIndex: number): AnimatedBoardMove | null => {
+    (
+      color: 'light' | 'dark',
+      pieceId: string,
+      fromIndex: number,
+      toIndex: number,
+      capturedPiece: AnimatedBoardMove['capturedPiece'] = null,
+    ): AnimatedBoardMove | null => {
       const points = buildPathPoints(color, fromIndex, toIndex);
       if (points.length < 2) {
         return null;
@@ -503,6 +541,7 @@ export const Board: React.FC<BoardProps> = ({
       }
 
       return {
+        capturedPiece,
         color,
         cumulativeDistances,
         durationMs: Math.min(
@@ -512,6 +551,8 @@ export const Board: React.FC<BoardProps> = ({
             MOVE_SLIDE_BASE_DURATION_MS + (points.length - 1) * MOVE_SLIDE_STEP_DURATION_MS,
           ),
         ),
+        isCaptureMove: capturedPiece !== null,
+        isScoringMove: toIndex === pathLength,
         pieceId,
         points,
         totalDistance,
@@ -597,8 +638,13 @@ export const Board: React.FC<BoardProps> = ({
     hasScoringMove && assignedPlayerColor
       ? (() => {
         const path = getPathForColor(assignedPlayerColor);
-        const final = path[path.length - 1];
-        return getCellCenter(final.row, final.col - 1);
+        const scoreExitCoord = getBoardScoreExitLogicalCoord(path);
+
+        if (!scoreExitCoord) {
+          return null;
+        }
+
+        return getCellCenter(scoreExitCoord.row, scoreExitCoord.col);
       })()
       : null;
 
@@ -836,6 +882,7 @@ export const Board: React.FC<BoardProps> = ({
 
     if (didApplyMove) {
       const movingColor = previousGameState.currentTurn;
+      const opponentColor = movingColor === 'light' ? 'dark' : 'light';
       const previousPieces = previousGameState[movingColor].pieces;
       const movedPiece = gameState[movingColor].pieces.find((piece) => {
         const previousPiece = previousPieces.find((candidate) => candidate.id === piece.id);
@@ -848,6 +895,16 @@ export const Board: React.FC<BoardProps> = ({
       const previousPiece = movedPiece
         ? previousPieces.find((candidate) => candidate.id === movedPiece.id) ?? null
         : null;
+      const previousOpponentPieces = previousGameState[opponentColor].pieces;
+      const capturedPiece = previousOpponentPieces.find((piece) => {
+        if (piece.isFinished || piece.position < 0) {
+          return false;
+        }
+
+        const nextPiece = gameState[opponentColor].pieces.find((candidate) => candidate.id === piece.id);
+
+        return !!nextPiece && !nextPiece.isFinished && nextPiece.position === -1;
+      });
 
       if (movedPiece && previousPiece) {
         const nextAnimatedMove = buildAnimatedMove(
@@ -855,6 +912,12 @@ export const Board: React.FC<BoardProps> = ({
           movedPiece.id,
           previousPiece.position,
           movedPiece.position,
+          capturedPiece
+            ? {
+              color: opponentColor,
+              id: capturedPiece.id,
+            }
+            : null,
         );
 
         if (nextAnimatedMove) {
@@ -870,13 +933,22 @@ export const Board: React.FC<BoardProps> = ({
     if (!animatedMove) {
       cancelAnimation(movingPieceProgress);
       cancelAnimation(movingPieceLift);
+      cancelAnimation(movingPieceImpact);
+      cancelAnimation(movingPieceLanding);
+      cancelAnimation(capturedPieceCrush);
       movingPieceProgress.value = 0;
       movingPieceLift.value = 0;
+      movingPieceImpact.value = 0;
+      movingPieceLanding.value = 0;
+      capturedPieceCrush.value = 0;
       return;
     }
 
     movingPieceProgress.value = 0;
     movingPieceLift.value = 0;
+    movingPieceImpact.value = 0;
+    movingPieceLanding.value = 0;
+    capturedPieceCrush.value = 0;
     movingPieceLift.value = withSequence(
       withTiming(1, {
         duration: Math.max(90, Math.round(animatedMove.durationMs * 0.32)),
@@ -894,17 +966,70 @@ export const Board: React.FC<BoardProps> = ({
         easing: Easing.inOut(Easing.cubic),
       },
       (finished) => {
-        if (finished) {
-          runOnJS(clearAnimatedMove)();
+        if (!finished) {
+          return;
         }
+
+        if (animatedMove.isCaptureMove) {
+          movingPieceImpact.value = withSequence(
+            withTiming(1, {
+              duration: 80,
+              easing: Easing.out(Easing.cubic),
+            }),
+            withTiming(0, {
+              duration: 150,
+              easing: Easing.out(Easing.back(1.5)),
+            }),
+          );
+          capturedPieceCrush.value = withTiming(1, {
+            duration: 190,
+            easing: Easing.in(Easing.cubic),
+          }, (crushed) => {
+            if (crushed) {
+              runOnJS(clearAnimatedMove)();
+            }
+          });
+          return;
+        }
+
+        if (animatedMove.isScoringMove) {
+          movingPieceLanding.value = withSequence(
+            withTiming(1, {
+              duration: 110,
+              easing: Easing.out(Easing.quad),
+            }),
+            withTiming(0, {
+              duration: 170,
+              easing: Easing.out(Easing.back(1.4)),
+            }, (settled) => {
+              if (settled) {
+                runOnJS(clearAnimatedMove)();
+              }
+            }),
+          );
+          return;
+        }
+
+        runOnJS(clearAnimatedMove)();
       },
     );
 
     return () => {
       cancelAnimation(movingPieceProgress);
       cancelAnimation(movingPieceLift);
+      cancelAnimation(movingPieceImpact);
+      cancelAnimation(movingPieceLanding);
+      cancelAnimation(capturedPieceCrush);
     };
-  }, [animatedMove, clearAnimatedMove, movingPieceLift, movingPieceProgress]);
+  }, [
+    animatedMove,
+    capturedPieceCrush,
+    clearAnimatedMove,
+    movingPieceImpact,
+    movingPieceLanding,
+    movingPieceLift,
+    movingPieceProgress,
+  ]);
 
   const executeMove = (move: MoveAction) => {
     console.info('[Board][executeMove]', {
@@ -1121,16 +1246,92 @@ export const Board: React.FC<BoardProps> = ({
     }
 
     const liftDistance = Math.max(8, boardPiecePixelSize * 0.12);
+    const impactCompression = movingPieceImpact.value;
+    const landingCompression = movingPieceLanding.value;
+    let theatricalHopLift = 0;
+    let theatricalHopScale = 0;
+    let captureImpactLift = 0;
+
+    if (animatedMove.isScoringMove && totalDistance > 0) {
+      const terminalZoneStartIndex = Math.max(0, animatedMove.points.length - 3);
+      const terminalZoneStartDistance = animatedMove.cumulativeDistances[terminalZoneStartIndex] ?? 0;
+      const terminalZoneDistance = Math.max(1, totalDistance - terminalZoneStartDistance);
+      const terminalZoneProgress = Math.max(0, Math.min(1, (travel - terminalZoneStartDistance) / terminalZoneDistance));
+      const terminalZoneArc = Math.sin(terminalZoneProgress * Math.PI);
+
+      theatricalHopLift = terminalZoneArc * Math.max(12, boardPiecePixelSize * 0.22);
+      theatricalHopScale = terminalZoneArc * 0.05;
+    }
+
+    if (animatedMove.isCaptureMove && totalDistance > 0) {
+      const impactZoneStartIndex = Math.max(0, animatedMove.points.length - 2);
+      const impactZoneStartDistance = animatedMove.cumulativeDistances[impactZoneStartIndex] ?? 0;
+      const impactZoneDistance = Math.max(1, totalDistance - impactZoneStartDistance);
+      const impactZoneProgress = Math.max(0, Math.min(1, (travel - impactZoneStartDistance) / impactZoneDistance));
+      const impactArc = Math.sin(impactZoneProgress * Math.PI);
+
+      captureImpactLift = impactArc * Math.max(10, boardPiecePixelSize * 0.18);
+    }
 
     return {
       opacity: 1,
       transform: [
         { translateX: x - boardPiecePixelSize / 2 },
-        { translateY: y - boardPiecePixelSize / 2 - movingPieceLift.value * liftDistance },
-        { scale: 1 + movingPieceLift.value * 0.04 },
+        {
+          translateY:
+            y -
+            boardPiecePixelSize / 2 -
+            movingPieceLift.value * liftDistance -
+            theatricalHopLift +
+            impactCompression * Math.max(3, boardPiecePixelSize * 0.08) -
+            captureImpactLift +
+            landingCompression * Math.max(2, boardPiecePixelSize * 0.05),
+        },
+        {
+          scaleX:
+            1 +
+            movingPieceLift.value * 0.04 +
+            theatricalHopScale +
+            landingCompression * 0.12,
+        },
+        {
+          scaleY:
+            1 +
+            movingPieceLift.value * 0.04 +
+            theatricalHopScale * 0.5 -
+            landingCompression * 0.14,
+        },
       ],
     };
-  }, [animatedMove, boardPiecePixelSize]);
+  }, [
+    animatedMove,
+    boardPiecePixelSize,
+    movingPieceImpact,
+    movingPieceLanding,
+    movingPieceLift,
+    movingPieceProgress,
+  ]);
+
+  const capturedPieceStyle = useAnimatedStyle(() => {
+    if (!animatedMove || !animatedMove.isCaptureMove || !animatedMove.capturedPiece || animatedMove.points.length === 0) {
+      return {
+        opacity: 0,
+      };
+    }
+
+    const impactPoint = animatedMove.points[animatedMove.points.length - 1];
+    const crush = capturedPieceCrush.value;
+
+    return {
+      opacity: 1 - crush * 0.96,
+      transform: [
+        { translateX: impactPoint.x - boardPiecePixelSize / 2 },
+        { translateY: impactPoint.y - boardPiecePixelSize / 2 + crush * Math.max(4, boardPiecePixelSize * 0.16) },
+        { scaleX: 1 + crush * 0.3 },
+        { scaleY: 1 - crush * 0.76 },
+      ],
+    };
+  }, [animatedMove, boardPiecePixelSize, capturedPieceCrush]);
 
   const renderGrid = () => {
     const rows = [];
@@ -1385,6 +1586,17 @@ export const Board: React.FC<BoardProps> = ({
 
       {animatedMove ? (
         <View pointerEvents="none" style={styles.movingPieceLayer}>
+          {animatedMove.isCaptureMove && animatedMove.capturedPiece ? (
+            <Animated.View testID="board-captured-piece" style={[styles.capturedPiece, capturedPieceStyle]}>
+              <Piece
+                color={animatedMove.capturedPiece.color}
+                pixelSize={boardPiecePixelSize}
+                artScale={boardPieceArtScale}
+                artOffsetY={boardPieceArtOffsetY}
+                state="idle"
+              />
+            </Animated.View>
+          ) : null}
           <Animated.View testID="board-moving-piece" style={[styles.movingPiece, movingPieceStyle]}>
             <Piece
               color={animatedMove.color}
@@ -1667,6 +1879,9 @@ const styles = StyleSheet.create({
     zIndex: 7,
   },
   movingPiece: {
+    position: 'absolute',
+  },
+  capturedPiece: {
     position: 'absolute',
   },
   spawnCueTouchable: {

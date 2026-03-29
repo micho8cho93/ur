@@ -1,12 +1,17 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
-import { PieceRail } from './PieceRail';
+import { getNewlyVisibleReserveSlotIndices, PieceRail } from './PieceRail';
 
 const getTranslateY = (style: { transform?: { translateY?: number }[] }) =>
   style.transform?.find((transform) => 'translateY' in transform)?.translateY ?? 0;
 
 describe('PieceRail', () => {
+  it('detects newly visible reserve slots for both left-anchored and right-anchored trays', () => {
+    expect(getNewlyVisibleReserveSlotIndices([0, 1, 2, 3, 4], [0, 1, 2, 3, 4, 5])).toEqual([5]);
+    expect(getNewlyVisibleReserveSlotIndices([2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6])).toEqual([1]);
+  });
+
   it('keeps horizontal reserve slot geometry stable when pieces are removed', () => {
     const view = render(
       <PieceRail

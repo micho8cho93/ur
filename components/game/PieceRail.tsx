@@ -101,6 +101,93 @@ interface RailSize {
   height: number;
 }
 
+interface ReserveRailPieceProps {
+  animateOnMount?: boolean;
+  color: 'light' | 'dark';
+  pixelSize: number;
+  slotIndex: number;
+  variant: 'light' | 'dark' | 'reserve';
+}
+
+export const getNewlyVisibleReserveSlotIndices = (
+  previousVisibleSlotIndices: readonly number[],
+  nextVisibleSlotIndices: readonly number[],
+): number[] => {
+  const previousIndices = new Set(previousVisibleSlotIndices);
+  return nextVisibleSlotIndices.filter((slotIndex) => !previousIndices.has(slotIndex));
+};
+
+const ReserveRailPiece: React.FC<ReserveRailPieceProps> = ({
+  animateOnMount = false,
+  color,
+  pixelSize,
+  slotIndex,
+  variant,
+}) => {
+  const entryScale = useSharedValue(1);
+  const entryTranslateY = useSharedValue(0);
+  const entryOpacity = useSharedValue(1);
+
+  useEffect(() => {
+    if (!animateOnMount) {
+      entryScale.value = 1;
+      entryTranslateY.value = 0;
+      entryOpacity.value = 1;
+      return;
+    }
+
+    cancelAnimation(entryScale);
+    cancelAnimation(entryTranslateY);
+    cancelAnimation(entryOpacity);
+
+    entryScale.value = 0.72;
+    entryTranslateY.value = 10;
+    entryOpacity.value = 0.24;
+    entryOpacity.value = withTiming(1, {
+      duration: 110,
+      easing: Easing.out(Easing.quad),
+    });
+    entryScale.value = withSequence(
+      withTiming(1.2, {
+        duration: 150,
+        easing: Easing.out(Easing.cubic),
+      }),
+      withTiming(1, {
+        duration: 190,
+        easing: Easing.out(Easing.back(1.35)),
+      }),
+    );
+    entryTranslateY.value = withSequence(
+      withTiming(-5, {
+        duration: 150,
+        easing: Easing.out(Easing.cubic),
+      }),
+      withTiming(0, {
+        duration: 190,
+        easing: Easing.out(Easing.back(1.2)),
+      }),
+    );
+  }, [animateOnMount, entryOpacity, entryScale, entryTranslateY]);
+
+  const arrivalStyle = useAnimatedStyle(() => ({
+    opacity: entryOpacity.value,
+    transform: [
+      { translateY: entryTranslateY.value },
+      { scale: entryScale.value },
+    ],
+  }));
+
+  return (
+    <Animated.View testID={`piece-rail-piece-shell-${slotIndex}`} style={[styles.reservePieceArrival, arrivalStyle]}>
+      <Piece
+        color={color}
+        pixelSize={pixelSize}
+        variant={variant}
+      />
+    </Animated.View>
+  );
+};
+
 export const PieceRail: React.FC<PieceRailProps> = ({
   color,
   tokenVariant,
@@ -170,6 +257,8 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   const railRef = useRef<View | null>(null);
   const reportedSlotsKeyRef = useRef<string>('');
   const reportedRailFrameKeyRef = useRef<string>('');
+  const hasCommittedVisibleSlotsRef = useRef(false);
+  const previousVisibleSlotIndicesRef = useRef<readonly number[]>([]);
   const traySlotCount = Math.max(1, totalCount);
   const visibleSlotIndices = useMemo(
     () =>
@@ -177,6 +266,13 @@ export const PieceRail: React.FC<PieceRailProps> = ({
         ? Array.from({ length: shownCount }, (_, index) => traySlotCount - shownCount + index)
         : Array.from({ length: shownCount }, (_, index) => index),
     [color, isVertical, shownCount, traySlotCount],
+  );
+  const arrivingSlotIndices = useMemo(
+    () =>
+      hideReservePieces || !hasCommittedVisibleSlotsRef.current
+        ? []
+        : getNewlyVisibleReserveSlotIndices(previousVisibleSlotIndicesRef.current, visibleSlotIndices),
+    [hideReservePieces, visibleSlotIndices],
   );
 
   const horizontalTrayInteriorBounds = useMemo(() => {
@@ -400,6 +496,11 @@ export const PieceRail: React.FC<PieceRailProps> = ({
     reportRailFrame();
   }, [reportRailFrame, railMainAxisSize, verticalTrayOffsetY]);
 
+  useEffect(() => {
+    previousVisibleSlotIndicesRef.current = visibleSlotIndices;
+    hasCommittedVisibleSlotsRef.current = true;
+  }, [visibleSlotIndices]);
+
   return (
     <View style={[styles.wrap, isVertical && styles.wrapVertical]}>
       <View
@@ -517,9 +618,11 @@ export const PieceRail: React.FC<PieceRailProps> = ({
               ]}
             >
               {!hideReservePieces && (
-                <Piece
+                <ReserveRailPiece
+                  animateOnMount={arrivingSlotIndices.includes(slotIndex)}
                   color={color}
                   pixelSize={reservePieceSize}
+                  slotIndex={slotIndex}
                   variant={resolvedVariant}
                 />
               )}
@@ -579,5 +682,11 @@ const styles = StyleSheet.create({
   },
   stackPieceVertical: {
     alignSelf: 'center',
+  },
+  reservePieceArrival: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

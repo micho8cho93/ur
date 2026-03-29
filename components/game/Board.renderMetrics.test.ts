@@ -1,4 +1,5 @@
-import { getBoardPieceRenderMetrics, getBoardTileLandingOffset } from './Board';
+import { getPathVariantDefinition } from '@/logic/pathVariants';
+import { getBoardPieceRenderMetrics, getBoardScoreExitLogicalCoord, getBoardTileLandingOffset } from './Board';
 import { PIECE_ART_VISIBLE_COVERAGE } from './Piece';
 
 describe('getBoardPieceRenderMetrics', () => {
@@ -44,5 +45,22 @@ describe('getBoardPieceRenderMetrics', () => {
         row: 1,
       }),
     ).toEqual({ x: 0, y: 0 });
+  });
+
+  it.each([
+    ['default', 'light'],
+    ['default', 'dark'],
+    ['full-path', 'light'],
+    ['full-path', 'dark'],
+  ] as const)('extends the score exit forward for the %s %s path', (variant, color) => {
+    const pathDefinition = getPathVariantDefinition(variant);
+    const path = pathDefinition[color];
+    const finalCoord = path[path.length - 1];
+    const previousCoord = path[path.length - 2];
+
+    expect(getBoardScoreExitLogicalCoord(path)).toEqual({
+      row: finalCoord.row + (finalCoord.row - previousCoord.row),
+      col: finalCoord.col + (finalCoord.col - previousCoord.col),
+    });
   });
 });
