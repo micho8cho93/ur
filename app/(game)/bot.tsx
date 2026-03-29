@@ -69,6 +69,12 @@ export default function BotSelection() {
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
   const showInlineHeaderEyebrow = Platform.OS !== 'web';
+  const compactCardGap = urTheme.spacing.md;
+  const compactCardSideInset = urTheme.spacing.xs;
+  const compactCardWidth = Math.min(
+    292,
+    Math.max(248, width - urTheme.spacing.md * 2 - compactCardSideInset * 2),
+  );
   const resolvedModeId = Array.isArray(rawModeId) ? rawModeId[0] : rawModeId;
   const matchConfig = React.useMemo(() => getMatchConfig(resolvedModeId), [resolvedModeId]);
   const isPracticeMode = matchConfig.isPracticeMode;
@@ -156,10 +162,19 @@ export default function BotSelection() {
         {isCompactLayout ? (
           <ScrollView
             horizontal
+            decelerationRate="fast"
+            disableIntervalMomentum
+            snapToAlignment="start"
+            snapToInterval={compactCardWidth + compactCardGap}
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.compactCardRow}
+            contentContainerStyle={[
+              styles.compactCardRow,
+              { gap: compactCardGap, paddingHorizontal: compactCardSideInset },
+            ]}
           >
-            {BOT_LEVELS.map((level) => renderBotCard(level, styles.compactCard))}
+            {BOT_LEVELS.map((level) =>
+              renderBotCard(level, [styles.compactCard, { width: compactCardWidth }]),
+            )}
           </ScrollView>
         ) : (
           <View style={styles.gridList}>
@@ -246,7 +261,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   compactCardRow: {
-    gap: urTheme.spacing.md,
     paddingRight: urTheme.spacing.md,
   },
   gridList: {
@@ -273,7 +287,6 @@ const styles = StyleSheet.create({
     }),
   },
   compactCard: {
-    width: 292,
     minHeight: 248,
   },
   gridCard: {

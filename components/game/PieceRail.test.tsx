@@ -1,12 +1,28 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { getNewlyVisibleReserveSlotIndices, PieceRail } from './PieceRail';
 
 const getTranslateY = (style: { transform?: { translateY?: number }[] }) =>
   style.transform?.find((transform) => 'translateY' in transform)?.translateY ?? 0;
 
 describe('PieceRail', () => {
+  const reactNative = jest.requireActual('react-native') as typeof import('react-native');
+  let useWindowDimensionsSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'ios',
+    });
+    useWindowDimensionsSpy = jest.spyOn(reactNative, 'useWindowDimensions');
+    useWindowDimensionsSpy.mockReturnValue({ width: 393, height: 852, scale: 3, fontScale: 1 });
+  });
+
+  afterEach(() => {
+    useWindowDimensionsSpy.mockRestore();
+  });
+
   it('detects newly visible reserve slots for both left-anchored and right-anchored trays', () => {
     expect(getNewlyVisibleReserveSlotIndices([0, 1, 2, 3, 4], [0, 1, 2, 3, 4, 5])).toEqual([5]);
     expect(getNewlyVisibleReserveSlotIndices([2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6])).toEqual([1]);
@@ -160,5 +176,67 @@ describe('PieceRail', () => {
     expect(stackStyle.left).toBeLessThanOrEqual(0);
     expect(stackStyle.top).toBeGreaterThan(0);
     expect(Math.abs(secondSlotStyle.marginLeft ?? 0)).toBeLessThanOrEqual(4);
+  });
+
+  it('shrinks and nudges the mobile web vertical reserve stack to the right inside the tray', () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+
+    const view = render(
+      <PieceRail
+        color="light"
+        orientation="vertical"
+        piecePixelSize={40}
+        reserveCount={7}
+        totalCount={7}
+      />,
+    );
+
+    const webStackStyle = StyleSheet.flatten(screen.getByTestId('piece-rail-stack').props.style) as {
+      paddingLeft?: number;
+    };
+    const webSlotStyle = StyleSheet.flatten(screen.getByTestId('piece-rail-slot-0').props.style) as {
+      height: number;
+      width: number;
+    };
+
+    view.rerender(
+      <PieceRail
+        color="light"
+        orientation="vertical"
+        piecePixelSize={40}
+        reserveCount={7}
+        totalCount={7}
+      />,
+    );
+
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'ios',
+    });
+
+    view.rerender(
+      <PieceRail
+        color="light"
+        orientation="vertical"
+        piecePixelSize={40}
+        reserveCount={7}
+        totalCount={7}
+      />,
+    );
+
+    const nativeStackStyle = StyleSheet.flatten(screen.getByTestId('piece-rail-stack').props.style) as {
+      paddingLeft?: number;
+    };
+    const nativeSlotStyle = StyleSheet.flatten(screen.getByTestId('piece-rail-slot-0').props.style) as {
+      height: number;
+      width: number;
+    };
+
+    expect(webStackStyle.paddingLeft).toBeGreaterThan(nativeStackStyle.paddingLeft ?? 0);
+    expect(webSlotStyle.width).toBeLessThan(nativeSlotStyle.width);
+    expect(webSlotStyle.height).toBeLessThan(nativeSlotStyle.height);
   });
 });

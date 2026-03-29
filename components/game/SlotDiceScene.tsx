@@ -46,8 +46,10 @@ const STOP_COMPLETION_BUFFER_MS = scaleDuration(140);
 const MIN_REEL_BOX_SIZE = 28;
 
 type SlotDiceSceneProps = {
+  diceImageScale?: number;
   durationMs?: number;
   onSettled?: () => void;
+  orientation?: 'horizontal' | 'vertical';
   playbackId: number;
   presentation?: 'embedded' | 'stage';
   rollValue: number | null;
@@ -105,7 +107,9 @@ const SlotReel: React.FC<SlotReelProps> = ({
   const spinAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
   const spinStateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousSpinningRef = useRef(spinning);
+  const latestSpinningRef = useRef(spinning);
   const [visibleMarked, setVisibleMarked] = useState(variant === 'start' ? false : targetMarked);
+  latestSpinningRef.current = spinning;
 
   useEffect(() => {
     const listenerId = spinOffset.addListener(({ value }) => {
@@ -320,12 +324,14 @@ const SlotReel: React.FC<SlotReelProps> = ({
       return;
     }
 
-    if (spinning) {
+    const initialSpinning = latestSpinningRef.current;
+
+    if (initialSpinning) {
       startSpinLoop();
     } else {
       syncReel(false, 'start');
     }
-    previousSpinningRef.current = spinning;
+    previousSpinningRef.current = initialSpinning;
   }, [playbackId, startSpinLoop, syncReel, variant]);
 
   useEffect(() => {
@@ -422,8 +428,10 @@ const SlotReel: React.FC<SlotReelProps> = ({
 };
 
 export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
+  diceImageScale = 1,
   durationMs = DEFAULT_DICE_ROLL_DURATION_MS,
   onSettled,
+  orientation = 'horizontal',
   playbackId,
   presentation = 'embedded',
   rollValue,
@@ -552,28 +560,50 @@ export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
     );
   }, []);
 
-  const baseWidth = (presentation === 'stage' ? 274 : 246) * size;
-  const baseHeight = (presentation === 'stage' ? 138 : 122) * size;
+  const defaultSceneWidth = (presentation === 'stage' ? 274 : 246) * size;
+  const defaultSceneHeight = (presentation === 'stage' ? 138 : 122) * size;
+  const baseWidth = orientation === 'vertical' ? defaultSceneHeight : defaultSceneWidth;
+  const baseHeight = orientation === 'vertical' ? defaultSceneWidth : defaultSceneHeight;
   const availableWidth = layout.width > 0 ? layout.width : baseWidth;
   const availableHeight = layout.height > 0 ? layout.height : baseHeight;
   const rowHorizontalPadding = Math.max(0, Math.round(availableWidth * 0.004));
   const rowVerticalPadding = Math.max(2, Math.round(availableHeight * 0.02));
-  const reelGap = Math.max(2, Math.round(availableWidth * 0.012));
+  const reelGap = Math.max(
+    2,
+    Math.round((orientation === 'vertical' ? availableHeight : availableWidth) * 0.012),
+  );
   const boxSize = Math.max(
     MIN_REEL_BOX_SIZE,
     Math.min(
-      (availableWidth - rowHorizontalPadding * 2 - reelGap * (SLOT_DICE_COUNT - 1)) /
-        SLOT_DICE_COUNT,
-      availableHeight - rowVerticalPadding * 2,
+      orientation === 'vertical'
+        ? availableWidth - rowHorizontalPadding * 2
+        : (availableWidth - rowHorizontalPadding * 2 - reelGap * (SLOT_DICE_COUNT - 1)) /
+            SLOT_DICE_COUNT,
+      orientation === 'vertical'
+        ? (availableHeight - rowVerticalPadding * 2 - reelGap * (SLOT_DICE_COUNT - 1)) /
+            SLOT_DICE_COUNT
+        : availableHeight - rowVerticalPadding * 2,
     ),
   );
   const defaultImageSize = presentation === 'stage' ? 80 : 72;
-  const imageSize = Math.max(38, Math.min(defaultImageSize, Math.round(boxSize * 1.22)));
-  const rowWidth = Math.min(
-    availableWidth,
-    boxSize * SLOT_DICE_COUNT + reelGap * (SLOT_DICE_COUNT - 1) + rowHorizontalPadding * 2,
+  const imageSize = Math.max(
+    38,
+    Math.min(defaultImageSize, Math.round(boxSize * 1.22 * diceImageScale)),
   );
-  const rowHeight = Math.min(availableHeight, boxSize + rowVerticalPadding * 2);
+  const rowWidth =
+    orientation === 'vertical'
+      ? Math.min(availableWidth, boxSize + rowHorizontalPadding * 2)
+      : Math.min(
+          availableWidth,
+          boxSize * SLOT_DICE_COUNT + reelGap * (SLOT_DICE_COUNT - 1) + rowHorizontalPadding * 2,
+        );
+  const rowHeight =
+    orientation === 'vertical'
+      ? Math.min(
+          availableHeight,
+          boxSize * SLOT_DICE_COUNT + reelGap * (SLOT_DICE_COUNT - 1) + rowVerticalPadding * 2,
+        )
+      : Math.min(availableHeight, boxSize + rowVerticalPadding * 2);
   return (
     <View testID="slot-dice-scene-root" onLayout={handleLayout} pointerEvents="none" style={styles.root}>
       <View
@@ -587,7 +617,14 @@ export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
           },
         ]}
       >
-        <View style={[styles.reelRow, { gap: reelGap }]}>
+        <View
+          testID="slot-dice-scene-reel-stack"
+          style={[
+            styles.reelRow,
+            orientation === 'vertical' && styles.reelColumn,
+            { gap: reelGap },
+          ]}
+        >
           {Array.from({ length: SLOT_DICE_COUNT }, (_, index) => (
             <SlotReel
               key={`${playbackId}-${index}`}
@@ -622,6 +659,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  reelColumn: {
+    flexDirection: 'column',
   },
   reelWindow: {
     overflow: 'hidden',

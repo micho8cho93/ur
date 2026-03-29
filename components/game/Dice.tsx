@@ -44,8 +44,10 @@ interface DiceStageVisualProps {
   rolling: boolean;
   canRoll: boolean;
   compact?: boolean;
+  diceImageScale?: number;
   fitToContainer?: boolean;
   onResultShown?: () => void;
+  reelOrientation?: 'horizontal' | 'vertical';
   visible?: boolean;
 }
 
@@ -120,8 +122,10 @@ export const DiceStageVisual: React.FC<DiceStageVisualProps> = ({
   rolling,
   canRoll,
   compact = false,
+  diceImageScale = 1,
   fitToContainer = false,
   onResultShown,
+  reelOrientation = 'horizontal',
   visible = true,
 }) => {
   const { width } = useWindowDimensions();
@@ -150,9 +154,11 @@ export const DiceStageVisual: React.FC<DiceStageVisualProps> = ({
         ]}
       >
         <SlotDiceScene
+          diceImageScale={diceImageScale}
           playbackId={renderedPlaybackId}
           durationMs={animationDurationMs}
           onSettled={onResultShown}
+          orientation={reelOrientation}
           rollValue={resolvedValue}
           presentation="stage"
           size={sceneSize}

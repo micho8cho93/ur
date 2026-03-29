@@ -118,6 +118,9 @@ const MATCH_AMBIENT_EFFECTS = {
 const TOP_CHROME_ACCENT = '#C89820';
 const TOP_CHROME_BORDER = urTheme.colors.cedar;
 const VISUAL_TURN_TIMER_WARNING_THRESHOLD = 0.22;
+const MOBILE_WEB_REEL_BOX_SCALE = 1.2;
+const MOBILE_WEB_REEL_DICE_IMAGE_SCALE = 1 / MOBILE_WEB_REEL_BOX_SCALE;
+const MOBILE_WEB_ROLL_BUTTON_SCALE = 1.2;
 const MATCH_CUE_FONT_FAMILY = 'CinzelDecorativeBold';
 const HOURGLASS_HEIGHT_RATIO = 156 / 100;
 const LOCAL_MOVE_HISTORY_RE = /^(light|dark) moved to \d+\. Rosette: (true|false)$/;
@@ -2850,35 +2853,94 @@ export function GameRoom() {
       boardFrame: boardTargetFrame,
     });
   }, [boardTargetFrame, isMobileLayout, useMobileSideReserveRails]);
-  const mobileBoardGapControlMetrics = useMemo(() => {
-    if (!mobileBoardGapLayout) {
+  const mobileWebTrayColumnControlLayout = useMemo(() => {
+    if (
+      !isMobileWebLayout ||
+      !useMobileSideReserveRails ||
+      !mobileBoardGapLayout ||
+      !lightTrayFrame ||
+      !darkTrayFrame
+    ) {
       return null;
     }
 
-    const laneInset = Math.max(
+    return {
+      diceFrame: {
+        x: Math.round(lightTrayFrame.x),
+        y: mobileBoardGapLayout.diceFrame.y,
+        width: Math.round(lightTrayFrame.width),
+        height: mobileBoardGapLayout.diceFrame.height,
+      },
+      rollFrame: {
+        x: Math.round(darkTrayFrame.x),
+        y: mobileBoardGapLayout.rollFrame.y,
+        width: Math.round(darkTrayFrame.width),
+        height: mobileBoardGapLayout.rollFrame.height,
+      },
+    };
+  }, [
+    darkTrayFrame,
+    isMobileWebLayout,
+    lightTrayFrame,
+    mobileBoardGapLayout,
+    useMobileSideReserveRails,
+  ]);
+  const useMobileWebVerticalDiceReels = mobileWebTrayColumnControlLayout !== null;
+  const mobileSideControlLayout = mobileWebTrayColumnControlLayout ?? mobileBoardGapLayout;
+  const mobileBoardGapControlMetrics = useMemo(() => {
+    if (!mobileSideControlLayout) {
+      return null;
+    }
+
+    const diceInset = Math.max(
       4,
-      Math.round(Math.min(mobileBoardGapLayout.laneWidth, mobileBoardGapLayout.laneHeight) * 0.08),
+      Math.round(
+        Math.min(mobileSideControlLayout.diceFrame.width, mobileSideControlLayout.diceFrame.height) * 0.08,
+      ),
     );
 
     return {
       diceViewportHeight: Math.round(
-        Math.max(0, mobileBoardGapLayout.diceFrame.width - laneInset * 2) * tabletPortraitTuning.boardGapControlScale,
+        Math.max(
+          0,
+          (useMobileWebVerticalDiceReels
+            ? mobileSideControlLayout.diceFrame.height
+            : mobileSideControlLayout.diceFrame.width) -
+            diceInset * 2,
+        ) *
+          tabletPortraitTuning.boardGapControlScale *
+          (useMobileWebVerticalDiceReels ? MOBILE_WEB_REEL_BOX_SCALE : 1),
       ),
       diceViewportWidth: Math.round(
-        Math.max(0, mobileBoardGapLayout.diceFrame.height - laneInset * 2) * tabletPortraitTuning.boardGapControlScale,
+        Math.max(
+          0,
+          (useMobileWebVerticalDiceReels
+            ? mobileSideControlLayout.diceFrame.width
+            : mobileSideControlLayout.diceFrame.height) -
+            diceInset * 2,
+        ) *
+          tabletPortraitTuning.boardGapControlScale *
+          (useMobileWebVerticalDiceReels ? MOBILE_WEB_REEL_BOX_SCALE : 1),
       ),
+      diceImageScale: useMobileWebVerticalDiceReels ? MOBILE_WEB_REEL_DICE_IMAGE_SCALE : 1,
+      diceOrientation: useMobileWebVerticalDiceReels ? 'vertical' as const : 'horizontal' as const,
       rollArtSize: Math.max(
         44,
         Math.round(
-          Math.min(mobileBoardGapLayout.rollFrame.width, mobileBoardGapLayout.rollFrame.height) *
-          0.82 *
-          tabletPortraitTuning.boardGapControlScale,
+          Math.min(mobileSideControlLayout.rollFrame.width, mobileSideControlLayout.rollFrame.height) *
+            0.82 *
+            tabletPortraitTuning.boardGapControlScale *
+            (useMobileWebVerticalDiceReels ? MOBILE_WEB_ROLL_BUTTON_SCALE : 1),
         ),
       ),
     };
-  }, [mobileBoardGapLayout, tabletPortraitTuning.boardGapControlScale]);
+  }, [
+    mobileSideControlLayout,
+    tabletPortraitTuning.boardGapControlScale,
+    useMobileWebVerticalDiceReels,
+  ]);
   const showMobileBoardGapDice =
-    useMobileSideReserveRails && mobileBoardGapLayout !== null && mobileBoardGapControlMetrics !== null;
+    useMobileSideReserveRails && mobileSideControlLayout !== null && mobileBoardGapControlMetrics !== null;
   const showMobileWebUnderBoardDiceOverlay =
     isWebLayout && mobileWebUnderBoardDiceFrame !== null && !showMobileBoardGapDice;
   const shouldDetachDiceVisual =
@@ -3000,6 +3062,11 @@ export function GameRoom() {
     !rollingVisual &&
     displayedRollValue !== null;
   const showWebRollResult = introsComplete && showWebSideDiceVisual && !rollingVisual && displayedRollValue !== null;
+  const showMobileWebBoardGapRollResult =
+    isMobileWebLayout &&
+    useMobileWebVerticalDiceReels &&
+    showMobileRollResult &&
+    displayedRollValue !== null;
   const showMobileWebDetachedDarkScore = useMobileSideReserveRails && darkTrayFrame !== null;
   const mobileWebDetachedDarkScoreFrame = useMemo(() => {
     if (!useMobileSideReserveRails || !darkTrayFrame) {
@@ -3313,7 +3380,7 @@ export function GameRoom() {
           />
         </View>
       ) : null}
-      {mobileWebTrayRollResultFrame ? (
+      {mobileWebTrayRollResultFrame && !showMobileWebBoardGapRollResult ? (
         <View
           pointerEvents="none"
           style={[
@@ -3342,23 +3409,30 @@ export function GameRoom() {
         </View>
       ) : null}
 
-      {showMobileBoardGapDice && mobileBoardGapLayout && mobileBoardGapControlMetrics ? (
+      {showMobileBoardGapDice && mobileSideControlLayout && mobileBoardGapControlMetrics ? (
         <View
           pointerEvents="none"
           style={[
             styles.mobileBoardGapOverlay,
             {
-              left: mobileBoardGapLayout.diceFrame.x,
-              top: mobileBoardGapLayout.diceFrame.y,
-              width: mobileBoardGapLayout.diceFrame.width,
-              height: mobileBoardGapLayout.diceFrame.height,
+              left: mobileSideControlLayout.diceFrame.x,
+              top: mobileSideControlLayout.diceFrame.y,
+              width: mobileSideControlLayout.diceFrame.width,
+              height: mobileSideControlLayout.diceFrame.height,
             },
           ]}
         >
-          <View style={styles.mobileBoardGapDiceWrap}>
+          <View
+            style={[
+              styles.mobileBoardGapDiceWrap,
+              useMobileWebVerticalDiceReels && styles.mobileBoardGapDiceWrapVisible,
+            ]}
+          >
             <View
               style={[
-                styles.mobileBoardGapDiceRotator,
+                useMobileWebVerticalDiceReels
+                  ? styles.mobileBoardGapDiceViewport
+                  : styles.mobileBoardGapDiceRotator,
                 {
                   width: mobileBoardGapControlMetrics.diceViewportWidth,
                   height: mobileBoardGapControlMetrics.diceViewportHeight,
@@ -3371,42 +3445,67 @@ export function GameRoom() {
                 rolling={rollingVisual}
                 canRoll={introsComplete && canRoll}
                 compact
+                diceImageScale={mobileBoardGapControlMetrics.diceImageScale}
                 fitToContainer
                 onResultShown={handleRollResultShown}
+                reelOrientation={mobileBoardGapControlMetrics.diceOrientation}
                 visible={showPersistentDiceVisual}
               />
             </View>
           </View>
         </View>
       ) : null}
-      {showMobileBoardGapDice && mobileBoardGapLayout && mobileBoardGapControlMetrics ? (
+      {showMobileBoardGapDice && mobileSideControlLayout && mobileBoardGapControlMetrics ? (
         <View
+          pointerEvents={showMobileWebBoardGapRollResult ? 'none' : 'auto'}
           style={[
             styles.mobileBoardGapOverlay,
             {
-              left: mobileBoardGapLayout.rollFrame.x,
-              top: mobileBoardGapLayout.rollFrame.y,
-              width: mobileBoardGapLayout.rollFrame.width,
-              height: mobileBoardGapLayout.rollFrame.height,
+              left: mobileSideControlLayout.rollFrame.x,
+              top: mobileSideControlLayout.rollFrame.y,
+              width: mobileSideControlLayout.rollFrame.width,
+              height: mobileSideControlLayout.rollFrame.height,
             },
           ]}
         >
-          <Dice
-            animationDurationMs={diceAnimationDurationMs}
-            value={displayedRollValue}
-            rolling={rollingVisual}
-            onRoll={handleRoll}
-            onResultShown={handleRollResultShown}
-            canRoll={introsComplete && canRoll}
-            pressedIn={introsComplete ? isRollButtonPressedIn : false}
-            mode="stage"
-            compact
-            showNumericResult={false}
-            showStatusCopy={false}
-            showVisual={false}
-            visualPlacement="external"
-            artSize={mobileBoardGapControlMetrics.rollArtSize}
-          />
+          {showMobileWebBoardGapRollResult ? (
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.mobileBoardGapRollResultValue,
+                {
+                  fontFamily: rollResultFontFamily,
+                  fontSize: Math.max(
+                    24,
+                    Math.min(42, Math.round(mobileSideControlLayout.rollFrame.width * 0.72)),
+                  ),
+                  lineHeight: Math.max(
+                    26,
+                    Math.min(46, Math.round(mobileSideControlLayout.rollFrame.width * 0.8)),
+                  ),
+                },
+              ]}
+            >
+              {displayedRollValue}
+            </Text>
+          ) : (
+            <Dice
+              animationDurationMs={diceAnimationDurationMs}
+              value={displayedRollValue}
+              rolling={rollingVisual}
+              onRoll={handleRoll}
+              onResultShown={handleRollResultShown}
+              canRoll={introsComplete && canRoll}
+              pressedIn={introsComplete ? isRollButtonPressedIn : false}
+              mode="stage"
+              compact
+              showNumericResult={false}
+              showStatusCopy={false}
+              showVisual={false}
+              visualPlacement="external"
+              artSize={mobileBoardGapControlMetrics.rollArtSize}
+            />
+          )}
         </View>
       ) : null}
 
@@ -4239,10 +4338,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  mobileBoardGapDiceWrapVisible: {
+    overflow: 'visible',
+  },
   mobileBoardGapDiceRotator: {
     alignItems: 'center',
     justifyContent: 'center',
     transform: [{ rotate: '-90deg' }],
+  },
+  mobileBoardGapDiceViewport: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   mobileWebUnderBoardDiceOverlay: {
     position: 'absolute',
@@ -4526,6 +4632,17 @@ const styles = StyleSheet.create({
     ...urTypography.title,
     color: urTheme.colors.ivory,
     letterSpacing: 0.75,
+    textAlign: 'center',
+    ...textShadow({
+      color: '#120d09',
+      offset: { width: 0, height: 1 },
+      blurRadius: 2,
+    }),
+  },
+  mobileBoardGapRollResultValue: {
+    ...urTypography.title,
+    color: urTheme.colors.ivory,
+    minWidth: 0,
     textAlign: 'center',
     ...textShadow({
       color: '#120d09',

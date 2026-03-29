@@ -36,6 +36,8 @@ const DEFAULT_RESERVE_PIECE_SIZE = 34;
 const RESERVE_PIECE_SIZE_BOOST = 1;
 const MOBILE_VERTICAL_TRAY_ART_SCALE = 2;
 const MOBILE_VERTICAL_RESERVE_PIECE_FIT = 0.74;
+const MOBILE_WEB_VERTICAL_RESERVE_PIECE_SCALE = 0.9;
+const MOBILE_WEB_VERTICAL_STACK_SHIFT_X = 4;
 
 const measureViewInWindow = (
   view: View | null,
@@ -209,6 +211,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   const isMobile = width < 760;
   const isMobileWeb = Platform.OS === 'web' && isMobile;
   const isVertical = orientation === 'vertical';
+  const isMobileWebVerticalRail = isVertical && isMobileWeb;
   const isCompactVerticalRail = isVertical && isMobile;
   const isLargeWebHorizontalRail = Platform.OS === 'web' && width >= 1200 && !isVertical;
   const isTabletPortrait = width >= 760 && width <= 1024 && height > width;
@@ -250,7 +253,9 @@ export const PieceRail: React.FC<PieceRailProps> = ({
     Math.round(
       (piecePixelSize ?? DEFAULT_RESERVE_PIECE_SIZE) *
       RESERVE_PIECE_SIZE_BOOST *
-      (isCompactVerticalRail ? MOBILE_VERTICAL_RESERVE_PIECE_FIT : isMobileWeb ? 0.85 : 1),
+      (isCompactVerticalRail
+        ? MOBILE_VERTICAL_RESERVE_PIECE_FIT * (isMobileWebVerticalRail ? MOBILE_WEB_VERTICAL_RESERVE_PIECE_SCALE : 1)
+        : isMobileWeb ? 0.85 : 1),
     ),
   );
   const reserveStackOffsetY = isVertical ? 0 : -Math.max(1, Math.round(reservePieceSize * 0.035));
@@ -579,6 +584,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
             isVertical && styles.pieceStackVertical,
             isVertical
               ? {
+                paddingLeft: isMobileWebVerticalRail ? MOBILE_WEB_VERTICAL_STACK_SHIFT_X : 0,
                 paddingVertical: pieceLayout.inset,
                 justifyContent: 'flex-start',
               }

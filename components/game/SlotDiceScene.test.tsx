@@ -233,6 +233,108 @@ describe('SlotDiceScene', () => {
     expect(reelStyle.height).toBeLessThanOrEqual(36);
   });
 
+  it('can lay the stage reels out in a true vertical stack without rotating strip motion', () => {
+    render(
+      <SlotDiceScene
+        playbackId={25}
+        durationMs={720}
+        orientation="vertical"
+        presentation="stage"
+        rollValue={2}
+        variant="settled"
+      />,
+    );
+
+    fireEvent(screen.getByTestId('slot-dice-scene-root'), 'layout', {
+      nativeEvent: {
+        layout: {
+          width: 76,
+          height: 148,
+        },
+      },
+    });
+
+    const stackStyle = StyleSheet.flatten(screen.getByTestId('slot-dice-scene-reel-stack').props.style) as {
+      flexDirection?: string;
+    };
+    const stripStyle = StyleSheet.flatten(screen.getByTestId('slot-die-strip-0').props.style) as {
+      transform?: { translateY?: number | { __getValue?: () => number } }[];
+    };
+
+    expect(stackStyle.flexDirection).toBe('column');
+    expect(stripStyle.transform?.some((transform) => 'translateY' in transform)).toBe(true);
+  });
+
+  it('can enlarge the reel boxes without enlarging the dice art', () => {
+    const view = render(
+      <SlotDiceScene
+        playbackId={26}
+        durationMs={720}
+        orientation="vertical"
+        presentation="stage"
+        rollValue={2}
+        variant="settled"
+      />,
+    );
+
+    fireEvent(screen.getByTestId('slot-dice-scene-root'), 'layout', {
+      nativeEvent: {
+        layout: {
+          width: 76,
+          height: 148,
+        },
+      },
+    });
+
+    const baselineReelStyle = StyleSheet.flatten(screen.getByTestId('slot-die-0').props.style) as {
+      height: number;
+      width: number;
+    };
+    const baselineImageStyle = StyleSheet.flatten(
+      screen.getByTestId('slot-die-strip-image-0-0').props.style,
+    ) as {
+      height: number;
+      width: number;
+    };
+
+    view.rerender(
+      <SlotDiceScene
+        playbackId={26}
+        diceImageScale={1 / 1.2}
+        durationMs={720}
+        orientation="vertical"
+        presentation="stage"
+        rollValue={2}
+        variant="settled"
+      />,
+    );
+
+    fireEvent(screen.getByTestId('slot-dice-scene-root'), 'layout', {
+      nativeEvent: {
+        layout: {
+          width: 91,
+          height: 178,
+        },
+      },
+    });
+
+    const enlargedReelStyle = StyleSheet.flatten(screen.getByTestId('slot-die-0').props.style) as {
+      height: number;
+      width: number;
+    };
+    const preservedImageStyle = StyleSheet.flatten(
+      screen.getByTestId('slot-die-strip-image-0-0').props.style,
+    ) as {
+      height: number;
+      width: number;
+    };
+
+    expect(enlargedReelStyle.width).toBeGreaterThan(baselineReelStyle.width);
+    expect(enlargedReelStyle.height).toBeGreaterThan(baselineReelStyle.height);
+    expect(Math.abs(preservedImageStyle.width - baselineImageStyle.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(preservedImageStyle.height - baselineImageStyle.height)).toBeLessThanOrEqual(1);
+  });
+
   it('keeps the strip render path when an animated roll transitions into settled state', () => {
     const view = render(
       <SlotDiceScene
