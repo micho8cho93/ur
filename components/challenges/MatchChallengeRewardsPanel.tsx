@@ -1,10 +1,9 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
 import type { MatchChallengeRewardSummary } from '@/src/challenges/challengeUi';
-import { ChallengeCard } from './ChallengeCard';
 
 interface MatchChallengeRewardsPanelProps {
   summary: MatchChallengeRewardSummary | null;
@@ -18,6 +17,9 @@ export const MatchChallengeRewardsPanel: React.FC<MatchChallengeRewardsPanelProp
   errorMessage = null,
 }) => {
   const pulseValue = useRef(new Animated.Value(1)).current;
+  const [isExpanded, setIsExpanded] = useState(false);
+  const completedCount = summary?.newlyCompletedChallenges.length ?? 0;
+  const completedLabel = `${completedCount} completed ${completedCount === 1 ? 'challenge' : 'challenges'}`;
 
   useEffect(() => {
     if (!summary || summary.newlyCompletedChallenges.length === 0) {
@@ -46,6 +48,10 @@ export const MatchChallengeRewardsPanel: React.FC<MatchChallengeRewardsPanelProp
     };
   }, [pulseValue, summary]);
 
+  useEffect(() => {
+    setIsExpanded(false);
+  }, [summary]);
+
   return (
     <View style={styles.panel}>
       <Text style={styles.eyebrow}>Challenge Rewards</Text>
@@ -61,27 +67,56 @@ export const MatchChallengeRewardsPanel: React.FC<MatchChallengeRewardsPanelProp
           <Text style={styles.stateText}>{errorMessage}</Text>
         </View>
       ) : summary && summary.newlyCompletedChallenges.length > 0 ? (
-        <Animated.View style={{ gap: urTheme.spacing.sm, transform: [{ scale: pulseValue }] }}>
-          <View style={styles.totalBadge}>
-            <Text style={styles.totalBadgeLabel}>+{summary.xpAwardedTotal} XP from challenges</Text>
+        <Animated.View style={[styles.summaryBlock, { transform: [{ scale: pulseValue }] }]}>
+          <View style={styles.summaryHeader}>
+            <View style={styles.summaryCopy}>
+              <View style={styles.totalBadge}>
+                <Text style={styles.totalBadgeLabel}>+{summary.xpAwardedTotal} XP from challenges</Text>
+              </View>
+              <Text style={styles.summaryTitle}>{completedLabel}</Text>
+              <Text style={styles.summaryText}>
+                Expand the list to review everything this match unlocked.
+              </Text>
+            </View>
           </View>
-          {summary.newlyCompletedChallenges.map((challenge) => (
-            <ChallengeCard
-              key={challenge.challengeId}
-              highlight
-              challenge={{
-                id: challenge.challengeId,
-                name: challenge.name,
-                description: challenge.description,
-                rewardXp: challenge.rewardXp,
-                status: 'completed',
-                completed: true,
-                completedAt: challenge.completedAt,
-                completedMatchId: null,
-                progressLabel: 'Just completed',
-              }}
-            />
-          ))}
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: isExpanded }}
+            onPress={() => setIsExpanded((value) => !value)}
+            style={({ pressed }) => [
+              styles.toggleButton,
+              pressed && styles.toggleButtonPressed,
+            ]}
+            testID="match-challenge-toggle"
+          >
+            <Text style={styles.toggleLabel}>
+              {isExpanded ? 'Hide completed challenges' : `Show ${completedLabel}`}
+            </Text>
+            <Text style={styles.toggleChevron}>{isExpanded ? 'v' : '>'}</Text>
+          </Pressable>
+
+          {isExpanded ? (
+            <View style={styles.dropdownPanel}>
+              <ScrollView
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}
+                style={styles.challengeList}
+                contentContainerStyle={styles.challengeListContent}
+                testID="match-challenge-list"
+              >
+                {summary.newlyCompletedChallenges.map((challenge) => (
+                  <View key={challenge.challengeId} style={styles.challengeRow}>
+                    <View style={styles.challengeRowCopy}>
+                      <Text style={styles.challengeName}>{challenge.name}</Text>
+                      <Text style={styles.challengeMeta}>Just completed</Text>
+                    </View>
+                    <Text style={styles.challengeXp}>+{challenge.rewardXp} XP</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
         </Animated.View>
       ) : (
         <View style={styles.stateBlock}>
@@ -115,6 +150,19 @@ const styles = StyleSheet.create({
     color: 'rgba(240, 224, 196, 0.68)',
     fontSize: 10,
   },
+  summaryBlock: {
+    gap: urTheme.spacing.sm,
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: urTheme.spacing.sm,
+  },
+  summaryCopy: {
+    flex: 1,
+    gap: 6,
+  },
   totalBadge: {
     alignSelf: 'flex-start',
     borderRadius: urTheme.radii.pill,
@@ -128,6 +176,90 @@ const styles = StyleSheet.create({
     ...urTypography.label,
     color: '#FFE6B8',
     fontSize: 11,
+  },
+  summaryTitle: {
+    ...urTypography.subtitle,
+    color: '#F8ECD6',
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '700',
+  },
+  summaryText: {
+    color: 'rgba(243, 230, 206, 0.78)',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  toggleButton: {
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(240, 208, 152, 0.24)',
+    backgroundColor: 'rgba(16, 24, 32, 0.58)',
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: urTheme.spacing.sm,
+  },
+  toggleButtonPressed: {
+    opacity: 0.88,
+  },
+  toggleLabel: {
+    ...urTypography.label,
+    color: '#F8ECD6',
+    fontSize: 12,
+    flex: 1,
+  },
+  toggleChevron: {
+    ...urTypography.label,
+    color: '#FFE6B8',
+    fontSize: 16,
+  },
+  dropdownPanel: {
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(240, 208, 152, 0.2)',
+    backgroundColor: 'rgba(8, 14, 20, 0.5)',
+    overflow: 'hidden',
+  },
+  challengeList: {
+    maxHeight: 216,
+  },
+  challengeListContent: {
+    padding: urTheme.spacing.sm,
+    gap: urTheme.spacing.sm,
+  },
+  challengeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: urTheme.spacing.md,
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(159, 214, 119, 0.2)',
+    backgroundColor: 'rgba(24, 39, 23, 0.52)',
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.sm,
+  },
+  challengeRowCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  challengeName: {
+    ...urTypography.label,
+    color: '#F8ECD6',
+    fontSize: 13,
+  },
+  challengeMeta: {
+    color: 'rgba(236, 223, 197, 0.66)',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  challengeXp: {
+    ...urTypography.label,
+    color: urTheme.colors.goldBright,
+    fontSize: 12,
+    textAlign: 'right',
   },
   stateBlock: {
     gap: 6,

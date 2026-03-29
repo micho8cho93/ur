@@ -2,6 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { createInitialState, getValidMoves } from '@/logic/engine';
 import type { GameState, MoveAction } from '@/logic/types';
+import { CHALLENGE_DEFINITIONS, createDefaultUserChallengeProgressSnapshot } from '@/shared/challenges';
 
 const mockMatchDiceRollStage = jest.fn(({ rolling, visible }: { rolling: boolean; visible: boolean }) => {
   const { Text } = require('react-native');
@@ -21,14 +22,16 @@ const mockModal = jest.fn(
     visible,
     title,
     message,
+    actionLabel,
     children,
   }: {
     visible?: boolean;
     title?: string;
     message?: string;
+    actionLabel?: string;
     children?: React.ReactNode;
   }) => {
-    const { Text, View } = require('react-native');
+    const { Pressable, Text, View } = require('react-native');
     if (!visible) {
       return null;
     }
@@ -37,6 +40,11 @@ const mockModal = jest.fn(
         {title ? <Text>{title}</Text> : null}
         {message ? <Text>{message}</Text> : null}
         {children}
+        {actionLabel ? (
+          <Pressable>
+            <Text>{actionLabel}</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   },
@@ -100,6 +108,8 @@ const mockFinalizeTournamentMatch = jest.fn();
 const mockTournamentMatchLauncher = {
   finalizeMatchLaunch: (...args: unknown[]) => mockFinalizeTournamentMatch(...args),
 };
+let mockChallengeDefinitions = CHALLENGE_DEFINITIONS.slice(0, 0);
+let mockChallengeProgress: ReturnType<typeof createDefaultUserChallengeProgressSnapshot> | null = null;
 let mockTournamentAdvanceFlowState = {
   phase: 'waiting',
   derivedRound: 2,
@@ -332,28 +342,59 @@ jest.mock('@/components/tutorial/PlayTutorialCoachModal', () => {
 jest.mock('@/components/match/MatchResultSummaryContent', () => {
   const React = require('react');
   const { View } = require('react-native');
+  const { MatchChallengeRewardsPanel } = jest.requireActual('@/components/challenges/MatchChallengeRewardsPanel');
   return {
-    MatchResultSummaryContent: () => <View testID="mock-match-result-summary" />,
+    MatchResultSummaryContent: ({
+      shouldShowChallengeRewards,
+      matchChallengeSummary,
+      isRefreshingMatchRewards,
+      matchRewardsErrorMessage,
+    }: {
+      shouldShowChallengeRewards?: boolean;
+      matchChallengeSummary?: unknown;
+      isRefreshingMatchRewards?: boolean;
+      matchRewardsErrorMessage?: string | null;
+    }) => (
+      <View testID="mock-match-result-summary">
+        {shouldShowChallengeRewards ? (
+          <MatchChallengeRewardsPanel
+            summary={matchChallengeSummary ?? null}
+            loading={Boolean(isRefreshingMatchRewards && !matchChallengeSummary)}
+            errorMessage={matchRewardsErrorMessage ?? null}
+          />
+        ) : null}
+      </View>
+    ),
   };
 });
 
 jest.mock('@/components/tournaments/TournamentWaitingRoom', () => {
   const React = require('react');
-  const { Text, View } = require('react-native');
+  const { Pressable, Text, View } = require('react-native');
   return {
     TournamentWaitingRoom: ({
       visible,
       statusText,
+      onBackToStandings,
+      onReturnToMainPage,
       children,
     }: {
       visible?: boolean;
       statusText?: string;
+      onBackToStandings?: () => void;
+      onReturnToMainPage?: () => void;
       children?: React.ReactNode;
     }) =>
       visible ? (
         <View testID="mock-tournament-waiting-room">
           {statusText ? <Text>{statusText}</Text> : null}
           {children}
+          <Pressable onPress={onBackToStandings}>
+            <Text>Back to Standings</Text>
+          </Pressable>
+          <Pressable onPress={onReturnToMainPage}>
+            <Text>Return to Main Page</Text>
+          </Pressable>
         </View>
       ) : null,
   };
@@ -431,8 +472,8 @@ jest.mock('@/src/elo/useEloRating', () => ({
 
 jest.mock('@/src/challenges/useChallenges', () => ({
   useChallenges: () => ({
-    definitions: [],
-    progress: [],
+    definitions: mockChallengeDefinitions,
+    progress: mockChallengeProgress,
     refresh: mockRefreshChallenges,
   }),
 }));
@@ -567,6 +608,40 @@ jest.mock('expo-font', () => ({
 import { Platform } from 'react-native';
 import { GameRoom } from '@/app/match/[id]';
 
+const configureCompletedMatchChallenges = (matchId: string) => {
+  const definitions = CHALLENGE_DEFINITIONS.slice(0, 2);
+  const progress = createDefaultUserChallengeProgressSnapshot('2026-03-27T12:00:00.000Z');
+
+  progress.challenges[definitions[0].id] = {
+    ...progress.challenges[definitions[0].id],
+    completed: true,
+    completedAt: '2026-03-27T12:00:00.000Z',
+    completedMatchId: matchId,
+    rewardXp: definitions[0].rewardXp,
+  };
+  progress.challenges[definitions[1].id] = {
+    ...progress.challenges[definitions[1].id],
+    completed: true,
+    completedAt: '2026-03-27T12:00:01.000Z',
+    completedMatchId: matchId,
+    rewardXp: definitions[1].rewardXp,
+  };
+  progress.totalCompleted = 2;
+  progress.totalRewardedXp = definitions[0].rewardXp + definitions[1].rewardXp;
+
+  mockChallengeDefinitions = definitions;
+  mockChallengeProgress = progress;
+  mockRefreshChallenges.mockResolvedValue({
+    definitions,
+    progress,
+  });
+
+  return {
+    definitions,
+    totalXp: definitions[0].rewardXp + definitions[1].rewardXp,
+  };
+};
+
 describe('GameRoom match dice stage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -674,6 +749,8 @@ describe('GameRoom match dice stage', () => {
     mockUseRealBoard = false;
     mockUseRealSlotDiceScene = false;
     mockUseRealMatchMomentIndicator = false;
+    mockChallengeDefinitions = CHALLENGE_DEFINITIONS.slice(0, 0);
+    mockChallengeProgress = null;
     mockApplyServerSnapshot.mockImplementation((snapshot) => {
       Object.assign(mockStoreState, {
         gameState: snapshot.gameState,
@@ -1827,6 +1904,90 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
     expect(screen.getByText('Recording your victory in the standings...')).toBeTruthy();
     expect(screen.queryByText('Victory')).toBeNull();
+  });
+
+  it('keeps the regular win flow exit action visible while challenge rewards stay collapsed', async () => {
+    const matchId = 'online-challenge-win';
+    const { definitions, totalXp } = configureCompletedMatchChallenges(matchId);
+
+    mockSearchParams.id = matchId;
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: matchId,
+    });
+    mockStoreState.matchId = matchId;
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(await screen.findByText('Return to Menu')).toBeTruthy();
+    expect(screen.getByText(`+${totalXp} XP from challenges`)).toBeTruthy();
+    expect(screen.getByText('Show 2 completed challenges')).toBeTruthy();
+    expect(screen.queryByText(definitions[0].name)).toBeNull();
+    expect(screen.queryByText(definitions[1].name)).toBeNull();
+
+    fireEvent.press(screen.getByText('Show 2 completed challenges'));
+
+    expect(screen.getByText(definitions[0].name)).toBeTruthy();
+    expect(screen.getByText(definitions[1].name)).toBeTruthy();
+  });
+
+  it('keeps Back to Standings visible in the tournament waiting room while challenge rewards stay collapsed', async () => {
+    const matchId = 'tournament-challenge-win';
+    const { definitions, totalXp } = configureCompletedMatchChallenges(matchId);
+
+    mockSearchParams.id = matchId;
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: matchId,
+    });
+    mockStoreState.matchId = matchId;
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockTournamentAdvanceFlowState = {
+      ...mockTournamentAdvanceFlowState,
+      phase: 'waiting',
+      statusText: 'Recording your victory in the standings...',
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(await screen.findByText('Back to Standings')).toBeTruthy();
+    expect(screen.getByText(`+${totalXp} XP from challenges`)).toBeTruthy();
+    expect(screen.getByText('Show 2 completed challenges')).toBeTruthy();
+    expect(screen.queryByText(definitions[0].name)).toBeNull();
+    expect(screen.queryByText(definitions[1].name)).toBeNull();
   });
 
   it('uses route replacement when tournament auto-advance succeeds', () => {
