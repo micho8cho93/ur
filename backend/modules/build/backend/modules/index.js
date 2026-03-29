@@ -1894,7 +1894,7 @@ var ensureEloLeaderboard = (nk, logger) => {
 };
 var processRankedMatchResult = (nk, logger, params) => {
   var _a, _b;
-  if (!params.ranked || params.privateMatch || params.botMatch || params.casualMatch || params.experimentalMode) {
+  if (!params.ranked || params.botMatch || params.casualMatch || params.experimentalMode) {
     return null;
   }
   const matchId = params.matchId.trim();
@@ -5176,6 +5176,23 @@ var buildStandingsSnapshot = (nk, tournamentId, limit, overrideExpiry) => {
     nextCursor: result.nextCursor
   };
 };
+var canReuseStoredStandingsSnapshot = (snapshot, limit) => {
+  var _a;
+  if (!snapshot) {
+    return false;
+  }
+  const availableRecords = snapshot.records.length;
+  const totalRecords = (_a = snapshot.rankCount) != null ? _a : availableRecords;
+  return availableRecords >= Math.min(limit, totalRecords);
+};
+var resolveRunStandingsSnapshot = (nk, run, limit, overrideExpiry) => {
+  if (run.lifecycle === "finalized" && canReuseStoredStandingsSnapshot(run.finalSnapshot, limit)) {
+    return __spreadProps(__spreadValues({}, run.finalSnapshot), {
+      records: run.finalSnapshot.records.slice(0, limit)
+    });
+  }
+  return buildStandingsSnapshot(nk, run.tournamentId, limit, overrideExpiry);
+};
 var readStandingsRecordRank = (record) => {
   const rank = readNumberField4(record, ["rank"]);
   return typeof rank === "number" && Number.isFinite(rank) ? rank : null;
@@ -5663,7 +5680,7 @@ var rpcAdminGetTournamentStandings = (ctx, logger, nk, payload) => {
         readNumberField4(parsed, ["overrideExpiry", "override_expiry"]),
         nakamaTournament
       );
-      const standings = buildStandingsSnapshot(_nk, run.tournamentId, limit, overrideExpiry);
+      const standings = resolveRunStandingsSnapshot(_nk, run, limit, overrideExpiry);
       return JSON.stringify({
         ok: true,
         run,
@@ -5952,6 +5969,15 @@ var assertPublicRunVisible = (run, nakamaTournament, nowMs = Date.now()) => {
     throw new Error("This tournament is not available in public play.");
   }
 };
+var assertPublicRunReadable = (run, nakamaTournament, membership, nowMs = Date.now()) => {
+  if (isPublicRunActive(run, nakamaTournament, nowMs)) {
+    return;
+  }
+  if (membership && (run.lifecycle === "closed" || run.lifecycle === "finalized")) {
+    return;
+  }
+  throw new Error("This tournament is not available in public play.");
+};
 var readMembershipObject = (nk, runId, userId) => {
   const objects = nk.storageRead([
     {
@@ -6210,19 +6236,20 @@ var rpcGetPublicTournament = (ctx, logger, nk, payload) => {
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
-  assertPublicRunVisible(run, nakamaTournament);
+  const membership = readMembership(nk, run.runId, userId);
+  assertPublicRunReadable(run, nakamaTournament, membership);
   return JSON.stringify({
     ok: true,
     tournament: buildPublicTournamentResponse(
       run,
       nakamaTournament,
-      readMembership(nk, run.runId, userId)
+      membership
     )
   });
 };
 var rpcGetPublicTournamentStandings = (ctx, logger, nk, payload) => {
   var _a;
-  requireAuthenticatedUserId(ctx);
+  const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
   const runId = readStringField6(parsed, [
     "runId",
@@ -6238,14 +6265,15 @@ var rpcGetPublicTournamentStandings = (ctx, logger, nk, payload) => {
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
-  assertPublicRunVisible(run, nakamaTournament);
+  const membership = readMembership(nk, run.runId, userId);
+  assertPublicRunReadable(run, nakamaTournament, membership);
   const limit = clampInteger(
     (_a = parsed.limit) != null ? _a : run.maxSize,
     Math.max(DEFAULT_PUBLIC_STANDINGS_LIMIT, run.maxSize),
     1,
     MAX_STANDINGS_LIMIT
   );
-  const standings = buildStandingsSnapshot(nk, run.tournamentId, limit, 0);
+  const standings = resolveRunStandingsSnapshot(nk, run, limit, 0);
   return JSON.stringify({
     ok: true,
     tournamentRunId: run.runId,
@@ -7041,10 +7069,11 @@ var resolveConfiguredRewardXp = (value) => {
 };
 var buildMatchClassification = (params, modeId) => {
   const config = getMatchConfig(modeId);
+  const tournamentMatch = Boolean(resolveTournamentMatchContextFromParams(params));
   const privateMatch = params.privateMatch === true;
   const botMatch = params.botMatch === true;
   const casualMatch = params.casualMatch === true;
-  const experimental = !config.allowsRankedStats;
+  const experimental = !config.allowsRankedStats && !tournamentMatch;
   const ranked = params.rankedMatch === true || !privateMatch && !botMatch && !casualMatch && !experimental && params.rankedMatch !== false;
   return {
     ranked,
@@ -7490,20 +7519,26 @@ var syncCompletedMatchEnd = (state) => {
 };
 var finalizeCompletedMatch = (logger, nk, dispatcher, state, matchId) => {
   if (!state.gameState.winner || state.resultRecorded) {
-    return;
+    return state.resultRecorded;
   }
   syncCompletedMatchEnd(state);
-  state.resultRecorded = true;
   const ratingProcessingResult = processCompletedMatchRatings(logger, nk, dispatcher, state, matchId);
   const winnerProgressionAward = awardWinnerProgression(logger, nk, dispatcher, state, matchId);
   const tournamentProcessingResult = processCompletedTournamentMatch(logger, nk, state, matchId);
   const challengeProcessingResults = processCompletedMatchSummaries(logger, nk, state, matchId);
+  if (state.tournamentContext && !tournamentProcessingResult) {
+    logger.warn("Deferring final result lock for match %s until tournament synchronization succeeds.", matchId);
+    state.resultRecorded = false;
+    return false;
+  }
   broadcastTournamentMatchRewardSummaries(logger, nk, dispatcher, state, matchId, {
     ratingProcessingResult,
     winnerProgressionAward,
     tournamentProcessingResult,
     challengeProcessingResults
   });
+  state.resultRecorded = true;
+  return true;
 };
 var markMatchStartedIfReady = (state, nowMs) => {
   if (state.started || !canStartMatch(state)) {
@@ -7766,11 +7801,12 @@ function rpcCreatePrivateMatch(ctx, _logger, nk, payload) {
   requireCompletedUsernameOnboarding(nk, ctx.userId);
   const data = parseRpcPayload(payload);
   const modeId = resolveMatchModeId(data.modeId);
+  const matchConfig = getMatchConfig(modeId);
   const privateCode = createAvailablePrivateMatchCode(nk);
   const matchId = nk.matchCreate(MATCH_HANDLER, {
     playerIds: [ctx.userId],
     modeId,
-    rankedMatch: false,
+    rankedMatch: matchConfig.allowsRankedStats,
     casualMatch: false,
     botMatch: false,
     privateMatch: true,
@@ -7932,7 +7968,7 @@ function matchJoin(ctx, logger, nk, dispatcher, _tick, state, presences) {
   broadcastSnapshot(dispatcher, state, getMatchId(ctx));
   return { state };
 }
-function matchLeave(_ctx, logger, _nk, _dispatcher, _tick, state, presences) {
+function matchLeave(ctx, logger, nk, dispatcher, _tick, state, presences) {
   presences.forEach((presence) => {
     const userId = getPresenceUserId(presence);
     if (!userId) {
@@ -7941,6 +7977,13 @@ function matchLeave(_ctx, logger, _nk, _dispatcher, _tick, state, presences) {
     }
     removePresence(state, presence);
   });
+  if (state.gameState.winner && !state.resultRecorded) {
+    try {
+      finalizeCompletedMatch(logger, nk, dispatcher, state, getMatchId(ctx));
+    } catch (error) {
+      logMatchLoopError(logger, getMatchId(ctx), state, "leave_result_processing", error);
+    }
+  }
   return { state };
 }
 var logMatchLoopError = (logger, matchId, state, context, error) => {
@@ -8031,9 +8074,23 @@ function matchLoop(ctx, logger, nk, dispatcher, _tick, state, messages) {
       logMatchLoopError(logger, matchId, state, "timeout_recovery_snapshot", snapshotError);
     }
   }
+  if (state.gameState.winner && !state.resultRecorded) {
+    try {
+      finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
+    } catch (error) {
+      logMatchLoopError(logger, matchId, state, "result_processing", error);
+    }
+  }
   return { state };
 }
-function matchTerminate(_ctx, _logger, _nk, _dispatcher, _tick, state, _graceSeconds) {
+function matchTerminate(ctx, logger, nk, dispatcher, _tick, state, _graceSeconds) {
+  if (state.gameState.winner && !state.resultRecorded) {
+    try {
+      finalizeCompletedMatch(logger, nk, dispatcher, state, getMatchId(ctx));
+    } catch (error) {
+      logMatchLoopError(logger, getMatchId(ctx), state, "terminate_result_processing", error);
+    }
+  }
   return { state };
 }
 function matchSignal(ctx, _logger, _nk, dispatcher, _tick, state, data) {
@@ -8253,6 +8310,11 @@ function processCompletedMatchRatings(logger, nk, dispatcher, state, matchId) {
       };
       return entries;
     }, {});
+    if (ratingResult.duplicate) {
+      return {
+        byUserId
+      };
+    }
     ratingResult.record.playerResults.forEach((playerResult) => {
       const targetPresences = getUserPresenceTargets(state, playerResult.userId);
       if (targetPresences.length === 0) {
@@ -8362,7 +8424,25 @@ function processCompletedMatchSummaries(logger, nk, state, matchId) {
   });
   return results;
 }
-var resolveTournamentRewardOutcome = (participantState, didWin) => {
+var resolveTournamentRewardOutcome = (params) => {
+  const {
+    participantState,
+    didWin,
+    playerUserId,
+    tournamentProcessingResult
+  } = params;
+  const finalizationResult = tournamentProcessingResult.finalizationResult;
+  if (finalizationResult) {
+    if (finalizationResult.championUserId === playerUserId) {
+      return "champion";
+    }
+    if (participantState === "champion" || didWin && finalizationResult.run.lifecycle === "finalized") {
+      return "champion";
+    }
+    if (participantState === "runner_up" || !didWin) {
+      return "runner_up";
+    }
+  }
   if (participantState === "champion") {
     return "champion";
   }
@@ -8382,8 +8462,13 @@ var buildTournamentRewardSummaryPayload = (logger, nk, state, matchId, playerUse
   const participantResolution = context.tournamentProcessingResult.participantResolutions.find(
     (entry) => entry.userId === playerUserId
   );
-  const tournamentOutcome = resolveTournamentRewardOutcome((_a = participantResolution == null ? void 0 : participantResolution.state) != null ? _a : null, didWin);
-  const shouldEnterWaitingRoom = tournamentOutcome === "advancing";
+  const tournamentOutcome = resolveTournamentRewardOutcome({
+    participantState: (_a = participantResolution == null ? void 0 : participantResolution.state) != null ? _a : null,
+    didWin,
+    playerUserId,
+    tournamentProcessingResult: context.tournamentProcessingResult
+  });
+  const shouldEnterWaitingRoom = tournamentOutcome === "advancing" && context.tournamentProcessingResult.finalizationResult === null;
   const challengeResult = (_b = context.challengeProcessingResults[playerUserId]) != null ? _b : null;
   const challengeCompletionCount = (_c = challengeResult == null ? void 0 : challengeResult.completedChallengeIds.length) != null ? _c : 0;
   const challengeXpDelta = (_d = challengeResult == null ? void 0 : challengeResult.awardedXp) != null ? _d : 0;

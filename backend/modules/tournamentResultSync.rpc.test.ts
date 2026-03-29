@@ -78,6 +78,15 @@ type RuntimeGlobals = typeof globalThis & {
     state: any,
     messages: Array<Record<string, unknown>>
   ) => { state: any };
+  matchLeave: (
+    ctx: Record<string, unknown>,
+    logger: { info: jest.Mock; warn: jest.Mock; debug: jest.Mock; error: jest.Mock },
+    nk: { storageRead: jest.Mock; storageWrite: jest.Mock },
+    dispatcher: { broadcastMessage: jest.Mock },
+    tick: number,
+    state: any,
+    presences: Array<Record<string, unknown>>
+  ) => { state: any };
 };
 
 const mockedProcessCompletedMatch = processCompletedMatch as jest.MockedFunction<typeof processCompletedMatch>;
@@ -328,6 +337,183 @@ describe('tournament match result synchronization', () => {
     expect(
       dispatcher.broadcastMessage.mock.calls.filter(([opCode]) => opCode === MatchOpCode.TOURNAMENT_REWARD_SUMMARY),
     ).toHaveLength(2);
+  });
+
+  it('marks final-match summaries as champion and runner-up when finalization succeeds before participant states catch up', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = createLogger();
+    const nk = createNakama();
+    const dispatcher = createDispatcher();
+    const ctx = { matchId: 'match-final' };
+
+    mockedProcessRankedMatchResult.mockReturnValueOnce(buildRatedResult(false));
+    mockedProcessCompletedAuthoritativeTournamentMatch.mockReturnValueOnce({
+      skipped: false,
+      duplicate: false,
+      record: null,
+      updatedRun: null,
+      participantResolutions: [
+        {
+          userId: 'user-light',
+          state: 'waiting_next_round',
+          finalPlacement: null,
+        },
+        {
+          userId: 'user-dark',
+          state: 'eliminated',
+          finalPlacement: 2,
+        },
+      ],
+      finalizationResult: {
+        run: {
+          lifecycle: 'finalized',
+        } as never,
+        finalSnapshot: {
+          generatedAt: '2026-03-29T18:39:00.000Z',
+          overrideExpiry: 0,
+          rankCount: 2,
+          records: [],
+          prevCursor: null,
+          nextCursor: null,
+        },
+        championUserId: 'user-light',
+        championRewardResult: null,
+        disabledRanks: true,
+        nakamaTournament: null,
+      },
+    } as ReturnType<typeof processCompletedAuthoritativeTournamentMatch>);
+
+    const initialized = runtime.matchInit(ctx, logger, nk, {
+      playerIds: ['user-light', 'user-dark'],
+      modeId: 'standard',
+      rankedMatch: true,
+      tournamentRunId: 'run-1',
+      tournamentId: 'tour-1',
+      tournamentRound: 1,
+      tournamentEntryId: 'round-1-match-1',
+    });
+
+    const state = attachPresences({
+      ...initialized.state,
+      gameState: {
+        ...initialized.state.gameState,
+        phase: 'ended',
+        winner: 'light',
+      },
+    });
+
+    runtime.matchLoop(ctx, logger, nk, dispatcher, 1, state, []);
+
+    const rewardSummaryPayloads = dispatcher.broadcastMessage.mock.calls
+      .filter(([opCode]) => opCode === MatchOpCode.TOURNAMENT_REWARD_SUMMARY)
+      .map(([, payload]) => JSON.parse(payload as string)) as Array<{
+        playerUserId: string;
+        tournamentOutcome: string;
+        shouldEnterWaitingRoom: boolean;
+      }>;
+
+    expect(rewardSummaryPayloads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          playerUserId: 'user-light',
+          tournamentOutcome: 'champion',
+          shouldEnterWaitingRoom: false,
+        }),
+        expect.objectContaining({
+          playerUserId: 'user-dark',
+          tournamentOutcome: 'runner_up',
+          shouldEnterWaitingRoom: false,
+        }),
+      ]),
+    );
+  });
+
+  it('retries tournament synchronization when a finished player leaves the match', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = createLogger();
+    const nk = createNakama();
+    const dispatcher = createDispatcher();
+    const ctx = { matchId: 'match-leave-retry' };
+
+    mockedProcessRankedMatchResult.mockReturnValueOnce(buildRatedResult(false)).mockReturnValueOnce(buildRatedResult(true));
+    mockedProcessCompletedAuthoritativeTournamentMatch
+      .mockReturnValueOnce(null as never)
+      .mockReturnValueOnce({
+        skipped: false,
+        duplicate: false,
+        record: null,
+        updatedRun: null,
+        participantResolutions: [
+          {
+            userId: 'user-light',
+            state: 'champion',
+            finalPlacement: 1,
+          },
+          {
+            userId: 'user-dark',
+            state: 'runner_up',
+            finalPlacement: 2,
+          },
+        ],
+        finalizationResult: {
+          run: {
+            lifecycle: 'finalized',
+          } as never,
+          finalSnapshot: {
+            generatedAt: '2026-03-29T18:39:00.000Z',
+            overrideExpiry: 0,
+            rankCount: 2,
+            records: [],
+            prevCursor: null,
+            nextCursor: null,
+          },
+          championUserId: 'user-light',
+          championRewardResult: null,
+          disabledRanks: true,
+          nakamaTournament: null,
+        },
+      } as ReturnType<typeof processCompletedAuthoritativeTournamentMatch>);
+
+    const initialized = runtime.matchInit(ctx, logger, nk, {
+      playerIds: ['user-light', 'user-dark'],
+      modeId: 'standard',
+      rankedMatch: true,
+      tournamentRunId: 'run-1',
+      tournamentId: 'tour-1',
+      tournamentRound: 1,
+      tournamentEntryId: 'round-1-match-1',
+    });
+
+    let state = attachPresences({
+      ...initialized.state,
+      gameState: {
+        ...initialized.state.gameState,
+        phase: 'ended',
+        winner: 'light',
+      },
+    });
+
+    state = runtime.matchLoop(ctx, logger, nk, dispatcher, 1, state, []).state;
+    expect(state.resultRecorded).toBe(false);
+
+    state = runtime.matchLeave(
+      ctx,
+      logger,
+      nk,
+      dispatcher,
+      2,
+      state,
+      [
+        {
+          userId: 'user-light',
+          sessionId: 'light-session',
+          node: 'node-1',
+        },
+      ],
+    ).state;
+
+    expect(state.resultRecorded).toBe(true);
+    expect(mockedProcessCompletedAuthoritativeTournamentMatch).toHaveBeenCalledTimes(2);
   });
 
   it('processes public matchmaking wins through Elo, XP, and challenge rewards', () => {

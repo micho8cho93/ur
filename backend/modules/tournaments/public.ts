@@ -2,13 +2,13 @@ import { appendTournamentAuditEntry } from "./audit";
 import {
   MAX_STANDINGS_LIMIT,
   TournamentRunRecord,
-  buildStandingsSnapshot,
   clampInteger,
   getNakamaTournamentById,
   getNakamaTournamentsById,
   readRunIndexState,
   readRunOrThrow,
   readRunsByIds,
+  resolveRunStandingsSnapshot,
   updateRunWithRetry,
 } from "./admin";
 import {
@@ -265,6 +265,23 @@ const assertPublicRunVisible = (
   if (!isPublicRunActive(run, nakamaTournament, nowMs)) {
     throw new Error("This tournament is not available in public play.");
   }
+};
+
+const assertPublicRunReadable = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+  membership: TournamentRunMembershipRecord | null,
+  nowMs = Date.now(),
+): void => {
+  if (isPublicRunActive(run, nakamaTournament, nowMs)) {
+    return;
+  }
+
+  if (membership && (run.lifecycle === "closed" || run.lifecycle === "finalized")) {
+    return;
+  }
+
+  throw new Error("This tournament is not available in public play.");
 };
 
 const readMembershipObject = (nk: RuntimeNakama, runId: string, userId: string): RuntimeStorageObject | null => {
@@ -596,14 +613,15 @@ export const rpcGetPublicTournament = (
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
-  assertPublicRunVisible(run, nakamaTournament);
+  const membership = readMembership(nk, run.runId, userId);
+  assertPublicRunReadable(run, nakamaTournament, membership);
 
   return JSON.stringify({
     ok: true,
     tournament: buildPublicTournamentResponse(
       run,
       nakamaTournament,
-      readMembership(nk, run.runId, userId),
+      membership,
     ),
   });
 };
@@ -614,7 +632,7 @@ export const rpcGetPublicTournamentStandings = (
   nk: RuntimeNakama,
   payload: string,
 ): string => {
-  requireAuthenticatedUserId(ctx);
+  const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
   const runId = readStringField(parsed, [
     "runId",
@@ -632,14 +650,15 @@ export const rpcGetPublicTournamentStandings = (
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
-  assertPublicRunVisible(run, nakamaTournament);
+  const membership = readMembership(nk, run.runId, userId);
+  assertPublicRunReadable(run, nakamaTournament, membership);
   const limit = clampInteger(
     parsed.limit ?? run.maxSize,
     Math.max(DEFAULT_PUBLIC_STANDINGS_LIMIT, run.maxSize),
     1,
     MAX_STANDINGS_LIMIT,
   );
-  const standings = buildStandingsSnapshot(nk, run.tournamentId, limit, 0);
+  const standings = resolveRunStandingsSnapshot(nk, run, limit, 0);
 
   return JSON.stringify({
     ok: true,

@@ -1,4 +1,6 @@
 import {
+  rpcGetPublicTournament,
+  rpcGetPublicTournamentStandings,
   rpcJoinPublicTournament,
   rpcLaunchTournamentMatch,
   rpcListPublicTournaments,
@@ -511,6 +513,141 @@ describe('public tournament rpc flow', () => {
         JSON.stringify({ runId: 'run-1' }),
       ),
     ).toThrow('Your tournament run has ended.');
+  });
+
+  it('keeps finalized tournament status readable for joined players while hiding it from the public list', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedOpenRun(nk, {
+      entrants: 0,
+      maxSize: 2,
+    });
+
+    rpcJoinPublicTournament(
+      { userId: 'user-1', username: 'RoyalPlayer' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcJoinPublicTournament(
+      { userId: 'user-2', username: 'TempleGuest' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcLaunchTournamentMatch(
+      { userId: 'user-1', username: 'RoyalPlayer' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+
+    const storedRun = readStoredRunValue(nk);
+    const finalizedBracket = completeTournamentBracketMatch(storedRun.bracket as never, {
+      entryId: 'round-1-match-1',
+      matchId: 'match-tournament-1',
+      winnerUserId: 'user-1',
+      loserUserId: 'user-2',
+      completedAt: '2026-03-27T10:05:00.000Z',
+    });
+
+    writeStoredRunValue(nk, {
+      ...storedRun,
+      lifecycle: 'finalized',
+      updatedAt: '2026-03-27T10:05:00.000Z',
+      closedAt: '2026-03-27T10:05:00.000Z',
+      finalizedAt: '2026-03-27T10:05:00.000Z',
+      bracket: finalizedBracket,
+      finalSnapshot: {
+        generatedAt: '2026-03-27T10:05:00.000Z',
+        overrideExpiry: 0,
+        rankCount: 2,
+        records: [
+          {
+            rank: 1,
+            owner_id: 'user-1',
+            username: 'RoyalPlayer',
+            score: 1,
+            metadata: {
+              result: 'win',
+              round: 1,
+              matchId: 'match-tournament-1',
+            },
+          },
+          {
+            rank: 2,
+            owner_id: 'user-2',
+            username: 'TempleGuest',
+            score: 0,
+            metadata: {
+              result: 'loss',
+              round: 1,
+              matchId: 'match-tournament-1',
+            },
+          },
+        ],
+        prevCursor: null,
+        nextCursor: null,
+      },
+    });
+
+    const detailResponse = JSON.parse(
+      rpcGetPublicTournament(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      tournament: {
+        lifecycle: string;
+        participation: { state: string | null; finalPlacement: number | null };
+      };
+    };
+
+    const standingsResponse = JSON.parse(
+      rpcGetPublicTournamentStandings(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1', limit: 10 }),
+      ),
+    ) as {
+      standings: {
+        records: Array<{ rank: number; owner_id: string; metadata: { result: string } }>;
+      };
+    };
+
+    const listResponse = JSON.parse(
+      rpcListPublicTournaments(
+        { userId: 'user-1' },
+        logger,
+        nk,
+        JSON.stringify({ limit: 10 }),
+      ),
+    ) as {
+      tournaments: Array<{ runId: string }>;
+    };
+
+    expect(detailResponse.tournament.lifecycle).toBe('finalized');
+    expect(detailResponse.tournament.participation).toEqual(
+      expect.objectContaining({
+        state: 'champion',
+        finalPlacement: 1,
+      }),
+    );
+    expect(standingsResponse.standings.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rank: 1,
+          owner_id: 'user-1',
+          metadata: expect.objectContaining({
+            result: 'win',
+          }),
+        }),
+      ]),
+    );
+    expect(listResponse.tournaments).toEqual([]);
   });
 
   it('hides expired runs from the public list and rejects new joins', () => {

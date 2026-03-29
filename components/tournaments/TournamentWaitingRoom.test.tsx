@@ -105,7 +105,7 @@ describe('TournamentWaitingRoom', () => {
     expect(screen.getByText('Another match is still in progress.')).toBeTruthy();
     expect(screen.getByText('Elo Locked')).toBeTruthy();
     expect(screen.getByText('+24')).toBeTruthy();
-    expect(screen.queryByText('Return to Main Page')).toBeNull();
+    expect(screen.queryByText('Return to Home Page')).toBeNull();
   });
 
   it('rotates to the next card every 15 seconds and launches on a card boundary', () => {
@@ -169,10 +169,12 @@ describe('TournamentWaitingRoom', () => {
       />,
     );
 
-    fireEvent.press(screen.getByText('Return to Main Page'));
+    fireEvent.press(screen.getByText('Return to Home Page'));
 
     expect(screen.getByText('Final placement: Champion')).toBeTruthy();
-    expect(screen.getByText('Return to Main Page')).toBeTruthy();
+    expect(screen.getAllByText('Tournament Won').length).toBeGreaterThan(0);
+    expect(screen.getByText('Champion')).toBeTruthy();
+    expect(screen.getByText('Return to Home Page')).toBeTruthy();
     expect(handleExit).toHaveBeenCalledTimes(1);
   });
 
@@ -198,10 +200,10 @@ describe('TournamentWaitingRoom', () => {
       />,
     );
 
-    fireEvent.press(screen.getByText('Return to Main Page'));
+    fireEvent.press(screen.getByText('Return to Home Page'));
 
     expect(screen.getByText('Your tournament run has ended.')).toBeTruthy();
-    expect(screen.getByText('Return to Main Page')).toBeTruthy();
+    expect(screen.getByText('Return to Home Page')).toBeTruthy();
     expect(handleExit).toHaveBeenCalledTimes(1);
   });
 

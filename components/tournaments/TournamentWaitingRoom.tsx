@@ -54,18 +54,24 @@ const buildCards = (
   rewardSummary: TournamentMatchRewardSummaryPayload | null,
   rotationCycle: number,
   showExitActions: boolean,
+  isChampion: boolean,
+  finalPlacement: number | null,
 ): WaitingRoomCard[] => {
   const urFact = ROYAL_GAME_OF_UR_FACTS[rotationCycle % ROYAL_GAME_OF_UR_FACTS.length];
   const mesopotamiaFact = MESOPOTAMIA_FACTS[rotationCycle % MESOPOTAMIA_FACTS.length];
 
-  if (showExitActions && !rewardSummary) {
+  if (showExitActions) {
     return [
       {
         key: 'final',
-        eyebrow: 'Tournament Complete',
-        title: 'Result locked',
-        body: 'Your final standing has been recorded.',
-        accent: '#A7D3FF',
+        eyebrow: isChampion ? 'Tournament Won' : 'Tournament Complete',
+        title: isChampion ? 'Champion' : 'Result locked',
+        body: isChampion
+          ? 'You finished first and the tournament is now complete.'
+          : typeof finalPlacement === 'number'
+            ? `Your final standing of #${finalPlacement} has been recorded.`
+            : 'Your final standing has been recorded.',
+        accent: isChampion ? '#F0C965' : '#A7D3FF',
       },
       {
         key: 'ur',
@@ -198,8 +204,8 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
   const [rotationCycle, setRotationCycle] = useState(0);
   const launchTriggeredRef = useRef(false);
   const cards = useMemo(
-    () => buildCards(rewardSummary, rotationCycle, showExitActions),
-    [rewardSummary, rotationCycle, showExitActions],
+    () => buildCards(rewardSummary, rotationCycle, showExitActions, isChampion, finalPlacement),
+    [rewardSummary, rotationCycle, showExitActions, isChampion, finalPlacement],
   );
   const activeCard = cards[cardIndex] ?? cards[0];
 
@@ -274,13 +280,17 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
           ]}
         >
           <View style={styles.headerBlock}>
-            <Text style={styles.eyebrow}>{showExitActions ? 'Tournament Complete' : 'Tournament Waiting Room'}</Text>
+            <Text style={styles.eyebrow}>
+              {showExitActions ? (isChampion ? 'Tournament Won' : 'Tournament Complete') : 'Tournament Waiting Room'}
+            </Text>
             <Text numberOfLines={isCompactViewport ? 3 : 2} style={[styles.title, isCompactViewport && styles.titleCompact]}>
               {tournamentName}
             </Text>
             <Text style={[styles.bodyCopy, isCompactViewport && styles.bodyCopyCompact]}>
               {showExitActions
-                ? 'Your tournament run is over and the final standings are now locked.'
+                ? isChampion
+                  ? 'You won the tournament. Final standings are locked and this run is complete.'
+                  : 'Your tournament run is over and the final standings are now locked.'
                 : 'The next match will start automatically as soon as the bracket is ready.'}
             </Text>
           </View>
@@ -333,7 +343,7 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
 
           {showExitActions ? (
             <View style={styles.buttonWrap}>
-              <Button title="Return to Main Page" onPress={onReturnToMainPage} />
+              <Button title="Return to Home Page" onPress={onReturnToMainPage} />
             </View>
           ) : null}
         </View>

@@ -516,6 +516,35 @@ export const buildStandingsSnapshot = (
   };
 };
 
+const canReuseStoredStandingsSnapshot = (
+  snapshot: TournamentStandingsSnapshot | null,
+  limit: number,
+): snapshot is TournamentStandingsSnapshot => {
+  if (!snapshot) {
+    return false;
+  }
+
+  const availableRecords = snapshot.records.length;
+  const totalRecords = snapshot.rankCount ?? availableRecords;
+  return availableRecords >= Math.min(limit, totalRecords);
+};
+
+export const resolveRunStandingsSnapshot = (
+  nk: RuntimeNakama,
+  run: TournamentRunRecord,
+  limit: number,
+  overrideExpiry: number,
+): TournamentStandingsSnapshot => {
+  if (run.lifecycle === "finalized" && canReuseStoredStandingsSnapshot(run.finalSnapshot, limit)) {
+    return {
+      ...run.finalSnapshot,
+      records: run.finalSnapshot.records.slice(0, limit),
+    };
+  }
+
+  return buildStandingsSnapshot(nk, run.tournamentId, limit, overrideExpiry);
+};
+
 const readStandingsRecordRank = (record: Record<string, unknown>): number | null => {
   const rank = readNumberField(record, ["rank"]);
   return typeof rank === "number" && Number.isFinite(rank) ? rank : null;
@@ -1116,7 +1145,7 @@ export const rpcAdminGetTournamentStandings = (
         readNumberField(parsed, ["overrideExpiry", "override_expiry"]),
         nakamaTournament,
       );
-      const standings = buildStandingsSnapshot(_nk, run.tournamentId, limit, overrideExpiry);
+      const standings = resolveRunStandingsSnapshot(_nk, run, limit, overrideExpiry);
 
       return JSON.stringify({
         ok: true,

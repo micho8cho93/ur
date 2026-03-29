@@ -3,6 +3,7 @@ import {
   rpcAdminDeleteTournament,
   rpcAdminCreateTournamentRun,
   rpcAdminFinalizeTournament,
+  rpcAdminGetTournamentStandings,
   rpcAdminGetTournamentRun,
   rpcAdminListTournaments,
   rpcAdminOpenTournament,
@@ -675,5 +676,106 @@ describe("admin tournament run creation", () => {
 
     expect(championProfileAfterRetry?.totalXp).toBe(400);
     expect(championLedgerEntries).toHaveLength(1);
+  });
+
+  it("serves the stored final snapshot to internals once a tournament is finalized", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk, "admin-1", "viewer");
+
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, "finalized-tournament"), {
+      collection: RUNS_COLLECTION,
+      key: "finalized-tournament",
+      value: {
+        runId: "finalized-tournament",
+        tournamentId: "finalized-tournament",
+        title: "Finalized Tournament",
+        description: "Saved final snapshot",
+        category: 0,
+        authoritative: true,
+        sortOrder: "desc",
+        operator: "incr",
+        resetSchedule: "",
+        metadata: {
+          gameMode: "Classic ladder",
+          region: "Global",
+          buyIn: "Free",
+        },
+        startTime: 1_774_572_800,
+        endTime: 1_774_580_000,
+        duration: 7_200,
+        maxSize: 16,
+        maxNumScore: 7,
+        joinRequired: true,
+        enableRanks: true,
+        lifecycle: "finalized",
+        createdAt: "2026-03-27T10:00:00.000Z",
+        updatedAt: "2026-03-27T12:05:00.000Z",
+        createdByUserId: "admin-1",
+        createdByLabel: "Admin",
+        openedAt: "2026-03-27T10:05:00.000Z",
+        closedAt: "2026-03-27T12:00:00.000Z",
+        finalizedAt: "2026-03-27T12:05:00.000Z",
+        finalSnapshot: {
+          generatedAt: "2026-03-27T12:05:00.000Z",
+          overrideExpiry: 0,
+          rankCount: 2,
+          records: [
+            {
+              rank: 1,
+              owner_id: "champion-user",
+              username: "Champion",
+              score: 3,
+              metadata: {
+                result: "win",
+              },
+            },
+            {
+              rank: 2,
+              owner_id: "runner-up-user",
+              username: "Finalist",
+              score: 2,
+              metadata: {
+                result: "loss",
+              },
+            },
+          ],
+          prevCursor: null,
+          nextCursor: null,
+        },
+      },
+      version: "run-v1",
+    });
+
+    const response = JSON.parse(
+      rpcAdminGetTournamentStandings(
+        {
+          userId: "admin-1",
+          username: "Viewer",
+        },
+        logger,
+        nk,
+        JSON.stringify({
+          runId: "finalized-tournament",
+          limit: 10,
+        }),
+      ),
+    ) as {
+      standings: {
+        records: Array<{ owner_id: string; metadata?: { result?: string } }>;
+      };
+    };
+
+    expect(response.standings.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          owner_id: "champion-user",
+          metadata: expect.objectContaining({
+            result: "win",
+          }),
+        }),
+      ]),
+    );
+    expect(nk.tournamentRecordsList).not.toHaveBeenCalled();
   });
 });

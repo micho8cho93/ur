@@ -450,7 +450,7 @@ jest.mock('@/components/tournaments/TournamentWaitingRoom', () => {
             <Text>Launch next match</Text>
           </Pressable>
           <Pressable onPress={onReturnToMainPage}>
-            <Text>Return to Main Page</Text>
+            <Text>Return to Home Page</Text>
           </Pressable>
         </View>
       ) : null,
@@ -2214,7 +2214,7 @@ describe('GameRoom match dice stage', () => {
 
     expect(screen.getByText('Tournament Eliminated')).toBeTruthy();
     expect(screen.getByText('Your tournament run has ended.')).toBeTruthy();
-    expect(screen.getByText('Return to Home')).toBeTruthy();
+    expect(screen.getByText('Return to Home Page')).toBeTruthy();
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
   });
 
@@ -2263,6 +2263,47 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByText('Victory')).toBeTruthy();
     expect(screen.getByText('Enter Waiting Room')).toBeTruthy();
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
+  });
+
+  it('shows an immediate tournament win modal for the champion and returns to the user home page', async () => {
+    mockSearchParams.id = 'tournament-champion';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-champion',
+    });
+    mockStoreState.matchId = 'tournament-champion';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-champion', {
+        tournamentOutcome: 'champion',
+        shouldEnterWaitingRoom: false,
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Tournament Won')).toBeTruthy();
+    expect(screen.getByText('You won the tournament and finished as champion.')).toBeTruthy();
+    expect(screen.getByText('Return to Home Page')).toBeTruthy();
+    expect(screen.queryByText('Enter Waiting Room')).toBeNull();
   });
 
   it('auto-enters the waiting room after 15 seconds when the victory modal is untouched', async () => {

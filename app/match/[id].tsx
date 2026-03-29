@@ -823,7 +823,7 @@ export function GameRoom() {
       }
 
       if (tournamentOutcome === 'champion') {
-        return 'Tournament Champion';
+        return 'Tournament Won';
       }
 
       return 'Tournament Complete';
@@ -834,7 +834,7 @@ export function GameRoom() {
     }
 
     if (tournamentAdvanceFlow.isChampion) {
-      return 'Tournament Champion';
+      return 'Tournament Won';
     }
 
     return 'Tournament Complete';
@@ -865,7 +865,7 @@ export function GameRoom() {
       }
 
       if (tournamentOutcome === 'champion') {
-        return 'You won the final and claimed the tournament crown.';
+        return 'You won the tournament and finished as champion.';
       }
 
       if (tournamentOutcome === 'runner_up') {
@@ -880,7 +880,7 @@ export function GameRoom() {
     }
 
     if (tournamentAdvanceFlow.isChampion) {
-      return 'You won the final and claimed the tournament crown.';
+      return 'You won the tournament and finished as champion.';
     }
 
     if (tournamentAdvanceFlow.finalPlacement === 2) {
@@ -4587,7 +4587,7 @@ export function GameRoom() {
           showTournamentAdvanceModal
             ? 'Enter Waiting Room'
             : isTournamentResultModal
-              ? 'Return to Home'
+              ? 'Return to Home Page'
               : 'Return to Menu'
         }
         onAction={showTournamentAdvanceModal ? handleEnterTournamentWaitingRoom : handleExit}

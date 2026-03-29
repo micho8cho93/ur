@@ -56,7 +56,7 @@ const isSoftLaunchFailure = (error: unknown): { message: string; soft: boolean }
 
 const buildFinalizedStatusText = (isChampion: boolean, finalPlacement: number | null): string => {
   if (isChampion) {
-    return 'You claimed the tournament crown.';
+    return 'You won the tournament.';
   }
 
   if (typeof finalPlacement === 'number') {
