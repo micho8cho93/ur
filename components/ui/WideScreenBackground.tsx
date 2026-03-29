@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, ImageSourcePropType, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Image, ImageSourcePropType, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const MIN_WIDE_WEB_BACKGROUND_WIDTH = 768;
@@ -19,7 +19,6 @@ export function WideScreenBackground({
 }: WideScreenBackgroundProps) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const opacity = React.useRef(new Animated.Value(0)).current;
   const overscan = Platform.OS === 'web' ? Math.max(48, Math.round(Math.max(width, height) * 0.08)) : 0;
   const containerBounds = React.useMemo(
     () =>
@@ -33,26 +32,17 @@ export function WideScreenBackground({
     [height, insets.bottom, insets.left, insets.right, insets.top, overscan, width],
   );
 
-  const handleLoad = React.useCallback(() => {
-    Animated.timing(opacity, {
-      toValue: imageOpacity,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-  }, [opacity, imageOpacity]);
-
   if (!visible) {
     return null;
   }
 
   return (
     <View pointerEvents="none" style={[styles.container, containerBounds]}>
-      <Animated.Image
+      <Image
         accessible={false}
         source={source}
         resizeMode="cover"
-        onLoad={handleLoad}
-        style={[styles.image, { opacity }]}
+        style={[styles.image, { opacity: imageOpacity }]}
       />
       <View style={[styles.overlay, { backgroundColor: overlayColor }]} />
     </View>

@@ -102,6 +102,7 @@ import {
 } from '@/shared/urMatchProtocol';
 import { MatchData, MatchPresenceEvent, Socket } from '@heroiclabs/nakama-js';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Asset } from 'expo-asset';
 import { useFonts } from 'expo-font';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef } from 'react';
@@ -109,6 +110,17 @@ import { BackHandler, Image, Platform, Pressable, Share, StyleSheet, Text, View,
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const UR_BG_IMAGE = require('../../assets/images/ur_bg.png');
+const MATCH_PRESENTATION_ASSETS = [
+  UR_BG_IMAGE,
+  BOARD_IMAGE_SOURCE,
+  require('../../assets/trays/tray_light.png'),
+  require('../../assets/trays/tray_dark.png'),
+  require('../../assets/pieces/piece_light.png'),
+  require('../../assets/pieces/piece_dark.png'),
+  require('../../assets/dice/dice_marked.png'),
+  require('../../assets/dice/dice_unmarked.png'),
+  require('../../assets/buttons/roll_button.png'),
+];
 
 const MATCH_AMBIENT_EFFECTS = {
   bugEnabled: true,
@@ -134,6 +146,7 @@ const TUTORIAL_BOT_ROLL_DELAY_MS = 850 * TUTORIAL_PACING_MULTIPLIER;
 const TUTORIAL_BOT_MOVE_DELAY_MS = 1200 * TUTORIAL_PACING_MULTIPLIER;
 const TUTORIAL_NO_MOVE_DELAY_MS = 850 * TUTORIAL_PACING_MULTIPLIER;
 const ONLINE_MATCH_REWARD_REFRESH_RETRY_MS = 1200;
+const MATCH_PRESENTATION_READY_FALLBACK_MS = 1200;
 const TOURNAMENT_REWARD_SUMMARY_FALLBACK_MS = 4_000;
 const TOURNAMENT_REWARD_MODAL_COUNTDOWN_MS = 15_000;
 const SHOULD_BYPASS_CINEMATIC_INTROS = process.env.NODE_ENV === 'test';
@@ -262,6 +275,9 @@ export function GameRoom() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [webVisualViewportSize, setWebVisualViewportSize] = React.useState<{ width: number; height: number } | null>(null);
+  const [arePresentationAssetsReady, setArePresentationAssetsReady] = React.useState(SHOULD_BYPASS_CINEMATIC_INTROS);
+  const [haveLoadedMatchPreferences, setHaveLoadedMatchPreferences] = React.useState(SHOULD_BYPASS_CINEMATIC_INTROS);
+  const [hasMatchPresentationFallbackElapsed, setHasMatchPresentationFallbackElapsed] = React.useState(false);
   const isMatchStageExternal = Platform.OS === 'ios';
   const [ancientCueFontLoaded, ancientCueFontError] = useFonts({
     [MATCH_CUE_FONT_FAMILY]: require('../../assets/fonts/CinzelDecorative-Bold.ttf'),
@@ -361,6 +377,31 @@ export function GameRoom() {
       }
     };
   }, [height, width]);
+  useEffect(() => {
+    if (SHOULD_BYPASS_CINEMATIC_INTROS) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const preloadPresentationAssets = async () => {
+      try {
+        await Asset.loadAsync(MATCH_PRESENTATION_ASSETS);
+      } catch {
+        // Fall back to the normal render path if preloading fails.
+      } finally {
+        if (isMounted) {
+          setArePresentationAssetsReady(true);
+        }
+      }
+    };
+
+    void preloadPresentationAssets();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   const { width: viewportWidth, height: viewportHeight } = useMemo(
     () =>
       resolveVisibleViewportSize(
@@ -1402,7 +1443,7 @@ export function GameRoom() {
     );
   }, []);
 
-  useGameLoop(isOffline && !isScriptedTutorialPhase);
+  useGameLoop(isOffline && !isScriptedTutorialPhase && introsComplete);
   useEffect(() => {
     if (
       !isPlaythroughTutorialMatch ||
@@ -1794,6 +1835,7 @@ export function GameRoom() {
     setHasPlayedReserveCascadeIntro(false);
     setMobileContentVerticalShift(0);
     setHasResolvedMobileContentShift(false);
+    setHasMatchPresentationFallbackElapsed(false);
     queuedMatchCuesRef.current = [];
     lastQueuedMatchCueRef.current = null;
     suppressMatchCuesUntilInteractionRef.current = false;
@@ -2484,27 +2526,33 @@ export function GameRoom() {
     let isMounted = true;
 
     const loadPreferences = async () => {
-      const [audioPreferences, matchPreferences] = await Promise.all([
-        gameAudio.getPreferences(),
-        getMatchPreferences(),
-      ]);
+      try {
+        const [audioPreferences, matchPreferences] = await Promise.all([
+          gameAudio.getPreferences(),
+          getMatchPreferences(),
+        ]);
 
-      if (!isMounted) {
-        return;
+        if (!isMounted) {
+          return;
+        }
+
+        setMusicEnabled(audioPreferences.musicEnabled);
+        setMusicVolume(audioPreferences.musicVolume);
+        setSfxEnabled(audioPreferences.sfxEnabled);
+        setSfxVolume(audioPreferences.sfxVolume);
+        setAnnouncementCuesEnabled(matchPreferences.announcementCuesEnabled);
+        setBotTimerEnabled(matchPreferences.timerEnabled);
+        setTurnTimerSeconds(matchPreferences.timerDurationSeconds);
+        setDiceAnimationEnabled(matchPreferences.diceAnimationEnabled);
+        setDiceAnimationSpeed(matchPreferences.diceAnimationSpeed);
+        setBugAnimationEnabled(matchPreferences.bugAnimationEnabled);
+        setAutoRollEnabled(matchPreferences.autoRollEnabled);
+        setMoveHintEnabled(matchPreferences.moveHintEnabled);
+      } finally {
+        if (isMounted) {
+          setHaveLoadedMatchPreferences(true);
+        }
       }
-
-      setMusicEnabled(audioPreferences.musicEnabled);
-      setMusicVolume(audioPreferences.musicVolume);
-      setSfxEnabled(audioPreferences.sfxEnabled);
-      setSfxVolume(audioPreferences.sfxVolume);
-      setAnnouncementCuesEnabled(matchPreferences.announcementCuesEnabled);
-      setBotTimerEnabled(matchPreferences.timerEnabled);
-      setTurnTimerSeconds(matchPreferences.timerDurationSeconds);
-      setDiceAnimationEnabled(matchPreferences.diceAnimationEnabled);
-      setDiceAnimationSpeed(matchPreferences.diceAnimationSpeed);
-      setBugAnimationEnabled(matchPreferences.bugAnimationEnabled);
-      setAutoRollEnabled(matchPreferences.autoRollEnabled);
-      setMoveHintEnabled(matchPreferences.moveHintEnabled);
     };
 
     void loadPreferences();
@@ -3231,10 +3279,56 @@ export function GameRoom() {
     boardSlotSize.height > 0 &&
     (!isMobileLayout || mobileScoreRowHeight > 0) &&
     mobileContentShiftSettled;
+  const isViewportStable = Platform.OS !== 'web' || webVisualViewportSize !== null;
+  const areReserveMeasurementsReady =
+    lightReserveSlots.length === lightReserve &&
+    darkReserveSlots.length === darkReserve;
+  const matchPresentationPrereqsReady =
+    isViewportStable &&
+    arePresentationAssetsReady &&
+    haveLoadedMatchPreferences &&
+    hasBoardArtLayout &&
+    areReserveMeasurementsReady;
+  const fullMatchPresentationReady = matchPresentationPrereqsReady && isBoardTargetFrameReady;
+  const shouldForceMatchPresentationReveal =
+    hasMatchPresentationFallbackElapsed &&
+    isViewportStable &&
+    arePresentationAssetsReady &&
+    haveLoadedMatchPreferences &&
+    hasBoardArtLayout;
+  const matchPresentationReady =
+    SHOULD_BYPASS_CINEMATIC_INTROS ||
+    fullMatchPresentationReady ||
+    hasPlayedBoardDropIntro ||
+    shouldForceMatchPresentationReveal;
 
   useEffect(() => {
     syncBoardTargetFrame();
   }, [boardScale, mobileBoardVisualOffset, mobileScoreRowHeight, syncBoardTargetFrame]);
+  useEffect(() => {
+    if (SHOULD_BYPASS_CINEMATIC_INTROS || matchPresentationReady) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setHasMatchPresentationFallbackElapsed(true);
+    }, MATCH_PRESENTATION_READY_FALLBACK_MS);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [matchId, matchPresentationReady]);
+  useEffect(() => {
+    if (!shouldForceMatchPresentationReveal) {
+      return;
+    }
+
+    setShowBoardDropIntro(false);
+    setShowReserveCascadeIntro(false);
+    setFrozenReserveCascadeTargets([]);
+    setHasPlayedBoardDropIntro(true);
+    setHasPlayedReserveCascadeIntro(true);
+  }, [shouldForceMatchPresentationReveal]);
 
   const shouldHideReservePieces =
     !SHOULD_BYPASS_CINEMATIC_INTROS &&
@@ -3366,6 +3460,7 @@ export function GameRoom() {
     setDarkTrayFrame(null);
   }, [useMobileSideReserveRails]);
   useEffect(() => {
+    if (!fullMatchPresentationReady) return;
     if (hasPlayedBoardDropIntro || showBoardDropIntro || boardDropTargetFrame) return;
     if (!isBoardTargetFrameReady || !boardTargetFrame) return;
 
@@ -3383,17 +3478,18 @@ export function GameRoom() {
     boardDropTargetFrame,
     boardTargetFrame,
     captureBoardDropTargetFrame,
+    fullMatchPresentationReady,
     hasPlayedBoardDropIntro,
     isMobileLayout,
     isBoardTargetFrameReady,
     showBoardDropIntro,
   ]);
   useEffect(() => {
-    if (hasPlayedBoardDropIntro || showBoardDropIntro || isBoardTargetFrameReady) {
+    if (!matchPresentationPrereqsReady || shouldForceMatchPresentationReveal) {
       return;
     }
 
-    if (!hasBoardArtLayout) {
+    if (hasPlayedBoardDropIntro || showBoardDropIntro || isBoardTargetFrameReady) {
       return;
     }
 
@@ -3406,11 +3502,13 @@ export function GameRoom() {
     };
   }, [
     hasPlayedBoardDropIntro,
-    hasBoardArtLayout,
     isBoardTargetFrameReady,
+    matchPresentationPrereqsReady,
+    shouldForceMatchPresentationReveal,
     showBoardDropIntro,
   ]);
   useEffect(() => {
+    if (!matchPresentationPrereqsReady || shouldForceMatchPresentationReveal) return;
     if (!hasPlayedBoardDropIntro) return;
     if (hasPlayedReserveCascadeIntro || showReserveCascadeIntro) return;
     if (reserveCascadeTargets.length === 0) return;
@@ -3426,7 +3524,9 @@ export function GameRoom() {
     hasPlayedReserveCascadeIntro,
     lightReserve,
     lightReserveSlots.length,
+    matchPresentationPrereqsReady,
     reserveCascadeTargets.length,
+    shouldForceMatchPresentationReveal,
     showReserveCascadeIntro,
     reserveCascadeTargets,
   ]);
@@ -3441,7 +3541,12 @@ export function GameRoom() {
         isMobileLayout && { transform: [{ translateY: mobileBoardVisualOffset }] },
       ]}
     >
-      <View style={[styles.liveBoardWrap, !hasPlayedBoardDropIntro && styles.liveBoardHidden]}>
+      <View
+        style={[
+          styles.liveBoardWrap,
+          !SHOULD_BYPASS_CINEMATIC_INTROS && !hasPlayedBoardDropIntro && styles.liveBoardHidden,
+        ]}
+      >
         <Board
           autoMoveHintEnabled={moveHintEnabled}
           showRailHints
@@ -3502,17 +3607,23 @@ export function GameRoom() {
         />
       </View>
 
-      <AmbientBackgroundEffects
-        width={viewportWidth}
-        height={viewportHeight}
-        centerSafeZone={boardTargetFrame}
-        bugEnabled={bugAnimationEnabled}
-        dustEnabled={MATCH_AMBIENT_EFFECTS.dustEnabled}
-        leafEnabled={MATCH_AMBIENT_EFFECTS.leafEnabled}
-        maxVisibleBugs={MATCH_AMBIENT_EFFECTS.maxVisibleBugs}
-        maxVisibleLeaves={MATCH_AMBIENT_EFFECTS.maxVisibleLeaves}
-        style={styles.ambientLayer}
-      />
+      <View
+        pointerEvents={matchPresentationReady ? 'auto' : 'none'}
+        style={[styles.presentationLayer, !matchPresentationReady && styles.presentationLayerHidden]}
+      >
+        {matchPresentationReady ? (
+          <AmbientBackgroundEffects
+            width={viewportWidth}
+            height={viewportHeight}
+            centerSafeZone={boardTargetFrame}
+            bugEnabled={bugAnimationEnabled}
+            dustEnabled={MATCH_AMBIENT_EFFECTS.dustEnabled}
+            leafEnabled={MATCH_AMBIENT_EFFECTS.leafEnabled}
+            maxVisibleBugs={MATCH_AMBIENT_EFFECTS.maxVisibleBugs}
+            maxVisibleLeaves={MATCH_AMBIENT_EFFECTS.maxVisibleLeaves}
+            style={styles.ambientLayer}
+          />
+        ) : null}
 
       {introsComplete && isMatchStageExternal && diceAnimationEnabled ? (
         <MatchDiceRollStage
@@ -4457,6 +4568,7 @@ export function GameRoom() {
         actionLabel={tutorialCoachActionLabel}
         onContinue={handleContinueTutorialCoach}
       />
+      </View>
     </View>
   );
 }
@@ -4509,6 +4621,12 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 0,
     backgroundColor: '#D9C39A',
+  },
+  presentationLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  presentationLayerHidden: {
+    opacity: 0,
   },
   backdropImage: {
     position: 'absolute',
