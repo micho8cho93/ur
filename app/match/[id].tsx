@@ -1721,6 +1721,82 @@ export function GameRoom() {
     tournamentRewardSummary,
   ]);
 
+  const leaveCurrentMatch = React.useCallback(() => {
+    if (!isOffline && socketRef.current && matchId) {
+      suppressReconnectRef.current = true;
+      void socketRef.current.leaveMatch(matchId).catch(() => { });
+      nakamaService.disconnectSocket(true);
+    }
+  }, [isOffline, matchId]);
+
+  const exitMatchToHome = React.useCallback(
+    (options?: { refreshTournamentStatus?: boolean }) => {
+      if (options?.refreshTournamentStatus && isTournamentMatch && tournamentRunIdParam) {
+        void getPublicTournamentStatus(tournamentRunIdParam).catch(() => null);
+      }
+
+      setShowTopMenu(false);
+      setShowMatchStatusInfo(false);
+      leaveCurrentMatch();
+      setShowWinModal(false);
+      reset();
+      router.replace('/');
+    },
+    [isTournamentMatch, leaveCurrentMatch, reset, router, tournamentRunIdParam],
+  );
+
+  const attemptTournamentWaitingRoomEntry = React.useCallback(async (options?: { source?: 'manual' | 'auto' }) => {
+    if (tournamentWaitingRoomEntryInFlightRef.current) {
+      return;
+    }
+
+    if (!isTournamentMatch || !tournamentRunIdParam) {
+      setTournamentTerminalOutcomeOverride(null);
+      setTournamentAdvanceResolutionState('waiting');
+      setHasEnteredTournamentWaitingRoom(true);
+      return;
+    }
+
+    tournamentWaitingRoomEntryInFlightRef.current = true;
+
+    try {
+      const snapshot = await getPublicTournamentStatus(tournamentRunIdParam);
+
+      if (isTerminalTournamentStatusSnapshot(snapshot)) {
+        setTournamentTerminalOutcomeOverride(deriveTerminalTournamentOutcomeFromSnapshot(snapshot));
+        setTournamentAdvanceResolutionState('terminal');
+
+        if (options?.source === 'manual') {
+          exitMatchToHome();
+        }
+
+        return;
+      }
+    } catch {
+      // Fall back to the waiting room when a refresh is unavailable.
+    } finally {
+      tournamentWaitingRoomEntryInFlightRef.current = false;
+    }
+
+    setTournamentTerminalOutcomeOverride(null);
+    setTournamentAdvanceResolutionState('waiting');
+    setHasEnteredTournamentWaitingRoom(true);
+  }, [exitMatchToHome, isTournamentMatch, tournamentRunIdParam]);
+
+  const handleEnterTournamentWaitingRoom = React.useCallback(() => {
+    void attemptTournamentWaitingRoomEntry({ source: 'manual' });
+  }, [attemptTournamentWaitingRoomEntry]);
+
+  const handleExit = React.useCallback(() => {
+    if (isTournamentMatch && !isTournamentResultModal) {
+      return;
+    }
+
+    exitMatchToHome({
+      refreshTournamentStatus: isTournamentMatch && isTournamentResultModal,
+    });
+  }, [exitMatchToHome, isTournamentMatch, isTournamentResultModal]);
+
   useEffect(() => {
     if (!showTournamentAdvanceModal) {
       setTournamentWaitingRoomCountdownMs(null);
@@ -2988,82 +3064,6 @@ export function GameRoom() {
     setTurnTimerCycleId((current) => current + 1);
     await updateMatchPreferences({ timerDurationSeconds: seconds });
   };
-
-  const leaveCurrentMatch = React.useCallback(() => {
-    if (!isOffline && socketRef.current && matchId) {
-      suppressReconnectRef.current = true;
-      void socketRef.current.leaveMatch(matchId).catch(() => { });
-      nakamaService.disconnectSocket(true);
-    }
-  }, [isOffline, matchId]);
-
-  const exitMatchToHome = React.useCallback(
-    (options?: { refreshTournamentStatus?: boolean }) => {
-      if (options?.refreshTournamentStatus && isTournamentMatch && tournamentRunIdParam) {
-        void getPublicTournamentStatus(tournamentRunIdParam).catch(() => null);
-      }
-
-      setShowTopMenu(false);
-      setShowMatchStatusInfo(false);
-      leaveCurrentMatch();
-      setShowWinModal(false);
-      reset();
-      router.replace('/');
-    },
-    [isTournamentMatch, leaveCurrentMatch, reset, router, tournamentRunIdParam],
-  );
-
-  const attemptTournamentWaitingRoomEntry = React.useCallback(async (options?: { source?: 'manual' | 'auto' }) => {
-    if (tournamentWaitingRoomEntryInFlightRef.current) {
-      return;
-    }
-
-    if (!isTournamentMatch || !tournamentRunIdParam) {
-      setTournamentTerminalOutcomeOverride(null);
-      setTournamentAdvanceResolutionState('waiting');
-      setHasEnteredTournamentWaitingRoom(true);
-      return;
-    }
-
-    tournamentWaitingRoomEntryInFlightRef.current = true;
-
-    try {
-      const snapshot = await getPublicTournamentStatus(tournamentRunIdParam);
-
-      if (isTerminalTournamentStatusSnapshot(snapshot)) {
-        setTournamentTerminalOutcomeOverride(deriveTerminalTournamentOutcomeFromSnapshot(snapshot));
-        setTournamentAdvanceResolutionState('terminal');
-
-        if (options?.source === 'manual') {
-          exitMatchToHome();
-        }
-
-        return;
-      }
-    } catch {
-      // Fall back to the waiting room when a refresh is unavailable.
-    } finally {
-      tournamentWaitingRoomEntryInFlightRef.current = false;
-    }
-
-    setTournamentTerminalOutcomeOverride(null);
-    setTournamentAdvanceResolutionState('waiting');
-    setHasEnteredTournamentWaitingRoom(true);
-  }, [exitMatchToHome, isTournamentMatch, tournamentRunIdParam]);
-
-  const handleEnterTournamentWaitingRoom = React.useCallback(() => {
-    void attemptTournamentWaitingRoomEntry({ source: 'manual' });
-  }, [attemptTournamentWaitingRoomEntry]);
-
-  const handleExit = React.useCallback(() => {
-    if (isTournamentMatch && !isTournamentResultModal) {
-      return;
-    }
-
-    exitMatchToHome({
-      refreshTournamentStatus: isTournamentMatch && isTournamentResultModal,
-    });
-  }, [exitMatchToHome, isTournamentMatch, isTournamentResultModal]);
 
   useEffect(() => {
     if (!isTournamentMatch || isTournamentResultModal) {
