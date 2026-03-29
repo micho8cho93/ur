@@ -431,6 +431,9 @@ describe('authoritative online timer runtime', () => {
     const { ctx, logger, nk, dispatcher, state } = initializeStartedMatch(runtime, nowSpy);
     nowSpy.mockReturnValue(12_001);
     dispatcher.broadcastMessage.mockClear();
+    mockedProcessCompletedMatch.mockClear();
+    mockedProcessRankedMatchResult.mockClear();
+    mockedAwardXpForMatchWin.mockClear();
 
     state.afk.light.accumulatedMs = 80_000;
 
@@ -448,6 +451,9 @@ describe('authoritative online timer runtime', () => {
     expect(result.state.resultRecorded).toBe(true);
     expect(result.state.timer.turnStartedAtMs).toBeNull();
     expect(result.state.timer.turnDeadlineMs).toBeNull();
+    expect(mockedProcessCompletedMatch).not.toHaveBeenCalled();
+    expect(mockedProcessRankedMatchResult).toHaveBeenCalledTimes(1);
+    expect(mockedAwardXpForMatchWin).toHaveBeenCalledTimes(1);
   });
 
   it('records terminal results only once', () => {

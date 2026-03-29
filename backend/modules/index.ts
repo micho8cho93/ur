@@ -2132,6 +2132,11 @@ function processCompletedMatchSummaries(
     return;
   }
 
+  if (state.matchEnd?.reason === "forfeit_inactivity") {
+    logger.info("Skipping challenge completion processing for forfeited match %s.", matchId);
+    return;
+  }
+
   Object.entries(state.assignments).forEach(([playerUserId, playerColor]) => {
     try {
       const summary = buildPlayerMatchSummary(state, matchId, playerUserId, playerColor);

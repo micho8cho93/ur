@@ -7727,7 +7727,12 @@ function awardWinnerProgression(logger, nk, dispatcher, state, matchId) {
   }
 }
 function processCompletedMatchSummaries(logger, nk, state, matchId) {
+  var _a;
   if (!state.allowsChallengeRewards) {
+    return;
+  }
+  if (((_a = state.matchEnd) == null ? void 0 : _a.reason) === "forfeit_inactivity") {
+    logger.info("Skipping challenge completion processing for forfeited match %s.", matchId);
     return;
   }
   Object.entries(state.assignments).forEach(([playerUserId, playerColor]) => {
