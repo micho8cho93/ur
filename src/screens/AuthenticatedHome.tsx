@@ -174,17 +174,8 @@ export default function AuthenticatedHome() {
             <View style={[styles.buttonCell, useWideWebMenuLayout && styles.buttonCellWide]}>
               <Button
                 title="Quick Play"
-                onPress={() => router.push('/(game)/bot')}
-                style={[styles.actionButton, styles.quickPlayButton]}
-                labelStyle={blackButtonLabel}
-              />
-            </View>
-            <View style={[styles.buttonCell, useWideWebMenuLayout && styles.buttonCellWide]}>
-              <Button
-                title="Game Modes"
-                variant="outline"
                 onPress={() => router.push('/(game)/game-modes')}
-                style={[styles.actionButton, styles.gameModesButton]}
+                style={[styles.actionButton, styles.quickPlayButton]}
                 labelStyle={blackButtonLabel}
               />
             </View>
@@ -194,6 +185,15 @@ export default function AuthenticatedHome() {
                 variant="outline"
                 onPress={() => router.push('/(game)/lobby?mode=online')}
                 style={[styles.actionButton, styles.playOnlineButton]}
+                labelStyle={blackButtonLabel}
+              />
+            </View>
+            <View style={[styles.buttonCell, useWideWebMenuLayout && styles.buttonCellWide]}>
+              <Button
+                title="Leaderboard"
+                variant="outline"
+                onPress={() => router.push('/leaderboard')}
+                style={[styles.actionButton, styles.leaderboardButton]}
                 labelStyle={blackButtonLabel}
               />
             </View>
@@ -466,7 +466,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(61, 41, 14, 0.38)',
     borderWidth: 1.2,
   },
-  gameModesButton: {
+  leaderboardButton: {
     backgroundColor: '#E2D3AF',
     borderColor: 'rgba(92, 73, 42, 0.24)',
     borderWidth: 1.2,

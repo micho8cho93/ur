@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import React from 'react';
 import AuthenticatedHome from './AuthenticatedHome';
 
@@ -44,6 +44,15 @@ jest.mock('@/components/ui/MobileBackground', () => ({
 jest.mock('@/components/ui/WideScreenBackground', () => ({
   MIN_WIDE_WEB_BACKGROUND_WIDTH: 768,
   WideScreenBackground: () => null,
+}));
+
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  }),
 }));
 
 jest.mock('@/components/ui/Button', () => ({
@@ -114,9 +123,34 @@ describe('AuthenticatedHome', () => {
 
     const view = render(<AuthenticatedHome />);
 
+    expect(view.getByText('Quick Play')).toBeTruthy();
+    expect(view.getByText('Play Online')).toBeTruthy();
+    expect(view.getByText('Leaderboard')).toBeTruthy();
     expect(view.getByText('Play Tutorial')).toBeTruthy();
-    expect(view.getByText('Game Modes')).toBeTruthy();
+    expect(view.queryByText('Game Modes')).toBeNull();
     expect(view.queryByText('Watch Extended Tutorial')).toBeNull();
     expect(view.queryByText('5 Step Tutorial')).toBeNull();
+  });
+
+  it('routes quick play to game modes and exposes leaderboard from the home actions', () => {
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: 'guest_1',
+        username: 'Guest',
+        email: null,
+        avatarUrl: null,
+        provider: 'guest',
+        createdAt: '2026-03-15T12:00:00.000Z',
+      },
+      logout: jest.fn(),
+    });
+
+    const view = render(<AuthenticatedHome />);
+
+    fireEvent.press(view.getByText('Quick Play'));
+    fireEvent.press(view.getByText('Leaderboard'));
+
+    expect(mockPush).toHaveBeenCalledWith('/(game)/game-modes');
+    expect(mockPush).toHaveBeenCalledWith('/leaderboard');
   });
 });

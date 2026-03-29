@@ -11,7 +11,6 @@ import {
 } from '@/shared/elo';
 import { useAuth } from '@/src/auth/useAuth';
 import { useEloRating } from '@/src/elo/useEloRating';
-import { useRouter } from 'expo-router';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 
@@ -28,7 +27,6 @@ const ELO_EXPLANATION_LINES = [
 ];
 
 export const EloRatingSummaryCard: React.FC<EloRatingSummaryCardProps> = ({ style }) => {
-  const router = useRouter();
   const { user, isUsernameOnboardingLoading, isUsernameOnboardingRequired } = useAuth();
   const { ratingProfile, errorMessage, isLoading, isRefreshing, refresh } = useEloRating();
   const [showInfoModal, setShowInfoModal] = React.useState(false);
@@ -79,18 +77,7 @@ export const EloRatingSummaryCard: React.FC<EloRatingSummaryCardProps> = ({ styl
                   {ratingProfile.ratedWins}-{ratingProfile.ratedLosses}
                 </Text>
               </View>
-              <View style={styles.statChip}>
-                <Text style={styles.statLabel}>Rated Games</Text>
-                <Text style={styles.statValue}>{ratingProfile.ratedGames}</Text>
-              </View>
             </View>
-
-            <Button
-              title="View Leaderboard"
-              variant="outline"
-              onPress={() => router.push('/leaderboard')}
-              style={styles.actionButton}
-            />
           </>
         ) : isLoading ? (
           <View style={styles.stateBlock}>
@@ -269,9 +256,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     fontWeight: '700',
-  },
-  actionButton: {
-    marginTop: urTheme.spacing.xs,
   },
   stateBlock: {
     gap: 6,

@@ -5,7 +5,6 @@ import { EloRatingSummaryCard } from './EloRatingSummaryCard';
 
 const mockUseAuth = jest.fn();
 const mockUseEloRating = jest.fn();
-const mockPush = jest.fn();
 
 jest.mock('@/src/auth/useAuth', () => ({
   useAuth: (...args: unknown[]) => mockUseAuth(...args),
@@ -13,12 +12,6 @@ jest.mock('@/src/auth/useAuth', () => ({
 
 jest.mock('@/src/elo/useEloRating', () => ({
   useEloRating: (...args: unknown[]) => mockUseEloRating(...args),
-}));
-
-jest.mock('expo-router', () => ({
-  useRouter: () => ({
-    push: mockPush,
-  }),
 }));
 
 jest.mock('../ui/Button', () => ({
@@ -69,6 +62,9 @@ describe('EloRatingSummaryCard', () => {
 
   it('opens and closes the Elo explanation modal', () => {
     render(<EloRatingSummaryCard />);
+
+    expect(screen.queryByText('View Leaderboard')).toBeNull();
+    expect(screen.queryByText('Rated Games')).toBeNull();
 
     expect(screen.queryByText('How Elo Works')).toBeNull();
 
