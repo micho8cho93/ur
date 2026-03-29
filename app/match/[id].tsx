@@ -50,6 +50,7 @@ import {
 } from '@/services/matchPreferences';
 import { nakamaService } from '@/services/nakama';
 import { stripProgressionAwardEnvelope } from '@/services/progression';
+import { getPublicTournamentStatus } from '@/services/tournaments';
 import { buildMatchChallengeRewardSummary, type MatchChallengeRewardSummary } from '@/src/challenges/challengeUi';
 import { useAuth } from '@/src/auth/useAuth';
 import { useChallenges } from '@/src/challenges/useChallenges';
@@ -782,13 +783,17 @@ export function GameRoom() {
     finishedMatchId: matchId ?? null,
     initialRound: initialTournamentRound,
   });
+  const hasTournamentAdvanceResolvedTerminal =
+    shouldTrackTournamentAdvanceFlow &&
+    (tournamentAdvanceFlow.phase === 'eliminated' || tournamentAdvanceFlow.phase === 'finalized');
   const showTournamentWaitingRoom =
     showWinModal &&
     isTournamentMatch &&
     ((isTournamentRewardSummaryPrimary &&
       tournamentOutcome === 'advancing' &&
       tournamentRewardSummary?.shouldEnterWaitingRoom === true &&
-      hasEnteredTournamentWaitingRoom) ||
+      hasEnteredTournamentWaitingRoom &&
+      !hasTournamentAdvanceResolvedTerminal) ||
       (!isTournamentRewardSummaryPrimary &&
         tournamentRewardFallbackActive &&
         didPlayerWin &&
@@ -799,11 +804,13 @@ export function GameRoom() {
     isTournamentRewardSummaryPrimary &&
     tournamentOutcome === 'advancing' &&
     tournamentRewardSummary?.shouldEnterWaitingRoom === true &&
-    !hasEnteredTournamentWaitingRoom;
+    !hasEnteredTournamentWaitingRoom &&
+    !hasTournamentAdvanceResolvedTerminal;
   const isTournamentResultModal =
     showWinModal &&
     isTournamentMatch &&
-    ((isTournamentRewardSummaryPrimary && tournamentOutcome !== 'advancing') ||
+    ((isTournamentRewardSummaryPrimary &&
+      (tournamentOutcome !== 'advancing' || hasTournamentAdvanceResolvedTerminal)) ||
       (!isTournamentRewardSummaryPrimary &&
         tournamentRewardFallbackActive &&
         (tournamentAdvanceFlow.phase === 'eliminated' || tournamentAdvanceFlow.phase === 'finalized')));
@@ -825,6 +832,14 @@ export function GameRoom() {
       }
 
       if (tournamentOutcome === 'champion') {
+        return 'Tournament Won';
+      }
+
+      if (tournamentAdvanceFlow.phase === 'eliminated') {
+        return 'Tournament Eliminated';
+      }
+
+      if (tournamentAdvanceFlow.isChampion) {
         return 'Tournament Won';
       }
 
@@ -2832,6 +2847,10 @@ export function GameRoom() {
   const handleExit = () => {
     if (isTournamentMatch && !isTournamentResultModal) {
       return;
+    }
+
+    if (isTournamentMatch && isTournamentResultModal && tournamentRunIdParam) {
+      void getPublicTournamentStatus(tournamentRunIdParam).catch(() => null);
     }
 
     setShowTopMenu(false);

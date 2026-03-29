@@ -2265,6 +2265,61 @@ describe('GameRoom match dice stage', () => {
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
   });
 
+  it('replaces the waiting-room CTA with a return-home action once the final win is finalized', async () => {
+    mockSearchParams.id = 'tournament-final-win';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-final-win',
+    });
+    mockStoreState.matchId = 'tournament-final-win';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockTournamentAdvanceFlowState = {
+      ...mockTournamentAdvanceFlowState,
+      phase: 'finalized',
+      statusText: 'You won the tournament.',
+      subtleStatusText: 'Your run is complete and the final standings are locked.',
+      finalPlacement: 1,
+      isChampion: true,
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-final-win', {
+        tournamentOutcome: 'advancing',
+        shouldEnterWaitingRoom: true,
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Tournament Won')).toBeTruthy();
+    expect(screen.getByText('You won the tournament and finished as champion.')).toBeTruthy();
+    expect(screen.getByText('Return to Home Page')).toBeTruthy();
+    expect(screen.queryByText('Enter Waiting Room')).toBeNull();
+    expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
+
+    fireEvent.press(screen.getByText('Return to Home Page'));
+
+    expect(mockGetPublicTournamentStatus).toHaveBeenCalledWith('run-1');
+    expect(mockRouterReplace).toHaveBeenCalledWith('/');
+  });
+
   it('shows an immediate tournament win modal for the champion and returns to the user home page', async () => {
     mockSearchParams.id = 'tournament-champion';
     mockSearchParams.offline = '0';

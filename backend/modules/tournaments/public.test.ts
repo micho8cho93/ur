@@ -115,6 +115,7 @@ const createNakama = () => {
     storageRead,
     storageWrite,
     tournamentsGetId,
+    tournamentRanksDisable: jest.fn(),
     tournamentRecordsList: jest.fn(() => ({
       records: [],
       owner_records: [],
@@ -648,6 +649,104 @@ describe('public tournament rpc flow', () => {
       ]),
     );
     expect(listResponse.tournaments).toEqual([]);
+  });
+
+  it('auto-finalizes a completed bracket when public tournament status is refreshed', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedOpenRun(nk, {
+      entrants: 0,
+      maxSize: 2,
+    });
+
+    rpcJoinPublicTournament(
+      { userId: 'user-1', username: 'RoyalPlayer' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcJoinPublicTournament(
+      { userId: 'user-2', username: 'TempleGuest' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcLaunchTournamentMatch(
+      { userId: 'user-1', username: 'RoyalPlayer' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+
+    const storedRun = readStoredRunValue(nk);
+    const finalizedBracket = completeTournamentBracketMatch(storedRun.bracket as never, {
+      entryId: 'round-1-match-1',
+      matchId: 'match-tournament-1',
+      winnerUserId: 'user-1',
+      loserUserId: 'user-2',
+      completedAt: '2026-03-27T10:05:00.000Z',
+    });
+
+    writeStoredRunValue(nk, {
+      ...storedRun,
+      updatedAt: '2026-03-27T10:05:00.000Z',
+      bracket: finalizedBracket,
+    });
+    nk.tournamentRecordsList.mockReturnValue({
+      records: [
+        {
+          rank: 1,
+          owner_id: 'user-1',
+          username: 'RoyalPlayer',
+          score: 1,
+          metadata: {
+            result: 'win',
+            round: 1,
+            matchId: 'match-tournament-1',
+          },
+        },
+        {
+          rank: 2,
+          owner_id: 'user-2',
+          username: 'TempleGuest',
+          score: 0,
+          metadata: {
+            result: 'loss',
+            round: 1,
+            matchId: 'match-tournament-1',
+          },
+        },
+      ],
+      owner_records: [],
+      rank_count: 2,
+    });
+
+    const response = JSON.parse(
+      rpcGetPublicTournament(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      tournament: {
+        lifecycle: string;
+        participation: { state: string | null; finalPlacement: number | null };
+      };
+    };
+
+    const updatedRun = readStoredRunValue(nk);
+
+    expect(response.tournament.lifecycle).toBe('finalized');
+    expect(response.tournament.participation).toEqual(
+      expect.objectContaining({
+        state: 'champion',
+        finalPlacement: 1,
+      }),
+    );
+    expect(updatedRun.lifecycle).toBe('finalized');
+    expect(updatedRun.finalizedAt).toEqual(expect.any(String));
+    expect(nk.tournamentRanksDisable).toHaveBeenCalledWith('tour-1');
   });
 
   it('hides expired runs from the public list and rejects new joins', () => {

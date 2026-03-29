@@ -3,6 +3,7 @@ import {
   MAX_STANDINGS_LIMIT,
   TournamentRunRecord,
   clampInteger,
+  finalizeTournamentRun,
   getNakamaTournamentById,
   getNakamaTournamentsById,
   readRunIndexState,
@@ -548,6 +549,27 @@ const buildTournamentLaunchResponse = (params: {
     statusMessage: params.statusMessage,
   });
 
+const maybeFinalizeCompletedPublicRun = (
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  run: TournamentRunRecord,
+): TournamentRunRecord => {
+  if (run.lifecycle === "finalized" || !run.bracket?.finalizedAt) {
+    return run;
+  }
+
+  try {
+    return finalizeTournamentRun(logger, nk, run.runId, {}).run;
+  } catch (error) {
+    logger.warn(
+      "Unable to auto-finalize public tournament run %s while serving player status: %s",
+      run.runId,
+      String(error),
+    );
+    return readRunOrThrow(nk, run.runId);
+  }
+};
+
 export const rpcListPublicTournaments = (
   ctx: RuntimeContext,
   logger: RuntimeLogger,
@@ -557,7 +579,13 @@ export const rpcListPublicTournaments = (
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
   const limit = clampInteger(parsed.limit, DEFAULT_PUBLIC_LIST_LIMIT, 1, 100);
-  const runs = listPublicRuns(nk).map((run) => maybeStartBracketForRun(nk, logger, run));
+  const runs = listPublicRuns(nk).map((run) =>
+    maybeFinalizeCompletedPublicRun(
+      logger,
+      nk,
+      maybeStartBracketForRun(nk, logger, run),
+    ),
+  );
   const tournamentsById = getNakamaTournamentsById(
     nk,
     runs.map((run) => run.tournamentId),
@@ -615,6 +643,7 @@ export const rpcGetPublicTournament = (
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const membership = readMembership(nk, run.runId, userId);
   assertPublicRunReadable(run, nakamaTournament, membership);
+  run = maybeFinalizeCompletedPublicRun(logger, nk, run);
 
   return JSON.stringify({
     ok: true,
