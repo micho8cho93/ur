@@ -93,6 +93,9 @@ describe('resolveMatchStageTabletPortraitTuning', () => {
       boardLiftViewportRatio: 0.042,
       boardGapControlScale: 1,
       mobileSideBoardScaleMultiplier: 0.8,
+      reserveColumnMaxWidth: 80,
+      reserveColumnMinWidth: 52,
+      reserveColumnWidthRatio: 0.16,
       reservePieceScale: 0.84,
       rollButtonMaxSize: 102,
       rollButtonMinSize: 84,
@@ -103,14 +106,17 @@ describe('resolveMatchStageTabletPortraitTuning', () => {
 
   it('upscales the board-adjacent controls for tablet portrait web', () => {
     expect(resolveMatchStageTabletPortraitTuning(true)).toEqual({
-      boardLiftViewportRatio: 0.062,
-      boardGapControlScale: 1.5,
-      mobileSideBoardScaleMultiplier: 0.9,
-      reservePieceScale: 1.26,
-      rollButtonMaxSize: 147,
-      rollButtonMinSize: 120,
-      rollButtonWidthRatio: 0.3075,
-      trayScale: 1.5,
+      boardLiftViewportRatio: 0.052,
+      boardGapControlScale: 1.1,
+      mobileSideBoardScaleMultiplier: 0.78,
+      reserveColumnMaxWidth: 68,
+      reserveColumnMinWidth: 48,
+      reserveColumnWidthRatio: 0.13,
+      reservePieceScale: 0.96,
+      rollButtonMaxSize: 116,
+      rollButtonMinSize: 90,
+      rollButtonWidthRatio: 0.235,
+      trayScale: 1.08,
     });
   });
 });

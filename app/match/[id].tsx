@@ -2617,6 +2617,7 @@ export function GameRoom() {
   const isMobileWebLayout = isWebLayout && isMobileLayout;
   const useMobileSideReserveRails = matchStageViewportMode.useMobileSideReserveRails;
   const showWebSideDiceVisual = Platform.OS === 'web' && useSideColumns;
+  const reserveTrayScale = matchStageViewportMode.isTabletLandscape ? 0.94 : tabletPortraitTuning.trayScale;
   const boardClusterGap = useSideColumns || useMobileSideReserveRails ? urTheme.spacing.xs : urTheme.spacing.sm;
   const sideColumnWidth = useSideColumns
     ? resolveMatchStageSideColumnWidth({
@@ -2626,7 +2627,13 @@ export function GameRoom() {
     })
     : 0;
   const mobileReserveColumnWidth = useMobileSideReserveRails
-    ? Math.max(52, Math.min(80, Math.round(stageContentWidth * 0.16)))
+    ? Math.max(
+      tabletPortraitTuning.reserveColumnMinWidth,
+      Math.min(
+        tabletPortraitTuning.reserveColumnMaxWidth,
+        Math.round(stageContentWidth * tabletPortraitTuning.reserveColumnWidthRatio),
+      ),
+    )
     : 0;
   const boardWidthLimitByLayout = useSideColumns
     ? Math.max(
@@ -3643,6 +3650,7 @@ export function GameRoom() {
                   label="Light Reserve"
                   color="light"
                   tokenVariant="light"
+                  trayScale={reserveTrayScale}
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={lightReserve}
                   totalCount={pieceCountPerSide}
@@ -3730,6 +3738,7 @@ export function GameRoom() {
                   label="Dark Reserve"
                   color="dark"
                   tokenVariant="dark"
+                  trayScale={reserveTrayScale}
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={darkReserve}
                   totalCount={pieceCountPerSide}
@@ -3805,7 +3814,7 @@ export function GameRoom() {
                       tokenVariant="light"
                       orientation="vertical"
                       piecePixelSize={scaledReservePiecePixelSize}
-                      trayScale={tabletPortraitTuning.trayScale}
+                      trayScale={reserveTrayScale}
                       reserveCount={lightReserve}
                       totalCount={pieceCountPerSide}
                       active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
@@ -3847,7 +3856,7 @@ export function GameRoom() {
                       tokenVariant="dark"
                       orientation="vertical"
                       piecePixelSize={scaledReservePiecePixelSize}
-                      trayScale={tabletPortraitTuning.trayScale}
+                      trayScale={reserveTrayScale}
                       reserveCount={darkReserve}
                       totalCount={pieceCountPerSide}
                       active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
