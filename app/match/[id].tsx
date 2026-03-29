@@ -72,6 +72,7 @@ import { useGameStore } from '@/store/useGameStore';
 import {
   resolveMatchStageSideColumnWidth,
   resolveMatchStageTabletPortraitTuning,
+  resolveMatchStageViewportHorizontalPadding,
   resolveMatchStageViewportMode,
 } from '@/src/layout/matchStageViewport';
 import { resolveVisibleViewportSize } from '@/src/layout/matchViewport';
@@ -2597,12 +2598,12 @@ export function GameRoom() {
           ? 'Local Match'
           : 'Online Match';
 
-  const viewportHorizontalPadding = 0;
-  const stageContentWidth = Math.min(Math.max(viewportWidth - viewportHorizontalPadding * 2, 0), urTheme.layout.stage.maxWidth);
   const matchStageViewportMode = useMemo(
     () => resolveMatchStageViewportMode({ width: viewportWidth, height: viewportHeight }),
     [viewportHeight, viewportWidth],
   );
+  const viewportHorizontalPadding = resolveMatchStageViewportHorizontalPadding(matchStageViewportMode.isTabletLandscape);
+  const stageContentWidth = Math.min(Math.max(viewportWidth - viewportHorizontalPadding * 2, 0), urTheme.layout.stage.maxWidth);
   const tabletPortraitTuning = useMemo(
     () => resolveMatchStageTabletPortraitTuning(matchStageViewportMode.isTabletPortrait),
     [matchStageViewportMode.isTabletPortrait],
