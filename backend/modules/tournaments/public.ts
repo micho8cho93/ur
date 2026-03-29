@@ -154,6 +154,70 @@ const buildMembershipState = (membership: TournamentRunMembershipRecord | null):
   joinedAt: membership?.joinedAt ?? null,
 });
 
+const buildFinalizedParticipationOverride = (
+  run: TournamentRunRecord,
+  participant: {
+    userId: string;
+    currentRound: number | null;
+    currentEntryId: string | null;
+  },
+): PublicParticipationState | null => {
+  if (!run.bracket?.finalizedAt) {
+    return null;
+  }
+
+  if (run.bracket.winnerUserId === participant.userId) {
+    return {
+      state: "champion",
+      currentRound: participant.currentRound,
+      currentEntryId: participant.currentEntryId,
+      activeMatchId: null,
+      finalPlacement: 1,
+      lastResult: "win",
+      canLaunch: false,
+    };
+  }
+
+  if (run.bracket.runnerUpUserId === participant.userId) {
+    return {
+      state: "runner_up",
+      currentRound: participant.currentRound,
+      currentEntryId: participant.currentEntryId,
+      activeMatchId: null,
+      finalPlacement: 2,
+      lastResult: "loss",
+      canLaunch: false,
+    };
+  }
+
+  return null;
+};
+
+const resolveMembershipForRun = (
+  run: TournamentRunRecord,
+  membership: TournamentRunMembershipRecord | null,
+): TournamentRunMembershipRecord | null => {
+  if (!membership) {
+    return null;
+  }
+
+  if (membership.runId !== run.runId || membership.tournamentId !== run.tournamentId) {
+    return null;
+  }
+
+  const joinedAtMs = Date.parse(membership.joinedAt);
+  const runCreatedAtMs = Date.parse(run.createdAt);
+  if (
+    Number.isFinite(joinedAtMs) &&
+    Number.isFinite(runCreatedAtMs) &&
+    joinedAtMs < runCreatedAtMs
+  ) {
+    return null;
+  }
+
+  return membership;
+};
+
 const getRunEndTimeMs = (
   run: TournamentRunRecord,
   nakamaTournament: Record<string, unknown> | null,
@@ -336,15 +400,19 @@ const writeMembership = (
 ): TournamentRunMembershipRecord => {
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const existingObject = readMembershipObject(nk, run.runId, userId);
-    const existing = normalizeMembershipRecord(existingObject?.value ?? null, run.runId, userId);
-    const joinedAt = existing?.joinedAt ?? new Date().toISOString();
+    const existing = resolveMembershipForRun(
+      run,
+      normalizeMembershipRecord(existingObject?.value ?? null, run.runId, userId),
+    );
+    const now = new Date().toISOString();
+    const joinedAt = existing?.joinedAt ?? now;
     const record: TournamentRunMembershipRecord = {
       runId: run.runId,
       tournamentId: run.tournamentId,
       userId,
       displayName,
       joinedAt,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
     };
 
     try {
@@ -411,6 +479,11 @@ const buildPublicParticipationState = (
     };
   }
 
+  const finalizedParticipation = buildFinalizedParticipationOverride(run, participant);
+  if (finalizedParticipation) {
+    return finalizedParticipation;
+  }
+
   return {
     state: participant.state,
     currentRound: participant.currentRound,
@@ -429,7 +502,8 @@ const buildPublicTournamentResponse = (
 ): PublicTournamentResponse => {
   const metadata = readMetadata(run);
   const createdAt = run.createdAt;
-  const participation = buildPublicParticipationState(run, membership);
+  const resolvedMembership = resolveMembershipForRun(run, membership);
+  const participation = buildPublicParticipationState(run, resolvedMembership);
 
   return {
     runId: run.runId,
@@ -455,7 +529,7 @@ const buildPublicTournamentResponse = (
     prizeLabel: formatPrizeLabel(metadata),
     isLocked: hasTournamentBracketStarted(run.bracket),
     currentRound: participation.currentRound ?? getTournamentBracketCurrentRound(run.bracket),
-    membership: buildMembershipState(membership),
+    membership: buildMembershipState(resolvedMembership),
     participation,
   };
 };
@@ -641,7 +715,7 @@ export const rpcGetPublicTournament = (
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
-  const membership = readMembership(nk, run.runId, userId);
+  const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   assertPublicRunReadable(run, nakamaTournament, membership);
   run = maybeFinalizeCompletedPublicRun(logger, nk, run);
 
@@ -679,7 +753,7 @@ export const rpcGetPublicTournamentStandings = (
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
-  const membership = readMembership(nk, run.runId, userId);
+  const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   assertPublicRunReadable(run, nakamaTournament, membership);
   const limit = clampInteger(
     parsed.limit ?? run.maxSize,
@@ -723,7 +797,7 @@ export const rpcJoinPublicTournament = (
   const nakamaTournamentBeforeJoin = getNakamaTournamentById(nk, run.tournamentId);
   assertPublicRunVisible(run, nakamaTournamentBeforeJoin);
 
-  const existingMembership = readMembership(nk, run.runId, userId);
+  const existingMembership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   const displayName = getActorLabel(ctx);
   let joined = false;
   let membership = existingMembership;
@@ -763,7 +837,7 @@ export const rpcJoinPublicTournament = (
     tournament: buildPublicTournamentResponse(
       run,
       getNakamaTournamentById(nk, run.tournamentId),
-      readMembership(nk, run.runId, userId),
+      resolveMembershipForRun(run, readMembership(nk, run.runId, userId)),
     ),
   });
 };
@@ -791,7 +865,7 @@ export const rpcLaunchTournamentMatch = (
   }
 
   let run = readRunOrThrow(nk, runId);
-  const membership = readMembership(nk, run.runId, userId);
+  const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   if (!membership) {
     throw new Error("Join this tournament before launching a match.");
   }

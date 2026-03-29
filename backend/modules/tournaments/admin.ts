@@ -121,6 +121,7 @@ const DEFAULT_STANDINGS_LIMIT = 100;
 export const MAX_STANDINGS_LIMIT = 10000;
 const MAX_RUN_LIST_LIMIT = 100;
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+const TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION = "tournament_run_memberships";
 
 const readBooleanField = (value: unknown, keys: string[]): boolean | null => {
   const record = asRecord(value);
@@ -699,6 +700,11 @@ const deleteRunWithRetry = (
           key: run.runId,
           userId: SYSTEM_USER_ID,
         },
+        ...run.registrations.map((registration) => ({
+          collection: TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION,
+          key: run.runId,
+          userId: registration.userId,
+        })),
       ]);
       writeRunIndex(nk, nextIndex, getStorageObjectVersion(indexState.object));
       return run;

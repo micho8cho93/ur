@@ -4848,6 +4848,7 @@ var DEFAULT_STANDINGS_LIMIT = 100;
 var MAX_STANDINGS_LIMIT = 1e4;
 var MAX_RUN_LIST_LIMIT = 100;
 var SYSTEM_USER_ID3 = "00000000-0000-0000-0000-000000000000";
+var TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION = "tournament_run_memberships";
 var readBooleanField4 = (value, keys) => {
   const record = asRecord(value);
   if (!record) {
@@ -5316,7 +5317,12 @@ var deleteRunWithRetry = (nk, logger, run) => {
           collection: "tournament_match_queue",
           key: run.runId,
           userId: SYSTEM_USER_ID3
-        }
+        },
+        ...run.registrations.map((registration) => ({
+          collection: TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION,
+          key: run.runId,
+          userId: registration.userId
+        }))
       ]);
       writeRunIndex(nk, nextIndex, getStorageObjectVersion(indexState.object));
       return run;
@@ -5833,7 +5839,7 @@ var rpcJoinTournament = (ctx, logger, nk, payload) => {
 };
 
 // backend/modules/tournaments/public.ts
-var TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION = "tournament_run_memberships";
+var TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION2 = "tournament_run_memberships";
 var DEFAULT_PUBLIC_LIST_LIMIT = 50;
 var DEFAULT_PUBLIC_STANDINGS_LIMIT = 256;
 var RPC_LIST_PUBLIC_TOURNAMENTS = "list_public_tournaments";
@@ -5890,6 +5896,49 @@ var buildMembershipState = (membership) => {
     isJoined: Boolean(membership),
     joinedAt: (_a = membership == null ? void 0 : membership.joinedAt) != null ? _a : null
   };
+};
+var buildFinalizedParticipationOverride = (run, participant) => {
+  var _a;
+  if (!((_a = run.bracket) == null ? void 0 : _a.finalizedAt)) {
+    return null;
+  }
+  if (run.bracket.winnerUserId === participant.userId) {
+    return {
+      state: "champion",
+      currentRound: participant.currentRound,
+      currentEntryId: participant.currentEntryId,
+      activeMatchId: null,
+      finalPlacement: 1,
+      lastResult: "win",
+      canLaunch: false
+    };
+  }
+  if (run.bracket.runnerUpUserId === participant.userId) {
+    return {
+      state: "runner_up",
+      currentRound: participant.currentRound,
+      currentEntryId: participant.currentEntryId,
+      activeMatchId: null,
+      finalPlacement: 2,
+      lastResult: "loss",
+      canLaunch: false
+    };
+  }
+  return null;
+};
+var resolveMembershipForRun = (run, membership) => {
+  if (!membership) {
+    return null;
+  }
+  if (membership.runId !== run.runId || membership.tournamentId !== run.tournamentId) {
+    return null;
+  }
+  const joinedAtMs = Date.parse(membership.joinedAt);
+  const runCreatedAtMs = Date.parse(run.createdAt);
+  if (Number.isFinite(joinedAtMs) && Number.isFinite(runCreatedAtMs) && joinedAtMs < runCreatedAtMs) {
+    return null;
+  }
+  return membership;
 };
 var getRunEndTimeMs = (run, nakamaTournament) => {
   var _a;
@@ -5981,12 +6030,12 @@ var assertPublicRunReadable = (run, nakamaTournament, membership, nowMs = Date.n
 var readMembershipObject = (nk, runId, userId) => {
   const objects = nk.storageRead([
     {
-      collection: TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION,
+      collection: TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION2,
       key: runId,
       userId
     }
   ]);
-  return findStorageObject(objects, TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION, runId, userId);
+  return findStorageObject(objects, TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION2, runId, userId);
 };
 var readMembership = (nk, runId, userId) => {
   var _a, _b;
@@ -5999,7 +6048,7 @@ var readMembershipsByRunId = (nk, runIds, userId) => {
   }
   const objects = nk.storageRead(
     filteredRunIds.map((runId) => ({
-      collection: TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION,
+      collection: TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION2,
       key: runId,
       userId
     }))
@@ -6007,7 +6056,7 @@ var readMembershipsByRunId = (nk, runIds, userId) => {
   return filteredRunIds.reduce(
     (accumulator, runId) => {
       var _a;
-      const object = findStorageObject(objects, TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION, runId, userId);
+      const object = findStorageObject(objects, TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION2, runId, userId);
       accumulator[runId] = normalizeMembershipRecord((_a = object == null ? void 0 : object.value) != null ? _a : null, runId, userId);
       return accumulator;
     },
@@ -6018,20 +6067,24 @@ var writeMembership = (nk, run, userId, displayName) => {
   var _a, _b;
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const existingObject = readMembershipObject(nk, run.runId, userId);
-    const existing = normalizeMembershipRecord((_a = existingObject == null ? void 0 : existingObject.value) != null ? _a : null, run.runId, userId);
-    const joinedAt = (_b = existing == null ? void 0 : existing.joinedAt) != null ? _b : (/* @__PURE__ */ new Date()).toISOString();
+    const existing = resolveMembershipForRun(
+      run,
+      normalizeMembershipRecord((_a = existingObject == null ? void 0 : existingObject.value) != null ? _a : null, run.runId, userId)
+    );
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const joinedAt = (_b = existing == null ? void 0 : existing.joinedAt) != null ? _b : now;
     const record = {
       runId: run.runId,
       tournamentId: run.tournamentId,
       userId,
       displayName,
       joinedAt,
-      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      updatedAt: now
     };
     try {
       nk.storageWrite([
         maybeSetStorageVersion({
-          collection: TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION,
+          collection: TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION2,
           key: run.runId,
           userId,
           value: record,
@@ -6083,6 +6136,10 @@ var buildPublicParticipationState = (run, membership) => {
       canLaunch: false
     };
   }
+  const finalizedParticipation = buildFinalizedParticipationOverride(run, participant);
+  if (finalizedParticipation) {
+    return finalizedParticipation;
+  }
   return {
     state: participant.state,
     currentRound: participant.currentRound,
@@ -6097,7 +6154,8 @@ var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
   var _a, _b, _c, _d, _e, _f, _g;
   const metadata = readMetadata(run);
   const createdAt = run.createdAt;
-  const participation = buildPublicParticipationState(run, membership);
+  const resolvedMembership = resolveMembershipForRun(run, membership);
+  const participation = buildPublicParticipationState(run, resolvedMembership);
   return {
     runId: run.runId,
     tournamentId: run.tournamentId,
@@ -6121,7 +6179,7 @@ var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
     prizeLabel: formatPrizeLabel(metadata),
     isLocked: hasTournamentBracketStarted(run.bracket),
     currentRound: (_g = participation.currentRound) != null ? _g : getTournamentBracketCurrentRound(run.bracket),
-    membership: buildMembershipState(membership),
+    membership: buildMembershipState(resolvedMembership),
     participation
   };
 };
@@ -6182,11 +6240,33 @@ var buildTournamentLaunchResponse = (params) => JSON.stringify({
   queueStatus: params.queueStatus,
   statusMessage: params.statusMessage
 });
+var maybeFinalizeCompletedPublicRun = (logger, nk, run) => {
+  var _a;
+  if (run.lifecycle === "finalized" || !((_a = run.bracket) == null ? void 0 : _a.finalizedAt)) {
+    return run;
+  }
+  try {
+    return finalizeTournamentRun(logger, nk, run.runId, {}).run;
+  } catch (error) {
+    logger.warn(
+      "Unable to auto-finalize public tournament run %s while serving player status: %s",
+      run.runId,
+      String(error)
+    );
+    return readRunOrThrow(nk, run.runId);
+  }
+};
 var rpcListPublicTournaments = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
   const limit = clampInteger(parsed.limit, DEFAULT_PUBLIC_LIST_LIMIT, 1, 100);
-  const runs = listPublicRuns(nk).map((run) => maybeStartBracketForRun(nk, logger, run));
+  const runs = listPublicRuns(nk).map(
+    (run) => maybeFinalizeCompletedPublicRun(
+      logger,
+      nk,
+      maybeStartBracketForRun(nk, logger, run)
+    )
+  );
   const tournamentsById = getNakamaTournamentsById(
     nk,
     runs.map((run) => run.tournamentId)
@@ -6236,8 +6316,9 @@ var rpcGetPublicTournament = (ctx, logger, nk, payload) => {
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
-  const membership = readMembership(nk, run.runId, userId);
+  const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   assertPublicRunReadable(run, nakamaTournament, membership);
+  run = maybeFinalizeCompletedPublicRun(logger, nk, run);
   return JSON.stringify({
     ok: true,
     tournament: buildPublicTournamentResponse(
@@ -6265,7 +6346,7 @@ var rpcGetPublicTournamentStandings = (ctx, logger, nk, payload) => {
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
-  const membership = readMembership(nk, run.runId, userId);
+  const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   assertPublicRunReadable(run, nakamaTournament, membership);
   const limit = clampInteger(
     (_a = parsed.limit) != null ? _a : run.maxSize,
@@ -6299,7 +6380,7 @@ var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
   let run = readRunOrThrow(nk, runId);
   const nakamaTournamentBeforeJoin = getNakamaTournamentById(nk, run.tournamentId);
   assertPublicRunVisible(run, nakamaTournamentBeforeJoin);
-  const existingMembership = readMembership(nk, run.runId, userId);
+  const existingMembership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   const displayName = getActorLabel(ctx);
   let joined = false;
   let membership = existingMembership;
@@ -6332,7 +6413,7 @@ var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
     tournament: buildPublicTournamentResponse(
       run,
       getNakamaTournamentById(nk, run.tournamentId),
-      readMembership(nk, run.runId, userId)
+      resolveMembershipForRun(run, readMembership(nk, run.runId, userId))
     )
   });
 };
@@ -6353,7 +6434,7 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
     throw new Error("runId is required.");
   }
   let run = readRunOrThrow(nk, runId);
-  const membership = readMembership(nk, run.runId, userId);
+  const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   if (!membership) {
     throw new Error("Join this tournament before launching a match.");
   }
@@ -8425,6 +8506,17 @@ function processCompletedMatchSummaries(logger, nk, state, matchId) {
   return results;
 }
 var resolveTournamentRewardOutcome = (params) => {
+  const terminalOutcome = resolveTerminalTournamentRewardOutcome(params);
+  if (terminalOutcome) {
+    return terminalOutcome;
+  }
+  if (params.participantState === "eliminated") {
+    return "eliminated";
+  }
+  return params.didWin ? "advancing" : "eliminated";
+};
+var resolveTerminalTournamentRewardOutcome = (params) => {
+  var _a, _b, _c, _d, _e, _f, _g, _h;
   const {
     participantState,
     didWin,
@@ -8432,6 +8524,12 @@ var resolveTournamentRewardOutcome = (params) => {
     tournamentProcessingResult
   } = params;
   const finalizationResult = tournamentProcessingResult.finalizationResult;
+  const bracket = (_b = (_a = tournamentProcessingResult.updatedRun) == null ? void 0 : _a.bracket) != null ? _b : null;
+  const completedRound = (_d = (_c = tournamentProcessingResult.record) == null ? void 0 : _c.summary.round) != null ? _d : null;
+  const totalRounds = (_e = bracket == null ? void 0 : bracket.totalRounds) != null ? _e : null;
+  const bracketWinnerUserId = (_f = bracket == null ? void 0 : bracket.winnerUserId) != null ? _f : null;
+  const bracketRunnerUpUserId = (_g = bracket == null ? void 0 : bracket.runnerUpUserId) != null ? _g : null;
+  const bracketFinalized = Boolean(bracket == null ? void 0 : bracket.finalizedAt);
   if (finalizationResult) {
     if (finalizationResult.championUserId === playerUserId) {
       return "champion";
@@ -8443,16 +8541,25 @@ var resolveTournamentRewardOutcome = (params) => {
       return "runner_up";
     }
   }
+  if (bracketFinalized) {
+    if (bracketWinnerUserId === playerUserId) {
+      return "champion";
+    }
+    if (bracketRunnerUpUserId === playerUserId) {
+      return "runner_up";
+    }
+    return didWin ? "champion" : "runner_up";
+  }
+  if (((_h = tournamentProcessingResult.record) == null ? void 0 : _h.counted) === true && typeof completedRound === "number" && typeof totalRounds === "number" && completedRound === totalRounds) {
+    return didWin ? "champion" : "runner_up";
+  }
   if (participantState === "champion") {
     return "champion";
   }
   if (participantState === "runner_up") {
     return "runner_up";
   }
-  if (participantState === "eliminated") {
-    return "eliminated";
-  }
-  return didWin ? "advancing" : "eliminated";
+  return null;
 };
 var buildTournamentRewardSummaryPayload = (logger, nk, state, matchId, playerUserId, didWin, context) => {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;

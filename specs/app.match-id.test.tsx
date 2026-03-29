@@ -2496,6 +2496,84 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
   });
 
+  it('replaces the waiting room with a terminal tournament result once polling finalizes after entry', async () => {
+    mockSearchParams.id = 'tournament-enter-then-finalize';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-enter-then-finalize',
+    });
+    mockStoreState.matchId = 'tournament-enter-then-finalize';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockGetPublicTournamentStatus.mockRejectedValue(new Error('Tournament status is still settling.'));
+    mockTournamentAdvanceFlowState = {
+      ...mockTournamentAdvanceFlowState,
+      phase: 'waiting',
+      statusText: 'Recording your victory in the standings...',
+      subtleStatusText: null,
+      retryMessage: null,
+      finalPlacement: null,
+      isChampion: false,
+    };
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-enter-then-finalize', {
+        tournamentOutcome: 'advancing',
+        shouldEnterWaitingRoom: true,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Enter Waiting Room')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Enter Waiting Room'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
+
+    mockTournamentAdvanceFlowState = {
+      ...mockTournamentAdvanceFlowState,
+      phase: 'finalized',
+      statusText: 'You won the tournament.',
+      subtleStatusText: 'Your run is complete and the final standings are locked.',
+      finalPlacement: 1,
+      isChampion: true,
+    };
+
+    view.rerender(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
+    expect(screen.getByText('Tournament Won')).toBeTruthy();
+    expect(screen.getByText('Return to Home Page')).toBeTruthy();
+    expect(screen.queryByText('Enter Waiting Room')).toBeNull();
+  });
+
   it('resolves a stale final-win summary before auto-entry and keeps the return-home modal visible', async () => {
     mockSearchParams.id = 'tournament-auto-finalized';
     mockSearchParams.offline = '0';

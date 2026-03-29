@@ -475,8 +475,31 @@ describe("admin tournament run creation", () => {
         closedAt: null,
         finalizedAt: null,
         finalSnapshot: null,
+        registrations: [
+          {
+            userId: "player-1",
+            displayName: "RoyalPlayer",
+            joinedAt: "2026-03-27T10:06:00.000Z",
+            seed: 1,
+          },
+        ],
       },
       version: "run-v1",
+    });
+
+    nk.storage.set(buildStorageKey("tournament_run_memberships", "test-tournament", "player-1"), {
+      collection: "tournament_run_memberships",
+      key: "test-tournament",
+      userId: "player-1",
+      value: {
+        runId: "test-tournament",
+        tournamentId: "test-tournament",
+        userId: "player-1",
+        displayName: "RoyalPlayer",
+        joinedAt: "2026-03-27T10:06:00.000Z",
+        updatedAt: "2026-03-27T10:06:00.000Z",
+      },
+      version: "membership-v1",
     });
 
     nk.storage.set(buildStorageKey("tournament_match_queue", "test-tournament", SYSTEM_USER_ID), {
@@ -526,6 +549,9 @@ describe("admin tournament run creation", () => {
     expect(nk.storage.get(buildStorageKey(RUNS_COLLECTION, "test-tournament"))).toBeUndefined();
     expect(
       nk.storage.get(buildStorageKey("tournament_match_queue", "test-tournament", SYSTEM_USER_ID)),
+    ).toBeUndefined();
+    expect(
+      nk.storage.get(buildStorageKey("tournament_run_memberships", "test-tournament", "player-1")),
     ).toBeUndefined();
     expect(nk.storage.get(buildStorageKey(RUNS_COLLECTION, RUNS_INDEX_KEY))?.value).toEqual(
       expect.objectContaining({

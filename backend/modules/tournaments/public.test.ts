@@ -420,6 +420,80 @@ describe('public tournament rpc flow', () => {
     );
   });
 
+  it('ignores stale memberships from an older run instance and allows joining the recreated run', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedOpenRun(nk, {
+      runId: 'test-tournament',
+      tournamentId: 'test-tournament',
+      entrants: 0,
+      maxSize: 2,
+    });
+
+    nk.storage.set(buildStorageKey('tournament_run_memberships', 'test-tournament', 'user-1'), {
+      collection: 'tournament_run_memberships',
+      key: 'test-tournament',
+      userId: 'user-1',
+      value: {
+        runId: 'test-tournament',
+        tournamentId: 'test-tournament',
+        userId: 'user-1',
+        displayName: 'RoyalPlayer',
+        joinedAt: '2026-03-26T09:00:00.000Z',
+        updatedAt: '2026-03-26T09:00:00.000Z',
+      },
+      version: 'membership-v1',
+    });
+
+    const detailResponse = JSON.parse(
+      rpcGetPublicTournament(
+        { userId: 'user-1' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'test-tournament' }),
+      ),
+    ) as {
+      tournament: {
+        membership: { isJoined: boolean; joinedAt: string | null };
+        participation: { state: string | null };
+      };
+    };
+
+    expect(detailResponse.tournament.membership).toEqual({
+      isJoined: false,
+      joinedAt: null,
+    });
+    expect(detailResponse.tournament.participation.state).toBeNull();
+
+    const joinResponse = JSON.parse(
+      rpcJoinPublicTournament(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'test-tournament' }),
+      ),
+    ) as {
+      joined: boolean;
+      tournament: {
+        entrants: number;
+        membership: { isJoined: boolean; joinedAt: string | null };
+        participation: { state: string | null };
+      };
+    };
+
+    expect(joinResponse.joined).toBe(true);
+    expect(joinResponse.tournament.entrants).toBe(1);
+    expect(joinResponse.tournament.membership.isJoined).toBe(true);
+    expect(joinResponse.tournament.participation.state).toBe('lobby');
+    expect(nk.tournamentJoin).toHaveBeenCalledWith('test-tournament', 'user-1', 'RoyalPlayer');
+
+    const storedMembership = nk.storage.get(
+      buildStorageKey('tournament_run_memberships', 'test-tournament', 'user-1'),
+    )?.value as { joinedAt: string };
+
+    expect(storedMembership.joinedAt).not.toBe('2026-03-26T09:00:00.000Z');
+  });
+
   it('rejects new joins after the bracket has started', () => {
     const nk = createNakama();
     const logger = createLogger();
@@ -747,6 +821,144 @@ describe('public tournament rpc flow', () => {
     expect(updatedRun.lifecycle).toBe('finalized');
     expect(updatedRun.finalizedAt).toEqual(expect.any(String));
     expect(nk.tournamentRanksDisable).toHaveBeenCalledWith('tour-1');
+  });
+
+  it('returns champion and runner-up participation from finalized bracket data even when participant state is stale', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedOpenRun(nk, {
+      entrants: 0,
+      maxSize: 2,
+    });
+
+    rpcJoinPublicTournament(
+      { userId: 'user-1', username: 'RoyalPlayer' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcJoinPublicTournament(
+      { userId: 'user-2', username: 'TempleGuest' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcLaunchTournamentMatch(
+      { userId: 'user-1', username: 'RoyalPlayer' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+
+    const storedRun = readStoredRunValue(nk);
+    const finalizedBracket = completeTournamentBracketMatch(storedRun.bracket as never, {
+      entryId: 'round-1-match-1',
+      matchId: 'match-tournament-1',
+      winnerUserId: 'user-1',
+      loserUserId: 'user-2',
+      completedAt: '2026-03-27T10:05:00.000Z',
+    });
+    const staleFinalizedBracket = {
+      ...finalizedBracket,
+      participants: finalizedBracket.participants.map((participant) => {
+        if (participant.userId === 'user-1') {
+          return {
+            ...participant,
+            state: 'waiting_next_round',
+            finalPlacement: null,
+            activeMatchId: 'match-tournament-1',
+          };
+        }
+
+        if (participant.userId === 'user-2') {
+          return {
+            ...participant,
+            state: 'eliminated',
+            finalPlacement: null,
+            activeMatchId: 'match-tournament-1',
+          };
+        }
+
+        return participant;
+      }),
+    };
+
+    writeStoredRunValue(nk, {
+      ...storedRun,
+      updatedAt: '2026-03-27T10:05:00.000Z',
+      bracket: staleFinalizedBracket,
+    });
+    nk.tournamentRecordsList.mockReturnValue({
+      records: [
+        {
+          rank: 1,
+          owner_id: 'user-1',
+          username: 'RoyalPlayer',
+          score: 1,
+          metadata: {
+            result: 'win',
+            round: 1,
+            matchId: 'match-tournament-1',
+          },
+        },
+        {
+          rank: 2,
+          owner_id: 'user-2',
+          username: 'TempleGuest',
+          score: 0,
+          metadata: {
+            result: 'loss',
+            round: 1,
+            matchId: 'match-tournament-1',
+          },
+        },
+      ],
+      owner_records: [],
+      rank_count: 2,
+    });
+
+    const championResponse = JSON.parse(
+      rpcGetPublicTournament(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      tournament: {
+        lifecycle: string;
+        participation: { state: string | null; finalPlacement: number | null; canLaunch: boolean };
+      };
+    };
+    const runnerUpResponse = JSON.parse(
+      rpcGetPublicTournament(
+        { userId: 'user-2', username: 'TempleGuest' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      tournament: {
+        lifecycle: string;
+        participation: { state: string | null; finalPlacement: number | null; canLaunch: boolean };
+      };
+    };
+
+    expect(championResponse.tournament.lifecycle).toBe('finalized');
+    expect(championResponse.tournament.participation).toEqual(
+      expect.objectContaining({
+        state: 'champion',
+        finalPlacement: 1,
+        canLaunch: false,
+      }),
+    );
+    expect(runnerUpResponse.tournament.participation).toEqual(
+      expect.objectContaining({
+        state: 'runner_up',
+        finalPlacement: 2,
+        canLaunch: false,
+      }),
+    );
   });
 
   it('hides expired runs from the public list and rejects new joins', () => {

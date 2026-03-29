@@ -2248,6 +2248,27 @@ const resolveTournamentRewardOutcome = (
     tournamentProcessingResult: ReturnType<typeof processCompletedAuthoritativeTournamentMatch>;
   },
 ): TournamentRewardOutcome => {
+  const terminalOutcome = resolveTerminalTournamentRewardOutcome(params);
+
+  if (terminalOutcome) {
+    return terminalOutcome;
+  }
+
+  if (params.participantState === "eliminated") {
+    return "eliminated";
+  }
+
+  return params.didWin ? "advancing" : "eliminated";
+};
+
+const resolveTerminalTournamentRewardOutcome = (
+  params: {
+    participantState: string | null;
+    didWin: boolean;
+    playerUserId: string;
+    tournamentProcessingResult: ReturnType<typeof processCompletedAuthoritativeTournamentMatch>;
+  },
+): Exclude<TournamentRewardOutcome, "advancing" | "eliminated"> | null => {
   const {
     participantState,
     didWin,
@@ -2255,8 +2276,12 @@ const resolveTournamentRewardOutcome = (
     tournamentProcessingResult,
   } = params;
   const finalizationResult = tournamentProcessingResult.finalizationResult;
+  const bracket = tournamentProcessingResult.updatedRun?.bracket ?? null;
   const completedRound = tournamentProcessingResult.record?.summary.round ?? null;
-  const totalRounds = tournamentProcessingResult.updatedRun?.bracket?.totalRounds ?? null;
+  const totalRounds = bracket?.totalRounds ?? null;
+  const bracketWinnerUserId = bracket?.winnerUserId ?? null;
+  const bracketRunnerUpUserId = bracket?.runnerUpUserId ?? null;
+  const bracketFinalized = Boolean(bracket?.finalizedAt);
 
   if (finalizationResult) {
     if (finalizationResult.championUserId === playerUserId) {
@@ -2270,6 +2295,18 @@ const resolveTournamentRewardOutcome = (
     if (participantState === "runner_up" || !didWin) {
       return "runner_up";
     }
+  }
+
+  if (bracketFinalized) {
+    if (bracketWinnerUserId === playerUserId) {
+      return "champion";
+    }
+
+    if (bracketRunnerUpUserId === playerUserId) {
+      return "runner_up";
+    }
+
+    return didWin ? "champion" : "runner_up";
   }
 
   if (
@@ -2289,11 +2326,7 @@ const resolveTournamentRewardOutcome = (
     return "runner_up";
   }
 
-  if (participantState === "eliminated") {
-    return "eliminated";
-  }
-
-  return didWin ? "advancing" : "eliminated";
+  return null;
 };
 
 const buildTournamentRewardSummaryPayload = (
