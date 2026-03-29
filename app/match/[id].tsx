@@ -69,7 +69,11 @@ import {
   getSnapshotScoreTitle,
 } from '@/src/match/playerTitles';
 import { useGameStore } from '@/store/useGameStore';
-import { resolveViewportDeviceProfile, resolveVisibleViewportSize } from '@/src/layout/matchViewport';
+import {
+  resolveMatchStageSideColumnWidth,
+  resolveMatchStageViewportMode,
+} from '@/src/layout/matchStageViewport';
+import { resolveVisibleViewportSize } from '@/src/layout/matchViewport';
 import {
   PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL,
   PLAYTHROUGH_TUTORIAL_ID,
@@ -2594,19 +2598,23 @@ export function GameRoom() {
 
   const viewportHorizontalPadding = 0;
   const stageContentWidth = Math.min(Math.max(viewportWidth - viewportHorizontalPadding * 2, 0), urTheme.layout.stage.maxWidth);
-  const viewportDeviceProfile = useMemo(
-    () => resolveViewportDeviceProfile({ width: viewportWidth, height: viewportHeight }),
+  const matchStageViewportMode = useMemo(
+    () => resolveMatchStageViewportMode({ width: viewportWidth, height: viewportHeight }),
     [viewportHeight, viewportWidth],
   );
-  const useSideColumns = viewportWidth >= 760 && !viewportDeviceProfile.isTabletPortrait;
+  const useSideColumns = matchStageViewportMode.useSideColumns;
   const isWebLayout = Platform.OS === 'web';
-  const isMobileWebLayout = isWebLayout && viewportDeviceProfile.isMobileWidth;
-  const isMobileLayout = viewportDeviceProfile.isMobileWidth || viewportDeviceProfile.isTabletPortrait;
-  const useMobileSideReserveRails = viewportDeviceProfile.isMobileWidth || viewportDeviceProfile.isTabletPortrait;
+  const isMobileLayout = matchStageViewportMode.useMobileLayout;
+  const isMobileWebLayout = isWebLayout && isMobileLayout;
+  const useMobileSideReserveRails = matchStageViewportMode.useMobileSideReserveRails;
   const showWebSideDiceVisual = Platform.OS === 'web' && useSideColumns;
   const boardClusterGap = useSideColumns || useMobileSideReserveRails ? urTheme.spacing.xs : urTheme.spacing.sm;
   const sideColumnWidth = useSideColumns
-    ? Math.max(88, Math.min(264, Math.floor(stageContentWidth * (viewportWidth < 720 ? 0.2 : 0.24))))
+    ? resolveMatchStageSideColumnWidth({
+      isTabletLandscape: matchStageViewportMode.isTabletLandscape,
+      stageContentWidth,
+      viewportWidth,
+    })
     : 0;
   const mobileReserveColumnWidth = useMobileSideReserveRails
     ? Math.max(52, Math.min(80, Math.round(stageContentWidth * 0.16)))

@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
-import { getNewlyVisibleReserveSlotIndices, PieceRail, resolvePieceRailViewportMetrics } from './PieceRail';
+import { getNewlyVisibleReserveSlotIndices, PieceRail } from './PieceRail';
 
 const getTranslateY = (style: { transform?: { translateY?: number }[] }) =>
   style.transform?.find((transform) => 'translateY' in transform)?.translateY ?? 0;
@@ -160,35 +160,5 @@ describe('PieceRail', () => {
     expect(stackStyle.left).toBeLessThanOrEqual(0);
     expect(stackStyle.top).toBeGreaterThan(0);
     expect(Math.abs(secondSlotStyle.marginLeft ?? 0)).toBeLessThanOrEqual(4);
-  });
-
-  it('shrinks horizontal trays on tablet landscape viewports', () => {
-    expect(
-      resolvePieceRailViewportMetrics({
-        width: 1440,
-        height: 900,
-        orientation: 'horizontal',
-      }),
-    ).toMatchObject({
-      isMobile: false,
-      isTabletLandscapeHorizontalRail: false,
-      isTabletPortrait: false,
-      railScale: 1,
-      trayArtScaleMultiplier: 1,
-    });
-
-    expect(
-      resolvePieceRailViewportMetrics({
-        width: 1194,
-        height: 834,
-        orientation: 'horizontal',
-      }),
-    ).toMatchObject({
-      isMobile: false,
-      isTabletLandscapeHorizontalRail: true,
-      isTabletPortrait: false,
-      railScale: 0.8,
-      trayArtScaleMultiplier: 0.8,
-    });
   });
 });

@@ -1,5 +1,4 @@
 import { urTheme } from '@/constants/urTheme';
-import { resolveViewportDeviceProfile } from '@/src/layout/matchViewport';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
@@ -110,60 +109,12 @@ interface ReserveRailPieceProps {
   variant: 'light' | 'dark' | 'reserve';
 }
 
-interface PieceRailViewportMetrics {
-  isMobile: boolean;
-  isTabletLandscapeHorizontalRail: boolean;
-  isTabletPortrait: boolean;
-  railScale: number;
-  trayArtScaleMultiplier: number;
-}
-
 export const getNewlyVisibleReserveSlotIndices = (
   previousVisibleSlotIndices: readonly number[],
   nextVisibleSlotIndices: readonly number[],
 ): number[] => {
   const previousIndices = new Set(previousVisibleSlotIndices);
   return nextVisibleSlotIndices.filter((slotIndex) => !previousIndices.has(slotIndex));
-};
-
-export const resolvePieceRailViewportMetrics = ({
-  height,
-  orientation,
-  width,
-}: {
-  height: number;
-  orientation: 'horizontal' | 'vertical';
-  width: number;
-}): PieceRailViewportMetrics => {
-  const viewportDeviceProfile = resolveViewportDeviceProfile({ width, height });
-  const isMobile = viewportDeviceProfile.isMobileWidth;
-  const isVertical = orientation === 'vertical';
-  const isTabletPortrait = viewportDeviceProfile.isTabletPortrait;
-  const isTabletLandscapeHorizontalRail = viewportDeviceProfile.isTabletLandscape && !isVertical;
-  const railScale = isMobile
-    ? MOBILE_RAIL_SCALE
-    : isTabletPortrait
-      ? 0.9
-      : isTabletLandscapeHorizontalRail
-        ? 0.8
-        : 1;
-  const trayArtScaleMultiplier = isVertical
-    ? (isMobile ? 0.92 : 1)
-    : isMobile
-      ? 0.78
-      : isTabletPortrait
-        ? 0.92
-        : isTabletLandscapeHorizontalRail
-          ? 0.8
-          : 1;
-
-  return {
-    isMobile,
-    isTabletLandscapeHorizontalRail,
-    isTabletPortrait,
-    railScale,
-    trayArtScaleMultiplier,
-  };
 };
 
 const ReserveRailPiece: React.FC<ReserveRailPieceProps> = ({
@@ -250,24 +201,21 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   onRailFrameLayout,
 }) => {
   const { width, height } = useWindowDimensions();
-  const viewportMetrics = useMemo(
-    () => resolvePieceRailViewportMetrics({ width, height, orientation }),
-    [height, orientation, width],
-  );
   const glow = useSharedValue(active ? 0.5 : 0);
   const [railMainAxisSize, setRailMainAxisSize] = useState(0);
   const [railSize, setRailSize] = useState<RailSize>({ width: 0, height: 0 });
-  const isMobile = viewportMetrics.isMobile;
+  const isMobile = width < 760;
   const isMobileWeb = Platform.OS === 'web' && isMobile;
   const isVertical = orientation === 'vertical';
   const isCompactVerticalRail = isVertical && isMobile;
   const isLargeWebHorizontalRail = Platform.OS === 'web' && width >= 1200 && !isVertical;
-  const railScale = viewportMetrics.railScale;
+  const isTabletPortrait = width >= 760 && width <= 1024 && height > width;
+  const railScale = isMobile ? MOBILE_RAIL_SCALE : isTabletPortrait ? 0.9 : 1;
   const railMinHeight = Math.round(RAIL_MIN_HEIGHT * railScale);
   const railHorizontalPadding = Math.round(RAIL_HORIZONTAL_PADDING * railScale);
   const trayArtScale =
     TRAY_ART_FIT.scale *
-    viewportMetrics.trayArtScaleMultiplier *
+    (isVertical ? (isMobile ? 0.92 : 1) : isMobile ? 0.78 : isTabletPortrait ? 0.92 : 1) *
     (isCompactVerticalRail ? MOBILE_VERTICAL_TRAY_ART_SCALE : 1);
 
   useEffect(() => {
