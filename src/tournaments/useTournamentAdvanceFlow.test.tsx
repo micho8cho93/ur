@@ -107,6 +107,8 @@ const buildSnapshot = (
     lifecycle?: 'open' | 'finalized' | 'closed';
     isLocked?: boolean;
     currentRound?: number | null;
+    entrants?: number;
+    maxEntrants?: number;
     participation?: TournamentParticipationState;
   } = {},
 ) => ({
@@ -119,8 +121,8 @@ const buildSnapshot = (
     startAt: '2026-03-27T09:00:00.000Z',
     endAt: null,
     updatedAt: '2026-03-27T10:00:00.000Z',
-    entrants: 8,
-    maxEntrants: 16,
+    entrants: options.entrants ?? 8,
+    maxEntrants: options.maxEntrants ?? 16,
     gameMode: 'standard',
     region: 'Global',
     buyInLabel: 'Free',
@@ -461,6 +463,82 @@ describe('useTournamentAdvanceFlow', () => {
     });
 
     expect(screen.getByTestId('phase').props.children).toBe('finalized');
+    expect(mockGetPublicTournamentStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a two-player one-round win as finalized even when the public snapshot is still stale', async () => {
+    mockGetPublicTournamentStatus.mockResolvedValue(
+      buildSnapshot(
+        [
+          buildStanding({
+            ownerId: 'user-1',
+            username: 'Michel',
+            rank: 2,
+            round: 1,
+            result: null,
+          }),
+        ],
+        {
+          entrants: 2,
+          maxEntrants: 2,
+          currentRound: 1,
+          participation: buildParticipation({
+            state: 'waiting_next_round',
+            currentRound: 1,
+            finalPlacement: null,
+            lastResult: null,
+            canLaunch: false,
+          }),
+        },
+      ),
+    );
+
+    render(<HookHarness {...baseProps} initialRound={1} />);
+
+    await act(async () => {
+      await flush();
+    });
+
+    expect(screen.getByTestId('phase').props.children).toBe('finalized');
+    expect(screen.getByTestId('status').props.children).toBe('You won the tournament.');
+    expect(mockGetPublicTournamentStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a larger final-round win as finalized even when the public snapshot is still stale', async () => {
+    mockGetPublicTournamentStatus.mockResolvedValue(
+      buildSnapshot(
+        [
+          buildStanding({
+            ownerId: 'user-1',
+            username: 'Michel',
+            rank: 2,
+            round: 3,
+            result: null,
+          }),
+        ],
+        {
+          entrants: 8,
+          maxEntrants: 8,
+          currentRound: 3,
+          participation: buildParticipation({
+            state: 'waiting_next_round',
+            currentRound: 3,
+            finalPlacement: null,
+            lastResult: null,
+            canLaunch: false,
+          }),
+        },
+      ),
+    );
+
+    render(<HookHarness {...baseProps} initialRound={3} />);
+
+    await act(async () => {
+      await flush();
+    });
+
+    expect(screen.getByTestId('phase').props.children).toBe('finalized');
+    expect(screen.getByTestId('status').props.children).toBe('You won the tournament.');
     expect(mockGetPublicTournamentStatus).toHaveBeenCalledTimes(1);
   });
 

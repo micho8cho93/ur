@@ -193,7 +193,55 @@ const isUnauthorizedNakamaError = (error: unknown): boolean => {
 
 type TournamentStatusSnapshot = Awaited<ReturnType<typeof getPublicTournamentStatus>>;
 
-const isTerminalTournamentStatusSnapshot = (snapshot: TournamentStatusSnapshot | null | undefined): boolean => {
+const getSingleEliminationRoundCountFromSnapshot = (
+  snapshot: TournamentStatusSnapshot | null | undefined,
+): number | null => {
+  const sizeCandidates = [snapshot?.tournament?.maxEntrants, snapshot?.tournament?.entrants];
+
+  for (const candidate of sizeCandidates) {
+    if (typeof candidate !== 'number' || !Number.isFinite(candidate)) {
+      continue;
+    }
+
+    const normalized = Math.floor(candidate);
+    if (normalized < 2 || (normalized & (normalized - 1)) !== 0) {
+      continue;
+    }
+
+    return Math.log2(normalized);
+  }
+
+  return null;
+};
+
+const deriveFinalRoundTournamentTerminalOutcome = (
+  snapshot: TournamentStatusSnapshot | null | undefined,
+  options: {
+    didPlayerWin: boolean;
+    initialRound: number | null;
+  },
+): 'champion' | 'runner_up' | null => {
+  const totalRounds = getSingleEliminationRoundCountFromSnapshot(snapshot);
+  const currentRound =
+    snapshot?.tournament?.participation?.currentRound ??
+    snapshot?.tournament?.currentRound ??
+    options.initialRound ??
+    null;
+
+  if (totalRounds === null || currentRound !== totalRounds) {
+    return null;
+  }
+
+  return options.didPlayerWin ? 'champion' : 'runner_up';
+};
+
+const isTerminalTournamentStatusSnapshot = (
+  snapshot: TournamentStatusSnapshot | null | undefined,
+  options: {
+    didPlayerWin: boolean;
+    initialRound: number | null;
+  },
+): boolean => {
   const lifecycle = snapshot?.tournament?.lifecycle ?? null;
   const participationState = snapshot?.tournament?.participation?.state ?? null;
 
@@ -202,12 +250,17 @@ const isTerminalTournamentStatusSnapshot = (snapshot: TournamentStatusSnapshot |
     lifecycle === 'closed' ||
     participationState === 'champion' ||
     participationState === 'runner_up' ||
-    participationState === 'eliminated'
+    participationState === 'eliminated' ||
+    deriveFinalRoundTournamentTerminalOutcome(snapshot, options) !== null
   );
 };
 
 const deriveTerminalTournamentOutcomeFromSnapshot = (
   snapshot: TournamentStatusSnapshot | null | undefined,
+  options: {
+    didPlayerWin: boolean;
+    initialRound: number | null;
+  },
 ): 'champion' | 'runner_up' | 'eliminated' | null => {
   const lifecycle = snapshot?.tournament?.lifecycle ?? null;
   const participationState = snapshot?.tournament?.participation?.state ?? null;
@@ -231,7 +284,7 @@ const deriveTerminalTournamentOutcomeFromSnapshot = (
     }
   }
 
-  return null;
+  return deriveFinalRoundTournamentTerminalOutcome(snapshot, options);
 };
 
 type MatchMomentCueKind = 'play' | 'rosette' | 'opponentJoined' | 'opponentForfeit';
@@ -1679,8 +1732,13 @@ export function GameRoom() {
           return;
         }
 
-        if (isTerminalTournamentStatusSnapshot(snapshot)) {
-          setTournamentTerminalOutcomeOverride(deriveTerminalTournamentOutcomeFromSnapshot(snapshot));
+        if (isTerminalTournamentStatusSnapshot(snapshot, { didPlayerWin, initialRound: initialTournamentRound })) {
+          setTournamentTerminalOutcomeOverride(
+            deriveTerminalTournamentOutcomeFromSnapshot(snapshot, {
+              didPlayerWin,
+              initialRound: initialTournamentRound,
+            }),
+          );
           setTournamentAdvanceResolutionState('terminal');
           return;
         }
@@ -1700,7 +1758,7 @@ export function GameRoom() {
     return () => {
       cancelled = true;
     };
-  }, [shouldResolveTournamentAdvanceBeforeModal, tournamentRunIdParam]);
+  }, [didPlayerWin, initialTournamentRound, shouldResolveTournamentAdvanceBeforeModal, tournamentRunIdParam]);
 
   useEffect(() => {
     if (!showWinModal || !isTournamentMatch || tournamentRewardSummary || tournamentRewardFallbackActive) {
@@ -1762,8 +1820,13 @@ export function GameRoom() {
     try {
       const snapshot = await getPublicTournamentStatus(tournamentRunIdParam);
 
-      if (isTerminalTournamentStatusSnapshot(snapshot)) {
-        setTournamentTerminalOutcomeOverride(deriveTerminalTournamentOutcomeFromSnapshot(snapshot));
+      if (isTerminalTournamentStatusSnapshot(snapshot, { didPlayerWin, initialRound: initialTournamentRound })) {
+        setTournamentTerminalOutcomeOverride(
+          deriveTerminalTournamentOutcomeFromSnapshot(snapshot, {
+            didPlayerWin,
+            initialRound: initialTournamentRound,
+          }),
+        );
         setTournamentAdvanceResolutionState('terminal');
 
         if (options?.source === 'manual') {
@@ -1781,7 +1844,7 @@ export function GameRoom() {
     setTournamentTerminalOutcomeOverride(null);
     setTournamentAdvanceResolutionState('waiting');
     setHasEnteredTournamentWaitingRoom(true);
-  }, [exitMatchToHome, isTournamentMatch, tournamentRunIdParam]);
+  }, [didPlayerWin, exitMatchToHome, initialTournamentRound, isTournamentMatch, tournamentRunIdParam]);
 
   const handleEnterTournamentWaitingRoom = React.useCallback(() => {
     void attemptTournamentWaitingRoomEntry({ source: 'manual' });

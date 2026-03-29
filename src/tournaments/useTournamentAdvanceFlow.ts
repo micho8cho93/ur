@@ -71,6 +71,54 @@ const getCurrentStanding = (
   playerUserId: string | null,
 ): PublicTournamentStanding | null => standings.find((entry) => entry.ownerId === playerUserId) ?? null;
 
+const getSingleEliminationRoundCount = (tournament: PublicTournamentDetail): number | null => {
+  const sizeCandidates = [tournament.maxEntrants, tournament.entrants];
+
+  for (const candidate of sizeCandidates) {
+    if (typeof candidate !== 'number' || !Number.isFinite(candidate)) {
+      continue;
+    }
+
+    const normalized = Math.floor(candidate);
+    if (normalized < 2 || (normalized & (normalized - 1)) !== 0) {
+      continue;
+    }
+
+    return Math.log2(normalized);
+  }
+
+  return null;
+};
+
+const deriveFinalRoundFallback = (
+  tournament: PublicTournamentDetail,
+  options: {
+    didPlayerWin: boolean;
+    initialRound: number | null;
+  },
+): { isTerminal: boolean; isChampion: boolean; finalPlacement: number | null } => {
+  const totalRounds = getSingleEliminationRoundCount(tournament);
+  const currentRound =
+    tournament.participation.currentRound ??
+    tournament.currentRound ??
+    options.initialRound ??
+    null;
+
+  if (totalRounds === null || currentRound !== totalRounds) {
+    return {
+      isTerminal: false,
+      isChampion: false,
+      finalPlacement: null,
+    };
+  }
+
+  return {
+    isTerminal: true,
+    isChampion: options.didPlayerWin,
+    finalPlacement: options.didPlayerWin ? 1 : 2,
+  };
+};
+
 export const useTournamentAdvanceFlow = ({
   enabled,
   runId,
@@ -284,10 +332,19 @@ export const useTournamentAdvanceFlow = ({
           const nextStanding = getCurrentStanding(snapshot.standings, playerUserId);
           const participation = snapshot.tournament.participation;
           const nextRound = participation.currentRound ?? nextStanding?.round ?? initialRound ?? null;
-          const nextPlacement = participation.finalPlacement ?? nextStanding?.rank ?? null;
+          const finalRoundFallback = deriveFinalRoundFallback(snapshot.tournament, {
+            didPlayerWin,
+            initialRound,
+          });
+          const nextPlacement =
+            participation.finalPlacement ??
+            nextStanding?.rank ??
+            finalRoundFallback.finalPlacement ??
+            null;
           const nextChampion =
             participation.state === 'champion' ||
-            (snapshot.tournament.lifecycle === 'finalized' && nextPlacement === 1);
+            (snapshot.tournament.lifecycle === 'finalized' && nextPlacement === 1) ||
+            finalRoundFallback.isChampion;
 
           setTournament(snapshot.tournament);
           setStandings(snapshot.standings);
@@ -300,7 +357,8 @@ export const useTournamentAdvanceFlow = ({
             snapshot.tournament.lifecycle === 'finalized' ||
             snapshot.tournament.lifecycle === 'closed' ||
             participation.state === 'champion' ||
-            participation.state === 'runner_up'
+            participation.state === 'runner_up' ||
+            finalRoundFallback.isTerminal
           ) {
             stoppedRef.current = true;
             clearPollTimeout();
