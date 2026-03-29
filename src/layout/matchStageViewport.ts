@@ -4,8 +4,8 @@ const MOBILE_LAYOUT_BREAKPOINT = 760;
 const TABLET_MIN_SHORT_SIDE = MOBILE_LAYOUT_BREAKPOINT;
 const TABLET_MAX_SHORT_SIDE = 1024;
 const TABLET_MAX_LONG_SIDE = 1366;
-const TABLET_LANDSCAPE_SIDE_COLUMN_SCALE = 0.75;
-const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING = 16;
+const TABLET_LANDSCAPE_SIDE_COLUMN_SCALE = 0.64;
+const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING = 24;
 
 export interface MatchStageViewportMode {
   isMobileHandset: boolean;
@@ -96,11 +96,11 @@ export const resolveMatchStageTabletPortraitTuning = (
   }
 
   return {
-    boardLiftViewportRatio: 0.046,
-    mobileSideBoardScaleMultiplier: 0.72,
-    reservePieceScale: 0.8,
-    rollButtonMaxSize: 96,
-    rollButtonMinSize: 78,
-    rollButtonWidthRatio: 0.2,
+    boardLiftViewportRatio: 0.05,
+    mobileSideBoardScaleMultiplier: 0.8,
+    reservePieceScale: 0.88,
+    rollButtonMaxSize: 100,
+    rollButtonMinSize: 82,
+    rollButtonWidthRatio: 0.21,
   };
 };
