@@ -16,8 +16,9 @@ import { MatchMomentIndicator } from '@/components/game/MatchMomentIndicator';
 import type { MatchMomentIndicatorCue } from '@/components/game/MatchMomentIndicator';
 import {
   getNoMoveRollValueFromHistoryEntry,
+  ROLL_RESULT_HOLD_MS,
+  shouldDisplayNoMoveLabel,
   shouldHoldRollResult,
-  ZERO_ROLL_RESULT_HOLD_MS,
 } from '@/components/game/rollResultHold';
 import { MatchResultSummaryContent } from '@/components/match/MatchResultSummaryContent';
 import { PieceRail, PieceRailFrameMeasurement, ReserveSlotMeasurement } from '@/components/game/PieceRail';
@@ -327,6 +328,10 @@ const deriveServerConfirmedTournamentOutcomeFromSnapshot = (
 
 type MatchMomentCueKind = 'play' | 'rosette' | 'opponentJoined' | 'opponentForfeit';
 type RollButtonLatchPhase = 'idle' | 'awaitingOutcome' | 'awaitingTurnReset';
+type HeldRollResult = {
+  statusLabel: string | null;
+  value: number;
+};
 type TutorialCoachPhase =
   | 'idle'
   | 'opening'
@@ -826,7 +831,7 @@ export function GameRoom() {
   const [isRefreshingMatchRewards, setIsRefreshingMatchRewards] = React.useState(false);
   const [rollingVisual, setRollingVisual] = React.useState(false);
   const [rollButtonLatchPhase, setRollButtonLatchPhase] = React.useState<RollButtonLatchPhase>('idle');
-  const [heldRollResult, setHeldRollResult] = React.useState<number | null>(null);
+  const [heldRollResult, setHeldRollResult] = React.useState<HeldRollResult | null>(null);
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
   const [musicEnabled, setMusicEnabled] = React.useState(true);
   const [musicVolume, setMusicVolume] = React.useState(1);
@@ -897,7 +902,7 @@ export function GameRoom() {
   } | null>(null);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heldRollResultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingHeldRollResultRef = useRef<number | null>(null);
+  const pendingHeldRollResultRef = useRef<HeldRollResult | null>(null);
   const autoRollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turnTimeoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1308,14 +1313,16 @@ export function GameRoom() {
     setHeldRollResult(null);
   }, [clearHeldRollResultTimer]);
 
-  const showHeldRollResult = React.useCallback((value: number) => {
+  const showHeldRollResult = React.useCallback((result: HeldRollResult) => {
     clearHeldRollResultTimer();
     pendingHeldRollResultRef.current = null;
-    setHeldRollResult(value);
+    setHeldRollResult(result);
     heldRollResultTimerRef.current = setTimeout(() => {
       heldRollResultTimerRef.current = null;
-      setHeldRollResult((current) => (current === value ? null : current));
-    }, ZERO_ROLL_RESULT_HOLD_MS);
+      setHeldRollResult((current) => (
+        current?.value === result.value && current?.statusLabel === result.statusLabel ? null : current
+      ));
+    }, ROLL_RESULT_HOLD_MS);
   }, [clearHeldRollResultTimer]);
 
   const clearTutorialProgressTimers = React.useCallback(() => {
@@ -3167,10 +3174,15 @@ export function GameRoom() {
       for (const entry of newHistoryEntries) {
         const noMoveRollValue = getNoMoveRollValueFromHistoryEntry(entry);
         if (noMoveRollValue !== null && shouldHoldRollResult(noMoveRollValue)) {
+          const heldResult: HeldRollResult = {
+            statusLabel: shouldDisplayNoMoveLabel(noMoveRollValue) ? 'No Move' : null,
+            value: noMoveRollValue,
+          };
+
           if (rollingVisual) {
-            pendingHeldRollResultRef.current = noMoveRollValue;
+            pendingHeldRollResultRef.current = heldResult;
           } else {
-            showHeldRollResult(noMoveRollValue);
+            showHeldRollResult(heldResult);
           }
         }
 
@@ -3954,7 +3966,10 @@ export function GameRoom() {
     tutorialPendingStep,
     validMoves,
   ]);
-  const displayedRollValue = gameState.rollValue ?? heldRollResult;
+  const displayedRollValue = gameState.rollValue ?? heldRollResult?.value ?? null;
+  const displayedRollStatusLabel = gameState.rollValue === null ? heldRollResult?.statusLabel ?? null : null;
+  const displayedRollText =
+    displayedRollStatusLabel ?? (displayedRollValue === null ? null : String(displayedRollValue));
   const showMobileRollResult =
     introsComplete &&
     isMobileLayout &&
@@ -4266,6 +4281,7 @@ export function GameRoom() {
                 compact={compactSupportUi}
                 showNumericResult={false}
                 showStatusCopy={introsComplete}
+                settledStatusLabel={displayedRollStatusLabel}
                 showVisual={false}
                 visualPlacement={detachedDiceVisualPlacement}
                 artSize={mobileWebRollButtonArtSize}
@@ -4320,7 +4336,7 @@ export function GameRoom() {
               },
             ]}
           >
-            {displayedRollValue}
+            {displayedRollText}
           </Text>
         </View>
       ) : null}
@@ -4402,7 +4418,7 @@ export function GameRoom() {
                 },
               ]}
             >
-              {displayedRollValue}
+              {displayedRollText}
             </Text>
           ) : (
             <Dice
@@ -4417,6 +4433,7 @@ export function GameRoom() {
               compact
               showNumericResult={false}
               showStatusCopy={false}
+              settledStatusLabel={displayedRollStatusLabel}
               showVisual={false}
               visualPlacement="external"
               artSize={mobileBoardGapControlMetrics.rollArtSize}
@@ -4726,7 +4743,7 @@ export function GameRoom() {
                         !showWebRollResult && styles.webRollResultValueMuted,
                       ]}
                     >
-                      {showWebRollResult ? String(displayedRollValue) : ''}
+                      {showWebRollResult ? displayedRollText ?? '' : ''}
                     </Text>
                   </View>
                 ) : null}
@@ -4845,6 +4862,7 @@ export function GameRoom() {
                         compact={compactSupportUi}
                         showNumericResult={false}
                         showStatusCopy={introsComplete}
+                        settledStatusLabel={displayedRollStatusLabel}
                         showVisual={false}
                         visualPlacement={detachedDiceVisualPlacement}
                         artSize={webRollButtonSize}
@@ -4863,6 +4881,7 @@ export function GameRoom() {
                     mode="stage"
                     compact={compactSupportUi}
                     showStatusCopy={introsComplete}
+                    settledStatusLabel={displayedRollStatusLabel}
                     showVisual={showPersistentDiceVisual}
                     visualPlacement={detachedDiceVisualPlacement}
                   />
@@ -4976,6 +4995,7 @@ export function GameRoom() {
                         compact={compactSupportUi}
                         showNumericResult={false}
                         showStatusCopy={introsComplete}
+                        settledStatusLabel={displayedRollStatusLabel}
                         showVisual={showPersistentDiceVisual && !showMobileWebDetachedDiceVisual}
                         visualPlacement={detachedDiceVisualPlacement}
                         artSize={mobileWebRollButtonArtSize}
@@ -4993,7 +5013,7 @@ export function GameRoom() {
                         { fontFamily: rollResultFontFamily, transform: [{ translateY: mobileRollResultOffset }] },
                       ]}
                     >
-                      {displayedRollValue}
+                      {displayedRollText}
                     </Text>
                   ) : null}
                 </View>
@@ -5064,6 +5084,7 @@ export function GameRoom() {
                         compact={compactSupportUi}
                         showNumericResult={false}
                         showStatusCopy={introsComplete}
+                        settledStatusLabel={displayedRollStatusLabel}
                         showVisual={showPersistentDiceVisual && !showMobileWebDetachedDiceVisual}
                         visualPlacement={detachedDiceVisualPlacement}
                       />

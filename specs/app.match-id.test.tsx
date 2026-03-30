@@ -6,12 +6,24 @@ import type { GameState, MoveAction } from '@/logic/types';
 import { CHALLENGE_DEFINITIONS, createDefaultUserChallengeProgressSnapshot } from '@/shared/challenges';
 import { buildProgressionSnapshot } from '@/shared/progression';
 
-const mockMatchDiceRollStage = jest.fn(({ rolling, visible }: { rolling: boolean; visible: boolean }) => {
+const mockMatchDiceRollStage = jest.fn(({
+  rolling,
+  rollValue,
+  visible,
+}: {
+  rolling: boolean;
+  rollValue?: number | null;
+  visible: boolean;
+}) => {
   const { Text } = require('react-native');
-  return <Text testID="match-dice-stage-playback">{`${visible ? 'visible' : 'hidden'}:${rolling ? 'rolling' : 'idle'}`}</Text>;
+  return (
+    <Text testID="match-dice-stage-playback">
+      {`${visible ? 'visible' : 'hidden'}:${rolling ? 'rolling' : 'idle'}:${String(rollValue ?? null)}`}
+    </Text>
+  );
 });
 const mockBoard = jest.fn();
-const mockGameStageHUD = jest.fn(() => {
+const mockGameStageHUD = jest.fn((_props?: unknown) => {
   const { View } = require('react-native');
   return <View testID="mock-stage-hud" />;
 });
@@ -23,7 +35,7 @@ const mockEdgeScore = jest.fn(({ title }: { title?: string }) => {
     </View>
   );
 });
-const mockAudioSettingsModal = jest.fn(() => {
+const mockAudioSettingsModal = jest.fn((_props?: unknown) => {
   const { View } = require('react-native');
   return <View testID="mock-audio-settings" />;
 });
@@ -69,21 +81,30 @@ const mockSlotDiceScene = jest.fn(() => {
   const { Text } = require('react-native');
   return <Text testID="mock-inline-dice-scene">inline</Text>;
 });
-const mockDice = jest.fn(({ canRoll, onRoll }: { canRoll?: boolean; onRoll?: () => void }) => {
+const mockDice = jest.fn(({
+  canRoll,
+  onRoll,
+  settledStatusLabel,
+}: {
+  canRoll?: boolean;
+  onRoll?: () => void;
+  settledStatusLabel?: string | null;
+}) => {
   const { Pressable, Text, View } = require('react-native');
   return (
     <View testID="dice-roll-scene-host">
       <Pressable testID="dice-roll-button" disabled={!canRoll} onPress={onRoll}>
         <Text>{canRoll ? 'rollable' : 'locked'}</Text>
       </Pressable>
+      {settledStatusLabel ? <Text>{settledStatusLabel}</Text> : null}
     </View>
   );
 });
-const mockDiceStageVisual = jest.fn(() => {
+const mockDiceStageVisual = jest.fn((_props?: unknown) => {
   const { View } = require('react-native');
   return <View testID="mock-dice-stage-visual" />;
 });
-const mockPieceRail = jest.fn(() => {
+const mockPieceRail = jest.fn((_props?: unknown) => {
   const { View } = require('react-native');
   return <View testID="mock-piece-rail" />;
 });
@@ -489,7 +510,8 @@ jest.mock('@/components/ui/Modal', () => {
 });
 
 jest.mock('@/components/game/MatchDiceRollStage', () => ({
-  MatchDiceRollStage: (props: { rolling: boolean; visible: boolean }) => mockMatchDiceRollStage(props),
+  MatchDiceRollStage: (props: { rolling: boolean; rollValue?: number | null; visible: boolean }) =>
+    mockMatchDiceRollStage(props),
 }));
 
 jest.mock('@/components/game/MatchMomentIndicator', () => ({
@@ -520,8 +542,8 @@ jest.mock('@/components/game/SlotDiceScene', () => ({
 }));
 
 jest.mock('@/components/game/Dice', () => ({
-  Dice: (props: unknown) => mockDice(props),
-  DiceStageVisual: (props: unknown) => mockDiceStageVisual(props),
+  Dice: (props: any) => mockDice(props),
+  DiceStageVisual: (props: any) => mockDiceStageVisual(props),
 }));
 
 jest.mock('@/config/nakama', () => ({
@@ -1155,6 +1177,99 @@ describe('GameRoom match dice stage', () => {
         visible: true,
       }),
     );
+  });
+
+  it('keeps a zero roll visible for 1.5 seconds before clearing it', async () => {
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    mockStoreState.gameState = {
+      ...baseGameState,
+      currentTurn: 'dark',
+      phase: 'rolling',
+      rollValue: null,
+      history: ['light rolled 0 but had no moves.'],
+    };
+    mockStoreState.serverRevision = 1;
+
+    await act(async () => {
+      view.rerender(<GameRoom />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockMatchDiceRollStage.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        rollValue: 0,
+      }),
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(1_499);
+    });
+
+    expect(mockMatchDiceRollStage.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        rollValue: 0,
+      }),
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+
+    expect(mockMatchDiceRollStage.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        rollValue: null,
+      }),
+    );
+  });
+
+  it('shows No Move for a blocked non-zero roll for 1.5 seconds before clearing it', async () => {
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    mockStoreState.gameState = {
+      ...baseGameState,
+      currentTurn: 'dark',
+      phase: 'rolling',
+      rollValue: null,
+      history: ['light rolled 3 but had no moves.'],
+    };
+    mockStoreState.serverRevision = 1;
+
+    await act(async () => {
+      view.rerender(<GameRoom />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getAllByText('No Move').length).toBeGreaterThan(0);
+    expect(
+      [...mockDice.mock.calls].some(
+        ([props]) => (props as any)?.settledStatusLabel === 'No Move' && (props as any)?.value === 3,
+      ),
+    ).toBe(true);
+
+    await act(async () => {
+      jest.advanceTimersByTime(1_499);
+    });
+
+    expect(screen.getAllByText('No Move').length).toBeGreaterThan(0);
+
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+
+    expect(screen.queryAllByText('No Move')).toHaveLength(0);
   });
 
   it('shows only settings in the in-game top menu', async () => {

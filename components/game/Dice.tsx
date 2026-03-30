@@ -33,6 +33,7 @@ interface DiceProps {
   showStatusCopy?: boolean;
   compact?: boolean;
   onResultShown?: () => void;
+  settledStatusLabel?: string | null;
   showVisual?: boolean;
   visualPlacement?: 'embedded' | 'external';
   artSize?: number;
@@ -181,6 +182,7 @@ export const Dice: React.FC<DiceProps> = ({
   showStatusCopy = true,
   compact = false,
   onResultShown,
+  settledStatusLabel = null,
   showVisual = true,
   visualPlacement = 'embedded',
   artSize,
@@ -354,9 +356,12 @@ export const Dice: React.FC<DiceProps> = ({
   }));
 
   const title = isSceneRolling ? 'Casting...' : resolvedValue !== null ? `Result: ${resolvedValue}` : 'Cast The Dice';
+  const settledResultStatusLabel = hasSettledResult ? settledStatusLabel : null;
   const subtitle = isSceneRolling
     ? 'The astragali are in motion'
-    : hasSettledResult
+    : settledResultStatusLabel
+      ? settledResultStatusLabel
+      : hasSettledResult
       ? 'Result ready'
       : canRoll
         ? 'Tap to roll'
@@ -395,7 +400,15 @@ export const Dice: React.FC<DiceProps> = ({
   const mobileDiceScale = isIOS ? MOBILE_DICE_SCALE * 1.08 : MOBILE_DICE_SCALE;
   const sceneSize = sceneBaseSize * (isStage ? STAGE_ROLL_SCENE_SCALE : 1) * (isMobileWidth ? mobileDiceScale : 1);
   const compactStageTitle = isSceneRolling ? 'Casting...' : hasSettledResult ? 'Roll Result' : 'Cast Dice';
-  const compactStageSubtitle = isSceneRolling ? 'Rolling' : hasSettledResult ? 'Result ready' : canRoll ? 'Tap to roll' : 'Wait turn';
+  const compactStageSubtitle = isSceneRolling
+    ? 'Rolling'
+    : settledResultStatusLabel
+      ? settledResultStatusLabel
+      : hasSettledResult
+        ? 'Result ready'
+        : canRoll
+          ? 'Tap to roll'
+          : 'Wait turn';
   const isRollDisabled = !canRoll || rolling || pressedIn;
 
   const renderDiceVisual = (sceneStyle?: StyleProp<ViewStyle>) => (
