@@ -41,6 +41,24 @@ Set real values in `backend/deploy/env.production`:
 docker compose --env-file env.production -f docker-compose.prod.yml up -d
 ```
 
+## 4b) Redeploy runtime changes
+
+When only the Nakama runtime module changes, rebuild the bundle and recreate just the `nakama` service:
+
+From repo root:
+
+```bash
+npm run backend:prod:redeploy
+```
+
+Useful verification commands:
+
+```bash
+npm run backend:prod:ps
+npm run backend:prod:health
+npm run backend:prod:logs
+```
+
 ## 5) Firewall guidance
 
 Expose only HTTP/HTTPS publicly. Keep raw Nakama ports private.

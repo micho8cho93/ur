@@ -288,6 +288,32 @@ describe("tournament authoritative match results", () => {
     );
   });
 
+  it("does not persist retryable tournament score-sync failures", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedRun(nk);
+    nk.tournamentJoin.mockImplementation(() => {
+      throw new Error("temporary join outage");
+    });
+
+    const result = processCompletedAuthoritativeTournamentMatch(nk, logger, createCompletion());
+
+    expect(result.retryableFailure).toBe(true);
+    expect(result.record).toBeNull();
+    expect(result.finalizationResult).toBeNull();
+    expect(nk.tournamentRecordWrite).not.toHaveBeenCalled();
+    expect(
+      nk.storage.get(buildStorageKey(TOURNAMENT_MATCH_RESULTS_COLLECTION, "run-1:match-1")),
+    ).toBeUndefined();
+
+    const storedRun = nk.storage.get(buildStorageKey(TOURNAMENT_RUNS_COLLECTION, "run-1"));
+    expect(storedRun?.value).toEqual(
+      expect.objectContaining({
+        metadata: {},
+      }),
+    );
+  });
+
   it("ignores duplicate tournament result processing", () => {
     const nk = createNakama();
     const logger = createLogger();
@@ -373,6 +399,135 @@ describe("tournament authoritative match results", () => {
         awardedXp: 420,
         source: "tournament_champion",
         sourceId: "run-1",
+      }),
+    );
+  });
+
+  it("recovers a counted duplicate result by advancing the bracket and finalizing the run", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    const startedAt = "2026-03-26T10:30:00.000Z";
+    const registrations = buildRegistrations(2);
+    seedRun(nk, {
+      metadata: {
+        xpForTournamentChampion: 420,
+      },
+      maxSize: 2,
+      registrations,
+      bracket: createSingleEliminationBracket(registrations, startedAt),
+    });
+    nk.tournamentsGetId.mockImplementation((ids: string[]) =>
+      ids.includes("tour-1")
+        ? [
+            {
+              id: "tour-1",
+              size: 2,
+              maxSize: 2,
+            },
+          ]
+        : [],
+    );
+    nk.tournamentRecordsList.mockReturnValue({
+      records: [
+        {
+          rank: 1,
+          owner_id: "user-1",
+          username: "Player 1",
+          score: 1,
+        },
+        {
+          rank: 2,
+          owner_id: "user-2",
+          username: "Player 2",
+          score: 0,
+        },
+      ],
+      owner_records: [],
+      rank_count: 2,
+    });
+
+    const completion = createCompletion({
+      players: [
+        {
+          userId: "user-1",
+          username: "Player 1",
+          color: "light",
+          didWin: true,
+          score: 1,
+          finishedCount: 7,
+          capturesMade: 2,
+          capturesSuffered: 0,
+          playerMoveCount: 9,
+        },
+        {
+          userId: "user-2",
+          username: "Player 2",
+          color: "dark",
+          didWin: false,
+          score: 0,
+          finishedCount: 4,
+          capturesMade: 0,
+          capturesSuffered: 2,
+          playerMoveCount: 9,
+        },
+      ],
+      winnerUserId: "user-1",
+      loserUserId: "user-2",
+    });
+
+    nk.storage.set(buildStorageKey(TOURNAMENT_MATCH_RESULTS_COLLECTION, "run-1:match-1"), {
+      collection: TOURNAMENT_MATCH_RESULTS_COLLECTION,
+      key: "run-1:match-1",
+      value: {
+        resultId: "run-1:match-1",
+        matchId: "match-1",
+        runId: "run-1",
+        tournamentId: "tour-1",
+        createdAt: completion.completedAt,
+        updatedAt: completion.completedAt,
+        valid: true,
+        counted: true,
+        invalidReason: null,
+        summary: {
+          modeId: completion.modeId,
+          totalMoves: completion.totalMoves,
+          revision: completion.revision,
+          completedAt: completion.completedAt,
+          round: completion.context?.round ?? null,
+          entryId: completion.context?.entryId ?? null,
+          winningColor: completion.winningColor,
+          winnerUserId: completion.winnerUserId,
+          loserUserId: completion.loserUserId,
+          classification: completion.classification,
+          players: completion.players,
+        },
+        tournamentRecordWrites: [],
+        errorMessage: null,
+      },
+      version: "result-version-1",
+    });
+
+    const result = processCompletedAuthoritativeTournamentMatch(nk, logger, completion);
+
+    expect(result.duplicate).toBe(true);
+    expect(result.retryableFailure).toBe(false);
+    expect(result.finalizationResult?.run.lifecycle).toBe("finalized");
+    expect(result.updatedRun?.bracket?.finalizedAt).toBe(completion.completedAt);
+    expect(nk.tournamentRecordWrite).not.toHaveBeenCalled();
+
+    const storedRun = nk.storage.get(buildStorageKey(TOURNAMENT_RUNS_COLLECTION, "run-1"));
+    expect(storedRun?.value).toEqual(
+      expect.objectContaining({
+        lifecycle: "finalized",
+        metadata: expect.objectContaining({
+          countedMatchCount: 1,
+          countedResultIds: ["run-1:match-1"],
+        }),
+        bracket: expect.objectContaining({
+          finalizedAt: completion.completedAt,
+          winnerUserId: "user-1",
+          runnerUpUserId: "user-2",
+        }),
       }),
     );
   });

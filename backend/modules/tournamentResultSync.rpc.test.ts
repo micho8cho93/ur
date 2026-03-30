@@ -88,6 +88,15 @@ type RuntimeGlobals = typeof globalThis & {
     state: any,
     presences: Array<Record<string, unknown>>
   ) => { state: any };
+  matchTerminate: (
+    ctx: Record<string, unknown>,
+    logger: { info: jest.Mock; warn: jest.Mock; debug: jest.Mock; error: jest.Mock },
+    nk: { storageRead: jest.Mock; storageWrite: jest.Mock },
+    dispatcher: { broadcastMessage: jest.Mock },
+    tick: number,
+    state: any,
+    graceSeconds: number
+  ) => { state: any };
 };
 
 const mockedProcessCompletedMatch = processCompletedMatch as jest.MockedFunction<typeof processCompletedMatch>;
@@ -301,6 +310,7 @@ describe('tournament match result synchronization', () => {
           championUserId: 'user-light',
           championRewardResult: null,
         },
+        retryableFailure: false,
       } as ReturnType<typeof processCompletedAuthoritativeTournamentMatch>);
 
     const initialized = runtime.matchInit(ctx, logger, nk, {
@@ -385,6 +395,7 @@ describe('tournament match result synchronization', () => {
         disabledRanks: true,
         nakamaTournament: null,
       },
+      retryableFailure: false,
     } as ReturnType<typeof processCompletedAuthoritativeTournamentMatch>);
 
     const initialized = runtime.matchInit(ctx, logger, nk, {
@@ -467,6 +478,7 @@ describe('tournament match result synchronization', () => {
         },
       ],
       finalizationResult: null,
+      retryableFailure: false,
     } as ReturnType<typeof processCompletedAuthoritativeTournamentMatch>);
 
     const initialized = runtime.matchInit(ctx, logger, nk, {
@@ -552,6 +564,7 @@ describe('tournament match result synchronization', () => {
         },
       ],
       finalizationResult: null,
+      retryableFailure: false,
     } as ReturnType<typeof processCompletedAuthoritativeTournamentMatch>);
 
     const initialized = runtime.matchInit(ctx, logger, nk, {
@@ -643,6 +656,7 @@ describe('tournament match result synchronization', () => {
           disabledRanks: true,
           nakamaTournament: null,
         },
+        retryableFailure: false,
       } as ReturnType<typeof processCompletedAuthoritativeTournamentMatch>);
 
     const initialized = runtime.matchInit(ctx, logger, nk, {
@@ -687,6 +701,81 @@ describe('tournament match result synchronization', () => {
     expect(mockedProcessCompletedAuthoritativeTournamentMatch).toHaveBeenCalledTimes(2);
   });
 
+  it('retries tournament synchronization when terminate runs after an earlier sync miss', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = createLogger();
+    const nk = createNakama();
+    const dispatcher = createDispatcher();
+    const ctx = { matchId: 'match-terminate-retry' };
+
+    mockedProcessRankedMatchResult.mockReturnValueOnce(buildRatedResult(false)).mockReturnValueOnce(buildRatedResult(true));
+    mockedProcessCompletedAuthoritativeTournamentMatch
+      .mockReturnValueOnce(null as never)
+      .mockReturnValueOnce({
+        skipped: false,
+        duplicate: false,
+        record: null,
+        updatedRun: null,
+        participantResolutions: [
+          {
+            userId: 'user-light',
+            state: 'champion',
+            finalPlacement: 1,
+          },
+          {
+            userId: 'user-dark',
+            state: 'runner_up',
+            finalPlacement: 2,
+          },
+        ],
+        finalizationResult: {
+          run: {
+            lifecycle: 'finalized',
+          } as never,
+          finalSnapshot: {
+            generatedAt: '2026-03-29T18:39:00.000Z',
+            overrideExpiry: 0,
+            rankCount: 2,
+            records: [],
+            prevCursor: null,
+            nextCursor: null,
+          },
+          championUserId: 'user-light',
+          championRewardResult: null,
+          disabledRanks: true,
+          nakamaTournament: null,
+        },
+        retryableFailure: false,
+      } as ReturnType<typeof processCompletedAuthoritativeTournamentMatch>);
+
+    const initialized = runtime.matchInit(ctx, logger, nk, {
+      playerIds: ['user-light', 'user-dark'],
+      modeId: 'standard',
+      rankedMatch: true,
+      tournamentRunId: 'run-1',
+      tournamentId: 'tour-1',
+      tournamentRound: 1,
+      tournamentEntryId: 'round-1-match-1',
+    });
+
+    let state = attachPresences({
+      ...initialized.state,
+      gameState: {
+        ...initialized.state.gameState,
+        phase: 'ended',
+        winner: 'light',
+      },
+    });
+
+    state = runtime.matchLoop(ctx, logger, nk, dispatcher, 1, state, []).state;
+    expect(state.resultRecorded).toBe(false);
+
+    state = runtime.matchTerminate(ctx, logger, nk, dispatcher, 2, state, 0).state;
+
+    expect(state.resultRecorded).toBe(true);
+    expect(mockedProcessCompletedAuthoritativeTournamentMatch).toHaveBeenCalledTimes(2);
+  });
+
   it('retries tournament finalization when a recorded final empties out before the run closes', () => {
     const runtime = globalThis as RuntimeGlobals;
     const logger = createLogger();
@@ -722,6 +811,7 @@ describe('tournament match result synchronization', () => {
         },
       ],
       finalizationResult: null,
+      retryableFailure: false,
     } as ReturnType<typeof processCompletedAuthoritativeTournamentMatch>);
     mockedMaybeAutoFinalizeTournamentRunById.mockReturnValueOnce({
       run: {

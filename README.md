@@ -59,6 +59,20 @@ cp backend/deploy/env.production.example backend/deploy/env.production
 npm run backend:prod:up
 ```
 
+When you only change the Nakama runtime code and need the live production server to pick it up on the droplet checkout:
+
+```bash
+npm run backend:prod:redeploy
+```
+
+Useful follow-up commands:
+
+```bash
+npm run backend:prod:ps
+npm run backend:prod:health
+npm run backend:prod:logs
+```
+
 Then set Vercel project env vars (Production and Preview as needed):
 
 ```bash
@@ -94,6 +108,9 @@ export EXPO_PUBLIC_GAME_TRANSPORT=offline
 - `npm run backend:up`: build runtime and start backend stack detached
 - `npm run backend:dev`: build runtime and start backend stack attached
 - `npm run backend:prod:up`: start production TLS stack (`backend/deploy/docker-compose.prod.yml`)
+- `npm run backend:prod:redeploy`: rebuild runtime and recreate the production `nakama` container
+- `npm run backend:prod:ps`: show production stack status
+- `npm run backend:prod:health`: curl the public production healthcheck from `env.production`
 - `npm run backend:prod:logs`: tail production stack logs
 
 ## Challenge + XP backend

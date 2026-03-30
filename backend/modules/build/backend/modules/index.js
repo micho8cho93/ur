@@ -6646,6 +6646,20 @@ var normalizeMetadata = (value) => {
   var _a;
   return (_a = asRecord(value)) != null ? _a : {};
 };
+var readStringArrayField2 = (value, keys) => {
+  const record = asRecord(value);
+  if (!record) {
+    return [];
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (!Array.isArray(field)) {
+      continue;
+    }
+    return field.filter((entry) => typeof entry === "string" && entry.trim().length > 0);
+  }
+  return [];
+};
 var readTournamentRunState = (nk, runId) => {
   var _a, _b;
   const objects = nk.storageRead([
@@ -6670,6 +6684,28 @@ var readTournamentMatchResultObject = (nk, resultId) => {
     }
   ]);
   return findStorageObject(objects, TOURNAMENT_MATCH_RESULTS_COLLECTION, resultId);
+};
+var normalizeTournamentMatchResultRecord = (value) => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+  const resultId = readStringField6(record, ["resultId", "result_id"]);
+  const matchId = readStringField6(record, ["matchId", "match_id"]);
+  const runId = readStringField6(record, ["runId", "run_id"]);
+  const tournamentId = readStringField6(record, ["tournamentId", "tournament_id"]);
+  if (!resultId || !matchId || !runId || !tournamentId) {
+    return null;
+  }
+  return record;
+};
+var readTournamentMatchResultState = (nk, resultId) => {
+  var _a;
+  const object = readTournamentMatchResultObject(nk, resultId);
+  return {
+    object,
+    record: normalizeTournamentMatchResultRecord((_a = object == null ? void 0 : object.value) != null ? _a : null)
+  };
 };
 var buildTournamentMatchResultId = (context, matchId) => `${context.runId}:${matchId}`;
 var mapOperatorToOverride = (operator) => {
@@ -6809,7 +6845,7 @@ var submitTournamentScores = (nk, run, completion, usernames) => {
     };
   });
 };
-var writeTournamentMatchResultRecord = (nk, record) => {
+var writeTournamentMatchResultRecord = (nk, record, version = null) => {
   nk.storageWrite([
     maybeSetStorageVersion({
       collection: TOURNAMENT_MATCH_RESULTS_COLLECTION,
@@ -6817,7 +6853,7 @@ var writeTournamentMatchResultRecord = (nk, record) => {
       value: record,
       permissionRead: STORAGE_PERMISSION_NONE,
       permissionWrite: STORAGE_PERMISSION_NONE
-    }, null)
+    }, version)
   ]);
 };
 var updateTournamentRunMetadata = (nk, logger, runId, result) => {
@@ -6828,12 +6864,25 @@ var updateTournamentRunMetadata = (nk, logger, runId, result) => {
       return;
     }
     const currentMetadata = normalizeMetadata(currentState.value.metadata);
+    const currentCountedResultIds = readStringArrayField2(currentMetadata, [
+      "countedResultIds",
+      "counted_result_ids"
+    ]);
+    const countedResultIds = new Set(currentCountedResultIds);
+    const alreadyCounted = countedResultIds.has(result.resultId);
     const currentCount = Math.max(
       0,
-      Math.floor((_a = readNumberField4(currentMetadata, ["countedMatchCount", "validMatchCount"])) != null ? _a : 0)
+      Math.max(
+        currentCountedResultIds.length,
+        Math.floor((_a = readNumberField4(currentMetadata, ["countedMatchCount", "validMatchCount"])) != null ? _a : 0)
+      )
     );
+    if (result.counted) {
+      countedResultIds.add(result.resultId);
+    }
     const nextMetadata = __spreadProps(__spreadValues({}, currentMetadata), {
-      countedMatchCount: result.counted ? currentCount + 1 : currentCount,
+      countedMatchCount: result.counted && !alreadyCounted ? currentCount + 1 : currentCount,
+      countedResultIds: Array.from(countedResultIds),
       lastProcessedMatchId: result.matchId,
       lastProcessedResultId: result.resultId,
       lastProcessedAt: result.updatedAt,
@@ -6944,6 +6993,61 @@ var maybeAutoFinalizeTournamentRunById = (nk, logger, runId) => {
   }
   return null;
 };
+var logRetryableTournamentSyncFailure = (logger, completion, stage, error) => {
+  var _a, _b, _c, _d;
+  logger.warn(
+    "Deferring tournament synchronization for run %s match %s entry %s during %s: %s",
+    (_b = (_a = completion.context) == null ? void 0 : _a.runId) != null ? _b : "",
+    completion.matchId,
+    (_d = (_c = completion.context) == null ? void 0 : _c.entryId) != null ? _d : "",
+    stage,
+    getErrorMessage(error)
+  );
+};
+var synchronizeTournamentRunFromRecord = (nk, logger, completion, record, fallbackRun) => {
+  var _a, _b, _c, _d, _e;
+  let updatedRun = fallbackRun;
+  let finalizationResult = null;
+  try {
+    updateTournamentRunMetadata(nk, logger, record.runId, record);
+    updatedRun = (_a = readTournamentRunState(nk, record.runId).run) != null ? _a : updatedRun;
+  } catch (error) {
+    logRetryableTournamentSyncFailure(logger, completion, "run_metadata", error);
+    return {
+      updatedRun,
+      finalizationResult: null,
+      retryableFailure: true
+    };
+  }
+  if (record.counted) {
+    try {
+      updatedRun = (_c = (_b = updateTournamentRunBracket(nk, logger, completion)) != null ? _b : readTournamentRunState(nk, record.runId).run) != null ? _c : updatedRun;
+    } catch (error) {
+      logRetryableTournamentSyncFailure(logger, completion, "bracket_update", error);
+      return {
+        updatedRun,
+        finalizationResult: null,
+        retryableFailure: true
+      };
+    }
+    try {
+      finalizationResult = maybeAutoFinalizeTournamentRunById(nk, logger, record.runId);
+    } catch (error) {
+      logRetryableTournamentSyncFailure(logger, completion, "auto_finalization", error);
+      return {
+        updatedRun,
+        finalizationResult: null,
+        retryableFailure: true
+      };
+    }
+  }
+  updatedRun = (_e = (_d = finalizationResult == null ? void 0 : finalizationResult.run) != null ? _d : readTournamentRunState(nk, record.runId).run) != null ? _e : updatedRun;
+  return {
+    updatedRun,
+    finalizationResult,
+    retryableFailure: false
+  };
+};
 var buildParticipantResolutions = (run, players) => players.map((player) => {
   var _a, _b, _c;
   const participant = getTournamentBracketParticipant((_a = run == null ? void 0 : run.bracket) != null ? _a : null, player.userId);
@@ -6981,7 +7085,7 @@ var resolveTournamentMatchContextFromParams = (params) => {
   };
 };
 var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
-  var _a, _b, _c, _d, _e;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
   if (!completion.context) {
     return {
       skipped: true,
@@ -6989,20 +7093,31 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
       record: null,
       updatedRun: null,
       participantResolutions: [],
-      finalizationResult: null
+      finalizationResult: null,
+      retryableFailure: false
     };
   }
   const resultId = buildTournamentMatchResultId(completion.context, completion.matchId);
-  if (readTournamentMatchResultObject(nk, resultId)) {
+  const existingResultState = readTournamentMatchResultState(nk, resultId);
+  const existingRecord = existingResultState.record;
+  const canRetryPendingRecord = (existingRecord == null ? void 0 : existingRecord.valid) === true && existingRecord.counted === false && existingRecord.invalidReason === null;
+  if (existingRecord && !canRetryPendingRecord) {
     logger.info("Skipping duplicate tournament result for %s", resultId);
     const duplicateRun = readTournamentRunState(nk, completion.context.runId).run;
+    const duplicateSync = existingRecord.counted ? synchronizeTournamentRunFromRecord(nk, logger, completion, existingRecord, duplicateRun) : {
+      updatedRun: duplicateRun,
+      finalizationResult: null,
+      retryableFailure: false
+    };
+    const resolvedRun = (_c = (_b = (_a = duplicateSync.finalizationResult) == null ? void 0 : _a.run) != null ? _b : duplicateSync.updatedRun) != null ? _c : duplicateRun;
     return {
       skipped: false,
       duplicate: true,
-      record: null,
-      updatedRun: duplicateRun,
-      participantResolutions: buildParticipantResolutions(duplicateRun, completion.players),
-      finalizationResult: null
+      record: existingRecord,
+      updatedRun: resolvedRun,
+      participantResolutions: buildParticipantResolutions(resolvedRun, completion.players),
+      finalizationResult: duplicateSync.finalizationResult,
+      retryableFailure: duplicateSync.retryableFailure
     };
   }
   const runState = readTournamentRunState(nk, completion.context.runId);
@@ -7015,20 +7130,23 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
       ensureTournamentJoined(nk, runState.run, completion.players, usernames);
       tournamentRecordWrites = submitTournamentScores(nk, runState.run, completion, usernames);
     } catch (error) {
-      errorMessage = getErrorMessage(error);
-      logger.error(
-        "Failed to submit tournament scores for run %s on match %s: %s",
-        completion.context.runId,
-        completion.matchId,
-        errorMessage
-      );
+      logRetryableTournamentSyncFailure(logger, completion, "score_sync", error);
+      return {
+        skipped: false,
+        duplicate: canRetryPendingRecord,
+        record: existingRecord,
+        updatedRun: runState.run,
+        participantResolutions: buildParticipantResolutions(runState.run, completion.players),
+        finalizationResult: null,
+        retryableFailure: true
+      };
     }
   }
   const record = {
     resultId,
     matchId: completion.matchId,
     runId: completion.context.runId,
-    tournamentId: (_b = (_a = runState.run) == null ? void 0 : _a.tournamentId) != null ? _b : completion.context.tournamentId,
+    tournamentId: (_e = (_d = runState.run) == null ? void 0 : _d.tournamentId) != null ? _e : completion.context.tournamentId,
     createdAt: completion.completedAt,
     updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
     valid: invalidReason === null,
@@ -7051,48 +7169,48 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
     errorMessage
   };
   try {
-    writeTournamentMatchResultRecord(nk, record);
+    writeTournamentMatchResultRecord(
+      nk,
+      record,
+      (_f = getStorageObjectVersion(existingResultState.object)) != null ? _f : null
+    );
   } catch (error) {
-    if (readTournamentMatchResultObject(nk, resultId)) {
+    const concurrentResultState = readTournamentMatchResultState(nk, resultId);
+    if (concurrentResultState.record) {
       logger.info("Skipping duplicate tournament result after concurrent write for %s", resultId);
       const duplicateRun = readTournamentRunState(nk, completion.context.runId).run;
+      const duplicateSync = concurrentResultState.record.counted ? synchronizeTournamentRunFromRecord(nk, logger, completion, concurrentResultState.record, duplicateRun) : {
+        updatedRun: duplicateRun,
+        finalizationResult: null,
+        retryableFailure: false
+      };
+      const resolvedRun = (_i = (_h = (_g = duplicateSync.finalizationResult) == null ? void 0 : _g.run) != null ? _h : duplicateSync.updatedRun) != null ? _i : duplicateRun;
       return {
         skipped: false,
         duplicate: true,
-        record: null,
-        updatedRun: duplicateRun,
-        participantResolutions: buildParticipantResolutions(duplicateRun, completion.players),
-        finalizationResult: null
+        record: concurrentResultState.record,
+        updatedRun: resolvedRun,
+        participantResolutions: buildParticipantResolutions(resolvedRun, completion.players),
+        finalizationResult: duplicateSync.finalizationResult,
+        retryableFailure: duplicateSync.retryableFailure
       };
     }
     throw error;
   }
-  let updatedRun = runState.run;
-  let finalizationResult = null;
-  if (runState.run) {
-    try {
-      updateTournamentRunMetadata(nk, logger, runState.run.runId, record);
-      if (record.counted) {
-        updatedRun = (_c = updateTournamentRunBracket(nk, logger, completion)) != null ? _c : updatedRun;
-        finalizationResult = maybeAutoFinalizeTournamentRunById(nk, logger, runState.run.runId);
-      }
-    } catch (error) {
-      logger.warn(
-        "Unable to update tournament run metadata for %s after match %s: %s",
-        runState.run.runId,
-        completion.matchId,
-        getErrorMessage(error)
-      );
-    }
-    updatedRun = (_e = (_d = finalizationResult == null ? void 0 : finalizationResult.run) != null ? _d : readTournamentRunState(nk, runState.run.runId).run) != null ? _e : updatedRun;
-  }
+  const synchronizedRunState = runState.run ? synchronizeTournamentRunFromRecord(nk, logger, completion, record, runState.run) : {
+    updatedRun: runState.run,
+    finalizationResult: null,
+    retryableFailure: false
+  };
+  const updatedRun = (_l = (_k = (_j = synchronizedRunState.finalizationResult) == null ? void 0 : _j.run) != null ? _k : synchronizedRunState.updatedRun) != null ? _l : runState.run;
   return {
     skipped: false,
     duplicate: false,
     record,
     updatedRun,
     participantResolutions: buildParticipantResolutions(updatedRun, completion.players),
-    finalizationResult
+    finalizationResult: synchronizedRunState.finalizationResult,
+    retryableFailure: synchronizedRunState.retryableFailure
   };
 };
 
@@ -7668,7 +7786,7 @@ var finalizeCompletedMatch = (logger, nk, dispatcher, state, matchId) => {
   const winnerProgressionAward = awardWinnerProgression(logger, nk, dispatcher, state, matchId);
   const tournamentProcessingResult = processCompletedTournamentMatch(logger, nk, state, matchId);
   const challengeProcessingResults = processCompletedMatchSummaries(logger, nk, state, matchId);
-  if (state.tournamentContext && !tournamentProcessingResult) {
+  if (state.tournamentContext && (!tournamentProcessingResult || tournamentProcessingResult.retryableFailure)) {
     logger.warn("Deferring final result lock for match %s until tournament synchronization succeeds.", matchId);
     state.resultRecorded = false;
     return false;

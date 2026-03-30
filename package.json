@@ -13,6 +13,9 @@
     "backend:up": "npm run build:backend && docker compose -f backend/docker-compose.yml up -d",
     "backend:dev": "npm run build:backend && docker compose -f backend/docker-compose.yml up",
     "backend:prod:up": "docker compose --env-file backend/deploy/env.production -f backend/deploy/docker-compose.prod.yml up -d",
+    "backend:prod:ps": "docker compose --env-file backend/deploy/env.production -f backend/deploy/docker-compose.prod.yml ps",
+    "backend:prod:health": "./scripts/backend-prod-healthcheck.sh",
+    "backend:prod:redeploy": "./scripts/backend-prod-redeploy.sh",
     "backend:prod:logs": "docker compose --env-file backend/deploy/env.production -f backend/deploy/docker-compose.prod.yml logs -f",
     "test": "jest",
     "test:watch": "jest --watch"

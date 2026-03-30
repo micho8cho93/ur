@@ -18,6 +18,7 @@ interface ModalProps {
   title: string;
   message?: string;
   actionLabel?: string;
+  actionLoading?: boolean;
   onAction?: () => void;
   children?: React.ReactNode;
   maxWidth?: number;
@@ -28,6 +29,7 @@ export const Modal: React.FC<ModalProps> = ({
   title,
   message,
   actionLabel,
+  actionLoading = false,
   onAction,
   children,
   maxWidth = 380,
@@ -66,7 +68,7 @@ export const Modal: React.FC<ModalProps> = ({
 
           {actionLabel && onAction ? (
             <View style={styles.buttonWrap}>
-              <Button title={actionLabel} onPress={onAction} />
+              <Button title={actionLabel} onPress={onAction} loading={actionLoading} />
             </View>
           ) : null}
         </View>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { createInitialState, getValidMoves } from '@/logic/engine';
 import { getMatchConfig } from '@/logic/matchConfigs';
 import type { GameState, MoveAction } from '@/logic/types';
@@ -33,6 +33,7 @@ const mockModal = jest.fn(
     title,
     message,
     actionLabel,
+    actionLoading,
     onAction,
     children,
   }: {
@@ -40,6 +41,7 @@ const mockModal = jest.fn(
     title?: string;
     message?: string;
     actionLabel?: string;
+    actionLoading?: boolean;
     onAction?: () => void;
     children?: React.ReactNode;
   }) => {
@@ -53,8 +55,9 @@ const mockModal = jest.fn(
         {message ? <Text>{message}</Text> : null}
         {children}
         {actionLabel ? (
-          <Pressable onPress={onAction}>
+          <Pressable disabled={actionLoading} onPress={actionLoading ? undefined : onAction}>
             <Text>{actionLabel}</Text>
+            {actionLoading ? <Text>loading</Text> : null}
           </Pressable>
         ) : null}
       </View>
@@ -254,6 +257,21 @@ const makeSnapshotPlayers = (
     ...overrides?.dark,
   },
 });
+
+const createDeferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (error?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return {
+    promise,
+    resolve,
+    reject,
+  };
+};
 
 jest.mock('@/components/game/Board', () => {
   if (mockUseRealBoard) {
@@ -2295,6 +2313,38 @@ describe('GameRoom match dice stage', () => {
       finalPlacement: 1,
       isChampion: true,
     };
+    mockGetPublicTournamentStatus.mockResolvedValue({
+      tournament: {
+        runId: 'run-1',
+        tournamentId: 'tournament-1',
+        name: 'Spring Open',
+        description: 'A public run.',
+        lifecycle: 'finalized',
+        startAt: '2026-03-27T09:00:00.000Z',
+        endAt: null,
+        updatedAt: '2026-03-27T10:00:00.000Z',
+        entrants: 2,
+        maxEntrants: 2,
+        gameMode: 'standard',
+        region: 'Global',
+        buyInLabel: 'Free',
+        prizeLabel: 'No prize listed',
+        membership: {
+          isJoined: true,
+          joinedAt: '2026-03-27T09:00:00.000Z',
+        },
+        participation: {
+          state: 'champion',
+          currentRound: 1,
+          currentEntryId: 'round-1-match-1',
+          activeMatchId: null,
+          finalPlacement: 1,
+          lastResult: 'win',
+          canLaunch: false,
+        },
+      },
+      standings: [],
+    });
 
     render(<GameRoom />);
 
@@ -2306,18 +2356,24 @@ describe('GameRoom match dice stage', () => {
         shouldEnterWaitingRoom: true,
       });
       await Promise.resolve();
+      await Promise.resolve();
     });
 
     expect(screen.getByText('Tournament Won')).toBeTruthy();
-    expect(screen.getByText('You won the tournament and finished as champion.')).toBeTruthy();
+    expect(await screen.findByText('You won the tournament and finished as champion.')).toBeTruthy();
     expect(screen.getByText('Return to Home Page')).toBeTruthy();
     expect(screen.queryByText('Enter Waiting Room')).toBeNull();
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
 
-    fireEvent.press(screen.getByText('Return to Home Page'));
+    await act(async () => {
+      fireEvent.press(screen.getByText('Return to Home Page'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(mockGetPublicTournamentStatus).toHaveBeenCalledWith('run-1');
-    expect(mockRouterReplace).toHaveBeenCalledWith('/');
+    await waitFor(() => expect(mockRouterReplace).toHaveBeenCalledWith('/'));
   });
 
   it('shows an immediate tournament win modal for the champion and returns to the user home page', async () => {
@@ -2342,6 +2398,38 @@ describe('GameRoom match dice stage', () => {
       phase: 'ended',
       winner: 'light',
     };
+    mockGetPublicTournamentStatus.mockResolvedValue({
+      tournament: {
+        runId: 'run-1',
+        tournamentId: 'tournament-1',
+        name: 'Spring Open',
+        description: 'A public run.',
+        lifecycle: 'finalized',
+        startAt: '2026-03-27T09:00:00.000Z',
+        endAt: null,
+        updatedAt: '2026-03-27T10:00:00.000Z',
+        entrants: 2,
+        maxEntrants: 2,
+        gameMode: 'standard',
+        region: 'Global',
+        buyInLabel: 'Free',
+        prizeLabel: 'No prize listed',
+        membership: {
+          isJoined: true,
+          joinedAt: '2026-03-27T09:00:00.000Z',
+        },
+        participation: {
+          state: 'champion',
+          currentRound: 1,
+          currentEntryId: 'round-1-match-1',
+          activeMatchId: null,
+          finalPlacement: 1,
+          lastResult: 'win',
+          canLaunch: false,
+        },
+      },
+      standings: [],
+    });
 
     render(<GameRoom />);
 
@@ -2359,6 +2447,133 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByText('You won the tournament and finished as champion.')).toBeTruthy();
     expect(screen.getByText('Return to Home Page')).toBeTruthy();
     expect(screen.queryByText('Enter Waiting Room')).toBeNull();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Return to Home Page'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockGetPublicTournamentStatus).toHaveBeenCalledWith('run-1');
+    expect(mockRouterReplace).toHaveBeenCalledWith('/');
+  });
+
+  it('keeps the terminal tournament exit gated while validation is still in flight', async () => {
+    const deferredStatus = createDeferred<Awaited<ReturnType<typeof mockGetPublicTournamentStatus>>>();
+
+    mockSearchParams.id = 'tournament-exit-loading';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-exit-loading',
+    });
+    mockStoreState.matchId = 'tournament-exit-loading';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockGetPublicTournamentStatus.mockReturnValueOnce(deferredStatus.promise);
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-exit-loading', {
+        tournamentOutcome: 'champion',
+        shouldEnterWaitingRoom: false,
+      });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Return to Home Page'));
+      await Promise.resolve();
+    });
+
+    expect(mockGetPublicTournamentStatus).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Finalizing tournament result before returning home.')).toBeTruthy();
+    expect(screen.getByText('loading')).toBeTruthy();
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByText('Return to Home Page'));
+
+    expect(mockGetPublicTournamentStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to a leave-anyway terminal exit after tournament validation times out', async () => {
+    mockSearchParams.id = 'tournament-exit-timeout';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-exit-timeout',
+    });
+    mockStoreState.matchId = 'tournament-exit-timeout';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'dark',
+    };
+    mockGetPublicTournamentStatus.mockImplementationOnce(() => new Promise(() => {}));
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-exit-timeout', {
+        didWin: false,
+        tournamentOutcome: 'eliminated',
+        totalXpDelta: 0,
+        shouldEnterWaitingRoom: false,
+      });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Return to Home Page'));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Finalizing tournament result before returning home.')).toBeTruthy();
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Leave Anyway')).toBeTruthy();
+    expect(screen.getByText(/We could not confirm the final standings in time/)).toBeTruthy();
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Leave Anyway'));
+      await Promise.resolve();
+    });
+
+    expect(mockRouterReplace).toHaveBeenCalledWith('/');
   });
 
   it('resolves a stale final-win summary into a return-home tournament result modal', async () => {
@@ -2437,10 +2652,11 @@ describe('GameRoom match dice stage', () => {
       fireEvent.press(screen.getByText('Return to Home Page'));
       await Promise.resolve();
       await Promise.resolve();
+      await Promise.resolve();
     });
 
     expect(mockGetPublicTournamentStatus).toHaveBeenCalledWith('run-1');
-    expect(mockRouterReplace).toHaveBeenCalledWith('/');
+    await waitFor(() => expect(mockRouterReplace).toHaveBeenCalledWith('/'));
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
   });
 

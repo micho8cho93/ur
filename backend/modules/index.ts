@@ -1005,7 +1005,10 @@ const finalizeCompletedMatch = (
   const tournamentProcessingResult = processCompletedTournamentMatch(logger, nk, state, matchId);
   const challengeProcessingResults = processCompletedMatchSummaries(logger, nk, state, matchId);
 
-  if (state.tournamentContext && !tournamentProcessingResult) {
+  if (
+    state.tournamentContext &&
+    (!tournamentProcessingResult || tournamentProcessingResult.retryableFailure)
+  ) {
     logger.warn("Deferring final result lock for match %s until tournament synchronization succeeds.", matchId);
     state.resultRecorded = false;
     return false;
