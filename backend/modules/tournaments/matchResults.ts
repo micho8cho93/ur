@@ -336,8 +336,15 @@ const resolveUsernames = (
   return usernames;
 };
 
+const isIgnorableTournamentJoinError = (error: unknown): boolean => {
+  const message = getErrorMessage(error);
+
+  return /already|joined|duplicate|exists|member/i.test(message);
+};
+
 const ensureTournamentJoined = (
   nk: RuntimeNakama,
+  logger: RuntimeLogger,
   run: TournamentRunRecord,
   players: TournamentMatchPlayerSummary[],
   usernames: Record<string, string>,
@@ -346,8 +353,32 @@ const ensureTournamentJoined = (
     return;
   }
 
+  const registeredUserIds = new Set(
+    run.registrations
+      .map((registration) => registration.userId.trim())
+      .filter((userId) => userId.length > 0),
+  );
+
   players.forEach((player) => {
-    nk.tournamentJoin(run.tournamentId, player.userId, usernames[player.userId] ?? player.userId);
+    if (registeredUserIds.has(player.userId)) {
+      return;
+    }
+
+    try {
+      nk.tournamentJoin(run.tournamentId, player.userId, usernames[player.userId] ?? player.userId);
+    } catch (error) {
+      if (isIgnorableTournamentJoinError(error)) {
+        logger.info(
+          "Skipping redundant tournamentJoin for run %s user %s: %s",
+          run.runId,
+          player.userId,
+          getErrorMessage(error),
+        );
+        return;
+      }
+
+      throw error;
+    }
   });
 };
 
@@ -764,7 +795,7 @@ export const processCompletedAuthoritativeTournamentMatch = (
   if (!invalidReason && runState.run) {
     try {
       const usernames = resolveUsernames(nk, logger, completion.players);
-      ensureTournamentJoined(nk, runState.run, completion.players, usernames);
+      ensureTournamentJoined(nk, logger, runState.run, completion.players, usernames);
       tournamentRecordWrites = submitTournamentScores(nk, runState.run, completion, usernames);
     } catch (error) {
       logRetryableTournamentSyncFailure(logger, completion, "score_sync", error);

@@ -251,6 +251,50 @@ describe("tournament authoritative match results", () => {
     );
   });
 
+  it("does not re-join players who are already registered in the public run before writing scores", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    nk.tournamentJoin.mockImplementation(() => {
+      throw new Error("player already joined tournament");
+    });
+    seedRun(nk, {
+      maxSize: 2,
+      registrations: [
+        {
+          userId: "user-light",
+          displayName: "Light Player",
+          joinedAt: "2026-03-26T10:00:00.000Z",
+          seed: 1,
+        },
+        {
+          userId: "user-dark",
+          displayName: "Dark Player",
+          joinedAt: "2026-03-26T10:01:00.000Z",
+          seed: 2,
+        },
+      ],
+    });
+
+    const result = processCompletedAuthoritativeTournamentMatch(nk, logger, createCompletion());
+
+    expect(result.retryableFailure).toBe(false);
+    expect(result.record?.counted).toBe(true);
+    expect(nk.tournamentJoin).not.toHaveBeenCalled();
+    expect(nk.tournamentRecordWrite).toHaveBeenCalledTimes(2);
+    expect(result.record?.tournamentRecordWrites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          userId: "user-light",
+          score: 1,
+        }),
+        expect.objectContaining({
+          userId: "user-dark",
+          score: 0,
+        }),
+      ]),
+    );
+  });
+
   it("stores invalid tournament matches without counting them", () => {
     const nk = createNakama();
     const logger = createLogger();
