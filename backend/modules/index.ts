@@ -84,7 +84,44 @@ import {
   RPC_CLAIM_USERNAME,
   RPC_GET_USERNAME_ONBOARDING_STATUS,
 } from "./usernameOnboarding";
-import { registerTournamentRpcs } from "./tournaments";
+import {
+  RPC_ADMIN_CLOSE_TOURNAMENT,
+  RPC_ADMIN_CREATE_TOURNAMENT_RUN,
+  RPC_ADMIN_DELETE_TOURNAMENT,
+  RPC_ADMIN_EXPORT_TOURNAMENT,
+  RPC_ADMIN_FINALIZE_TOURNAMENT,
+  RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG,
+  RPC_ADMIN_GET_TOURNAMENT_LIVE_STATUS,
+  RPC_ADMIN_GET_TOURNAMENT_RUN,
+  RPC_ADMIN_GET_TOURNAMENT_STANDINGS,
+  RPC_ADMIN_LIST_TOURNAMENTS,
+  RPC_ADMIN_OPEN_TOURNAMENT,
+  RPC_GET_PUBLIC_TOURNAMENT,
+  RPC_GET_PUBLIC_TOURNAMENT_STANDINGS,
+  RPC_JOIN_PUBLIC_TOURNAMENT,
+  RPC_LAUNCH_TOURNAMENT_MATCH,
+  RPC_LIST_PUBLIC_TOURNAMENTS,
+  RPC_ADMIN_WHOAMI,
+  RPC_TOURNAMENT_JOIN,
+  rpcAdminCloseTournament,
+  rpcAdminCreateTournamentRun,
+  rpcAdminDeleteTournament,
+  rpcAdminExportTournament,
+  rpcAdminFinalizeTournament,
+  rpcAdminGetTournamentAuditLog,
+  rpcAdminGetTournamentLiveStatus,
+  rpcAdminGetTournamentRun,
+  rpcAdminGetTournamentStandings,
+  rpcAdminListTournaments,
+  rpcAdminOpenTournament,
+  rpcAdminWhoAmI,
+  rpcGetPublicTournament,
+  rpcGetPublicTournamentStandings,
+  rpcJoinTournament,
+  rpcJoinPublicTournament,
+  rpcLaunchTournamentMatch,
+  rpcListPublicTournaments,
+} from "./tournaments";
 import {
   maybeAutoFinalizeTournamentRunById,
   processCompletedAuthoritativeTournamentMatch,
@@ -1237,7 +1274,24 @@ function InitModule(
   initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
   initializer.registerRpc(RPC_GET_USERNAME_ONBOARDING_STATUS_NAME, rpcGetUsernameOnboardingStatus);
   initializer.registerRpc(RPC_CLAIM_USERNAME_NAME, rpcClaimUsername);
-  registerTournamentRpcs(initializer);
+  initializer.registerRpc(RPC_ADMIN_WHOAMI, rpcAdminWhoAmI);
+  initializer.registerRpc(RPC_ADMIN_LIST_TOURNAMENTS, rpcAdminListTournaments);
+  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_RUN, rpcAdminGetTournamentRun);
+  initializer.registerRpc(RPC_ADMIN_CREATE_TOURNAMENT_RUN, rpcAdminCreateTournamentRun);
+  initializer.registerRpc(RPC_ADMIN_OPEN_TOURNAMENT, rpcAdminOpenTournament);
+  initializer.registerRpc(RPC_ADMIN_DELETE_TOURNAMENT, rpcAdminDeleteTournament);
+  initializer.registerRpc(RPC_ADMIN_CLOSE_TOURNAMENT, rpcAdminCloseTournament);
+  initializer.registerRpc(RPC_ADMIN_FINALIZE_TOURNAMENT, rpcAdminFinalizeTournament);
+  initializer.registerRpc(RPC_ADMIN_EXPORT_TOURNAMENT, rpcAdminExportTournament);
+  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_LIVE_STATUS, rpcAdminGetTournamentLiveStatus);
+  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_STANDINGS, rpcAdminGetTournamentStandings);
+  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG, rpcAdminGetTournamentAuditLog);
+  initializer.registerRpc(RPC_TOURNAMENT_JOIN, rpcJoinTournament);
+  initializer.registerRpc(RPC_LIST_PUBLIC_TOURNAMENTS, rpcListPublicTournaments);
+  initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT, rpcGetPublicTournament);
+  initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT_STANDINGS, rpcGetPublicTournamentStandings);
+  initializer.registerRpc(RPC_JOIN_PUBLIC_TOURNAMENT, rpcJoinPublicTournament);
+  initializer.registerRpc(RPC_LAUNCH_TOURNAMENT_MATCH, rpcLaunchTournamentMatch);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,

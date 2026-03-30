@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import "./index";
 
 describe("InitModule tournament RPC registration", () => {
@@ -44,6 +47,24 @@ describe("InitModule tournament RPC registration", () => {
         "rpc_admin_get_tournament_run",
         "rpc_admin_list_tournaments",
       ]),
+    );
+  });
+
+  it("keeps tournament admin RPCs directly registered inside InitModule for Nakama runtime compatibility", () => {
+    const entrypointSource = fs.readFileSync(
+      path.resolve(__dirname, "index.ts"),
+      "utf8",
+    );
+
+    expect(entrypointSource).not.toContain("registerTournamentRpcs(initializer)");
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_WHOAMI, rpcAdminWhoAmI);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_EXPORT_TOURNAMENT, rpcAdminExportTournament);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_LIVE_STATUS, rpcAdminGetTournamentLiveStatus);",
     );
   });
 });
