@@ -141,20 +141,4 @@ describe('Dice', () => {
 
     expect(onResultShown).toHaveBeenCalledTimes(1);
   });
-
-  it('renders the settled status label when provided', () => {
-    render(
-      <Dice
-        value={3}
-        rolling={false}
-        onRoll={jest.fn()}
-        canRoll={false}
-        mode="panel"
-        showNumericResult={false}
-        settledStatusLabel="No Move"
-      />,
-    );
-
-    expect(screen.getByText('No Move')).toBeTruthy();
-  });
 });

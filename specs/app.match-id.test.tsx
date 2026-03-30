@@ -84,11 +84,9 @@ const mockSlotDiceScene = jest.fn(() => {
 const mockDice = jest.fn(({
   canRoll,
   onRoll,
-  settledStatusLabel,
 }: {
   canRoll?: boolean;
   onRoll?: () => void;
-  settledStatusLabel?: string | null;
 }) => {
   const { Pressable, Text, View } = require('react-native');
   return (
@@ -96,7 +94,6 @@ const mockDice = jest.fn(({
       <Pressable testID="dice-roll-button" disabled={!canRoll} onPress={onRoll}>
         <Text>{canRoll ? 'rollable' : 'locked'}</Text>
       </Pressable>
-      {settledStatusLabel ? <Text>{settledStatusLabel}</Text> : null}
     </View>
   );
 });
@@ -1168,7 +1165,7 @@ describe('GameRoom match dice stage', () => {
     });
 
     await act(async () => {
-      jest.advanceTimersByTime(1_500);
+      jest.advanceTimersByTime(1_000);
     });
 
     expect(mockMatchDiceRollStage.mock.calls.at(-1)?.[0]).toEqual(
@@ -1179,7 +1176,7 @@ describe('GameRoom match dice stage', () => {
     );
   });
 
-  it('keeps a zero roll visible for 1.5 seconds before clearing it', async () => {
+  it('keeps a zero roll visible for 1 second before clearing it', async () => {
     const view = render(<GameRoom />);
 
     await act(async () => {
@@ -1209,7 +1206,7 @@ describe('GameRoom match dice stage', () => {
     );
 
     await act(async () => {
-      jest.advanceTimersByTime(1_499);
+      jest.advanceTimersByTime(999);
     });
 
     expect(mockMatchDiceRollStage.mock.calls.at(-1)?.[0]).toEqual(
@@ -1227,49 +1224,6 @@ describe('GameRoom match dice stage', () => {
         rollValue: null,
       }),
     );
-  });
-
-  it('shows No Move for a blocked non-zero roll for 1.5 seconds before clearing it', async () => {
-    const view = render(<GameRoom />);
-
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    mockStoreState.gameState = {
-      ...baseGameState,
-      currentTurn: 'dark',
-      phase: 'rolling',
-      rollValue: null,
-      history: ['light rolled 3 but had no moves.'],
-    };
-    mockStoreState.serverRevision = 1;
-
-    await act(async () => {
-      view.rerender(<GameRoom />);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(screen.getAllByText('No Move').length).toBeGreaterThan(0);
-    expect(
-      [...mockDice.mock.calls].some(
-        ([props]) => (props as any)?.settledStatusLabel === 'No Move' && (props as any)?.value === 3,
-      ),
-    ).toBe(true);
-
-    await act(async () => {
-      jest.advanceTimersByTime(1_499);
-    });
-
-    expect(screen.getAllByText('No Move').length).toBeGreaterThan(0);
-
-    await act(async () => {
-      jest.advanceTimersByTime(1);
-    });
-
-    expect(screen.queryAllByText('No Move')).toHaveLength(0);
   });
 
   it('shows only settings in the in-game top menu', async () => {

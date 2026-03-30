@@ -1,4 +1,4 @@
-export const ROLL_RESULT_HOLD_MS = 1_500;
+export const ROLL_RESULT_HOLD_MS = 1_000;
 
 const NO_MOVE_ROLL_HISTORY_RE = /^(light|dark) rolled (\d+) but had no moves\.$/;
 
@@ -16,7 +16,4 @@ export const getNoMoveRollValueFromHistoryEntry = (entry: string): number | null
   return parsedValue;
 };
 
-export const shouldDisplayNoMoveLabel = (value: number | null): boolean => value !== null && value > 0;
-
-export const shouldHoldRollResult = (value: number | null): boolean =>
-  value === 0 || shouldDisplayNoMoveLabel(value);
+export const shouldHoldRollResult = (value: number | null): boolean => value === 0;

@@ -33,7 +33,6 @@ interface DiceProps {
   showStatusCopy?: boolean;
   compact?: boolean;
   onResultShown?: () => void;
-  settledStatusLabel?: string | null;
   showVisual?: boolean;
   visualPlacement?: 'embedded' | 'external';
   artSize?: number;
@@ -182,7 +181,6 @@ export const Dice: React.FC<DiceProps> = ({
   showStatusCopy = true,
   compact = false,
   onResultShown,
-  settledStatusLabel = null,
   showVisual = true,
   visualPlacement = 'embedded',
   artSize,
@@ -356,12 +354,9 @@ export const Dice: React.FC<DiceProps> = ({
   }));
 
   const title = isSceneRolling ? 'Casting...' : resolvedValue !== null ? `Result: ${resolvedValue}` : 'Cast The Dice';
-  const settledResultStatusLabel = hasSettledResult ? settledStatusLabel : null;
   const subtitle = isSceneRolling
     ? 'The astragali are in motion'
-    : settledResultStatusLabel
-      ? settledResultStatusLabel
-      : hasSettledResult
+    : hasSettledResult
       ? 'Result ready'
       : canRoll
         ? 'Tap to roll'
@@ -402,9 +397,7 @@ export const Dice: React.FC<DiceProps> = ({
   const compactStageTitle = isSceneRolling ? 'Casting...' : hasSettledResult ? 'Roll Result' : 'Cast Dice';
   const compactStageSubtitle = isSceneRolling
     ? 'Rolling'
-    : settledResultStatusLabel
-      ? settledResultStatusLabel
-      : hasSettledResult
+    : hasSettledResult
         ? 'Result ready'
         : canRoll
           ? 'Tap to roll'
