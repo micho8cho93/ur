@@ -45,6 +45,7 @@ export class NakamaService {
   private client: Client | null = null;
   private session: Session | null = null;
   private socket: Socket | null = null;
+  private sessionRefreshPromise: Promise<Session | null> | null = null;
 
   getClient(): Client {
     if (!this.client) {
@@ -107,6 +108,40 @@ export class NakamaService {
     return this.authenticateStoredDevice(username);
   }
 
+  async recoverSessionAfterUnauthorized(
+    failedSession: Session | null,
+    options?: {
+      allowDeviceAuthFallback?: boolean;
+      username?: string;
+    },
+  ): Promise<Session | null> {
+    const allowDeviceAuthFallback = options?.allowDeviceAuthFallback ?? true;
+
+    if (this.session && failedSession && this.session.token !== failedSession.token) {
+      if (!this.session.isexpired(Date.now() / 1000)) {
+        return this.session;
+      }
+
+      const refreshedCurrentSession = await this.refreshSession(this.session);
+      if (refreshedCurrentSession) {
+        return refreshedCurrentSession;
+      }
+    }
+
+    if (failedSession?.refresh_token) {
+      const refreshedSession = await this.refreshSession(failedSession);
+      if (refreshedSession) {
+        return refreshedSession;
+      }
+    }
+
+    if (!allowDeviceAuthFallback) {
+      return null;
+    }
+
+    return this.authenticateStoredDevice(options?.username);
+  }
+
   async loadSession(): Promise<Session | null> {
     if (this.session) {
       if (!this.session.isexpired(Date.now() / 1000)) {
@@ -118,19 +153,7 @@ export class NakamaService {
         return null;
       }
 
-      try {
-        const refreshed = await this.getClient().sessionRefresh(this.session);
-        this.session = refreshed;
-        await this.persistSession(refreshed);
-        return refreshed;
-      } catch (error) {
-        if (isUnauthorizedError(error)) {
-          await this.clearSession();
-          return null;
-        }
-
-        throw error;
-      }
+      return this.refreshSession(this.session);
     }
 
     const rawSession = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
@@ -146,19 +169,7 @@ export class NakamaService {
 
       const restored = Session.restore(stored.token, stored.refreshToken);
       if (restored.isexpired(Date.now() / 1000) && restored.refresh_token) {
-        try {
-          const refreshed = await this.getClient().sessionRefresh(restored);
-          this.session = refreshed;
-          await this.persistSession(refreshed);
-          return refreshed;
-        } catch (error) {
-          if (isUnauthorizedError(error)) {
-            await this.clearSession();
-            return null;
-          }
-
-          throw error;
-        }
+        return this.refreshSession(restored);
       }
 
       if (restored.isexpired(Date.now() / 1000) && !restored.refresh_token) {
@@ -241,9 +252,36 @@ export class NakamaService {
 
   async clearSession(): Promise<void> {
     this.disconnectSocket(true);
+    this.sessionRefreshPromise = null;
     this.session = null;
     this.client = null;
     await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
+  }
+
+  private async refreshSession(session: Session): Promise<Session | null> {
+    if (this.sessionRefreshPromise) {
+      return this.sessionRefreshPromise;
+    }
+
+    this.sessionRefreshPromise = (async () => {
+      try {
+        const refreshed = await this.getClient().sessionRefresh(session);
+        this.session = refreshed;
+        await this.persistSession(refreshed);
+        return refreshed;
+      } catch (error) {
+        if (isUnauthorizedError(error)) {
+          await this.clearSession();
+          return null;
+        }
+
+        throw error;
+      } finally {
+        this.sessionRefreshPromise = null;
+      }
+    })();
+
+    return this.sessionRefreshPromise;
   }
 
   private async getOrCreateDeviceId(): Promise<string> {

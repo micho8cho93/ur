@@ -27,6 +27,19 @@ type StatusLikeError = {
   statusText?: string;
 };
 
+const isUnauthorizedTournamentError = (error: unknown): boolean => {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+
+  const candidate = error as StatusLikeError;
+  if (candidate.status === 401) {
+    return true;
+  }
+
+  return typeof candidate.message === 'string' && /unauthorized|expired|token/i.test(candidate.message);
+};
+
 const normalizeTournamentError = (error: unknown): Error => {
   if (error instanceof Error) {
     return error;
@@ -259,15 +272,80 @@ const normalizeTournamentStanding = (value: unknown): PublicTournamentStanding =
 };
 
 const callTournamentRpc = async (rpcName: string, payload: Record<string, unknown>): Promise<RpcPayloadRecord> => {
-  const session = await ensureSession();
-  const client = nakamaService.getClient();
+  let session = await ensureSession();
+  let client = nakamaService.getClient();
 
   try {
     const response = await client.rpc(session, rpcName, payload);
     return normalizeRpcPayload(response.payload);
   } catch (error) {
+    if (isUnauthorizedTournamentError(error)) {
+      try {
+        const recoveredSession = await nakamaService.recoverSessionAfterUnauthorized(session);
+        if (recoveredSession) {
+          session = recoveredSession;
+          client = nakamaService.getClient();
+
+          try {
+            const retryResponse = await client.rpc(session, rpcName, payload);
+            return normalizeRpcPayload(retryResponse.payload);
+          } catch (retryError) {
+            throw normalizeTournamentError(retryError);
+          }
+        }
+      } catch (recoveryError) {
+        throw normalizeTournamentError(recoveryError);
+      }
+    }
+
     throw normalizeTournamentError(error);
   }
+};
+
+const normalizeLaunchTournamentMatchResponse = (
+  payload: RpcPayloadRecord,
+  session: Session,
+  runId: string,
+): TournamentMatchLaunchServiceResult => {
+  const statusMetadata = {
+    ...(readRecordField(payload, ['statusMetadata', 'status_metadata']) ?? {}),
+    ...(readRecordField(payload, ['status', 'status_info', 'statusInfo']) ?? {}),
+  };
+
+  if (!session.user_id) {
+    throw new Error('Authenticated session is missing user ID.');
+  }
+
+  return {
+    matchId: readStringField(payload, ['matchId', 'match_id']) ?? '',
+    matchToken: readStringField(payload, ['matchToken', 'match_token']),
+    tournamentRunId:
+      readStringField(payload, ['tournamentRunId', 'tournament_run_id']) ??
+      readStringField(payload, ['runId', 'run_id']) ??
+      runId,
+    tournamentId: readStringField(payload, ['tournamentId', 'tournament_id']) ?? runId,
+    tournamentRound:
+      readNumberField(payload, ['tournamentRound', 'tournament_round', 'round']) ??
+      readNumberField(statusMetadata, ['tournamentRound', 'tournament_round', 'round']),
+    tournamentEntryId:
+      readStringField(payload, ['tournamentEntryId', 'tournament_entry_id', 'entryId', 'entry_id']) ??
+      readStringField(statusMetadata, ['tournamentEntryId', 'tournament_entry_id', 'entryId', 'entry_id']),
+    playerState:
+      readStringField(payload, ['playerState', 'player_state']) ??
+      readStringField(statusMetadata, ['playerState', 'player_state']),
+    nextRoundReady:
+      readBooleanField(payload, ['nextRoundReady', 'next_round_ready']) ??
+      readBooleanField(statusMetadata, ['nextRoundReady', 'next_round_ready']),
+    statusMessage:
+      readStringField(payload, ['statusMessage', 'status_message', 'message']) ??
+      readStringField(statusMetadata, ['statusMessage', 'status_message', 'message']),
+    queueStatus:
+      readStringField(payload, ['queueStatus', 'queue_status']) ??
+      readStringField(statusMetadata, ['queueStatus', 'queue_status']),
+    statusMetadata,
+    session,
+    userId: session.user_id,
+  };
 };
 
 export type TournamentMatchLaunchServiceResult = TournamentMatchLaunchResult & {
@@ -321,52 +399,32 @@ export const joinPublicTournament = async (
 };
 
 export const launchTournamentMatch = async (runId: string): Promise<TournamentMatchLaunchServiceResult> => {
-  const session = await ensureSession();
-  const client = nakamaService.getClient();
+  let session = await ensureSession();
+  let client = nakamaService.getClient();
 
   try {
     const response = await client.rpc(session, RPC_LAUNCH_TOURNAMENT_MATCH, { runId });
-    const payload = normalizeRpcPayload(response.payload);
-    const statusMetadata = {
-      ...(readRecordField(payload, ['statusMetadata', 'status_metadata']) ?? {}),
-      ...(readRecordField(payload, ['status', 'status_info', 'statusInfo']) ?? {}),
-    };
+    return normalizeLaunchTournamentMatchResponse(normalizeRpcPayload(response.payload), session, runId);
+  } catch (error) {
+    if (isUnauthorizedTournamentError(error)) {
+      try {
+        const recoveredSession = await nakamaService.recoverSessionAfterUnauthorized(session);
+        if (recoveredSession) {
+          session = recoveredSession;
+          client = nakamaService.getClient();
 
-    if (!session.user_id) {
-      throw new Error('Authenticated session is missing user ID.');
+          try {
+            const retryResponse = await client.rpc(session, RPC_LAUNCH_TOURNAMENT_MATCH, { runId });
+            return normalizeLaunchTournamentMatchResponse(normalizeRpcPayload(retryResponse.payload), session, runId);
+          } catch (retryError) {
+            throw normalizeTournamentError(retryError);
+          }
+        }
+      } catch (recoveryError) {
+        throw normalizeTournamentError(recoveryError);
+      }
     }
 
-    return {
-      matchId: readStringField(payload, ['matchId', 'match_id']) ?? '',
-      matchToken: readStringField(payload, ['matchToken', 'match_token']),
-      tournamentRunId:
-        readStringField(payload, ['tournamentRunId', 'tournament_run_id']) ??
-        readStringField(payload, ['runId', 'run_id']) ??
-        runId,
-      tournamentId: readStringField(payload, ['tournamentId', 'tournament_id']) ?? runId,
-      tournamentRound:
-        readNumberField(payload, ['tournamentRound', 'tournament_round', 'round']) ??
-        readNumberField(statusMetadata, ['tournamentRound', 'tournament_round', 'round']),
-      tournamentEntryId:
-        readStringField(payload, ['tournamentEntryId', 'tournament_entry_id', 'entryId', 'entry_id']) ??
-        readStringField(statusMetadata, ['tournamentEntryId', 'tournament_entry_id', 'entryId', 'entry_id']),
-      playerState:
-        readStringField(payload, ['playerState', 'player_state']) ??
-        readStringField(statusMetadata, ['playerState', 'player_state']),
-      nextRoundReady:
-        readBooleanField(payload, ['nextRoundReady', 'next_round_ready']) ??
-        readBooleanField(statusMetadata, ['nextRoundReady', 'next_round_ready']),
-      statusMessage:
-        readStringField(payload, ['statusMessage', 'status_message', 'message']) ??
-        readStringField(statusMetadata, ['statusMessage', 'status_message', 'message']),
-      queueStatus:
-        readStringField(payload, ['queueStatus', 'queue_status']) ??
-        readStringField(statusMetadata, ['queueStatus', 'queue_status']),
-      statusMetadata,
-      session,
-      userId: session.user_id,
-    };
-  } catch (error) {
     throw normalizeTournamentError(error);
   }
 };

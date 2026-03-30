@@ -9,10 +9,12 @@ import {
 
 const mockRpc = jest.fn();
 const mockEnsureAuthenticatedDevice = jest.fn();
+const mockRecoverSessionAfterUnauthorized = jest.fn();
 
 jest.mock('@/services/nakama', () => ({
   nakamaService: {
     ensureAuthenticatedDevice: (...args: unknown[]) => mockEnsureAuthenticatedDevice(...args),
+    recoverSessionAfterUnauthorized: (...args: unknown[]) => mockRecoverSessionAfterUnauthorized(...args),
     getClient: () => ({
       rpc: (...args: unknown[]) => mockRpc(...args),
     }),
@@ -27,6 +29,7 @@ describe('tournament rpc parsing', () => {
       token: 'token',
       refresh_token: 'refresh',
     });
+    mockRecoverSessionAfterUnauthorized.mockResolvedValue(null);
   });
 
   it('parses public tournament list payloads returned as JSON strings', async () => {
@@ -273,5 +276,73 @@ describe('tournament rpc parsing', () => {
     });
 
     await expect(joinPublicTournament('spring-open')).rejects.toThrow('This tournament is already full.');
+  });
+
+  it('retries tournament rpc calls once after an unauthorized response', async () => {
+    const recoveredSession = {
+      user_id: 'user-1',
+      token: 'token-2',
+      refresh_token: 'refresh-2',
+    };
+
+    mockRpc
+      .mockRejectedValueOnce({
+        status: 401,
+        message: 'token expired',
+      })
+      .mockResolvedValueOnce({
+        payload: JSON.stringify({
+          joined: true,
+          tournament: {
+            runId: 'spring-open',
+            tournamentId: 'spring-open',
+            name: 'Spring Open',
+            description: 'A public run.',
+            lifecycle: 'open',
+            startAt: '2026-03-27T10:00:00.000Z',
+            updatedAt: '2026-03-27T10:10:00.000Z',
+            entrants: 9,
+            maxEntrants: 16,
+            gameMode: 'standard',
+            region: 'Global',
+            buyInLabel: 'Free',
+            prizeLabel: 'No prize listed',
+            membership: {
+              isJoined: true,
+              joinedAt: '2026-03-27T10:10:00.000Z',
+            },
+          },
+        }),
+      });
+    mockRecoverSessionAfterUnauthorized.mockResolvedValueOnce(recoveredSession);
+
+    await expect(joinPublicTournament('spring-open')).resolves.toEqual(
+      expect.objectContaining({
+        joined: true,
+        tournament: expect.objectContaining({
+          runId: 'spring-open',
+        }),
+      }),
+    );
+
+    expect(mockRecoverSessionAfterUnauthorized).toHaveBeenCalledWith(
+      expect.objectContaining({
+        token: 'token',
+      }),
+    );
+    expect(mockRpc).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        token: 'token',
+      }),
+      'join_public_tournament',
+      { runId: 'spring-open' },
+    );
+    expect(mockRpc).toHaveBeenNthCalledWith(
+      2,
+      recoveredSession,
+      'join_public_tournament',
+      { runId: 'spring-open' },
+    );
   });
 });

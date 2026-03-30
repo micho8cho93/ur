@@ -225,6 +225,80 @@ describe('useTournamentAdvanceFlow', () => {
     expect(mockLaunchTournamentMatch).not.toHaveBeenCalled();
   });
 
+  it('keeps an eight-player quarterfinal winner in the waiting flow after their semifinal seat is assigned', async () => {
+    mockGetPublicTournamentStatus.mockResolvedValue(
+      buildSnapshot(
+        [
+          buildStanding({
+            ownerId: 'user-1',
+            username: 'Michel',
+            round: 2,
+            result: 'win',
+          }),
+        ],
+        {
+          entrants: 8,
+          maxEntrants: 8,
+          currentRound: 2,
+          participation: buildParticipation({
+            state: 'waiting_next_round',
+            currentRound: 2,
+            currentEntryId: 'round-2-match-1',
+            lastResult: 'win',
+            canLaunch: false,
+          }),
+        },
+      ),
+    );
+
+    render(<HookHarness {...baseProps} initialRound={1} />);
+
+    await act(async () => {
+      await flush();
+    });
+
+    expect(screen.getByTestId('phase').props.children).toBe('waiting');
+    expect(screen.getByTestId('status').props.children).toBe('Another match is still in progress.');
+    expect(mockLaunchTournamentMatch).not.toHaveBeenCalled();
+  });
+
+  it('keeps a sixteen-player opening-round winner in the waiting flow after their quarterfinal seat is assigned', async () => {
+    mockGetPublicTournamentStatus.mockResolvedValue(
+      buildSnapshot(
+        [
+          buildStanding({
+            ownerId: 'user-1',
+            username: 'Michel',
+            round: 2,
+            result: 'win',
+          }),
+        ],
+        {
+          entrants: 16,
+          maxEntrants: 16,
+          currentRound: 2,
+          participation: buildParticipation({
+            state: 'waiting_next_round',
+            currentRound: 2,
+            currentEntryId: 'round-2-match-3',
+            lastResult: 'win',
+            canLaunch: false,
+          }),
+        },
+      ),
+    );
+
+    render(<HookHarness {...baseProps} initialRound={1} />);
+
+    await act(async () => {
+      await flush();
+    });
+
+    expect(screen.getByTestId('phase').props.children).toBe('waiting');
+    expect(screen.getByTestId('status').props.children).toBe('Another match is still in progress.');
+    expect(mockLaunchTournamentMatch).not.toHaveBeenCalled();
+  });
+
   it('launches the next round once the bracket marks the player ready', async () => {
     mockGetPublicTournamentStatus.mockResolvedValue(
       buildSnapshot(

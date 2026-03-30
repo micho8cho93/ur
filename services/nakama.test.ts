@@ -35,6 +35,17 @@ jest.mock('@heroiclabs/nakama-js', () => ({
 const mockedAsyncStorage = AsyncStorage as jest.Mocked<typeof AsyncStorage>;
 const mockedSessionRestore = Session.restore as jest.MockedFunction<typeof Session.restore>;
 
+const createDeferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, resolve, reject };
+};
+
 describe('NakamaService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -69,6 +80,35 @@ describe('NakamaService', () => {
         refreshToken: 'fresh-refresh',
       }),
     );
+  });
+
+  it('deduplicates concurrent session refreshes against the same expired session', async () => {
+    const service = new NakamaService();
+    const expiredSession = {
+      token: 'expired-token',
+      refresh_token: 'expired-refresh',
+      isexpired: jest.fn(() => true),
+    } as never;
+    const refreshedSession = {
+      token: 'fresh-token',
+      refresh_token: 'fresh-refresh',
+      isexpired: jest.fn(() => false),
+    } as never;
+    const deferredRefresh = createDeferred<typeof refreshedSession>();
+
+    (service as unknown as { session: unknown }).session = expiredSession;
+    mockSessionRefresh.mockReturnValue(deferredRefresh.promise);
+
+    const firstLoad = service.loadSession();
+    const secondLoad = service.loadSession();
+
+    expect(mockSessionRefresh).toHaveBeenCalledTimes(1);
+
+    deferredRefresh.resolve(refreshedSession);
+
+    await expect(firstLoad).resolves.toBe(refreshedSession);
+    await expect(secondLoad).resolves.toBe(refreshedSession);
+    expect(mockedAsyncStorage.setItem).toHaveBeenCalledTimes(1);
   });
 
   it('clears an expired in-memory session when refresh is unauthorized', async () => {

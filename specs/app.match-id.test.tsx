@@ -2586,6 +2586,160 @@ describe('GameRoom match dice stage', () => {
     expect(screen.queryByText('Tournament Won')).toBeNull();
   });
 
+  it('keeps an eight-player round-one winner in the waiting room instead of finalizing early', async () => {
+    mockSearchParams.id = 'tournament-eight-player-quarterfinal';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentRound = '1';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-eight-player-quarterfinal',
+    });
+    mockStoreState.matchId = 'tournament-eight-player-quarterfinal';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockRefreshProgression.mockImplementation(() => new Promise(() => {}));
+    mockRefreshChallenges.mockImplementation(() => new Promise(() => {}));
+    mockGetPublicTournamentStatus.mockResolvedValueOnce({
+      tournament: {
+        runId: 'run-1',
+        tournamentId: 'tournament-1',
+        name: 'Spring Open',
+        description: 'A public run.',
+        lifecycle: 'open',
+        startAt: '2026-03-27T09:00:00.000Z',
+        endAt: null,
+        updatedAt: '2026-03-27T10:00:00.000Z',
+        entrants: 8,
+        maxEntrants: 8,
+        gameMode: 'standard',
+        region: 'Global',
+        buyInLabel: 'Free',
+        prizeLabel: 'No prize listed',
+        currentRound: 2,
+        membership: {
+          isJoined: true,
+          joinedAt: '2026-03-27T09:00:00.000Z',
+        },
+        participation: {
+          state: 'waiting_next_round',
+          currentRound: 2,
+          currentEntryId: 'round-2-match-1',
+          activeMatchId: null,
+          finalPlacement: null,
+          lastResult: 'win',
+          canLaunch: false,
+        },
+      },
+      standings: [],
+    });
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-eight-player-quarterfinal', {
+        tournamentOutcome: 'advancing',
+        shouldEnterWaitingRoom: true,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
+    expect(screen.getByText('Recording your victory in the standings...')).toBeTruthy();
+    expect(screen.queryByText('Tournament Won')).toBeNull();
+  });
+
+  it('keeps a sixteen-player round-one winner in the waiting room instead of finalizing early', async () => {
+    mockSearchParams.id = 'tournament-sixteen-player-round-one';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentRound = '1';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-sixteen-player-round-one',
+    });
+    mockStoreState.matchId = 'tournament-sixteen-player-round-one';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockRefreshProgression.mockImplementation(() => new Promise(() => {}));
+    mockRefreshChallenges.mockImplementation(() => new Promise(() => {}));
+    mockGetPublicTournamentStatus.mockResolvedValueOnce({
+      tournament: {
+        runId: 'run-1',
+        tournamentId: 'tournament-1',
+        name: 'Spring Open',
+        description: 'A public run.',
+        lifecycle: 'open',
+        startAt: '2026-03-27T09:00:00.000Z',
+        endAt: null,
+        updatedAt: '2026-03-27T10:00:00.000Z',
+        entrants: 16,
+        maxEntrants: 16,
+        gameMode: 'standard',
+        region: 'Global',
+        buyInLabel: 'Free',
+        prizeLabel: 'No prize listed',
+        currentRound: 2,
+        membership: {
+          isJoined: true,
+          joinedAt: '2026-03-27T09:00:00.000Z',
+        },
+        participation: {
+          state: 'waiting_next_round',
+          currentRound: 2,
+          currentEntryId: 'round-2-match-3',
+          activeMatchId: null,
+          finalPlacement: null,
+          lastResult: 'win',
+          canLaunch: false,
+        },
+      },
+      standings: [],
+    });
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-sixteen-player-round-one', {
+        tournamentOutcome: 'advancing',
+        shouldEnterWaitingRoom: true,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
+    expect(screen.getByText('Recording your victory in the standings...')).toBeTruthy();
+    expect(screen.queryByText('Tournament Won')).toBeNull();
+  });
+
   it('replaces the waiting-room CTA with a return-home action once the final win is finalized', async () => {
     mockSearchParams.id = 'tournament-final-win';
     mockSearchParams.offline = '0';
