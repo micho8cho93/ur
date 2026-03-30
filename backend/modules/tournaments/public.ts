@@ -339,15 +339,9 @@ const isPublicRunFull = (
 const getLaunchBlockedReason = (
   run: TournamentRunRecord,
   nakamaTournament: Record<string, unknown> | null,
-  nowMs = Date.now(),
-): "lobby" | "start" | null => {
+): "lobby" | null => {
   if (!isPublicRunFull(run, nakamaTournament)) {
     return "lobby";
-  }
-
-  const startAtMs = getRunStartTimeMs(run, nakamaTournament);
-  if (startAtMs !== null && startAtMs > nowMs) {
-    return "start";
   }
 
   return null;
@@ -668,7 +662,6 @@ const maybeStartBracketForRun = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
   run: TournamentRunRecord,
-  nowMs = Date.now(),
 ): TournamentRunRecord => {
   if (run.bracket || run.lifecycle !== "open") {
     return run;
@@ -679,17 +672,12 @@ const maybeStartBracketForRun = (
     return run;
   }
 
-  const startAtMs = getRunStartTimeMs(run, nakamaTournament);
-  if (startAtMs !== null && startAtMs > nowMs) {
-    return run;
-  }
-
   return updateRunWithRetry(nk, logger, run.runId, (current) => {
     if (current.bracket) {
       return current;
     }
 
-    const startedAt = new Date(nowMs).toISOString();
+    const startedAt = new Date().toISOString();
     return {
       ...current,
       updatedAt: startedAt,
@@ -1002,13 +990,9 @@ export const rpcLaunchTournamentMatch = (
   assertPublicRunVisible(run, nakamaTournament);
 
   if (!run.bracket) {
-    const launchBlockedReason = getLaunchBlockedReason(run, nakamaTournament, Date.now());
+    const launchBlockedReason = getLaunchBlockedReason(run, nakamaTournament);
     if (launchBlockedReason === "lobby") {
       throw new Error("This tournament is waiting for the lobby to fill.");
-    }
-
-    if (launchBlockedReason === "start") {
-      throw new Error("This tournament has not started yet.");
     }
 
     throw new Error("This tournament bracket is not ready yet.");

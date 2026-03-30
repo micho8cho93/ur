@@ -66,8 +66,50 @@ export const isTournamentReadyToLaunch = (
   now = Date.now(),
 ): boolean => isTournamentFull(tournament) && hasTournamentStarted(tournament, now);
 
+export const isTournamentPreStartWaitingRoomVisible = (
+  tournament: Pick<PublicTournamentSummary, 'membership' | 'participation' | 'currentRound'>,
+): boolean => {
+  if (!tournament.membership.isJoined) {
+    return false;
+  }
+
+  const participationState = tournament.participation?.state ?? null;
+  if (
+    participationState === 'eliminated' ||
+    participationState === 'runner_up' ||
+    participationState === 'champion'
+  ) {
+    return false;
+  }
+
+  const derivedRound = tournament.participation?.currentRound ?? tournament.currentRound ?? 1;
+  if (
+    derivedRound > 1 ||
+    (tournament.participation?.lastResult ?? null) !== null ||
+    (tournament.participation?.finalPlacement ?? null) !== null
+  ) {
+    return false;
+  }
+
+  return participationState === 'lobby' || participationState === 'waiting_next_round' || participationState === 'in_match';
+};
+
+export const isTournamentPlayerLaunchReady = (
+  tournament: Pick<PublicTournamentSummary, 'membership' | 'participation'>,
+): boolean => {
+  if (!tournament.membership.isJoined) {
+    return false;
+  }
+
+  if (tournament.participation?.state === 'in_match' && Boolean(tournament.participation?.activeMatchId)) {
+    return true;
+  }
+
+  return tournament.participation?.canLaunch === true;
+};
+
 export const getTournamentChipState = (tournament: PublicTournamentSummary, now = Date.now()): TournamentChipState => {
-  if (tournament.membership.isJoined && tournament.participation.state && tournament.participation.state !== 'lobby') {
+  if (tournament.membership.isJoined && tournament.participation?.state && tournament.participation.state !== 'lobby') {
     return {
       label: 'In Progress',
       tone: 'info',
@@ -141,8 +183,12 @@ export const buildTournamentPrizeSummary = (tournament: Pick<PublicTournamentSum
   `${tournament.buyInLabel} • ${tournament.prizeLabel}`;
 
 const getJoinedTournamentPrimaryState = (tournament: PublicTournamentSummary, now = Date.now()): TournamentPrimaryState => {
+  const participationState = tournament.participation?.state ?? null;
+  const activeMatchId = tournament.participation?.activeMatchId ?? null;
+  const canLaunch = tournament.participation?.canLaunch === true;
+
   if (tournament.lifecycle === 'closed' || tournament.lifecycle === 'finalized') {
-    if (tournament.participation.state === 'eliminated') {
+    if (participationState === 'eliminated') {
       return {
         label: 'Eliminated',
         disabled: true,
@@ -161,7 +207,7 @@ const getJoinedTournamentPrimaryState = (tournament: PublicTournamentSummary, no
     };
   }
 
-  if (tournament.participation.state === 'in_match' && tournament.participation.activeMatchId) {
+  if (participationState === 'in_match' && activeMatchId) {
     return {
       label: 'Resume Tournament Match',
       disabled: false,
@@ -171,8 +217,8 @@ const getJoinedTournamentPrimaryState = (tournament: PublicTournamentSummary, no
     };
   }
 
-  if (tournament.participation.state === 'waiting_next_round') {
-    if (tournament.participation.canLaunch) {
+  if (participationState === 'waiting_next_round') {
+    if (canLaunch) {
       return {
         label: 'Continue Tournament',
         disabled: false,
@@ -191,7 +237,7 @@ const getJoinedTournamentPrimaryState = (tournament: PublicTournamentSummary, no
     };
   }
 
-  if (tournament.participation.state === 'eliminated') {
+  if (participationState === 'eliminated') {
     return {
       label: 'Eliminated',
       disabled: true,
@@ -201,7 +247,7 @@ const getJoinedTournamentPrimaryState = (tournament: PublicTournamentSummary, no
     };
   }
 
-  if (tournament.participation.state === 'runner_up' || tournament.participation.state === 'champion') {
+  if (participationState === 'runner_up' || participationState === 'champion') {
     return {
       label: 'Tournament Complete',
       disabled: true,

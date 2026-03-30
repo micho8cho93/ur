@@ -1,19 +1,25 @@
+import { TournamentStartWaitingRoom } from '@/components/tournaments/TournamentStartWaitingRoom';
 import { TournamentStandingsTable } from '@/components/tournaments/TournamentStandingsTable';
 import { Button } from '@/components/ui/Button';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import { useChallenges } from '@/src/challenges/useChallenges';
+import { useEloRating } from '@/src/elo/useEloRating';
+import { useProgression } from '@/src/progression/useProgression';
 import {
   buildTournamentPrizeSummary,
   formatTournamentDateTime,
   getTournamentChipState,
   getTournamentDetailPrimaryState,
   getTournamentModeLabel,
+  isTournamentPlayerLaunchReady,
+  isTournamentPreStartWaitingRoomVisible,
 } from '@/src/tournaments/presentation';
 import { useTournamentDetail } from '@/src/tournaments/useTournamentDetail';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 const multiplayerWideBackground = require('../../../assets/images/multiplayer_bg.png');
@@ -45,10 +51,15 @@ const chipToneStyles = {
 export default function TournamentDetailScreen() {
   const { width } = useWindowDimensions();
   const router = useRouter();
+  const [isJoinConfirmationArmed, setIsJoinConfirmationArmed] = useState(false);
+  const autoLaunchRunIdRef = useRef<string | null>(null);
   const { runId: rawRunId } = useLocalSearchParams<{ runId?: string | string[] }>();
   const runId = useMemo(() => (Array.isArray(rawRunId) ? rawRunId[0] : rawRunId ?? null), [rawRunId]);
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
+  const { ratingProfile } = useEloRating();
+  const { progression } = useProgression();
+  const { definitions: challengeDefinitions, progress: challengeProgress } = useChallenges();
   const {
     tournament,
     standings,
@@ -64,6 +75,35 @@ export default function TournamentDetailScreen() {
 
   const chip = tournament ? getTournamentChipState(tournament) : null;
   const primary = tournament ? getTournamentDetailPrimaryState(tournament) : null;
+  const showStartWaitingRoom = tournament ? isTournamentPreStartWaitingRoomVisible(tournament) : false;
+  const playerLaunchReady = tournament ? isTournamentPlayerLaunchReady(tournament) : false;
+  const primaryButtonTitle =
+    primary?.intent === 'join' && isJoinConfirmationArmed ? 'Confirm' : primary?.label ?? 'Join';
+
+  useEffect(() => {
+    if (primary?.intent !== 'join' || tournament?.membership.isJoined) {
+      setIsJoinConfirmationArmed(false);
+    }
+  }, [primary?.intent, tournament?.membership.isJoined]);
+
+  useEffect(() => {
+    if (!tournament || !showStartWaitingRoom || !playerLaunchReady) {
+      autoLaunchRunIdRef.current = null;
+      return;
+    }
+
+    if (launchingRunId === tournament.runId || autoLaunchRunIdRef.current === tournament.runId) {
+      return;
+    }
+
+    autoLaunchRunIdRef.current = tournament.runId;
+    void (async () => {
+      const didLaunch = await launchMatch(tournament);
+      if (!didLaunch) {
+        autoLaunchRunIdRef.current = null;
+      }
+    })();
+  }, [launchMatch, launchingRunId, playerLaunchReady, showStartWaitingRoom, tournament]);
 
   return (
     <View style={styles.screen}>
@@ -83,139 +123,179 @@ export default function TournamentDetailScreen() {
       <View pointerEvents="none" style={styles.pageGlow} />
       <View pointerEvents="none" style={styles.pageShade} />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {errorMessage ? (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorBannerText}>{errorMessage}</Text>
-          </View>
-        ) : null}
-
-        {isLoading ? (
+      {isLoading ? (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.emptyPanel}>
             <Text style={styles.emptyTitle}>Loading tournament...</Text>
             <Text style={styles.emptyText}>Drawing the latest standings into view.</Text>
           </View>
-        ) : !tournament ? (
+        </ScrollView>
+      ) : !tournament ? (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {errorMessage ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorBannerText}>{errorMessage}</Text>
+            </View>
+          ) : null}
           <View style={styles.emptyPanel}>
             <Text style={styles.emptyTitle}>Tournament not found</Text>
             <Text style={styles.emptyText}>This run is no longer visible in public play.</Text>
             <Button title="Back to Tournaments" variant="outline" onPress={() => router.replace('/tournaments' as never)} />
           </View>
-        ) : (
-          <>
-            <View style={styles.heroPanel}>
-              <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.heroTexture} />
-              <View style={styles.heroBorder} />
+        </ScrollView>
+      ) : showStartWaitingRoom ? (
+        <TournamentStartWaitingRoom
+          tournament={tournament}
+          eloProfile={ratingProfile}
+          progression={progression}
+          challengeDefinitions={challengeDefinitions}
+          challengeProgress={challengeProgress}
+          isRefreshing={isRefreshing}
+          isLaunching={launchingRunId === tournament.runId}
+          errorMessage={errorMessage}
+          onRefresh={refresh}
+        />
+      ) : (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {errorMessage ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorBannerText}>{errorMessage}</Text>
+            </View>
+          ) : null}
 
-              <View style={styles.heroHeader}>
-                <View style={styles.heroTitleWrap}>
-                  <Text style={styles.heroTitle}>{tournament.name}</Text>
-                  <Text style={styles.heroDescription}>{tournament.description}</Text>
-                </View>
-                {chip ? (
-                  <View
-                    style={[
-                      styles.heroChip,
-                      {
-                        backgroundColor: chipToneStyles[chip.tone].backgroundColor,
-                        borderColor: chipToneStyles[chip.tone].borderColor,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.heroChipText, { color: chipToneStyles[chip.tone].color }]}>{chip.label}</Text>
-                  </View>
-                ) : null}
+          <View style={styles.heroPanel}>
+            <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.heroTexture} />
+            <View style={styles.heroBorder} />
+
+            <View style={styles.heroHeader}>
+              <View style={styles.heroTitleWrap}>
+                <Text style={styles.heroTitle}>{tournament.name}</Text>
+                <Text style={styles.heroDescription}>{tournament.description}</Text>
               </View>
-
-              <View style={styles.heroActionRow}>
-                <Button
-                  title={primary?.label ?? 'Join'}
-                  loading={Boolean(primary?.loading || joiningRunId === tournament.runId || launchingRunId === tournament.runId)}
-                  disabled={Boolean(primary?.disabled || joiningRunId === tournament.runId || launchingRunId === tournament.runId)}
-                  onPress={() => {
-                    if (!primary || primary.intent === 'none') {
-                      return;
-                    }
-
-                    if (primary.intent === 'join') {
-                      void joinTournament();
-                      return;
-                    }
-
-                    void launchMatch(tournament);
-                  }}
-                  style={styles.heroPrimaryButton}
-                />
-                <Button
-                  title={isRefreshing ? 'Refreshing...' : 'Refresh'}
-                  variant="outline"
-                  style={styles.heroSecondaryButton}
-                  onPress={() => {
-                    void refresh();
-                  }}
-                />
-              </View>
-
-              {!tournament.membership.isJoined ? null : (
-                <View style={styles.joinedBanner}>
-                  <Text style={styles.joinedBannerTitle}>You are enrolled in this tournament.</Text>
-                  <Text style={styles.joinedBannerText}>
-                    {primary?.waitReason === 'lobby'
-                      ? 'The lobby is still filling. Tournament matches unlock once the field is full, so you can stay here or return to Play Online while you wait.'
-                      : primary?.waitReason === 'start'
-                        ? 'The field is ready. Tournament matches will unlock as soon as the scheduled start time arrives.'
-                        : primary?.waitReason === 'bracket'
-                          ? 'Your place is locked in. Stay ready while the rest of the bracket settles and your next match becomes available.'
-                          : tournament.participation.state === 'in_match'
-                            ? 'Your tournament board is already assigned. Resume it from this screen.'
-                            : 'You can continue your tournament from this screen whenever your next board is ready.'}
-                  </Text>
+              {chip ? (
+                <View
+                  style={[
+                    styles.heroChip,
+                    {
+                      backgroundColor: chipToneStyles[chip.tone].backgroundColor,
+                      borderColor: chipToneStyles[chip.tone].borderColor,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.heroChipText, { color: chipToneStyles[chip.tone].color }]}>{chip.label}</Text>
                 </View>
-              )}
+              ) : null}
             </View>
 
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryCell}>
-                <Text style={styles.summaryLabel}>Entrants</Text>
-                <Text style={styles.summaryValue}>
-                  {tournament.entrants}/{tournament.maxEntrants}
+            <View style={styles.heroActionRow}>
+              <Button
+                title={primaryButtonTitle}
+                loading={Boolean(primary?.loading || joiningRunId === tournament.runId || launchingRunId === tournament.runId)}
+                disabled={Boolean(primary?.disabled || joiningRunId === tournament.runId || launchingRunId === tournament.runId)}
+                onPress={() => {
+                  if (!primary || primary.intent === 'none') {
+                    return;
+                  }
+
+                  if (primary.intent === 'join') {
+                    if (!isJoinConfirmationArmed) {
+                      setIsJoinConfirmationArmed(true);
+                      return;
+                    }
+
+                    void joinTournament();
+                    return;
+                  }
+
+                  void launchMatch(tournament);
+                }}
+                style={styles.heroPrimaryButton}
+              />
+              <Button
+                title={isRefreshing ? 'Refreshing...' : 'Refresh'}
+                variant="outline"
+                style={styles.heroSecondaryButton}
+                onPress={() => {
+                  void refresh();
+                }}
+              />
+            </View>
+
+            {primary?.intent === 'join' && isJoinConfirmationArmed ? (
+              <Text style={styles.confirmationHint}>
+                Confirm will claim your seat and send you into the tournament waiting room.
+              </Text>
+            ) : null}
+
+            {!tournament.membership.isJoined ? null : (
+              <View style={styles.joinedBanner}>
+                <Text style={styles.joinedBannerTitle}>You are enrolled in this tournament.</Text>
+                <Text style={styles.joinedBannerText}>
+                  {primary?.waitReason === 'lobby'
+                    ? 'The lobby is still filling. Tournament matches unlock once the field is full, so you can stay here or return to Play Online while you wait.'
+                    : primary?.waitReason === 'start'
+                      ? 'The field is ready. Tournament matches will unlock as soon as the scheduled start time arrives.'
+                      : primary?.waitReason === 'bracket'
+                        ? 'Your place is locked in. Stay ready while the rest of the bracket settles and your next match becomes available.'
+                        : tournament.participation.state === 'in_match'
+                          ? 'Your tournament board is already assigned. Resume it from this screen.'
+                          : 'You can continue your tournament from this screen whenever your next board is ready.'}
                 </Text>
               </View>
-              <View style={styles.summaryCell}>
-                <Text style={styles.summaryLabel}>Start Time</Text>
-                <Text style={styles.summaryValue}>{formatTournamentDateTime(tournament.startAt)}</Text>
-              </View>
-              <View style={styles.summaryCell}>
-                <Text style={styles.summaryLabel}>Mode</Text>
-                <Text style={styles.summaryValue}>{getTournamentModeLabel(tournament.gameMode)}</Text>
-              </View>
-              <View style={styles.summaryCell}>
-                <Text style={styles.summaryLabel}>Region</Text>
-                <Text style={styles.summaryValue}>{tournament.region}</Text>
-              </View>
-              <View style={styles.summaryCell}>
-                <Text style={styles.summaryLabel}>Buy-in / Prize</Text>
-                <Text style={styles.summaryValue}>{buildTournamentPrizeSummary(tournament)}</Text>
-              </View>
-            </View>
+            )}
+          </View>
 
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Standings</Text>
-              <Text style={styles.sectionSubtitle}>Full public leaderboard before you join.</Text>
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryCell}>
+              <Text style={styles.summaryLabel}>Entrants</Text>
+              <Text style={styles.summaryValue}>
+                {tournament.entrants}/{tournament.maxEntrants}
+              </Text>
             </View>
+            <View style={styles.summaryCell}>
+              <Text style={styles.summaryLabel}>Start Time</Text>
+              <Text style={styles.summaryValue}>{formatTournamentDateTime(tournament.startAt)}</Text>
+            </View>
+            <View style={styles.summaryCell}>
+              <Text style={styles.summaryLabel}>Mode</Text>
+              <Text style={styles.summaryValue}>{getTournamentModeLabel(tournament.gameMode)}</Text>
+            </View>
+            <View style={styles.summaryCell}>
+              <Text style={styles.summaryLabel}>Region</Text>
+              <Text style={styles.summaryValue}>{tournament.region}</Text>
+            </View>
+            <View style={styles.summaryCell}>
+              <Text style={styles.summaryLabel}>Buy-in / Prize</Text>
+              <Text style={styles.summaryValue}>{buildTournamentPrizeSummary(tournament)}</Text>
+            </View>
+          </View>
 
-            <TournamentStandingsTable
-              entries={standings}
-              emptyMessage="No standings entries are available for this run yet."
-            />
-          </>
-        )}
-      </ScrollView>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Standings</Text>
+            <Text style={styles.sectionSubtitle}>Full public leaderboard before you join.</Text>
+          </View>
+
+          <TournamentStandingsTable
+            entries={standings}
+            emptyMessage="No standings entries are available for this run yet."
+          />
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -344,6 +424,12 @@ const styles = StyleSheet.create({
   },
   heroSecondaryButton: {
     minWidth: 160,
+  },
+  confirmationHint: {
+    marginTop: urTheme.spacing.sm,
+    color: '#F3DBA8',
+    lineHeight: 20,
+    textAlign: 'center',
   },
   joinedBanner: {
     marginTop: urTheme.spacing.md,

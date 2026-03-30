@@ -1,0 +1,580 @@
+import { Button } from '@/components/ui/Button';
+import { boxShadow } from '@/constants/styleEffects';
+import { urTheme, urTypography } from '@/constants/urTheme';
+import type { ChallengeDefinition, UserChallengeProgressRpcResponse } from '@/shared/challenges';
+import type { EloRatingProfileRpcResponse } from '@/shared/elo';
+import type { ProgressionSnapshot } from '@/shared/progression';
+import type { PublicTournamentDetail } from '@/src/tournaments/types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Image, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+
+const STONE_SLAB_BACKGROUND = require('../../assets/images/ur_bg.png');
+
+type TournamentStartWaitingRoomProps = {
+  tournament: PublicTournamentDetail;
+  eloProfile: EloRatingProfileRpcResponse | null;
+  progression: ProgressionSnapshot | null;
+  challengeDefinitions: ChallengeDefinition[];
+  challengeProgress: UserChallengeProgressRpcResponse | null;
+  isRefreshing: boolean;
+  isLaunching: boolean;
+  errorMessage: string | null;
+  onRefresh: () => Promise<void> | void;
+};
+
+type WaitingRoomCard = {
+  key: string;
+  eyebrow: string;
+  title: string;
+  body: string;
+  accent: string;
+};
+
+const CARD_DURATION_MS = 15_000;
+
+const ROYAL_GAME_OF_UR_FACTS = [
+  'The best-known Royal Game of Ur boards were excavated from the Royal Tombs of Ur in southern Iraq.',
+  'Rosette spaces are special safe tiles and, in many reconstructed rulesets, they also grant an extra roll.',
+  'A Babylonian cuneiform tablet helped modern historians rebuild a playable ruleset for the game.',
+  'The game spread far beyond Mesopotamia and survived for centuries in different regional forms.',
+] as const;
+
+const MESOPOTAMIA_AND_BABYLONIA_FACTS = [
+  'Mesopotamia grew between the Tigris and Euphrates, where cities like Ur became major centers of trade and ritual.',
+  'Babylonia rose later in southern Mesopotamia and became famous for scholarship, astronomy, and royal law codes.',
+  'Clay tablets from Mesopotamia recorded business, religion, and games in cuneiform writing.',
+  'Ur was a Sumerian powerhouse long before Babylon became the political and cultural star of the region.',
+] as const;
+
+const nextShuffleState = (value: number): number => {
+  let state = value >>> 0;
+  state ^= state << 13;
+  state ^= state >>> 17;
+  state ^= state << 5;
+  return state >>> 0;
+};
+
+const shuffleCards = (cards: WaitingRoomCard[], seed: number): WaitingRoomCard[] => {
+  const shuffled = cards.slice();
+  let state = (seed + 1) * 0x9e3779b1;
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    state = nextShuffleState(state);
+    const swapIndex = state % (index + 1);
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+
+  return shuffled;
+};
+
+const buildEloCard = (eloProfile: EloRatingProfileRpcResponse | null): WaitingRoomCard => {
+  if (!eloProfile) {
+    return {
+      key: 'elo-profile',
+      eyebrow: 'Your Elo',
+      title: 'Ranked rating unavailable',
+      body: 'Sign in with Google to track ranked Elo, ladder rank, and rated-game history.',
+      accent: '#A7D3FF',
+    };
+  }
+
+  const rankLabel = typeof eloProfile.rank === 'number' ? `Rank #${eloProfile.rank}` : 'Unranked on the ladder';
+  return {
+    key: 'elo-profile',
+    eyebrow: 'Your Elo',
+    title: `${eloProfile.eloRating} Elo`,
+    body: `${rankLabel} • ${eloProfile.ratedGames} rated games • ${eloProfile.ratedWins} wins / ${eloProfile.ratedLosses} losses.`,
+    accent: '#A7D3FF',
+  };
+};
+
+const buildXpCard = (progression: ProgressionSnapshot | null): WaitingRoomCard => {
+  if (!progression) {
+    return {
+      key: 'xp-profile',
+      eyebrow: 'Your XP',
+      title: 'Progression syncing',
+      body: 'Your XP, rank, and next milestone will appear here as soon as progression data loads.',
+      accent: '#F4D189',
+    };
+  }
+
+  const nextRankLabel = progression.nextRank
+    ? `${progression.xpNeededForNextRank} XP to ${progression.nextRank}.`
+    : 'You are already at the highest rank.';
+
+  return {
+    key: 'xp-profile',
+    eyebrow: 'Your XP',
+    title: `${progression.totalXp} XP`,
+    body: `${progression.currentRank} • ${nextRankLabel}`,
+    accent: '#F4D189',
+  };
+};
+
+const buildChallengesCard = (
+  challengeDefinitions: ChallengeDefinition[],
+  challengeProgress: UserChallengeProgressRpcResponse | null,
+): WaitingRoomCard => {
+  if (!challengeProgress) {
+    return {
+      key: 'challenges',
+      eyebrow: 'Challenges',
+      title: 'Challenge archive syncing',
+      body: 'Recent challenge completions are still being pulled into your account snapshot.',
+      accent: '#E7B56A',
+    };
+  }
+
+  const nextIncompleteChallenge = challengeDefinitions.find(
+    (definition) => !challengeProgress.challenges[definition.id]?.completed,
+  );
+  const challengeTotal = challengeDefinitions.length > 0 ? challengeDefinitions.length : challengeProgress.totalCompleted;
+  const nextLabel = nextIncompleteChallenge
+    ? `Next target: ${nextIncompleteChallenge.name}.`
+    : 'Every visible challenge is complete.';
+
+  return {
+    key: 'challenges',
+    eyebrow: 'Challenges',
+    title: `${challengeProgress.totalCompleted}/${challengeTotal} completed`,
+    body: `${challengeProgress.stats.totalWins} wins logged across ${challengeProgress.stats.totalGamesPlayed} games. ${nextLabel}`,
+    accent: '#E7B56A',
+  };
+};
+
+const buildCards = (
+  eloProfile: EloRatingProfileRpcResponse | null,
+  progression: ProgressionSnapshot | null,
+  challengeDefinitions: ChallengeDefinition[],
+  challengeProgress: UserChallengeProgressRpcResponse | null,
+): WaitingRoomCard[] => [
+  buildEloCard(eloProfile),
+  buildXpCard(progression),
+  buildChallengesCard(challengeDefinitions, challengeProgress),
+  {
+    key: 'elo-explainer',
+    eyebrow: 'How Elo Works',
+    title: 'Skill shifts by opponent strength',
+    body: 'Elo rises more when you beat stronger opponents and falls more when you lose to lower-rated opponents.',
+    accent: '#81BEFF',
+  },
+  {
+    key: 'xp-explainer',
+    eyebrow: 'How XP Works',
+    title: 'Progression is permanent',
+    body: 'XP comes from wins and challenges. It never drops, and it unlocks higher court ranks over time.',
+    accent: '#F6D697',
+  },
+  ...ROYAL_GAME_OF_UR_FACTS.map((fact, index) => ({
+    key: `ur-fact-${index}`,
+    eyebrow: 'Royal Game of Ur',
+    title: 'Archive Note',
+    body: fact,
+    accent: '#B7DEFF',
+  })),
+  ...MESOPOTAMIA_AND_BABYLONIA_FACTS.map((fact, index) => ({
+    key: `mesopotamia-fact-${index}`,
+    eyebrow: 'Mesopotamia & Babylonia',
+    title: 'World Note',
+    body: fact,
+    accent: '#F0C965',
+  })),
+];
+
+export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProps> = ({
+  tournament,
+  eloProfile,
+  progression,
+  challengeDefinitions,
+  challengeProgress,
+  isRefreshing,
+  isLaunching,
+  errorMessage,
+  onRefresh,
+}) => {
+  const [cardIndex, setCardIndex] = useState(0);
+  const [shuffleSeed, setShuffleSeed] = useState(0);
+  const cards = useMemo(
+    () =>
+      shuffleCards(
+        buildCards(eloProfile, progression, challengeDefinitions, challengeProgress),
+        shuffleSeed,
+      ),
+    [challengeDefinitions, challengeProgress, eloProfile, progression, shuffleSeed],
+  );
+  const activeCard = cards[cardIndex] ?? cards[0];
+  const entrantsLabel = `${tournament.entrants}/${tournament.maxEntrants}`;
+  const seatsRemaining = Math.max(0, tournament.maxEntrants - tournament.entrants);
+  const currentRound = tournament.participation.currentRound ?? tournament.currentRound ?? 1;
+  const statusCopy = (() => {
+    if (isLaunching || (tournament.participation.state === 'in_match' && tournament.participation.activeMatchId)) {
+      return {
+        title: 'Opening your tournament board.',
+        body: 'The field is sealed and your round one match is being resumed now.',
+      };
+    }
+
+    if (tournament.participation.canLaunch) {
+      return {
+        title: 'The lobby is full. Opening matches now.',
+        body: 'Pairings are locked. Every confirmed player is being sent to round one.',
+      };
+    }
+
+    if (seatsRemaining > 0) {
+      return {
+        title: 'Waiting for the lobby to fill.',
+        body: `${seatsRemaining} more ${seatsRemaining === 1 ? 'seat' : 'seats'} must be confirmed before the tournament starts.`,
+      };
+    }
+
+    return {
+      title: 'The field is full. Seeding opening matches.',
+      body: 'The bracket is being finalized and the opening boards will unlock automatically.',
+    };
+  })();
+
+  useEffect(() => {
+    setCardIndex(0);
+    setShuffleSeed(0);
+
+    const interval = setInterval(() => {
+      setCardIndex((current) => {
+        const next = current + 1;
+        if (next >= cards.length) {
+          setShuffleSeed((value) => value + 1);
+          return 0;
+        }
+
+        return next;
+      });
+    }, CARD_DURATION_MS);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [cards.length]);
+
+  return (
+    <View testID="tournament-start-waiting-room" style={styles.screen}>
+      <Image
+        source={STONE_SLAB_BACKGROUND}
+        resizeMode="cover"
+        blurRadius={Platform.OS === 'web' ? 8 : 18}
+        style={styles.backgroundImage}
+      />
+      <View pointerEvents="none" style={styles.backdropShade} />
+      <View pointerEvents="none" style={styles.backdropGlow} />
+      <View pointerEvents="none" style={styles.backdropFrame} />
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.heroPanel}>
+          <Text style={styles.eyebrow}>Tournament Waiting Room</Text>
+          <Text style={styles.title}>{tournament.name}</Text>
+          <Text style={styles.subtitle}>
+            Your seat is confirmed. Stay here while the royal court fills the bracket and opens the first round.
+          </Text>
+
+          <View style={styles.pillRow}>
+            <View style={styles.pill}>
+              <Text style={styles.pillText}>Lobby {entrantsLabel}</Text>
+            </View>
+            <View style={styles.pill}>
+              <Text style={styles.pillText}>Round {currentRound}</Text>
+            </View>
+            <View style={[styles.pill, tournament.participation.canLaunch || isLaunching ? styles.pillReady : null]}>
+              <Text style={[styles.pillText, tournament.participation.canLaunch || isLaunching ? styles.pillReadyText : null]}>
+                {isLaunching ? 'Launching' : tournament.participation.canLaunch ? 'Ready' : 'Waiting'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.statusPanel}>
+            <Text style={styles.statusTitle}>{statusCopy.title}</Text>
+            <Text style={styles.statusBody}>{statusCopy.body}</Text>
+            {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+          </View>
+
+          <View style={styles.cardDeckWrap}>
+            <View style={styles.cardShadow} />
+            <View style={[styles.cardGhost, styles.cardGhostRear]} />
+            <View style={[styles.cardGhost, styles.cardGhostFront]} />
+            <View style={[styles.card, { borderColor: `${activeCard.accent}66` }]}>
+              <Text style={[styles.cardEyebrow, { color: activeCard.accent }]}>{activeCard.eyebrow}</Text>
+              <Text style={styles.cardTitle}>{activeCard.title}</Text>
+              <Text style={styles.cardBody}>{activeCard.body}</Text>
+            </View>
+          </View>
+
+          <View style={styles.cardIndicatorRow}>
+            {cards.map((card, index) => (
+              <View
+                key={card.key}
+                style={[
+                  styles.cardIndicator,
+                  index === cardIndex ? styles.cardIndicatorActive : null,
+                ]}
+              />
+            ))}
+          </View>
+
+          <Text style={styles.rotationNote}>The archive reshuffles every 15 seconds while the lobby is waiting.</Text>
+
+          <View style={styles.actionRow}>
+            <Button
+              title={isRefreshing ? 'Refreshing...' : 'Refresh Lobby'}
+              variant="outline"
+              disabled={isLaunching}
+              onPress={() => {
+                void onRefresh();
+              }}
+            />
+          </View>
+        </View>
+      </ScrollView>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#070B10',
+  },
+  backgroundImage: {
+    ...StyleSheet.absoluteFillObject,
+    transform: [{ scale: 1.08 }],
+    opacity: 0.82,
+  },
+  backdropShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(7, 11, 17, 0.72)',
+  },
+  backdropGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '46%',
+    backgroundColor: 'rgba(100, 137, 170, 0.18)',
+  },
+  backdropFrame: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    bottom: 14,
+    left: 14,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: 'rgba(246, 214, 151, 0.14)',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.xl,
+  },
+  heroPanel: {
+    width: '100%',
+    maxWidth: 980,
+    alignSelf: 'center',
+    alignItems: 'center',
+    gap: urTheme.spacing.md,
+    borderRadius: 32,
+    borderWidth: 1.2,
+    borderColor: 'rgba(217, 164, 65, 0.62)',
+    backgroundColor: 'rgba(9, 13, 20, 0.6)',
+    paddingHorizontal: urTheme.spacing.lg,
+    paddingVertical: urTheme.spacing.xl,
+    ...boxShadow({
+      color: '#000',
+      opacity: 0.36,
+      offset: { width: 0, height: 14 },
+      blurRadius: 24,
+      elevation: 12,
+    }),
+  },
+  eyebrow: {
+    ...urTypography.label,
+    color: '#D5E9FF',
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  title: {
+    ...urTypography.title,
+    color: '#F7E9CE',
+    fontSize: 36,
+    lineHeight: 42,
+    textAlign: 'center',
+  },
+  subtitle: {
+    color: 'rgba(239, 226, 202, 0.84)',
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    maxWidth: 700,
+  },
+  pillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: urTheme.spacing.xs,
+  },
+  pill: {
+    borderRadius: urTheme.radii.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(177, 206, 242, 0.22)',
+    backgroundColor: 'rgba(9, 18, 31, 0.72)',
+    paddingHorizontal: urTheme.spacing.sm + 2,
+    paddingVertical: 6,
+  },
+  pillReady: {
+    backgroundColor: 'rgba(181, 128, 38, 0.24)',
+    borderColor: 'rgba(246, 214, 151, 0.3)',
+  },
+  pillText: {
+    ...urTypography.label,
+    color: '#D6EAFF',
+    fontSize: 10,
+  },
+  pillReadyText: {
+    color: '#F6E2AD',
+  },
+  statusPanel: {
+    width: '100%',
+    maxWidth: 720,
+    alignItems: 'center',
+    gap: urTheme.spacing.xs,
+    borderRadius: urTheme.radii.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(247, 229, 203, 0.12)',
+    backgroundColor: 'rgba(5, 9, 15, 0.46)',
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.md,
+  },
+  statusTitle: {
+    ...urTypography.subtitle,
+    color: '#F8ECD6',
+    fontSize: 21,
+    lineHeight: 27,
+    textAlign: 'center',
+  },
+  statusBody: {
+    color: 'rgba(215, 231, 251, 0.84)',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  errorText: {
+    color: '#F6AAA2',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  cardDeckWrap: {
+    width: '100%',
+    maxWidth: 620,
+    minHeight: 320,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: urTheme.spacing.xs,
+  },
+  cardShadow: {
+    position: 'absolute',
+    bottom: 22,
+    width: '74%',
+    height: 26,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0, 0, 0, 0.34)',
+    transform: [{ scaleX: 1.02 }],
+  },
+  cardGhost: {
+    position: 'absolute',
+    width: '92%',
+    maxWidth: 560,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(247, 229, 203, 0.08)',
+    backgroundColor: 'rgba(8, 13, 22, 0.38)',
+  },
+  cardGhostRear: {
+    height: 242,
+    transform: [{ rotate: '-5deg' }, { translateY: 10 }],
+  },
+  cardGhostFront: {
+    height: 252,
+    transform: [{ rotate: '4deg' }, { translateY: 4 }],
+  },
+  card: {
+    width: '100%',
+    maxWidth: 540,
+    minHeight: 268,
+    borderRadius: 30,
+    borderWidth: 1.4,
+    backgroundColor: 'rgba(12, 17, 26, 0.94)',
+    paddingHorizontal: urTheme.spacing.lg,
+    paddingVertical: urTheme.spacing.lg,
+    justifyContent: 'center',
+    ...boxShadow({
+      color: '#000',
+      opacity: 0.34,
+      offset: { width: 0, height: 12 },
+      blurRadius: 20,
+      elevation: 11,
+    }),
+  },
+  cardEyebrow: {
+    ...urTypography.label,
+    fontSize: 11,
+    marginBottom: urTheme.spacing.sm,
+  },
+  cardTitle: {
+    ...urTypography.title,
+    color: '#F7E9CE',
+    fontSize: 30,
+    lineHeight: 35,
+    marginBottom: urTheme.spacing.sm,
+  },
+  cardBody: {
+    color: 'rgba(240, 229, 209, 0.86)',
+    fontSize: 15,
+    lineHeight: 23,
+  },
+  cardIndicatorRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    maxWidth: 540,
+  },
+  cardIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(216, 232, 251, 0.22)',
+  },
+  cardIndicatorActive: {
+    width: 26,
+    backgroundColor: '#F0C965',
+  },
+  rotationNote: {
+    color: 'rgba(214, 228, 246, 0.72)',
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+    maxWidth: 560,
+  },
+  actionRow: {
+    width: '100%',
+    maxWidth: 240,
+  },
+});

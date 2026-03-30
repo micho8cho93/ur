@@ -1322,7 +1322,7 @@ describe('public tournament rpc flow', () => {
     ).toThrow('This tournament is not available in public play.');
   });
 
-  it('still respects the scheduled start time after the lobby is full', () => {
+  it('starts immediately once the lobby is full even if the scheduled start time is later', () => {
     const nk = createNakama();
     const logger = createLogger();
     const nowSeconds = Math.floor(Date.now() / 1000);
@@ -1357,21 +1357,35 @@ describe('public tournament rpc flow', () => {
     };
 
     expect(joinResponse.tournament.entrants).toBe(2);
-    expect(joinResponse.tournament.isLocked).toBe(false);
+    expect(joinResponse.tournament.isLocked).toBe(true);
     expect(joinResponse.tournament.participation).toEqual(
       expect.objectContaining({
-        state: 'lobby',
-        canLaunch: false,
+        state: 'waiting_next_round',
+        canLaunch: true,
       }),
     );
 
-    expect(() =>
+    const launchResponse = JSON.parse(
       rpcLaunchTournamentMatch(
         { userId: 'user-1', username: 'RoyalPlayer' },
         logger,
         nk,
         JSON.stringify({ runId: 'run-1' }),
       ),
-    ).toThrow('This tournament has not started yet.');
+    ) as {
+      matchId: string;
+      queueStatus: string;
+      playerState: string;
+      tournamentRound: number | null;
+    };
+
+    expect(launchResponse).toEqual(
+      expect.objectContaining({
+        matchId: 'match-tournament-1',
+        queueStatus: 'active_match',
+        playerState: 'in_match',
+        tournamentRound: 1,
+      }),
+    );
   });
 });

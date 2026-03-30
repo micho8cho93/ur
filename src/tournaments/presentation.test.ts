@@ -3,6 +3,8 @@ import {
   getTournamentDetailPrimaryState,
   getTournamentChipState,
   hasTournamentEnded,
+  isTournamentPlayerLaunchReady,
+  isTournamentPreStartWaitingRoomVisible,
   isTournamentVisibleForPlay,
 } from '@/src/tournaments/presentation';
 import type { PublicTournamentSummary } from '@/src/tournaments/types';
@@ -247,5 +249,47 @@ describe('tournament presentation helpers', () => {
       loading: false,
       waitReason: null,
     });
+  });
+
+  it('only shows the pre-start waiting room for players who are still before round one launch', () => {
+    const joinedLobbyTournament: PublicTournamentSummary = {
+      ...baseTournament,
+      membership: {
+        isJoined: true,
+        joinedAt: '2026-03-27T11:55:00.000Z',
+      },
+      participation: {
+        ...baseTournament.participation,
+        state: 'lobby',
+        currentRound: 1,
+      },
+    };
+    const joinedReadyTournament: PublicTournamentSummary = {
+      ...joinedLobbyTournament,
+      isLocked: true,
+      entrants: 16,
+      participation: {
+        ...joinedLobbyTournament.participation,
+        state: 'waiting_next_round',
+        canLaunch: true,
+      },
+    };
+    const joinedLaterRoundTournament: PublicTournamentSummary = {
+      ...joinedReadyTournament,
+      currentRound: 2,
+      participation: {
+        ...joinedReadyTournament.participation,
+        currentRound: 2,
+        lastResult: 'win',
+      },
+    };
+
+    expect(isTournamentPreStartWaitingRoomVisible(baseTournament)).toBe(false);
+    expect(isTournamentPreStartWaitingRoomVisible(joinedLobbyTournament)).toBe(true);
+    expect(isTournamentPreStartWaitingRoomVisible(joinedReadyTournament)).toBe(true);
+    expect(isTournamentPreStartWaitingRoomVisible(joinedLaterRoundTournament)).toBe(false);
+
+    expect(isTournamentPlayerLaunchReady(joinedLobbyTournament)).toBe(false);
+    expect(isTournamentPlayerLaunchReady(joinedReadyTournament)).toBe(true);
   });
 });

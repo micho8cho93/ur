@@ -9,7 +9,7 @@ import { useTournamentUiStore } from '@/src/tournaments/store';
 import { useTournamentMatchLauncher } from '@/src/tournaments/useTournamentMatchLauncher';
 import type { PublicTournamentDetail, PublicTournamentStanding } from '@/src/tournaments/types';
 
-const DETAIL_POLL_INTERVAL_MS = 10_000;
+const DETAIL_POLL_INTERVAL_MS = 4_000;
 
 export const useTournamentDetail = (runId: string | null) => {
   const [tournament, setTournament] = useState<PublicTournamentDetail | null>(null);
@@ -93,8 +93,10 @@ export const useTournamentDetail = (runId: string | null) => {
 
       try {
         await launchMatch(selectedTournament);
+        return true;
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Unable to launch tournament match.');
+        return false;
       }
     },
     [launchMatch],

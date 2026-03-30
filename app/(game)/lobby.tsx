@@ -32,6 +32,7 @@ export default function Lobby() {
   const { mode: rawMode } = useLocalSearchParams<{ mode?: string }>();
   const mode: LobbyMode = useMemo(() => (rawMode === 'online' ? 'online' : 'bot'), [rawMode]);
   const router = useRouter();
+  const [confirmJoinRunId, setConfirmJoinRunId] = useState<string | null>(null);
   const [privateCodeInput, setPrivateCodeInput] = useState('');
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const {
@@ -267,13 +268,36 @@ export default function Lobby() {
                     tournament={tournament}
                     joining={joiningRunId === tournament.runId}
                     launching={launchingRunId === tournament.runId}
+                    primaryTitle={confirmJoinRunId === tournament.runId ? 'Confirm' : undefined}
                     onJoin={(selected) => {
-                      void joinTournament(selected.runId);
+                      if (confirmJoinRunId !== selected.runId) {
+                        setConfirmJoinRunId(selected.runId);
+                        return;
+                      }
+
+                      void (async () => {
+                        const joinedTournament = await joinTournament(selected.runId);
+                        if (!joinedTournament?.membership.isJoined) {
+                          return;
+                        }
+
+                        setConfirmJoinRunId(null);
+                        router.push(
+                          {
+                            pathname: '/tournaments/[runId]',
+                            params: {
+                              runId: selected.runId,
+                            },
+                          } as never,
+                        );
+                      })();
                     }}
                     onLaunch={(selected) => {
+                      setConfirmJoinRunId(null);
                       void launchMatch(selected);
                     }}
                     onViewStandings={(selected) => {
+                      setConfirmJoinRunId(null);
                       router.push(
                         {
                           pathname: '/tournaments/[runId]',

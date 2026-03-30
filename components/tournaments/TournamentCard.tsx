@@ -16,6 +16,7 @@ type TournamentCardProps = {
   tournament: PublicTournamentSummary;
   joining?: boolean;
   launching?: boolean;
+  primaryTitle?: string;
   onJoin: (tournament: PublicTournamentSummary) => void;
   onLaunch: (tournament: PublicTournamentSummary) => void;
   onViewStandings: (tournament: PublicTournamentSummary) => void;
@@ -48,12 +49,14 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
   tournament,
   joining = false,
   launching = false,
+  primaryTitle,
   onJoin,
   onLaunch,
   onViewStandings,
 }) => {
   const chip = getTournamentChipState(tournament);
   const primary = getTournamentCardPrimaryState(tournament);
+  const resolvedPrimaryTitle = primaryTitle ?? primary.label;
 
   return (
     <View style={styles.card}>
@@ -109,7 +112,7 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
           onPress={() => onViewStandings(tournament)}
         />
         <Button
-          title={primary.label}
+          title={resolvedPrimaryTitle}
           loading={primary.loading || joining || launching}
           disabled={primary.disabled || joining || launching}
           style={styles.primaryButton}

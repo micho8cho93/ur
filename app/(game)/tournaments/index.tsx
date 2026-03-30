@@ -6,7 +6,7 @@ import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { useTournamentList } from '@/src/tournaments/useTournamentList';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 const multiplayerWideBackground = require('../../../assets/images/multiplayer_bg.png');
@@ -15,6 +15,7 @@ const multiplayerMobileBackground = require('../../../assets/images/multiplayer_
 export default function PublicTournamentBrowseScreen() {
   const { width } = useWindowDimensions();
   const router = useRouter();
+  const [confirmJoinRunId, setConfirmJoinRunId] = useState<string | null>(null);
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
   const {
@@ -83,13 +84,36 @@ export default function PublicTournamentBrowseScreen() {
                 tournament={tournament}
                 joining={joiningRunId === tournament.runId}
                 launching={launchingRunId === tournament.runId}
+                primaryTitle={confirmJoinRunId === tournament.runId ? 'Confirm' : undefined}
                 onJoin={(selected) => {
-                  void joinTournament(selected.runId);
+                  if (confirmJoinRunId !== selected.runId) {
+                    setConfirmJoinRunId(selected.runId);
+                    return;
+                  }
+
+                  void (async () => {
+                    const joinedTournament = await joinTournament(selected.runId);
+                    if (!joinedTournament?.membership.isJoined) {
+                      return;
+                    }
+
+                    setConfirmJoinRunId(null);
+                    router.push(
+                      {
+                        pathname: '/tournaments/[runId]',
+                        params: {
+                          runId: selected.runId,
+                        },
+                      } as never,
+                    );
+                  })();
                 }}
                 onLaunch={(selected) => {
+                  setConfirmJoinRunId(null);
                   void launchMatch(selected);
                 }}
                 onViewStandings={(selected) => {
+                  setConfirmJoinRunId(null);
                   router.push(
                     {
                       pathname: '/tournaments/[runId]',
