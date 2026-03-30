@@ -32,14 +32,47 @@ function getAdminLabel(
   )
 }
 
-export function Sidebar() {
+function getMonogram(value: string) {
+  const parts = value
+    .split(/[\s_.-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+
+  if (parts.length === 0) {
+    return 'AD'
+  }
+
+  return parts.map((part) => part[0]?.toUpperCase() ?? '').join('')
+}
+
+interface SidebarProps {
+  collapsed: boolean
+  onToggle: () => void
+}
+
+export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { adminIdentity, logout, isAuthenticating } = useSession()
+  const adminLabel = adminIdentity ? getAdminLabel(adminIdentity) : null
 
   return (
     <aside className="sidebar">
       <div className="sidebar__brand">
-        <p className="sidebar__eyebrow">Ur Game</p>
-        <h1 className="sidebar__title">Internals</h1>
+        <div className="sidebar__brand-header">
+          <div className="sidebar__brand-copy">
+            <p className="sidebar__eyebrow">Ur Game</p>
+            <h1 className="sidebar__title">{collapsed ? 'UR' : 'Internals'}</h1>
+          </div>
+          <button
+            className="sidebar__collapse-button"
+            type="button"
+            onClick={onToggle}
+            aria-label={collapsed ? 'Expand navigation panel' : 'Collapse navigation panel'}
+            aria-pressed={collapsed}
+            title={collapsed ? 'Expand navigation panel' : 'Collapse navigation panel'}
+          >
+            {collapsed ? '>>' : '<<'}
+          </button>
+        </div>
         <p className="sidebar__subtitle">
           Tournament operations, queue monitoring, and direct Nakama admin control.
         </p>
@@ -51,8 +84,11 @@ export function Sidebar() {
             <p className="meta-label">Signed in</p>
             <span className="session-pill session-pill--ready">{adminIdentity.role}</span>
           </div>
+          <div className="sidebar__admin-avatar" aria-hidden="true">
+            {getMonogram(adminLabel ?? 'Admin')}
+          </div>
           <div className="sidebar__admin-copy">
-            <strong>{getAdminLabel(adminIdentity)}</strong>
+            <strong>{adminLabel}</strong>
             <span className="muted">{adminIdentity.email ?? adminIdentity.userId}</span>
           </div>
           <button
@@ -61,7 +97,7 @@ export function Sidebar() {
             onClick={() => void logout()}
             disabled={isAuthenticating}
           >
-            Sign out
+            {collapsed ? 'Out' : 'Sign out'}
           </button>
         </div>
       ) : null}
@@ -73,6 +109,8 @@ export function Sidebar() {
             to={item.to}
             end={item.to === '/'}
             className={getLinkClassName}
+            aria-label={item.label}
+            title={collapsed ? item.label : undefined}
           >
             <span className="sidebar__link-index" aria-hidden="true">
               {item.short}

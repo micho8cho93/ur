@@ -567,11 +567,23 @@ type ReconstructedTournamentStanding = {
   lastResult: "win" | "loss" | null;
 };
 
-const normalizeReconstructedTournamentSnapshotMatch = (
+type StoredTournamentMatchSummary = ReconstructedTournamentSnapshotMatch;
+
+type AdminBracketEntryMatchContext = {
+  usernamesByUserId: Record<string, string | null>;
+  finishedCountsByUserId: Record<string, number>;
+};
+
+const normalizeStoredTournamentMatchSummary = (
   value: unknown,
-): ReconstructedTournamentSnapshotMatch | null => {
+  options?: {
+    requireCounted?: boolean;
+  },
+): StoredTournamentMatchSummary | null => {
   const record = asRecord(value);
-  if (!record || readBooleanField(record, ["counted"]) !== true) {
+  const requireCounted = options?.requireCounted !== false;
+
+  if (!record || (requireCounted && readBooleanField(record, ["counted"]) !== true)) {
     return null;
   }
 
@@ -625,6 +637,12 @@ const normalizeReconstructedTournamentSnapshotMatch = (
   };
 };
 
+const normalizeReconstructedTournamentSnapshotMatch = (
+  value: unknown,
+): ReconstructedTournamentSnapshotMatch | null => {
+  return normalizeStoredTournamentMatchSummary(value, { requireCounted: true });
+};
+
 const readStoredReconstructedTournamentSnapshotMatches = (
   nk: RuntimeNakama,
   resultIds: string[],
@@ -647,6 +665,101 @@ const readStoredReconstructedTournamentSnapshotMatches = (
       ),
     )
     .filter((entry): entry is ReconstructedTournamentSnapshotMatch => Boolean(entry));
+};
+
+const buildAdminBracketEntryMatchContextByMatchId = (
+  nk: RuntimeNakama,
+  run: TournamentRunRecord,
+): Map<string, AdminBracketEntryMatchContext> => {
+  const completedEntries = run.bracket?.entries.filter(
+    (entry) => entry.status === "completed" && Boolean(entry.matchId),
+  ) ?? [];
+
+  if (completedEntries.length === 0) {
+    return new Map();
+  }
+
+  const resultIds = Array.from(
+    new Set(
+      completedEntries
+        .map((entry) => entry.matchId)
+        .filter((matchId): matchId is string => Boolean(matchId))
+        .map((matchId) => `${run.runId}:${matchId}`),
+    ),
+  );
+
+  const objects = nk.storageRead(
+    resultIds.map((resultId) => ({
+      collection: TOURNAMENT_MATCH_RESULTS_COLLECTION,
+      key: resultId,
+    })),
+  ) as RuntimeStorageObject[];
+
+  return new Map(
+    resultIds
+      .map((resultId) =>
+        normalizeStoredTournamentMatchSummary(
+          findStorageObject(objects, TOURNAMENT_MATCH_RESULTS_COLLECTION, resultId)?.value ?? null,
+          { requireCounted: false },
+        ),
+      )
+      .filter((entry): entry is StoredTournamentMatchSummary => Boolean(entry))
+      .map((entry) => [
+        entry.matchId,
+        {
+          usernamesByUserId: entry.players.reduce<Record<string, string | null>>((accumulator, player) => {
+            accumulator[player.userId] = player.username?.trim() || null;
+            return accumulator;
+          }, {}),
+          finishedCountsByUserId: entry.players.reduce<Record<string, number>>((accumulator, player) => {
+            accumulator[player.userId] = player.finishedCount;
+            return accumulator;
+          }, {}),
+        },
+      ]),
+  );
+};
+
+const buildAdminTournamentRunResponse = (
+  nk: RuntimeNakama,
+  run: TournamentRunRecord,
+) => {
+  if (!run.bracket) {
+    return run;
+  }
+
+  const matchContextByMatchId = buildAdminBracketEntryMatchContextByMatchId(nk, run);
+
+  return {
+    ...run,
+    bracket: {
+      ...run.bracket,
+      participants: run.bracket.participants.map((participant) => ({ ...participant })),
+      entries: run.bracket.entries.map((entry) => {
+        const matchContext = entry.matchId ? matchContextByMatchId.get(entry.matchId) : null;
+
+        return {
+          ...entry,
+          playerAUsername:
+            entry.playerAUserId && matchContext
+              ? matchContext.usernamesByUserId[entry.playerAUserId] ?? null
+              : null,
+          playerBUsername:
+            entry.playerBUserId && matchContext
+              ? matchContext.usernamesByUserId[entry.playerBUserId] ?? null
+              : null,
+          playerAScore:
+            entry.playerAUserId && matchContext
+              ? matchContext.finishedCountsByUserId[entry.playerAUserId] ?? null
+              : null,
+          playerBScore:
+            entry.playerBUserId && matchContext
+              ? matchContext.finishedCountsByUserId[entry.playerBUserId] ?? null
+              : null,
+        };
+      }),
+    },
+  };
 };
 
 const applyReconstructedStandingUpdate = (
@@ -1420,7 +1533,11 @@ export const rpcAdminGetTournamentRun = (
 
       const nakamaTournament = getNakamaTournamentById(_nk, run.tournamentId);
 
-      return JSON.stringify(buildRunResponse(run, nakamaTournament));
+      return JSON.stringify({
+        ok: true,
+        run: buildAdminTournamentRunResponse(_nk, run),
+        nakamaTournament,
+      });
     },
     {
       action: RPC_ADMIN_GET_TOURNAMENT_RUN,

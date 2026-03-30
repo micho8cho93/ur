@@ -146,6 +146,11 @@ type TournamentHistoryRound = {
   matches: TournamentHistoryMatch[]
 }
 
+type TournamentPlayerDirectory = {
+  names: Map<string, string>
+  seeds: Map<string, number>
+}
+
 function getRoundStageLabel(round: number, totalRounds: number, matchCount: number) {
   if (round === totalRounds) {
     return 'Final'
@@ -183,27 +188,122 @@ function joinLabels(labels: string[]) {
   return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`
 }
 
-function resolvePlayerLabel(userId: string | null, playerNames: Map<string, string>) {
+function buildTournamentPlayerDirectory(
+  tournament: Tournament,
+  standings: TournamentStandings,
+): TournamentPlayerDirectory {
+  const names = new Map<string, string>()
+  const seeds = new Map<string, number>()
+
+  tournament.registrations.forEach((registration) => {
+    names.set(registration.userId, registration.displayName)
+    seeds.set(registration.userId, registration.seed)
+  })
+
+  tournament.bracket?.participants.forEach((participant) => {
+    names.set(participant.userId, participant.displayName)
+    seeds.set(participant.userId, participant.seed)
+  })
+
+  standings.entries.forEach((entry) => {
+    if (!names.has(entry.ownerId)) {
+      names.set(entry.ownerId, entry.username)
+    }
+  })
+
+  return {
+    names,
+    seeds,
+  }
+}
+
+function resolvePlayerLabel(
+  userId: string | null,
+  playerDirectory: TournamentPlayerDirectory,
+  preferredLabel?: string | null,
+) {
+  const normalizedPreferred = preferredLabel?.trim()
+  if (normalizedPreferred) {
+    return normalizedPreferred
+  }
+
   if (!userId) {
     return 'TBD'
   }
 
-  return playerNames.get(userId) ?? userId
+  const fallbackLabel = playerDirectory.names.get(userId)?.trim()
+  if (fallbackLabel) {
+    return fallbackLabel
+  }
+
+  const seed = playerDirectory.seeds.get(userId)
+  return seed ? `Seed #${seed}` : 'Qualified player'
+}
+
+function resolveBracketEntryPlayerLabel(
+  entry: NonNullable<Tournament['bracket']>['entries'][number],
+  slot: 'playerA' | 'playerB',
+  playerDirectory: TournamentPlayerDirectory,
+) {
+  if (slot === 'playerA') {
+    return resolvePlayerLabel(entry.playerAUserId, playerDirectory, entry.playerAUsername)
+  }
+
+  return resolvePlayerLabel(entry.playerBUserId, playerDirectory, entry.playerBUsername)
+}
+
+function resolveLiveEntryPlayerLabel(
+  entry: TournamentLiveEntry,
+  slot: 'playerA' | 'playerB',
+  playerDirectory: TournamentPlayerDirectory,
+) {
+  if (slot === 'playerA') {
+    return resolvePlayerLabel(entry.playerAUserId, playerDirectory, entry.playerADisplayName)
+  }
+
+  return resolvePlayerLabel(entry.playerBUserId, playerDirectory, entry.playerBDisplayName)
+}
+
+function getBracketEntryScoreline(entry: NonNullable<Tournament['bracket']>['entries'][number]) {
+  if (typeof entry.playerAScore !== 'number' || typeof entry.playerBScore !== 'number') {
+    return null
+  }
+
+  if (entry.winnerUserId === entry.playerAUserId) {
+    return `${entry.playerAScore}-${entry.playerBScore}`
+  }
+
+  if (entry.winnerUserId === entry.playerBUserId) {
+    return `${entry.playerBScore}-${entry.playerAScore}`
+  }
+
+  return `${entry.playerAScore}-${entry.playerBScore}`
 }
 
 function describeHistoryMatch(
   tournament: Tournament,
-  playerNames: Map<string, string>,
+  playerDirectory: TournamentPlayerDirectory,
   roundTitle: string,
   slot: number,
 ) {
   return (entry: NonNullable<Tournament['bracket']>['entries'][number]): TournamentHistoryMatch => {
-    const playerA = resolvePlayerLabel(entry.playerAUserId, playerNames)
-    const playerB = resolvePlayerLabel(entry.playerBUserId, playerNames)
+    const playerA = resolveBracketEntryPlayerLabel(entry, 'playerA', playerDirectory)
+    const playerB = resolveBracketEntryPlayerLabel(entry, 'playerB', playerDirectory)
 
     if (entry.status === 'completed') {
-      const winner = resolvePlayerLabel(entry.winnerUserId, playerNames)
-      const loser = resolvePlayerLabel(entry.loserUserId, playerNames)
+      const winner =
+        entry.winnerUserId === entry.playerAUserId
+          ? playerA
+          : entry.winnerUserId === entry.playerBUserId
+            ? playerB
+            : resolvePlayerLabel(entry.winnerUserId, playerDirectory)
+      const loser =
+        entry.loserUserId === entry.playerAUserId
+          ? playerA
+          : entry.loserUserId === entry.playerBUserId
+            ? playerB
+            : resolvePlayerLabel(entry.loserUserId, playerDirectory)
+      const scoreline = getBracketEntryScoreline(entry)
       const detailParts = [
         entry.completedAt ? `Completed ${formatDateTime(entry.completedAt)}` : null,
         entry.matchId ? `Match id ${entry.matchId}` : null,
@@ -213,7 +313,7 @@ function describeHistoryMatch(
         key: entry.entryId,
         headline:
           entry.winnerUserId && entry.loserUserId
-            ? `Match ${slot}: ${winner} defeated ${loser}.`
+            ? `Match ${slot}: ${winner} defeated ${loser}${scoreline ? ` (${scoreline})` : ''}.`
             : `Match ${slot}: A result was recorded for this ${roundTitle.toLowerCase()} pairing.`,
         detail: detailParts.join(' · ') || `Recorded in ${roundTitle}.`,
       }
@@ -279,15 +379,7 @@ function buildTournamentHistoryRounds(
     return []
   }
 
-  const playerNames = new Map<string, string>()
-  tournament.bracket.participants.forEach((participant) => {
-    playerNames.set(participant.userId, participant.displayName)
-  })
-  standings.entries.forEach((entry) => {
-    if (!playerNames.has(entry.ownerId)) {
-      playerNames.set(entry.ownerId, entry.username)
-    }
-  })
+  const playerDirectory = buildTournamentPlayerDirectory(tournament, standings)
 
   const rounds = Array.from(new Set(tournament.bracket.entries.map((entry) => entry.round))).sort(
     (left, right) => left - right,
@@ -309,7 +401,7 @@ function buildTournamentHistoryRounds(
       title: roundTitle,
       summary: `${completedCount} of ${entries.length} ${entries.length === 1 ? 'result' : 'results'} recorded`,
       matches: entries.map((entry) =>
-        describeHistoryMatch(tournament, playerNames, roundTitle, entry.slot)(entry),
+        describeHistoryMatch(tournament, playerDirectory, roundTitle, entry.slot)(entry),
       ),
     }
   })
@@ -640,6 +732,13 @@ export function TournamentDetailPage() {
     () => (tournament ? buildTournamentHistoryRounds(tournament, standings) : []),
     [standings, tournament],
   )
+  const playerDirectory = useMemo(
+    () =>
+      tournament
+        ? buildTournamentPlayerDirectory(tournament, standings)
+        : { names: new Map<string, string>(), seeds: new Map<string, number>() },
+    [standings, tournament],
+  )
 
   if (isLoading) {
     return <div className="empty-state">Loading tournament detail...</div>
@@ -951,6 +1050,8 @@ export function TournamentDetailPage() {
         <SectionPanel
           title="Match duration distribution"
           subtitle="Histogram of completed match durations."
+          collapsible
+          defaultOpen={false}
         >
           {!liveDetail || liveDetail.matchDurationBuckets.every((bucket) => bucket.count === 0) ? (
             <div className="empty-state">Completed matches will populate duration buckets here.</div>
@@ -969,6 +1070,8 @@ export function TournamentDetailPage() {
         <SectionPanel
           title="Seed survival"
           subtitle="How quickly higher seeds are falling out by round."
+          collapsible
+          defaultOpen={false}
         >
           {!liveDetail || liveDetail.seedSurvival.length === 0 ? (
             <div className="empty-state">Seed survival appears after the bracket is seeded.</div>
@@ -1036,7 +1139,8 @@ export function TournamentDetailPage() {
                       <td>
                         <div className="table__entity">
                           <strong>
-                            {entry.playerADisplayName ?? 'TBD'} vs {entry.playerBDisplayName ?? 'TBD'}
+                            {resolveLiveEntryPlayerLabel(entry, 'playerA', playerDirectory)} vs{' '}
+                            {resolveLiveEntryPlayerLabel(entry, 'playerB', playerDirectory)}
                           </strong>
                           <span className="table__subline mono">
                             {entry.matchId ? `Match ${entry.matchId}` : 'Match id pending'}
@@ -1067,6 +1171,8 @@ export function TournamentDetailPage() {
         <SectionPanel
           title="Blocked / stale states"
           subtitle="Entries that need a launch, an upstream result, or manual investigation."
+          collapsible
+          defaultOpen={blockedEntries.length > 0}
         >
           {blockedEntries.length === 0 ? (
             <div className="empty-state">No blocked or stale states detected.</div>
@@ -1161,6 +1267,8 @@ export function TournamentDetailPage() {
         <SectionPanel
           title="Audit activity timeline"
           subtitle="Recent operator activity for this run only."
+          collapsible
+          defaultOpen={false}
         >
           {renderTimelineChart(
             liveDetail?.auditActivityTimeline ?? [],
@@ -1177,6 +1285,8 @@ export function TournamentDetailPage() {
               ? `Generated ${formatDateTime(standings.generatedAt)}`
               : 'No standings snapshot yet.'
           }
+          collapsible
+          defaultOpen={false}
         >
           {standings.entries.length === 0 ? (
             <div className="empty-state">
@@ -1225,6 +1335,8 @@ export function TournamentDetailPage() {
         <SectionPanel
           title="Audit trace"
           subtitle="Per-run audit entries from the admin log."
+          collapsible
+          defaultOpen={false}
         >
           {auditEntries.length === 0 ? (
             <div className="empty-state">No audit entries returned for this run.</div>
@@ -1250,6 +1362,8 @@ export function TournamentDetailPage() {
       <SectionPanel
         title="Entry records"
         subtitle="Last written tournament record metadata per owner."
+        collapsible
+        defaultOpen={false}
       >
         {standings.entries.length === 0 ? (
           <div className="empty-state">No entry records available yet.</div>

@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import env from '../config/env'
 import { Sidebar } from '../components/Sidebar'
+
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'ur-internals.sidebar-collapsed'
 
 function getAdminStatusLabel(role: string | null | undefined) {
   if (!role) {
@@ -13,11 +16,31 @@ function getAdminStatusLabel(role: string | null | undefined) {
 
 export function DashboardLayout() {
   const { adminIdentity } = useSession()
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true'
+  })
   const statusLabel = env.useMockData ? 'Mock mode active' : getAdminStatusLabel(adminIdentity?.role)
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(isSidebarCollapsed))
+  }, [isSidebarCollapsed])
+
   return (
-    <div className="shell">
-      <Sidebar />
+    <div className={isSidebarCollapsed ? 'shell shell--sidebar-collapsed' : 'shell'}>
+      <Sidebar
+        collapsed={isSidebarCollapsed}
+        onToggle={() => {
+          setIsSidebarCollapsed((current) => !current)
+        }}
+      />
 
       <div className="shell__content">
         <header className="topbar">

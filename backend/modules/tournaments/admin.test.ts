@@ -473,6 +473,143 @@ describe("admin tournament run creation", () => {
     expect(nk.tournamentRanksDisable).toHaveBeenCalledWith("test-tournament");
   });
 
+  it("enriches completed bracket entries with recorded usernames and finished-piece scores", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk, "admin-1", "viewer");
+
+    const startedAt = "2026-03-27T10:00:00.000Z";
+    const completedAt = "2026-03-27T10:08:00.000Z";
+    const registrations = [
+      {
+        userId: "user-1",
+        displayName: "Seed One",
+        joinedAt: startedAt,
+        seed: 1,
+      },
+      {
+        userId: "user-2",
+        displayName: "Seed Two",
+        joinedAt: startedAt,
+        seed: 2,
+      },
+    ];
+    const completedBracket = completeTournamentBracketMatch(
+      createSingleEliminationBracket(registrations, startedAt),
+      {
+        entryId: "round-1-match-1",
+        matchId: "match-1",
+        winnerUserId: "user-1",
+        loserUserId: "user-2",
+        completedAt,
+      },
+    );
+
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, "history-tournament"), {
+      collection: RUNS_COLLECTION,
+      key: "history-tournament",
+      value: {
+        runId: "history-tournament",
+        tournamentId: "history-tournament",
+        title: "History Tournament",
+        description: "Bracket history detail",
+        category: 0,
+        authoritative: true,
+        sortOrder: "desc",
+        operator: "incr",
+        resetSchedule: "",
+        metadata: {},
+        startTime: 1_774_572_800,
+        endTime: 1_774_580_000,
+        duration: 7_200,
+        maxSize: 2,
+        maxNumScore: 1,
+        joinRequired: true,
+        enableRanks: true,
+        lifecycle: "open",
+        registrations,
+        bracket: completedBracket,
+        createdAt: startedAt,
+        updatedAt: completedAt,
+        createdByUserId: "admin-1",
+        createdByLabel: "Viewer",
+        openedAt: startedAt,
+        closedAt: null,
+        finalizedAt: null,
+        finalSnapshot: null,
+      },
+      version: "run-v1",
+    });
+    nk.storage.set(buildStorageKey("tournament_match_results", "history-tournament:match-1"), {
+      collection: "tournament_match_results",
+      key: "history-tournament:match-1",
+      value: {
+        resultId: "history-tournament:match-1",
+        matchId: "match-1",
+        runId: "history-tournament",
+        tournamentId: "history-tournament",
+        createdAt: completedAt,
+        updatedAt: completedAt,
+        valid: true,
+        counted: true,
+        invalidReason: null,
+        errorMessage: null,
+        summary: {
+          completedAt,
+          round: 1,
+          entryId: "round-1-match-1",
+          players: [
+            {
+              userId: "user-1",
+              username: "royal_champion",
+              didWin: true,
+              score: 1,
+              finishedCount: 7,
+            },
+            {
+              userId: "user-2",
+              username: "board_breaker",
+              didWin: false,
+              score: 0,
+              finishedCount: 4,
+            },
+          ],
+        },
+      },
+      version: "result-v1",
+    });
+
+    const response = JSON.parse(
+      rpcAdminGetTournamentRun(
+        {
+          userId: "admin-1",
+          username: "Viewer",
+        },
+        logger,
+        nk,
+        JSON.stringify({ runId: "history-tournament" }),
+      ),
+    ) as {
+      run: {
+        bracket: {
+          entries: Array<Record<string, unknown>>;
+        } | null;
+      } | null;
+    };
+
+    expect(response.run?.bracket?.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          entryId: "round-1-match-1",
+          playerAUsername: "royal_champion",
+          playerBUsername: "board_breaker",
+          playerAScore: 7,
+          playerBScore: 4,
+        }),
+      ]),
+    );
+  });
+
   it("opens a draft run and creates the Nakama tournament with the runtime argument order", () => {
     const nk = createNakama();
     const logger = createLogger();

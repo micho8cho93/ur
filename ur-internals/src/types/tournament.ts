@@ -34,10 +34,14 @@ export interface TournamentBracketEntry {
   sourceEntryIds: string[]
   playerAUserId: string | null
   playerBUserId: string | null
+  playerAUsername: string | null
+  playerBUsername: string | null
   matchId: string | null
   status: TournamentBracketEntryStatus
   winnerUserId: string | null
   loserUserId: string | null
+  playerAScore: number | null
+  playerBScore: number | null
   createdAt: string
   updatedAt: string
   readyAt: string | null
