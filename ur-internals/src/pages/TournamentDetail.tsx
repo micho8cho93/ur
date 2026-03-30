@@ -4,6 +4,7 @@ import { useSession } from '../auth/useSession'
 import { getTournamentAuditLog } from '../api/auditLog'
 import {
   deleteTournament,
+  exportTournament,
   finalizeTournament,
   getTournament,
   getTournamentStandings,
@@ -37,6 +38,188 @@ function describeEntry(entry: TournamentEntry) {
   return parts.length > 0 ? parts.join(' · ') : 'No per-entry metadata yet.'
 }
 
+type TournamentHistoryMatch = {
+  key: string
+  headline: string
+  detail: string
+}
+
+type TournamentHistoryRound = {
+  round: number
+  title: string
+  summary: string
+  matches: TournamentHistoryMatch[]
+}
+
+function getRoundStageLabel(round: number, totalRounds: number, matchCount: number) {
+  if (round === totalRounds) {
+    return 'Final'
+  }
+
+  if (matchCount === 2) {
+    return 'Semifinals'
+  }
+
+  if (matchCount === 4) {
+    return 'Quarterfinals'
+  }
+
+  return `Round of ${matchCount * 2}`
+}
+
+function getHistorySourceLabel(sourceEntryId: string) {
+  const match = sourceEntryId.match(/^round-(\d+)-match-(\d+)$/)
+  return match ? `Match ${match[2]}` : 'a prior match'
+}
+
+function joinLabels(labels: string[]) {
+  if (labels.length === 0) {
+    return ''
+  }
+
+  if (labels.length === 1) {
+    return labels[0]
+  }
+
+  if (labels.length === 2) {
+    return `${labels[0]} and ${labels[1]}`
+  }
+
+  return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`
+}
+
+function resolvePlayerLabel(userId: string | null, playerNames: Map<string, string>) {
+  if (!userId) {
+    return 'TBD'
+  }
+
+  return playerNames.get(userId) ?? userId
+}
+
+function describeHistoryMatch(
+  tournament: Tournament,
+  playerNames: Map<string, string>,
+  roundTitle: string,
+  slot: number,
+) {
+  return (entry: NonNullable<Tournament['bracket']>['entries'][number]): TournamentHistoryMatch => {
+    const playerA = resolvePlayerLabel(entry.playerAUserId, playerNames)
+    const playerB = resolvePlayerLabel(entry.playerBUserId, playerNames)
+
+    if (entry.status === 'completed') {
+      const winner = resolvePlayerLabel(entry.winnerUserId, playerNames)
+      const loser = resolvePlayerLabel(entry.loserUserId, playerNames)
+      const detailParts = [
+        entry.completedAt ? `Completed ${formatDateTime(entry.completedAt)}` : null,
+        entry.matchId ? `Match id ${entry.matchId}` : null,
+      ].filter(Boolean)
+
+      return {
+        key: entry.entryId,
+        headline:
+          entry.winnerUserId && entry.loserUserId
+            ? `Match ${slot}: ${winner} defeated ${loser}.`
+            : `Match ${slot}: A result was recorded for this ${roundTitle.toLowerCase()} pairing.`,
+        detail: detailParts.join(' · ') || `Recorded in ${roundTitle}.`,
+      }
+    }
+
+    if (entry.status === 'in_match') {
+      return {
+        key: entry.entryId,
+        headline: `Match ${slot}: ${playerA} is currently playing ${playerB}.`,
+        detail:
+          [
+            entry.startedAt ? `Started ${formatDateTime(entry.startedAt)}` : null,
+            entry.matchId ? `Match id ${entry.matchId}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ') || `This ${getTournamentStructureLabel(tournament.gameMode).toLowerCase()} game is in progress.`,
+      }
+    }
+
+    if (entry.status === 'ready') {
+      return {
+        key: entry.entryId,
+        headline: `Match ${slot}: ${playerA} vs ${playerB} is ready to begin.`,
+        detail:
+          (entry.readyAt ? `Ready since ${formatDateTime(entry.readyAt)}.` : null) ??
+          `Both players have advanced into ${roundTitle.toLowerCase()}.`,
+      }
+    }
+
+    if (entry.playerAUserId && !entry.playerBUserId) {
+      return {
+        key: entry.entryId,
+        headline: `Match ${slot}: ${playerA} has advanced and is waiting for an opponent.`,
+        detail: `This spot will fill once the prior result is confirmed.`,
+      }
+    }
+
+    if (!entry.playerAUserId && entry.playerBUserId) {
+      return {
+        key: entry.entryId,
+        headline: `Match ${slot}: ${playerB} has advanced and is waiting for an opponent.`,
+        detail: `This spot will fill once the prior result is confirmed.`,
+      }
+    }
+
+    const sourceMatches = joinLabels(entry.sourceEntryIds.map((sourceId) => getHistorySourceLabel(sourceId)))
+
+    return {
+      key: entry.entryId,
+      headline: `Match ${slot}: This pairing is still waiting to be decided.`,
+      detail: sourceMatches
+        ? `Waiting for winners from ${sourceMatches}.`
+        : 'Waiting for the previous round to settle.',
+    }
+  }
+}
+
+function buildTournamentHistoryRounds(
+  tournament: Tournament,
+  standings: TournamentStandings,
+): TournamentHistoryRound[] {
+  if (!tournament.bracket) {
+    return []
+  }
+
+  const playerNames = new Map<string, string>()
+  tournament.bracket.participants.forEach((participant) => {
+    playerNames.set(participant.userId, participant.displayName)
+  })
+  standings.entries.forEach((entry) => {
+    if (!playerNames.has(entry.ownerId)) {
+      playerNames.set(entry.ownerId, entry.username)
+    }
+  })
+
+  const rounds = Array.from(new Set(tournament.bracket.entries.map((entry) => entry.round))).sort(
+    (left, right) => left - right,
+  )
+
+  return rounds.map((round) => {
+    const entries = tournament.bracket?.entries
+      .filter((entry) => entry.round === round)
+      .sort((left, right) => left.slot - right.slot) ?? []
+    const roundTitle = `Round ${round} · ${getRoundStageLabel(
+      round,
+      tournament.bracket?.totalRounds ?? round,
+      entries.length,
+    )}`
+    const completedCount = entries.filter((entry) => entry.status === 'completed').length
+
+    return {
+      round,
+      title: roundTitle,
+      summary: `${completedCount} of ${entries.length} ${entries.length === 1 ? 'result' : 'results'} recorded`,
+      matches: entries.map((entry) =>
+        describeHistoryMatch(tournament, playerNames, roundTitle, entry.slot)(entry),
+      ),
+    }
+  })
+}
+
 const emptyStandings: TournamentStandings = {
   entries: [],
   rankCount: null,
@@ -54,6 +237,7 @@ export function TournamentDetailPage() {
   const [isOpening, setIsOpening] = useState(false)
   const [isFinalizing, setIsFinalizing] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isDownloadingExport, setIsDownloadingExport] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const canDeleteTournaments = adminIdentity?.role === 'admin'
   const canFinalizeTournaments = adminIdentity?.role === 'admin'
@@ -204,6 +388,47 @@ export function TournamentDetailPage() {
     }
   }
 
+  async function handleDownloadExport() {
+    if (!tournament || tournament.status !== 'Finalized') {
+      return
+    }
+
+    setError(null)
+    setIsDownloadingExport(true)
+
+    try {
+      const bundle = await exportTournament(tournament.id)
+      const payload = {
+        exportedAt: bundle.exportedAt,
+        tournament,
+        standings,
+        auditEntries,
+        raw: bundle,
+      }
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: 'application/json',
+      })
+      const objectUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = `${tournament.id}-tournament-export.json`
+      document.body.append(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(objectUrl)
+      }, 0)
+    } catch (downloadError) {
+      const message =
+        downloadError instanceof Error ? downloadError.message : 'Unable to download tournament export.'
+      setError(message)
+    } finally {
+      setIsDownloadingExport(false)
+    }
+  }
+
+  const historyRounds = tournament ? buildTournamentHistoryRounds(tournament, standings) : []
+
   if (isLoading) {
     return <div className="empty-state">Loading tournament detail...</div>
   }
@@ -259,6 +484,18 @@ export function TournamentDetailPage() {
                 }}
               >
                 {isFinalizing ? 'Finalizing...' : 'Finalize tournament'}
+              </button>
+            ) : null}
+            {tournament.status === 'Finalized' ? (
+              <button
+                className="button"
+                type="button"
+                disabled={isDeleting || isOpening || isFinalizing || isDownloadingExport}
+                onClick={() => {
+                  void handleDownloadExport()
+                }}
+              >
+                {isDownloadingExport ? 'Preparing JSON...' : 'Download finalized JSON'}
               </button>
             ) : null}
             {canDeleteTournaments ? (
@@ -412,6 +649,52 @@ export function TournamentDetailPage() {
             </div>
           )}
         </article>
+      </section>
+
+      <section className="panel stack">
+        <div className="panel__header">
+          <div>
+            <h3 className="panel__title">Tournament history</h3>
+            <span className="panel__subtitle">
+              Single-elimination bracket results grouped into round-by-round summaries.
+            </span>
+          </div>
+        </div>
+
+        {historyRounds.length === 0 ? (
+          <div className="empty-state">
+            {tournament.bracket
+              ? 'Bracket history is still being assembled for this run.'
+              : 'Round history appears once the tournament field locks and bracket pairings are created.'}
+          </div>
+        ) : (
+          <div className="history-rounds">
+            {historyRounds.map((round) => (
+              <details
+                key={round.round}
+                className="history-round"
+                open={round.round === historyRounds[historyRounds.length - 1]?.round}
+              >
+                <summary className="history-round__summary">
+                  <div className="history-round__summary-copy">
+                    <strong>{round.title}</strong>
+                    <span className="muted">{round.summary}</span>
+                  </div>
+                  <span className="history-round__toggle">Details</span>
+                </summary>
+
+                <ul className="history-round__list">
+                  {round.matches.map((match) => (
+                    <li key={match.key} className="history-round__item">
+                      <strong>{match.headline}</strong>
+                      <span className="muted">{match.detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="split-grid">

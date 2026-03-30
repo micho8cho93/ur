@@ -3,6 +3,7 @@ export type TournamentStructureId =
   | 'gameMode_1_piece'
   | 'gameMode_3_pieces'
   | 'gameMode_5_pieces'
+  | 'gameMode_capture'
   | 'gameMode_full_path'
 
 export type TournamentStructureOption = {
@@ -31,6 +32,11 @@ export const TOURNAMENT_STRUCTURE_OPTIONS: readonly TournamentStructureOption[] 
     value: 'standard',
     label: '7 Pieces',
     description: 'Standard Royal Game of Ur rules with seven pieces.',
+  },
+  {
+    value: 'gameMode_capture',
+    label: 'Capture',
+    description: 'Seven pieces with capturable shared rosettes and extra rolls after captures.',
   },
   {
     value: 'gameMode_full_path',

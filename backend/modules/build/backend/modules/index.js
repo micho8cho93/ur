@@ -6197,108 +6197,6 @@ var rpcAdminGetTournamentAuditLog = (ctx, logger, nk, payload) => {
   );
 };
 
-// backend/modules/tournaments/joins.ts
-var resolveDisplayName = (ctx, requestDisplayName, userId) => {
-  if (requestDisplayName && requestDisplayName.trim().length > 0) {
-    return requestDisplayName.trim();
-  }
-  if (typeof ctx === "object" && ctx !== null) {
-    const username = readStringField6(ctx, ["username", "displayName", "display_name", "name"]);
-    if (username) {
-      return username;
-    }
-    const vars = typeof ctx.vars === "object" && ctx.vars !== null ? ctx.vars : null;
-    const fallbackName = readStringField6(vars, ["usernameDisplay", "displayName", "email"]);
-    if (fallbackName) {
-      return fallbackName;
-    }
-  }
-  return `player-${userId.slice(0, 8)}`;
-};
-var assertTournamentJoinAllowed = (tournament) => {
-  if (tournament.status === "complete" || tournament.status === "cancelled") {
-    throw new Error(`Tournament '${tournament.name}' is no longer accepting joins.`);
-  }
-};
-var rpcJoinTournament = (ctx, logger, nk, payload) => {
-  var _a, _b, _c;
-  const userId = requireAuthenticatedUserId(ctx);
-  const parsed = parseJsonPayload(payload);
-  const request = {
-    tournamentId: (_a = readStringField6(parsed, ["tournamentId", "tournament_id"])) != null ? _a : "",
-    displayName: (_b = readStringField6(parsed, ["displayName", "display_name"])) != null ? _b : void 0
-  };
-  if (!request.tournamentId) {
-    throw new Error("tournamentId is required.");
-  }
-  const current = readTournamentOrThrow(nk, request.tournamentId);
-  assertTournamentJoinAllowed(current);
-  const displayName = resolveDisplayName(ctx, (_c = request.displayName) != null ? _c : null, userId);
-  let joined = false;
-  const tournament = updateTournamentWithRetry(nk, logger, request.tournamentId, (existing) => {
-    assertTournamentJoinAllowed(existing);
-    const existingParticipant = existing.participants.find((participant3) => participant3.userId === userId);
-    if (existingParticipant) {
-      return existing;
-    }
-    if (existing.participants.length >= existing.maxParticipants) {
-      throw new Error(`Tournament '${existing.name}' is already full.`);
-    }
-    const participant2 = {
-      userId,
-      displayName,
-      joinedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      status: "joined",
-      seed: existing.participants.length + 1
-    };
-    joined = true;
-    return {
-      id: existing.id,
-      slug: existing.slug,
-      name: existing.name,
-      description: existing.description,
-      status: existing.status,
-      startsAt: existing.startsAt,
-      createdAt: existing.createdAt,
-      updatedAt: participant2.joinedAt,
-      createdByUserId: existing.createdByUserId,
-      createdByLabel: existing.createdByLabel,
-      region: existing.region,
-      gameMode: existing.gameMode,
-      entryFee: existing.entryFee,
-      maxParticipants: existing.maxParticipants,
-      rewardCurrency: existing.rewardCurrency,
-      rewardPoolAmount: existing.rewardPoolAmount,
-      rewardNotes: existing.rewardNotes,
-      tags: existing.tags.slice(),
-      scoring: {
-        winPoints: existing.scoring.winPoints,
-        drawPoints: existing.scoring.drawPoints,
-        lossPoints: existing.scoring.lossPoints,
-        allowDraws: existing.scoring.allowDraws
-      },
-      participants: existing.participants.concat(participant2),
-      results: existing.results.slice()
-    };
-  });
-  const participant = tournament.participants.find((entry) => entry.userId === userId);
-  if (!participant) {
-    throw new Error("Unable to resolve joined participant.");
-  }
-  if (joined) {
-    appendTournamentAuditEntry(ctx, logger, nk, tournament, "tournament.joined", {
-      joinedUserId: userId,
-      displayName: participant.displayName
-    });
-  }
-  const response = {
-    tournament: buildTournamentSummary(tournament),
-    participant,
-    joined
-  };
-  return JSON.stringify(response);
-};
-
 // backend/modules/tournaments/matchResults.ts
 var TOURNAMENT_RUNS_COLLECTION = "tournament_runs";
 var TOURNAMENT_MATCH_RESULTS_COLLECTION2 = "tournament_match_results";
@@ -6899,6 +6797,108 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
     finalizationResult: synchronizedRunState.finalizationResult,
     retryableFailure: synchronizedRunState.retryableFailure
   };
+};
+
+// backend/modules/tournaments/joins.ts
+var resolveDisplayName = (ctx, requestDisplayName, userId) => {
+  if (requestDisplayName && requestDisplayName.trim().length > 0) {
+    return requestDisplayName.trim();
+  }
+  if (typeof ctx === "object" && ctx !== null) {
+    const username = readStringField6(ctx, ["username", "displayName", "display_name", "name"]);
+    if (username) {
+      return username;
+    }
+    const vars = typeof ctx.vars === "object" && ctx.vars !== null ? ctx.vars : null;
+    const fallbackName = readStringField6(vars, ["usernameDisplay", "displayName", "email"]);
+    if (fallbackName) {
+      return fallbackName;
+    }
+  }
+  return `player-${userId.slice(0, 8)}`;
+};
+var assertTournamentJoinAllowed = (tournament) => {
+  if (tournament.status === "complete" || tournament.status === "cancelled") {
+    throw new Error(`Tournament '${tournament.name}' is no longer accepting joins.`);
+  }
+};
+var rpcJoinTournament = (ctx, logger, nk, payload) => {
+  var _a, _b, _c;
+  const userId = requireAuthenticatedUserId(ctx);
+  const parsed = parseJsonPayload(payload);
+  const request = {
+    tournamentId: (_a = readStringField6(parsed, ["tournamentId", "tournament_id"])) != null ? _a : "",
+    displayName: (_b = readStringField6(parsed, ["displayName", "display_name"])) != null ? _b : void 0
+  };
+  if (!request.tournamentId) {
+    throw new Error("tournamentId is required.");
+  }
+  const current = readTournamentOrThrow(nk, request.tournamentId);
+  assertTournamentJoinAllowed(current);
+  const displayName = resolveDisplayName(ctx, (_c = request.displayName) != null ? _c : null, userId);
+  let joined = false;
+  const tournament = updateTournamentWithRetry(nk, logger, request.tournamentId, (existing) => {
+    assertTournamentJoinAllowed(existing);
+    const existingParticipant = existing.participants.find((participant3) => participant3.userId === userId);
+    if (existingParticipant) {
+      return existing;
+    }
+    if (existing.participants.length >= existing.maxParticipants) {
+      throw new Error(`Tournament '${existing.name}' is already full.`);
+    }
+    const participant2 = {
+      userId,
+      displayName,
+      joinedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      status: "joined",
+      seed: existing.participants.length + 1
+    };
+    joined = true;
+    return {
+      id: existing.id,
+      slug: existing.slug,
+      name: existing.name,
+      description: existing.description,
+      status: existing.status,
+      startsAt: existing.startsAt,
+      createdAt: existing.createdAt,
+      updatedAt: participant2.joinedAt,
+      createdByUserId: existing.createdByUserId,
+      createdByLabel: existing.createdByLabel,
+      region: existing.region,
+      gameMode: existing.gameMode,
+      entryFee: existing.entryFee,
+      maxParticipants: existing.maxParticipants,
+      rewardCurrency: existing.rewardCurrency,
+      rewardPoolAmount: existing.rewardPoolAmount,
+      rewardNotes: existing.rewardNotes,
+      tags: existing.tags.slice(),
+      scoring: {
+        winPoints: existing.scoring.winPoints,
+        drawPoints: existing.scoring.drawPoints,
+        lossPoints: existing.scoring.lossPoints,
+        allowDraws: existing.scoring.allowDraws
+      },
+      participants: existing.participants.concat(participant2),
+      results: existing.results.slice()
+    };
+  });
+  const participant = tournament.participants.find((entry) => entry.userId === userId);
+  if (!participant) {
+    throw new Error("Unable to resolve joined participant.");
+  }
+  if (joined) {
+    appendTournamentAuditEntry(ctx, logger, nk, tournament, "tournament.joined", {
+      joinedUserId: userId,
+      displayName: participant.displayName
+    });
+  }
+  const response = {
+    tournament: buildTournamentSummary(tournament),
+    participant,
+    joined
+  };
+  return JSON.stringify(response);
 };
 
 // backend/modules/tournaments/public.ts

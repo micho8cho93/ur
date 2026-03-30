@@ -10,6 +10,7 @@ import {
   RUNS_COLLECTION,
   RUNS_INDEX_KEY,
 } from "./admin";
+import { rpcAdminExportTournament } from "./export";
 import { ADMIN_COLLECTION, ADMIN_ROLE_KEY } from "./auth";
 import { completeTournamentBracketMatch, createSingleEliminationBracket } from "./bracket";
 import {
@@ -1124,5 +1125,278 @@ describe("admin tournament run creation", () => {
       ]),
     );
     expect(nk.tournamentRecordsList).not.toHaveBeenCalled();
+  });
+
+  it("exports finalized tournament data with standings, audit entries, and stored match results", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk, "admin-1", "viewer");
+    const startedAt = "2026-03-27T10:05:00.000Z";
+    const completedAt = "2026-03-27T12:00:00.000Z";
+    const registrations = [
+      {
+        userId: "user-1",
+        displayName: "Champion",
+        joinedAt: "2026-03-27T10:06:00.000Z",
+        seed: 1,
+      },
+      {
+        userId: "user-2",
+        displayName: "Finalist",
+        joinedAt: "2026-03-27T10:07:00.000Z",
+        seed: 2,
+      },
+    ];
+    const finalizedBracket = completeTournamentBracketMatch(
+      createSingleEliminationBracket(registrations, startedAt),
+      {
+        entryId: "round-1-match-1",
+        matchId: "match-1",
+        winnerUserId: "user-1",
+        loserUserId: "user-2",
+        completedAt,
+      },
+    );
+
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, "finalized-export"), {
+      collection: RUNS_COLLECTION,
+      key: "finalized-export",
+      value: {
+        runId: "finalized-export",
+        tournamentId: "finalized-export",
+        title: "Finalized Export",
+        description: "Ready for archive download",
+        category: 0,
+        authoritative: true,
+        sortOrder: "desc",
+        operator: "incr",
+        resetSchedule: "",
+        metadata: {
+          gameMode: "standard",
+          countedResultIds: ["finalized-export:match-1"],
+          lastProcessedResultId: "finalized-export:match-1",
+        },
+        startTime: 1_774_572_800,
+        endTime: 1_774_580_000,
+        duration: 7_200,
+        maxSize: 2,
+        maxNumScore: 1,
+        joinRequired: true,
+        enableRanks: false,
+        lifecycle: "finalized",
+        createdAt: "2026-03-27T10:00:00.000Z",
+        updatedAt: "2026-03-27T12:05:00.000Z",
+        createdByUserId: "admin-1",
+        createdByLabel: "Admin",
+        openedAt: startedAt,
+        closedAt: completedAt,
+        finalizedAt: "2026-03-27T12:05:00.000Z",
+        registrations,
+        bracket: finalizedBracket,
+        finalSnapshot: {
+          generatedAt: "2026-03-27T12:05:00.000Z",
+          overrideExpiry: 0,
+          rankCount: 2,
+          records: [
+            {
+              rank: 1,
+              owner_id: "user-1",
+              username: "Champion",
+              score: 1,
+              subscore: 7,
+              num_score: 1,
+              metadata: {
+                round: 1,
+                result: "win",
+                matchId: "match-1",
+              },
+            },
+            {
+              rank: 2,
+              owner_id: "user-2",
+              username: "Finalist",
+              score: 0,
+              subscore: 4,
+              num_score: 1,
+              metadata: {
+                round: 1,
+                result: "loss",
+                matchId: "match-1",
+              },
+            },
+          ],
+          prevCursor: null,
+          nextCursor: null,
+        },
+      },
+      version: "run-v1",
+    });
+    nk.storage.set(buildStorageKey("tournament_match_results", "finalized-export:match-1"), {
+      collection: "tournament_match_results",
+      key: "finalized-export:match-1",
+      value: {
+        resultId: "finalized-export:match-1",
+        matchId: "match-1",
+        runId: "finalized-export",
+        tournamentId: "finalized-export",
+        createdAt: completedAt,
+        updatedAt: completedAt,
+        valid: true,
+        counted: true,
+        invalidReason: null,
+        errorMessage: null,
+        summary: {
+          completedAt,
+          round: 1,
+          entryId: "round-1-match-1",
+          players: [
+            {
+              userId: "user-1",
+              username: "Champion",
+              didWin: true,
+              score: 1,
+              finishedCount: 7,
+            },
+            {
+              userId: "user-2",
+              username: "Finalist",
+              didWin: false,
+              score: 0,
+              finishedCount: 4,
+            },
+          ],
+        },
+      },
+      version: "result-v1",
+    });
+    nk.storage.set(buildStorageKey("tournament_audit_logs", "recent"), {
+      collection: "tournament_audit_logs",
+      key: "recent",
+      value: {
+        entries: [
+          {
+            id: "audit-1",
+            action: "rpc_admin_finalize_tournament",
+            userId: "admin-1",
+            actorUserId: "admin-1",
+            actorLabel: "Admin",
+            targetId: "finalized-export",
+            tournamentId: "finalized-export",
+            tournamentName: "Finalized Export",
+            createdAt: "2026-03-27T12:05:00.000Z",
+            timestamp: "2026-03-27T12:05:00.000Z",
+            metadata: {
+              disabledRanks: true,
+            },
+          },
+        ],
+        updatedAt: "2026-03-27T12:05:00.000Z",
+      },
+      version: "audit-v1",
+    });
+
+    const response = JSON.parse(
+      rpcAdminExportTournament(
+        {
+          userId: "admin-1",
+          username: "Viewer",
+        },
+        logger,
+        nk,
+        JSON.stringify({
+          runId: "finalized-export",
+        }),
+      ),
+    ) as {
+      run: {
+        runId: string;
+      };
+      standings: {
+        records: Array<{ owner_id: string }>;
+      };
+      auditEntries: Array<{ id: string }>;
+      matchResults: Array<{ resultId: string }>;
+    };
+
+    expect(response.run.runId).toBe("finalized-export");
+    expect(response.standings.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          owner_id: "user-1",
+        }),
+      ]),
+    );
+    expect(response.auditEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "audit-1",
+        }),
+      ]),
+    );
+    expect(response.matchResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          resultId: "finalized-export:match-1",
+        }),
+      ]),
+    );
+  });
+
+  it("rejects tournament export before the run is finalized", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk, "admin-1", "viewer");
+
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, "open-export"), {
+      collection: RUNS_COLLECTION,
+      key: "open-export",
+      value: {
+        runId: "open-export",
+        tournamentId: "open-export",
+        title: "Open Export",
+        description: "Still live",
+        category: 0,
+        authoritative: true,
+        sortOrder: "desc",
+        operator: "incr",
+        resetSchedule: "",
+        metadata: {
+          gameMode: "standard",
+        },
+        startTime: 1_774_572_800,
+        endTime: 1_774_580_000,
+        duration: 7_200,
+        maxSize: 2,
+        maxNumScore: 1,
+        joinRequired: true,
+        enableRanks: true,
+        lifecycle: "open",
+        createdAt: "2026-03-27T10:00:00.000Z",
+        updatedAt: "2026-03-27T10:05:00.000Z",
+        createdByUserId: "admin-1",
+        createdByLabel: "Admin",
+        openedAt: "2026-03-27T10:05:00.000Z",
+        closedAt: null,
+        finalizedAt: null,
+        registrations: [],
+        bracket: null,
+        finalSnapshot: null,
+      },
+      version: "run-v1",
+    });
+
+    expect(() =>
+      rpcAdminExportTournament(
+        {
+          userId: "admin-1",
+          username: "Viewer",
+        },
+        logger,
+        nk,
+        JSON.stringify({
+          runId: "open-export",
+        }),
+      ),
+    ).toThrow("Tournament export is only available after the run is finalized.");
   });
 });

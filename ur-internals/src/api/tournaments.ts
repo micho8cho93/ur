@@ -1,10 +1,16 @@
 import env from '../config/env'
-import { mockTournamentEntriesById, mockTournaments } from '../data/mockData'
+import { mockAuditLog, mockTournamentEntriesById, mockTournaments } from '../data/mockData'
 import type {
   CreateTournamentInput,
   Tournament,
+  TournamentBracket,
+  TournamentBracketEntry,
+  TournamentBracketParticipant,
+  TournamentExportBundle,
   TournamentEntry,
   TournamentOperator,
+  TournamentRegistration,
+  TournamentSnapshot,
   TournamentStandings,
   TournamentStatus,
 } from '../types/tournament'
@@ -28,6 +34,7 @@ const RPC_ADMIN_OPEN_TOURNAMENT = 'rpc_admin_open_tournament'
 const RPC_ADMIN_FINALIZE_TOURNAMENT = 'rpc_admin_finalize_tournament'
 const RPC_ADMIN_DELETE_TOURNAMENT = 'rpc_admin_delete_tournament'
 const RPC_ADMIN_GET_TOURNAMENT_STANDINGS = 'rpc_admin_get_tournament_standings'
+const RPC_ADMIN_EXPORT_TOURNAMENT = 'rpc_admin_export_tournament'
 
 const DEFAULT_TOURNAMENT_MATCH_WIN_XP = 100
 const DEFAULT_TOURNAMENT_CHAMPION_XP = 250
@@ -76,6 +83,157 @@ function toIsoFromUnixSeconds(seconds: number | null, fallback: string | null) {
   }
 
   return fallback
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    : []
+}
+
+function normalizeTournamentRegistration(value: unknown): TournamentRegistration | null {
+  const record = asRecord(value)
+  if (!record) {
+    return null
+  }
+
+  const userId = readStringField(record, ['userId', 'user_id'])
+  const displayName = readStringField(record, ['displayName', 'display_name'])
+  const joinedAt = readStringField(record, ['joinedAt', 'joined_at'])
+  const seed = readNumberField(record, ['seed'])
+
+  if (!userId || !displayName || !joinedAt || typeof seed !== 'number') {
+    return null
+  }
+
+  return {
+    userId,
+    displayName,
+    joinedAt,
+    seed: Math.max(1, Math.floor(seed)),
+  }
+}
+
+function normalizeTournamentBracketParticipant(value: unknown): TournamentBracketParticipant | null {
+  const record = asRecord(value)
+  const registration = normalizeTournamentRegistration(record)
+  const updatedAt = readStringField(record, ['updatedAt', 'updated_at'])
+
+  if (!record || !registration || !updatedAt) {
+    return null
+  }
+
+  const lastResult = readStringField(record, ['lastResult', 'last_result'])
+
+  return {
+    ...registration,
+    state:
+      readStringField(record, ['state']) === 'in_match' ||
+      readStringField(record, ['state']) === 'waiting_next_round' ||
+      readStringField(record, ['state']) === 'eliminated' ||
+      readStringField(record, ['state']) === 'runner_up' ||
+      readStringField(record, ['state']) === 'champion'
+        ? (readStringField(record, ['state']) as TournamentBracketParticipant['state'])
+        : 'lobby',
+    currentRound: readNumberField(record, ['currentRound', 'current_round']) ?? null,
+    currentEntryId: readStringField(record, ['currentEntryId', 'current_entry_id']),
+    activeMatchId: readStringField(record, ['activeMatchId', 'active_match_id']),
+    finalPlacement: readNumberField(record, ['finalPlacement', 'final_placement']) ?? null,
+    lastResult: lastResult === 'win' || lastResult === 'loss' ? lastResult : null,
+    updatedAt,
+  }
+}
+
+function normalizeTournamentBracketEntry(value: unknown): TournamentBracketEntry | null {
+  const record = asRecord(value)
+  if (!record) {
+    return null
+  }
+
+  const entryId = readStringField(record, ['entryId', 'entry_id'])
+  const round = readNumberField(record, ['round'])
+  const slot = readNumberField(record, ['slot'])
+  const createdAt = readStringField(record, ['createdAt', 'created_at'])
+  const updatedAt = readStringField(record, ['updatedAt', 'updated_at'])
+  const status = readStringField(record, ['status'])
+
+  if (!entryId || typeof round !== 'number' || typeof slot !== 'number' || !createdAt || !updatedAt) {
+    return null
+  }
+
+  return {
+    entryId,
+    round: Math.max(1, Math.floor(round)),
+    slot: Math.max(1, Math.floor(slot)),
+    sourceEntryIds: readStringArray(record.sourceEntryIds),
+    playerAUserId: readStringField(record, ['playerAUserId', 'player_a_user_id']),
+    playerBUserId: readStringField(record, ['playerBUserId', 'player_b_user_id']),
+    matchId: readStringField(record, ['matchId', 'match_id']),
+    status:
+      status === 'ready' || status === 'in_match' || status === 'completed' ? status : 'pending',
+    winnerUserId: readStringField(record, ['winnerUserId', 'winner_user_id']),
+    loserUserId: readStringField(record, ['loserUserId', 'loser_user_id']),
+    createdAt,
+    updatedAt,
+    readyAt: readStringField(record, ['readyAt', 'ready_at']),
+    startedAt: readStringField(record, ['startedAt', 'started_at']),
+    completedAt: readStringField(record, ['completedAt', 'completed_at']),
+  }
+}
+
+function normalizeTournamentBracket(value: unknown): TournamentBracket | null {
+  const record = asRecord(value)
+  const format = readStringField(record, ['format'])
+  const size = readNumberField(record, ['size'])
+  const totalRounds = readNumberField(record, ['totalRounds', 'total_rounds'])
+  const startedAt = readStringField(record, ['startedAt', 'started_at'])
+  const lockedAt = readStringField(record, ['lockedAt', 'locked_at'])
+
+  if (
+    !record ||
+    format !== 'single_elimination' ||
+    typeof size !== 'number' ||
+    typeof totalRounds !== 'number' ||
+    !startedAt ||
+    !lockedAt
+  ) {
+    return null
+  }
+
+  return {
+    format: 'single_elimination',
+    size: Math.max(2, Math.floor(size)),
+    totalRounds: Math.max(1, Math.floor(totalRounds)),
+    startedAt,
+    lockedAt,
+    finalizedAt: readStringField(record, ['finalizedAt', 'finalized_at']),
+    winnerUserId: readStringField(record, ['winnerUserId', 'winner_user_id']),
+    runnerUpUserId: readStringField(record, ['runnerUpUserId', 'runner_up_user_id']),
+    participants: readArrayField(record, ['participants'])
+      .map((entry) => normalizeTournamentBracketParticipant(entry))
+      .filter((entry): entry is TournamentBracketParticipant => Boolean(entry)),
+    entries: readArrayField(record, ['entries'])
+      .map((entry) => normalizeTournamentBracketEntry(entry))
+      .filter((entry): entry is TournamentBracketEntry => Boolean(entry)),
+  }
+}
+
+function normalizeTournamentSnapshot(value: unknown): TournamentSnapshot | null {
+  const record = asRecord(value)
+  const generatedAt = readStringField(record, ['generatedAt', 'generated_at'])
+
+  if (!record || !generatedAt) {
+    return null
+  }
+
+  return {
+    generatedAt,
+    overrideExpiry: Math.max(0, Math.floor(readNumberField(record, ['overrideExpiry', 'override_expiry']) ?? 0)),
+    rankCount: readNumberField(record, ['rankCount', 'rank_count']) ?? null,
+    records: readArrayField(record, ['records']).map((entry) => asRecord(entry) ?? {}),
+    prevCursor: readStringField(record, ['prevCursor', 'prev_cursor']),
+    nextCursor: readStringField(record, ['nextCursor', 'next_cursor']),
+  }
 }
 
 function normalizeTournament(runValue: unknown, nakamaTournamentValue: unknown): Tournament {
@@ -167,6 +325,15 @@ function normalizeTournament(runValue: unknown, nakamaTournamentValue: unknown):
         ]) ?? DEFAULT_TOURNAMENT_CHAMPION_XP,
       ),
     ),
+    metadata,
+    registrations: readArrayField(run, ['registrations'])
+      .map((entry) => normalizeTournamentRegistration(entry))
+      .filter((entry): entry is TournamentRegistration => Boolean(entry)),
+    bracket: normalizeTournamentBracket(run.bracket),
+    finalSnapshot: normalizeTournamentSnapshot(run.finalSnapshot),
+    openedAt: readStringField(run, ['openedAt', 'opened_at']),
+    closedAt: readStringField(run, ['closedAt', 'closed_at']),
+    finalizedAt: readStringField(run, ['finalizedAt', 'finalized_at']),
   }
 }
 
@@ -296,6 +463,17 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
       operator: 'incr',
       xpPerMatchWin: input.xpPerMatchWin,
       xpForTournamentChampion: input.xpForTournamentChampion,
+      metadata: {
+        gameMode: input.gameMode,
+        xpPerMatchWin: input.xpPerMatchWin,
+        xpForTournamentChampion: input.xpForTournamentChampion,
+      },
+      registrations: [],
+      bracket: null,
+      finalSnapshot: null,
+      openedAt: null,
+      closedAt: null,
+      finalizedAt: null,
     }
   }
 
@@ -406,4 +584,107 @@ export async function deleteTournament(runId: string): Promise<Tournament> {
   )
 
   return normalizeTournament(asRecord(response)?.run, asRecord(response)?.nakamaTournament)
+}
+
+export async function exportTournament(runId: string): Promise<TournamentExportBundle> {
+  if (env.useMockData) {
+    await wait(180)
+    const tournament = mockTournaments.find((entry) => entry.id === runId)
+
+    if (!tournament) {
+      throw new Error(`Tournament run '${runId}' was not found.`)
+    }
+
+    if (tournament.status !== 'Finalized') {
+      throw new Error('Tournament export is only available after the run is finalized.')
+    }
+
+    const standingsEntries = mockTournamentEntriesById[runId] ?? []
+    const participantNames = new Map(
+      (tournament.bracket?.participants ?? []).map((participant) => [participant.userId, participant.displayName]),
+    )
+
+    return {
+      exportedAt: new Date().toISOString(),
+      run: {
+        runId: tournament.id,
+        tournamentId: tournament.tournamentId,
+        title: tournament.name,
+        description: tournament.description,
+        lifecycle: 'finalized',
+        metadata: tournament.metadata,
+        registrations: tournament.registrations,
+        bracket: tournament.bracket,
+        finalSnapshot: tournament.finalSnapshot,
+        openedAt: tournament.openedAt,
+        closedAt: tournament.closedAt,
+        finalizedAt: tournament.finalizedAt,
+      },
+      nakamaTournament: {
+        id: tournament.tournamentId,
+        size: tournament.entrants,
+        maxSize: tournament.maxEntrants,
+        startTime: Math.floor(new Date(tournament.startAt).getTime() / 1000),
+        endTime: tournament.endAt ? Math.floor(new Date(tournament.endAt).getTime() / 1000) : 0,
+      },
+      standings:
+        tournament.finalSnapshot ?? {
+          generatedAt: new Date().toISOString(),
+          overrideExpiry: 0,
+          rankCount: standingsEntries.length,
+          records: standingsEntries.map((entry) => ({
+            rank: entry.rank,
+            owner_id: entry.ownerId,
+            username: entry.username,
+            score: entry.score,
+            subscore: entry.subscore,
+            num_score: entry.attempts,
+            max_num_score: entry.maxAttempts,
+            metadata: entry.metadata,
+          })),
+          prevCursor: null,
+          nextCursor: null,
+        },
+      auditEntries: mockAuditLog
+        .filter((entry) => entry.tournamentId === runId)
+        .map((entry) => ({
+          id: entry.id,
+          action: entry.action,
+          actorLabel: entry.actor,
+          actorUserId: entry.actorUserId,
+          tournamentId: entry.tournamentId,
+          tournamentName: entry.target,
+          createdAt: entry.createdAt,
+          metadata: entry.metadata,
+        })),
+      matchResults: (tournament.bracket?.entries ?? [])
+        .filter((entry) => entry.status === 'completed')
+        .map((entry) => ({
+          resultId: `${runId}:${entry.matchId ?? entry.entryId}`,
+          matchId: entry.matchId,
+          runId,
+          tournamentId: tournament.tournamentId,
+          summary: {
+            round: entry.round,
+            entryId: entry.entryId,
+            completedAt: entry.completedAt,
+            winnerUserId: entry.winnerUserId,
+            loserUserId: entry.loserUserId,
+            players: [entry.playerAUserId, entry.playerBUserId]
+              .filter((userId): userId is string => Boolean(userId))
+              .map((userId) => ({
+                userId,
+                username: participantNames.get(userId) ?? userId,
+                didWin: userId === entry.winnerUserId,
+              })),
+          },
+        })),
+    }
+  }
+
+  const response = await callRpc<TournamentExportBundle>(RPC_ADMIN_EXPORT_TOURNAMENT, {
+    runId,
+  })
+
+  return response
 }
