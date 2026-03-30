@@ -195,7 +195,10 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
   const { width, height } = useWindowDimensions();
   const isCompactViewport = width < 760 || height < 760;
   const isVeryShortViewport = height < 680;
+  const isDesktopViewport = Platform.OS === 'web' && width >= 920;
+  const isTightDesktopViewport = isDesktopViewport && height <= 820;
   const isWideViewport = width >= 1180;
+  const useSplitLayout = isWideViewport || isDesktopViewport;
   const [cardIndex, setCardIndex] = useState(0);
   const [shuffleSeed, setShuffleSeed] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -300,24 +303,43 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
         contentContainerStyle={[
           styles.scrollContent,
           isCompactViewport && styles.scrollContentCompact,
+          isDesktopViewport && styles.scrollContentDesktop,
+          isTightDesktopViewport && styles.scrollContentDesktopTight,
           isWideViewport && styles.scrollContentWide,
+          { minHeight: height },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        bounces={false}
       >
         <View
           style={[
             styles.heroPanel,
             isCompactViewport && styles.heroPanelCompact,
             isVeryShortViewport && styles.heroPanelVeryShort,
+            isDesktopViewport && styles.heroPanelDesktop,
+            isTightDesktopViewport && styles.heroPanelDesktopTight,
             isWideViewport && styles.heroPanelWide,
           ]}
         >
           <Text style={styles.eyebrow}>Tournament Waiting Room</Text>
-          <Text style={[styles.title, isCompactViewport && styles.titleCompact, isWideViewport && styles.titleWide]}>
+          <Text
+            style={[
+              styles.title,
+              isCompactViewport && styles.titleCompact,
+              isDesktopViewport && styles.titleDesktop,
+              isWideViewport && styles.titleWide,
+            ]}
+          >
             {tournament.name}
           </Text>
-          <Text style={[styles.subtitle, isCompactViewport && styles.subtitleCompact]}>
+          <Text
+            style={[
+              styles.subtitle,
+              isCompactViewport && styles.subtitleCompact,
+              isDesktopViewport && styles.subtitleDesktop,
+            ]}
+          >
             Your seat is confirmed. Stay here while the royal court fills the bracket and opens the first round.
           </Text>
 
@@ -340,8 +362,8 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
             </View>
           </View>
 
-          <View style={[styles.contentGrid, isWideViewport && styles.contentGridWide]}>
-            <View style={[styles.infoColumn, isWideViewport && styles.infoColumnWide]}>
+          <View style={[styles.contentGrid, useSplitLayout && styles.contentGridWide]}>
+            <View style={[styles.infoColumn, useSplitLayout && styles.infoColumnWide]}>
               <View style={styles.statusPanel}>
                 <Text style={[styles.statusTitle, isCompactViewport && styles.statusTitleCompact]}>{statusCopy.title}</Text>
                 <Text style={[styles.statusBody, isCompactViewport && styles.helperTextCompact]}>{statusCopy.body}</Text>
@@ -382,7 +404,8 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
               style={[
                 styles.cardDeckWrap,
                 isCompactViewport && styles.cardDeckWrapCompact,
-                isWideViewport && styles.cardDeckWrapWide,
+                isDesktopViewport && styles.cardDeckWrapDesktop,
+                useSplitLayout && styles.cardDeckWrapWide,
               ]}
             >
               <View style={styles.cardShadow} />
@@ -392,7 +415,8 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
                 style={[
                   styles.card,
                   isCompactViewport && styles.cardCompact,
-                  isWideViewport && styles.cardWide,
+                  isDesktopViewport && styles.cardDesktop,
+                  useSplitLayout && styles.cardWide,
                   { borderColor: `${activeCard.accent}66` },
                 ]}
               >
@@ -464,6 +488,13 @@ const styles = StyleSheet.create({
   scrollContentCompact: {
     justifyContent: 'flex-start',
   },
+  scrollContentDesktop: {
+    paddingHorizontal: urTheme.spacing.lg,
+    paddingVertical: urTheme.spacing.lg,
+  },
+  scrollContentDesktopTight: {
+    paddingVertical: urTheme.spacing.md,
+  },
   scrollContentWide: {
     paddingHorizontal: urTheme.spacing.xl,
   },
@@ -495,8 +526,17 @@ const styles = StyleSheet.create({
   heroPanelVeryShort: {
     paddingVertical: urTheme.spacing.md,
   },
+  heroPanelDesktop: {
+    maxWidth: 1120,
+    gap: urTheme.spacing.sm,
+    paddingHorizontal: urTheme.spacing.xl,
+    paddingVertical: urTheme.spacing.lg,
+  },
+  heroPanelDesktopTight: {
+    paddingVertical: urTheme.spacing.md + 2,
+  },
   heroPanelWide: {
-    maxWidth: 1040,
+    maxWidth: 1140,
   },
   eyebrow: {
     ...urTypography.label,
@@ -515,6 +555,10 @@ const styles = StyleSheet.create({
     fontSize: 30,
     lineHeight: 36,
   },
+  titleDesktop: {
+    fontSize: 38,
+    lineHeight: 44,
+  },
   titleWide: {
     fontSize: 40,
     lineHeight: 46,
@@ -529,6 +573,9 @@ const styles = StyleSheet.create({
   subtitleCompact: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  subtitleDesktop: {
+    maxWidth: 760,
   },
   pillRow: {
     flexDirection: 'row',
@@ -576,8 +623,9 @@ const styles = StyleSheet.create({
     gap: urTheme.spacing.sm,
   },
   infoColumnWide: {
-    flex: 0.95,
-    maxWidth: 360,
+    flex: 0.88,
+    maxWidth: 340,
+    justifyContent: 'center',
   },
   statusPanel: {
     width: '100%',
@@ -660,8 +708,13 @@ const styles = StyleSheet.create({
   cardDeckWrapCompact: {
     minHeight: 260,
   },
+  cardDeckWrapDesktop: {
+    flex: 1,
+    minHeight: 292,
+  },
   cardDeckWrapWide: {
-    minHeight: 348,
+    flex: 1,
+    minHeight: 320,
   },
   cardShadow: {
     position: 'absolute',
@@ -712,6 +765,11 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.md,
+  },
+  cardDesktop: {
+    minHeight: 236,
+    paddingHorizontal: urTheme.spacing.lg,
+    paddingVertical: urTheme.spacing.md + 2,
   },
   cardWide: {
     maxWidth: 560,

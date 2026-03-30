@@ -24,11 +24,14 @@ const MODE_ICONS: Record<Exclude<MatchModeId, 'standard'>, keyof typeof Material
 };
 
 export default function GameModesScreen() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const router = useRouter();
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
   const isCompactLayout = width < 820;
+  const isDesktopViewport = Platform.OS === 'web' && width >= 920;
+  const isTightDesktopViewport = isDesktopViewport && height <= 820;
+  const useThreeColumnLayout = isDesktopViewport && width >= 1100;
 
   return (
     <View style={styles.screen}>
@@ -50,15 +53,38 @@ export default function GameModesScreen() {
       <View style={styles.topGlow} />
       <View style={styles.bottomShade} />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.hero}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          isDesktopViewport && styles.scrollContentDesktop,
+          isTightDesktopViewport && styles.scrollContentDesktopTight,
+        ]}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <View style={[styles.hero, isDesktopViewport && styles.heroDesktop, isTightDesktopViewport && styles.heroDesktopTight]}>
           <Text style={styles.eyebrow}>Game Modes</Text>
           <Text style={styles.title}>Offline Practice Variants</Text>
         </View>
 
-        <View style={[styles.gridList, isCompactLayout && styles.gridListCompact]}>
+        <View
+          style={[
+            styles.gridList,
+            isCompactLayout && styles.gridListCompact,
+            isDesktopViewport && styles.gridListDesktop,
+            useThreeColumnLayout && styles.gridListThreeColumn,
+          ]}
+        >
           {GAME_MODE_CONFIGS.map((config) => (
-            <View key={config.modeId} style={[styles.card, isCompactLayout && styles.cardCompact]}>
+            <View
+              key={config.modeId}
+              style={[
+                styles.card,
+                isCompactLayout && styles.cardCompact,
+                isDesktopViewport && styles.cardDesktop,
+                useThreeColumnLayout && styles.cardThreeColumn,
+              ]}
+            >
               <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
               <View style={styles.cardBorder} />
               <XpRewardBadge
@@ -101,6 +127,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.lg,
   },
+  scrollContentDesktop: {
+    justifyContent: 'center',
+    paddingHorizontal: urTheme.spacing.lg,
+    paddingVertical: urTheme.spacing.lg,
+  },
+  scrollContentDesktopTight: {
+    paddingVertical: urTheme.spacing.md,
+  },
   texture: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.28,
@@ -129,6 +163,13 @@ const styles = StyleSheet.create({
     marginBottom: urTheme.spacing.lg,
     paddingTop: urTheme.spacing.md,
   },
+  heroDesktop: {
+    marginBottom: urTheme.spacing.md,
+    paddingTop: urTheme.spacing.xs,
+  },
+  heroDesktopTight: {
+    marginBottom: urTheme.spacing.sm,
+  },
   eyebrow: {
     ...urTypography.label,
     color: urTheme.colors.parchment,
@@ -155,6 +196,13 @@ const styles = StyleSheet.create({
   gridListCompact: {
     flexDirection: 'column',
   },
+  gridListDesktop: {
+    maxWidth: 940,
+    rowGap: urTheme.spacing.sm,
+  },
+  gridListThreeColumn: {
+    maxWidth: 1120,
+  },
   card: {
     width: '48.5%',
     minHeight: 220,
@@ -174,6 +222,14 @@ const styles = StyleSheet.create({
   },
   cardCompact: {
     width: '100%',
+  },
+  cardDesktop: {
+    minHeight: 196,
+    padding: urTheme.spacing.md + 2,
+  },
+  cardThreeColumn: {
+    width: '31.8%',
+    minHeight: 188,
   },
   cardTexture: {
     ...StyleSheet.absoluteFillObject,

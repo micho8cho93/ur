@@ -200,7 +200,10 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
   const { width, height } = useWindowDimensions();
   const isCompactViewport = width < 760 || height < 760;
   const isVeryShortViewport = height < 680;
+  const isDesktopViewport = Platform.OS === 'web' && width >= 920;
+  const isTightDesktopViewport = isDesktopViewport && height <= 820;
   const isWideViewport = width >= 1180;
+  const useSplitLayout = isWideViewport || isDesktopViewport;
   const showExitActions = phase === 'eliminated' || phase === 'finalized';
   const [cardIndex, setCardIndex] = useState(0);
   const [shuffleSeed, setShuffleSeed] = useState(0);
@@ -229,6 +232,23 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
     : phase === 'ready' || phase === 'launching'
       ? 'Stay here. The next board opens automatically on the next archive turn.'
       : 'The archive reshuffles every 15 seconds while the bracket finishes the round.';
+  const detailPanel = showExitActions
+    ? {
+        label: 'Final Bracket',
+        title: isChampion ? 'Champion Confirmed' : typeof finalPlacement === 'number' ? `Place #${finalPlacement}` : 'Run Complete',
+        body: 'Your rewards and placement are sealed. Return home whenever you are ready.',
+      }
+    : typeof currentStanding?.rank === 'number'
+      ? {
+          label: 'Bracket Position',
+          title: `Rank #${currentStanding.rank}`,
+          body: 'Stay on this screen while the remaining winners report. The court will open your next board automatically.',
+        }
+      : {
+          label: 'Seamless Handoff',
+          title: 'Stay On The Board',
+          body: 'Once you enter this room, the court carries your session forward automatically. There is nothing to refresh or confirm between rounds.',
+        };
 
   useEffect(() => {
     launchTriggeredRef.current = false;
@@ -294,26 +314,47 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
         contentContainerStyle={[
           styles.scrollContent,
           isCompactViewport && styles.scrollContentCompact,
+          isDesktopViewport && styles.scrollContentDesktop,
+          isTightDesktopViewport && styles.scrollContentDesktopTight,
           isWideViewport && styles.scrollContentWide,
+          { minHeight: height },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        bounces={false}
       >
         <View
           style={[
             styles.heroPanel,
             isCompactViewport && styles.heroPanelCompact,
             isVeryShortViewport && styles.heroPanelVeryShort,
+            isDesktopViewport && styles.heroPanelDesktop,
+            isTightDesktopViewport && styles.heroPanelDesktopTight,
             isWideViewport && styles.heroPanelWide,
           ]}
         >
           <Text style={styles.eyebrow}>
             {showExitActions ? (isChampion ? 'Tournament Won' : 'Tournament Complete') : 'Tournament Waiting Room'}
           </Text>
-          <Text style={[styles.title, isCompactViewport && styles.titleCompact, isWideViewport && styles.titleWide]}>
+          <Text
+            style={[
+              styles.title,
+              isCompactViewport && styles.titleCompact,
+              isDesktopViewport && styles.titleDesktop,
+              isWideViewport && styles.titleWide,
+            ]}
+          >
             {tournamentName}
           </Text>
-          <Text style={[styles.subtitle, isCompactViewport && styles.subtitleCompact]}>{subtitle}</Text>
+          <Text
+            style={[
+              styles.subtitle,
+              isCompactViewport && styles.subtitleCompact,
+              isDesktopViewport && styles.subtitleDesktop,
+            ]}
+          >
+            {subtitle}
+          </Text>
 
           <View style={styles.pillRow}>
             {typeof derivedRound === 'number' ? (
@@ -343,8 +384,8 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
             </View>
           </View>
 
-          <View style={[styles.contentGrid, isWideViewport && styles.contentGridWide]}>
-            <View style={[styles.infoColumn, isWideViewport && styles.infoColumnWide]}>
+          <View style={[styles.contentGrid, useSplitLayout && styles.contentGridWide]}>
+            <View style={[styles.infoColumn, useSplitLayout && styles.infoColumnWide]}>
               <View style={styles.statusPanel}>
                 <Text style={[styles.statusTitle, isCompactViewport && styles.statusTitleCompact]}>{statusText}</Text>
                 {subtleStatusText ? (
@@ -360,18 +401,15 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
                 ) : null}
               </View>
 
-              {!showExitActions ? (
-                <View style={styles.transitionPanel}>
-                  <Text style={styles.transitionLabel}>Seamless Handoff</Text>
-                  <Text style={[styles.transitionTitle, isCompactViewport && styles.transitionTitleCompact]}>
-                    Stay on the board
-                  </Text>
-                  <Text style={[styles.transitionBody, isCompactViewport && styles.helperTextCompact]}>
-                    Once you are in this room, the court carries your session forward automatically. There is nothing to
-                    leave, refresh, or confirm between rounds.
-                  </Text>
-                </View>
-              ) : null}
+              <View style={styles.transitionPanel}>
+                <Text style={styles.transitionLabel}>{detailPanel.label}</Text>
+                <Text style={[styles.transitionTitle, isCompactViewport && styles.transitionTitleCompact]}>
+                  {detailPanel.title}
+                </Text>
+                <Text style={[styles.transitionBody, isCompactViewport && styles.helperTextCompact]}>
+                  {detailPanel.body}
+                </Text>
+              </View>
 
               <Text style={[styles.rotationNote, isCompactViewport && styles.helperTextCompact]}>{rotationNote}</Text>
             </View>
@@ -380,7 +418,8 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
               style={[
                 styles.cardDeckWrap,
                 isCompactViewport && styles.cardDeckWrapCompact,
-                isWideViewport && styles.cardDeckWrapWide,
+                isDesktopViewport && styles.cardDeckWrapDesktop,
+                useSplitLayout && styles.cardDeckWrapWide,
               ]}
             >
               <View style={styles.cardShadow} />
@@ -390,7 +429,8 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
                 style={[
                   styles.card,
                   isCompactViewport && styles.cardCompact,
-                  isWideViewport && styles.cardWide,
+                  isDesktopViewport && styles.cardDesktop,
+                  useSplitLayout && styles.cardWide,
                   { borderColor: `${activeCard.accent}66` },
                 ]}
               >
@@ -423,7 +463,9 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 60,
+    elevation: 60,
     backgroundColor: '#070B10',
   },
   backgroundImage: {
@@ -465,6 +507,13 @@ const styles = StyleSheet.create({
   scrollContentCompact: {
     justifyContent: 'flex-start',
   },
+  scrollContentDesktop: {
+    paddingHorizontal: urTheme.spacing.lg,
+    paddingVertical: urTheme.spacing.lg,
+  },
+  scrollContentDesktopTight: {
+    paddingVertical: urTheme.spacing.md,
+  },
   scrollContentWide: {
     paddingHorizontal: urTheme.spacing.xl,
   },
@@ -496,8 +545,17 @@ const styles = StyleSheet.create({
   heroPanelVeryShort: {
     paddingVertical: urTheme.spacing.md,
   },
+  heroPanelDesktop: {
+    maxWidth: 1120,
+    gap: urTheme.spacing.sm,
+    paddingHorizontal: urTheme.spacing.xl,
+    paddingVertical: urTheme.spacing.lg,
+  },
+  heroPanelDesktopTight: {
+    paddingVertical: urTheme.spacing.md + 2,
+  },
   heroPanelWide: {
-    maxWidth: 1040,
+    maxWidth: 1140,
   },
   eyebrow: {
     ...urTypography.label,
@@ -516,6 +574,10 @@ const styles = StyleSheet.create({
     fontSize: 30,
     lineHeight: 36,
   },
+  titleDesktop: {
+    fontSize: 38,
+    lineHeight: 44,
+  },
   titleWide: {
     fontSize: 40,
     lineHeight: 46,
@@ -530,6 +592,9 @@ const styles = StyleSheet.create({
   subtitleCompact: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  subtitleDesktop: {
+    maxWidth: 760,
   },
   pillRow: {
     flexDirection: 'row',
@@ -570,8 +635,9 @@ const styles = StyleSheet.create({
     gap: urTheme.spacing.sm,
   },
   infoColumnWide: {
-    flex: 0.95,
-    maxWidth: 360,
+    flex: 0.88,
+    maxWidth: 340,
+    justifyContent: 'center',
   },
   statusPanel: {
     width: '100%',
@@ -622,28 +688,28 @@ const styles = StyleSheet.create({
     gap: urTheme.spacing.xs,
     borderRadius: urTheme.radii.lg,
     borderWidth: 1,
-    borderColor: 'rgba(246, 214, 151, 0.18)',
-    backgroundColor: 'rgba(24, 17, 11, 0.54)',
+    borderColor: 'rgba(130, 182, 255, 0.18)',
+    backgroundColor: 'rgba(10, 18, 29, 0.62)',
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.md,
   },
   transitionLabel: {
     ...urTypography.label,
-    color: '#E8C979',
+    color: '#BFDFFF',
     fontSize: 11,
   },
   transitionTitle: {
-    ...urTypography.subtitle,
-    color: '#F8ECD6',
-    fontSize: 22,
-    lineHeight: 28,
+    ...urTypography.title,
+    color: '#F7E9CE',
+    fontSize: 30,
+    lineHeight: 36,
   },
   transitionTitleCompact: {
-    fontSize: 19,
-    lineHeight: 25,
+    fontSize: 26,
+    lineHeight: 32,
   },
   transitionBody: {
-    color: 'rgba(239, 226, 202, 0.82)',
+    color: 'rgba(215, 231, 251, 0.82)',
     fontSize: 13,
     lineHeight: 19,
   },
@@ -657,8 +723,13 @@ const styles = StyleSheet.create({
   cardDeckWrapCompact: {
     minHeight: 260,
   },
+  cardDeckWrapDesktop: {
+    flex: 1,
+    minHeight: 292,
+  },
   cardDeckWrapWide: {
-    minHeight: 348,
+    flex: 1,
+    minHeight: 320,
   },
   cardShadow: {
     position: 'absolute',
@@ -689,28 +760,32 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 540,
-    minHeight: 268,
-    borderRadius: 28,
-    borderWidth: 1.5,
-    backgroundColor: 'rgba(11, 16, 24, 0.92)',
-    paddingHorizontal: urTheme.spacing.xl,
-    paddingVertical: urTheme.spacing.xl,
-    alignItems: 'center',
+    minHeight: 252,
+    borderRadius: 30,
+    borderWidth: 1.4,
+    backgroundColor: 'rgba(12, 17, 26, 0.94)',
+    paddingHorizontal: urTheme.spacing.lg,
+    paddingVertical: urTheme.spacing.lg,
+    alignItems: 'flex-start',
     justifyContent: 'center',
-    gap: urTheme.spacing.sm,
     ...boxShadow({
       color: '#000',
-      opacity: 0.32,
-      offset: { width: 0, height: 16 },
-      blurRadius: 24,
-      elevation: 14,
+      opacity: 0.34,
+      offset: { width: 0, height: 12 },
+      blurRadius: 20,
+      elevation: 11,
     }),
   },
   cardCompact: {
     minHeight: 224,
     borderRadius: 24,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.md,
+  },
+  cardDesktop: {
+    minHeight: 236,
     paddingHorizontal: urTheme.spacing.lg,
-    paddingVertical: urTheme.spacing.lg,
+    paddingVertical: urTheme.spacing.md + 2,
   },
   cardWide: {
     maxWidth: 560,
@@ -718,35 +793,34 @@ const styles = StyleSheet.create({
   cardEyebrow: {
     ...urTypography.label,
     fontSize: 11,
-    textAlign: 'center',
+    marginBottom: urTheme.spacing.sm,
   },
   cardTitle: {
     ...urTypography.title,
-    color: '#F8ECD6',
-    fontSize: 34,
-    lineHeight: 40,
-    textAlign: 'center',
+    color: '#F7E9CE',
+    fontSize: 30,
+    lineHeight: 35,
+    marginBottom: urTheme.spacing.sm,
   },
   cardTitleCompact: {
-    fontSize: 30,
-    lineHeight: 36,
+    fontSize: 26,
+    lineHeight: 31,
   },
   cardBody: {
-    color: 'rgba(244, 236, 220, 0.86)',
-    fontSize: 16,
+    color: 'rgba(240, 229, 209, 0.86)',
+    fontSize: 15,
     lineHeight: 23,
-    textAlign: 'center',
   },
   cardBodyCompact: {
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 21,
   },
   cardIndicatorRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 8,
-    minHeight: 10,
+    maxWidth: 540,
   },
   cardIndicator: {
     width: 8,
@@ -755,7 +829,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(214, 234, 255, 0.22)',
   },
   cardIndicatorActive: {
-    width: 22,
+    width: 26,
     backgroundColor: '#F0C965',
   },
   rotationNote: {

@@ -61,13 +61,16 @@ const BOT_LEVELS: BotLevelCard[] = [
 ];
 
 export default function BotSelection() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const { modeId: rawModeId } = useLocalSearchParams<{ modeId?: string | string[] }>();
   const { startBotGame } = useMatchmaking('bot');
   const [pendingDifficulty, setPendingDifficulty] = React.useState<BotDifficulty | null>(null);
   const isCompactLayout = width < 820;
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
+  const isDesktopViewport = Platform.OS === 'web' && width >= 920;
+  const isTightDesktopViewport = isDesktopViewport && height <= 820;
+  const useFourColumnLayout = isDesktopViewport && width >= 1240;
   const showInlineHeaderEyebrow = Platform.OS !== 'web';
   const compactCardGap = urTheme.spacing.md;
   const compactCardSideInset = urTheme.spacing.xs;
@@ -138,11 +141,16 @@ export default function BotSelection() {
       <View style={styles.bottomShade} />
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isDesktopViewport && styles.scrollContentDesktop,
+          isTightDesktopViewport && styles.scrollContentDesktopTight,
+        ]}
         horizontal={false}
         showsVerticalScrollIndicator={false}
+        bounces={false}
       >
-        <View style={styles.hero}>
+        <View style={[styles.hero, isDesktopViewport && styles.heroDesktop, isTightDesktopViewport && styles.heroDesktopTight]}>
           {showInlineHeaderEyebrow ? <Text style={styles.eyebrow}>{headerTitle}</Text> : null}
           <Text style={styles.title}>
             {isPracticeMode ? `${matchConfig.displayName} Difficulty` : 'Choose The Court You Want To Face'}
@@ -177,8 +185,10 @@ export default function BotSelection() {
             )}
           </ScrollView>
         ) : (
-          <View style={styles.gridList}>
-            {BOT_LEVELS.map((level) => renderBotCard(level, styles.gridCard))}
+          <View style={[styles.gridList, isDesktopViewport && styles.gridListDesktop, useFourColumnLayout && styles.gridListFourColumn]}>
+            {BOT_LEVELS.map((level) =>
+              renderBotCard(level, [styles.gridCard, isDesktopViewport && styles.cardDesktop, useFourColumnLayout && styles.gridCardFourColumn]),
+            )}
           </View>
         )}
       </ScrollView>
@@ -194,6 +204,14 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.lg,
+  },
+  scrollContentDesktop: {
+    justifyContent: 'center',
+    paddingHorizontal: urTheme.spacing.lg,
+    paddingVertical: urTheme.spacing.lg,
+  },
+  scrollContentDesktopTight: {
+    paddingVertical: urTheme.spacing.md,
   },
   texture: {
     ...StyleSheet.absoluteFillObject,
@@ -222,6 +240,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: urTheme.spacing.lg,
     paddingTop: urTheme.spacing.md,
+  },
+  heroDesktop: {
+    marginBottom: urTheme.spacing.md,
+    paddingTop: urTheme.spacing.xs,
+  },
+  heroDesktopTight: {
+    marginBottom: urTheme.spacing.sm,
   },
   eyebrow: {
     ...urTypography.label,
@@ -272,6 +297,13 @@ const styles = StyleSheet.create({
     maxWidth: 720,
     alignSelf: 'center',
   },
+  gridListDesktop: {
+    maxWidth: 920,
+    rowGap: urTheme.spacing.sm,
+  },
+  gridListFourColumn: {
+    maxWidth: 1200,
+  },
   card: {
     overflow: 'hidden',
     borderRadius: urTheme.radii.lg,
@@ -289,9 +321,17 @@ const styles = StyleSheet.create({
   compactCard: {
     minHeight: 248,
   },
+  cardDesktop: {
+    minHeight: 224,
+    padding: urTheme.spacing.md + 2,
+  },
   gridCard: {
     width: '48.5%',
     minHeight: 252,
+  },
+  gridCardFourColumn: {
+    width: '24%',
+    minHeight: 216,
   },
   cardTexture: {
     ...StyleSheet.absoluteFillObject,

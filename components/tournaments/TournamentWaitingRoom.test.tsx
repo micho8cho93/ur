@@ -239,6 +239,6 @@ describe('TournamentWaitingRoom', () => {
 
     expect(screen.getByTestId('tournament-waiting-room-scroll')).toBeTruthy();
     expect(StyleSheet.flatten(screen.getByText('Spring Open').props.style).fontSize).toBe(30);
-    expect(StyleSheet.flatten(screen.getByText('2 challenges completed').props.style).fontSize).toBe(30);
+    expect(StyleSheet.flatten(screen.getByText('2 challenges completed').props.style).fontSize).toBe(26);
   });
 });
