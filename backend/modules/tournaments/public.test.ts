@@ -5,6 +5,7 @@ import {
   rpcLaunchTournamentMatch,
   rpcListPublicTournaments,
 } from './public';
+import { TOURNAMENT_LOBBY_FILL_COUNTDOWN_MS } from '../../../shared/tournamentLobby';
 import { completeTournamentBracketMatch } from './bracket';
 
 type StoredObject = {
@@ -904,6 +905,89 @@ describe('public tournament rpc flow', () => {
       ]),
     );
     expect(listResponse.tournaments).toEqual([]);
+  });
+
+  it('auto-finalizes an opened lobby that misses the three-minute fill countdown', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedOpenRun(nk, {
+      entrants: 1,
+      maxSize: 4,
+    });
+
+    const openedAt = new Date(Date.now() - TOURNAMENT_LOBBY_FILL_COUNTDOWN_MS - 5_000).toISOString();
+    const storedRun = readStoredRunValue(nk);
+
+    writeStoredRunValue(nk, {
+      ...storedRun,
+      updatedAt: openedAt,
+      openedAt,
+      registrations: [
+        {
+          userId: 'user-1',
+          displayName: 'RoyalPlayer',
+          joinedAt: openedAt,
+          seed: 1,
+        },
+      ],
+    });
+
+    nk.storage.set(buildStorageKey('tournament_run_memberships', 'run-1', 'user-1'), {
+      collection: 'tournament_run_memberships',
+      key: 'run-1',
+      userId: 'user-1',
+      value: {
+        runId: 'run-1',
+        tournamentId: 'tour-1',
+        userId: 'user-1',
+        displayName: 'RoyalPlayer',
+        joinedAt: openedAt,
+        updatedAt: openedAt,
+      },
+      version: 'membership-v1',
+    });
+
+    const detailResponse = JSON.parse(
+      rpcGetPublicTournament(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      tournament: {
+        lifecycle: string;
+        lobbyDeadlineAt: string | null;
+        membership: { isJoined: boolean };
+      };
+    };
+
+    const listResponse = JSON.parse(
+      rpcListPublicTournaments(
+        { userId: 'user-2' },
+        logger,
+        nk,
+        JSON.stringify({ limit: 10 }),
+      ),
+    ) as {
+      tournaments: Array<{ runId: string }>;
+    };
+
+    const updatedRun = readStoredRunValue(nk);
+
+    expect(detailResponse.tournament).toEqual(
+      expect.objectContaining({
+        lifecycle: 'finalized',
+        lobbyDeadlineAt: new Date(Date.parse(openedAt) + TOURNAMENT_LOBBY_FILL_COUNTDOWN_MS).toISOString(),
+        membership: expect.objectContaining({
+          isJoined: true,
+        }),
+      }),
+    );
+    expect(listResponse.tournaments).toEqual([]);
+    expect(updatedRun.lifecycle).toBe('finalized');
+    expect(updatedRun.finalizedAt).toEqual(expect.any(String));
+    expect(nk.tournamentRanksDisable).toHaveBeenCalledWith('tour-1');
   });
 
   it('auto-finalizes a completed bracket when public tournament status is refreshed', () => {

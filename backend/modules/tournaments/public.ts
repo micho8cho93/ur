@@ -5,6 +5,7 @@ import {
   clampInteger,
   getNakamaTournamentById,
   getNakamaTournamentsById,
+  maybeAutoFinalizeRunForLobbyTimeout,
   readRunIndexState,
   readRunOrThrow,
   readRunsByIds,
@@ -33,6 +34,7 @@ import {
 import { maybeAutoFinalizeTournamentRunById } from "./matchResults";
 import type { RuntimeContext, RuntimeLogger, RuntimeNakama } from "./types";
 import { requireCompletedUsernameOnboarding } from "../usernameOnboarding";
+import { getTournamentLobbyDeadlineAt } from "../../../shared/tournamentLobby";
 import {
   MAX_WRITE_ATTEMPTS,
   RuntimeStorageObject,
@@ -86,6 +88,7 @@ type PublicTournamentResponse = {
   startAt: string;
   endAt: string | null;
   updatedAt: string;
+  lobbyDeadlineAt: string | null;
   entrants: number;
   maxEntrants: number;
   gameMode: string;
@@ -614,6 +617,7 @@ const buildPublicTournamentResponse = (
       null,
     ),
     updatedAt: run.updatedAt,
+    lobbyDeadlineAt: getTournamentLobbyDeadlineAt(run.openedAt),
     entrants: getRunEntrants(run, nakamaTournament),
     maxEntrants: getRunMaxEntrants(run, nakamaTournament),
     gameMode: readStringField(metadata, ["gameMode", "game_mode"]) ?? "standard",
@@ -710,24 +714,25 @@ const buildTournamentLaunchResponse = (params: {
     statusMessage: params.statusMessage,
   });
 
-const maybeFinalizeCompletedPublicRun = (
+const maybeFinalizePublicRun = (
   logger: RuntimeLogger,
   nk: RuntimeNakama,
   run: TournamentRunRecord,
 ): TournamentRunRecord => {
-  if (run.lifecycle === "finalized") {
-    return run;
+  const maybeTimedOutRun = maybeAutoFinalizeRunForLobbyTimeout(logger, nk, run);
+  if (maybeTimedOutRun.lifecycle === "finalized") {
+    return maybeTimedOutRun;
   }
 
   try {
-    return maybeAutoFinalizeTournamentRunById(nk, logger, run.runId)?.run ?? run;
+    return maybeAutoFinalizeTournamentRunById(nk, logger, maybeTimedOutRun.runId)?.run ?? maybeTimedOutRun;
   } catch (error) {
     logger.warn(
       "Unable to auto-finalize public tournament run %s while serving player status: %s",
-      run.runId,
+      maybeTimedOutRun.runId,
       String(error),
     );
-    return readRunOrThrow(nk, run.runId);
+    return readRunOrThrow(nk, maybeTimedOutRun.runId);
   }
 };
 
@@ -741,7 +746,7 @@ export const rpcListPublicTournaments = (
   const parsed = parseJsonPayload(payload);
   const limit = clampInteger(parsed.limit, DEFAULT_PUBLIC_LIST_LIMIT, 1, 100);
   const runs = listPublicRuns(nk).map((run) =>
-    maybeFinalizeCompletedPublicRun(
+    maybeFinalizePublicRun(
       logger,
       nk,
       maybeStartBracketForRun(nk, logger, run),
@@ -801,7 +806,7 @@ export const rpcGetPublicTournament = (
 
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
-  run = maybeFinalizeCompletedPublicRun(logger, nk, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   assertPublicRunReadable(run, nakamaTournament, membership);
@@ -839,7 +844,7 @@ export const rpcGetPublicTournamentStandings = (
 
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
-  run = maybeFinalizeCompletedPublicRun(logger, nk, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   assertPublicRunReadable(run, nakamaTournament, membership);
@@ -882,6 +887,8 @@ export const rpcJoinPublicTournament = (
   }
 
   let run = readRunOrThrow(nk, runId);
+  run = maybeStartBracketForRun(nk, logger, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
   const nakamaTournamentBeforeJoin = getNakamaTournamentById(nk, run.tournamentId);
   assertPublicRunVisible(run, nakamaTournamentBeforeJoin);
 
@@ -918,6 +925,7 @@ export const rpcJoinPublicTournament = (
 
   run = ensureRunRegistration(nk, logger, run, membership);
   run = maybeStartBracketForRun(nk, logger, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
 
   return JSON.stringify({
     ok: true,
@@ -960,7 +968,7 @@ export const rpcLaunchTournamentMatch = (
 
   run = ensureRunRegistration(nk, logger, run, membership);
   run = maybeStartBracketForRun(nk, logger, run);
-  run = maybeFinalizeCompletedPublicRun(logger, nk, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
 
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const participation = buildPublicParticipationState(run, membership);

@@ -65,12 +65,21 @@ export const useTournamentList = ({ featured = false, limit = 50 }: UseTournamen
   useEffect(() => {
     const nextExpiry = tournaments
       .map((tournament) => {
-        if (tournament.lifecycle !== 'open' || !tournament.endAt) {
+        if (tournament.lifecycle !== 'open') {
           return null;
         }
 
-        const parsed = Date.parse(tournament.endAt);
-        return Number.isFinite(parsed) && parsed > now ? parsed : null;
+        const candidateTimes = [tournament.endAt, tournament.lobbyDeadlineAt]
+          .filter((value): value is string => typeof value === 'string' && value.length > 0)
+          .map((value) => Date.parse(value))
+          .filter((value) => Number.isFinite(value))
+          .map((value) => (value > now ? value : Date.now()));
+
+        if (candidateTimes.length === 0) {
+          return null;
+        }
+
+        return Math.min(...candidateTimes);
       })
       .reduce<number | null>((soonest, current) => {
         if (current === null) {

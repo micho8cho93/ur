@@ -10,6 +10,7 @@ import {
   RUNS_COLLECTION,
   RUNS_INDEX_KEY,
 } from "./admin";
+import { TOURNAMENT_LOBBY_FILL_COUNTDOWN_MS } from "../../../shared/tournamentLobby";
 import { rpcAdminExportTournament } from "./export";
 import { ADMIN_COLLECTION, ADMIN_ROLE_KEY } from "./auth";
 import { completeTournamentBracketMatch, createSingleEliminationBracket } from "./bracket";
@@ -608,6 +609,118 @@ describe("admin tournament run creation", () => {
         }),
       ]),
     );
+  });
+
+  it("auto-finalizes an opened lobby in internals once its fill countdown expires", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk, "admin-1", "viewer");
+
+    const openedAt = new Date(Date.now() - TOURNAMENT_LOBBY_FILL_COUNTDOWN_MS - 5_000).toISOString();
+
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, RUNS_INDEX_KEY), {
+      collection: RUNS_COLLECTION,
+      key: RUNS_INDEX_KEY,
+      value: {
+        runIds: ["timed-out-lobby"],
+        updatedAt: openedAt,
+      },
+      version: "index-v1",
+    });
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, "timed-out-lobby"), {
+      collection: RUNS_COLLECTION,
+      key: "timed-out-lobby",
+      value: {
+        runId: "timed-out-lobby",
+        tournamentId: "timed-out-lobby",
+        title: "Timed Out Lobby",
+        description: "Lobby never filled",
+        category: 0,
+        authoritative: true,
+        sortOrder: "desc",
+        operator: "incr",
+        resetSchedule: "",
+        metadata: {},
+        startTime: 1_774_572_800,
+        endTime: 1_774_580_000,
+        duration: 7_200,
+        maxSize: 4,
+        maxNumScore: 2,
+        joinRequired: true,
+        enableRanks: true,
+        lifecycle: "open",
+        registrations: [
+          {
+            userId: "user-1",
+            displayName: "RoyalPlayer",
+            joinedAt: openedAt,
+            seed: 1,
+          },
+        ],
+        bracket: null,
+        createdAt: openedAt,
+        updatedAt: openedAt,
+        createdByUserId: "admin-1",
+        createdByLabel: "Viewer",
+        openedAt,
+        closedAt: null,
+        finalizedAt: null,
+        finalSnapshot: null,
+      },
+      version: "run-v1",
+    });
+    nk.tournamentsGetId.mockImplementation((ids: string[]) =>
+      ids.includes("timed-out-lobby")
+        ? [
+            {
+              id: "timed-out-lobby",
+              startTime: 1_774_572_800,
+              endTime: 1_774_580_000,
+              maxSize: 4,
+              size: 1,
+            },
+          ]
+        : [],
+    );
+
+    const listResponse = JSON.parse(
+      rpcAdminListTournaments(
+        {
+          userId: "admin-1",
+          username: "Viewer",
+        },
+        logger,
+        nk,
+        JSON.stringify({ limit: 10 }),
+      ),
+    ) as {
+      runs: Array<{ runId: string; lifecycle: string }>;
+    };
+    const getResponse = JSON.parse(
+      rpcAdminGetTournamentRun(
+        {
+          userId: "admin-1",
+          username: "Viewer",
+        },
+        logger,
+        nk,
+        JSON.stringify({ runId: "timed-out-lobby" }),
+      ),
+    ) as {
+      run: { lifecycle: string; finalizedAt: string | null };
+    };
+
+    expect(listResponse.runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "timed-out-lobby",
+          lifecycle: "finalized",
+        }),
+      ]),
+    );
+    expect(getResponse.run.lifecycle).toBe("finalized");
+    expect(getResponse.run.finalizedAt).not.toBeNull();
+    expect(nk.tournamentRanksDisable).toHaveBeenCalledWith("timed-out-lobby");
   });
 
   it("opens a draft run and creates the Nakama tournament with the runtime argument order", () => {

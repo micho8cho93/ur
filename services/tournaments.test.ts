@@ -41,6 +41,7 @@ describe('tournament rpc parsing', () => {
             lifecycle: 'open',
             startAt: '2026-03-27T10:00:00.000Z',
             updatedAt: '2026-03-27T10:00:00.000Z',
+            lobbyDeadlineAt: '2026-03-27T10:03:00.000Z',
             entrants: 8,
             maxEntrants: 16,
             gameMode: 'standard',
@@ -61,6 +62,7 @@ describe('tournament rpc parsing', () => {
         runId: 'spring-open',
         tournamentId: 'spring-open',
         name: 'Spring Open',
+        lobbyDeadlineAt: '2026-03-27T10:03:00.000Z',
         membership: expect.objectContaining({
           isJoined: false,
         }),
@@ -80,6 +82,7 @@ describe('tournament rpc parsing', () => {
             lifecycle: 'open',
             startAt: '2026-03-27T10:00:00.000Z',
             updatedAt: '2026-03-27T10:00:00.000Z',
+            lobbyDeadlineAt: '2026-03-27T10:03:00.000Z',
             entrants: 8,
             maxEntrants: 16,
             gameMode: 'standard',

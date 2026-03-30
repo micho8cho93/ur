@@ -2,6 +2,7 @@ import {
   getTournamentCardPrimaryState,
   getTournamentDetailPrimaryState,
   getTournamentChipState,
+  getTournamentLobbyCountdownLabel,
   hasTournamentEnded,
   isTournamentPlayerLaunchReady,
   isTournamentPreStartWaitingRoomVisible,
@@ -249,6 +250,35 @@ describe('tournament presentation helpers', () => {
       loading: false,
       waitReason: null,
     });
+  });
+
+  it('formats the lobby fill countdown only while an open lobby is still waiting on seats', () => {
+    const countdownTournament: PublicTournamentSummary = {
+      ...baseTournament,
+      lobbyDeadlineAt: '2026-03-27T10:03:00.000Z',
+    };
+    const now = Date.parse('2026-03-27T10:01:01.000Z');
+
+    expect(getTournamentLobbyCountdownLabel(countdownTournament, now)).toBe('01:59');
+    expect(
+      getTournamentLobbyCountdownLabel(
+        {
+          ...countdownTournament,
+          entrants: 16,
+          maxEntrants: 16,
+        },
+        now,
+      ),
+    ).toBeNull();
+    expect(
+      getTournamentLobbyCountdownLabel(
+        {
+          ...countdownTournament,
+          isLocked: true,
+        },
+        now,
+      ),
+    ).toBeNull();
   });
 
   it('only shows the pre-start waiting room for players who are still before round one launch', () => {

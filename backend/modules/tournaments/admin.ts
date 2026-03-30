@@ -31,6 +31,7 @@ import {
   type XpRewardResult,
 } from "../progression";
 import type { RuntimeContext, RuntimeLogger, RuntimeMetadata, RuntimeNakama } from "./types";
+import { getTournamentLobbyDeadlineMs } from "../../../shared/tournamentLobby";
 
 type SortOrder = "asc" | "desc";
 type Operator = "best" | "set" | "incr";
@@ -461,6 +462,84 @@ const mapTournamentsById = (value: unknown): Record<string, Record<string, unkno
 export const getNakamaTournamentById = (nk: RuntimeNakama, tournamentId: string): Record<string, unknown> | null => {
   const tournaments = readTournamentArray(nk.tournamentsGetId([tournamentId]));
   return tournaments.length > 0 ? tournaments[0] : null;
+};
+
+const getRunEntrantCount = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+): number =>
+  Math.max(
+    run.registrations.length,
+    Math.max(0, Math.floor(readNumberField(nakamaTournament, ["size"]) ?? 0)),
+  );
+
+const getRunCapacity = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+): number => Math.max(0, Math.floor(readNumberField(nakamaTournament, ["maxSize", "max_size"]) ?? run.maxSize));
+
+const isRunAwaitingLobbyFill = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+): boolean => {
+  if (
+    run.lifecycle !== "open" ||
+    Boolean(run.finalizedAt) ||
+    Boolean(run.bracket?.finalizedAt) ||
+    Boolean(run.bracket)
+  ) {
+    return false;
+  }
+
+  const capacity = getRunCapacity(run, nakamaTournament);
+  if (capacity <= 0) {
+    return false;
+  }
+
+  return getRunEntrantCount(run, nakamaTournament) < capacity;
+};
+
+export const hasRunLobbyFillCountdownExpired = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+  nowMs = Date.now(),
+): boolean => {
+  if (!isRunAwaitingLobbyFill(run, nakamaTournament)) {
+    return false;
+  }
+
+  const deadlineMs = getTournamentLobbyDeadlineMs(run.openedAt);
+  return deadlineMs !== null && deadlineMs <= nowMs;
+};
+
+export const maybeAutoFinalizeRunForLobbyTimeout = (
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  run: TournamentRunRecord,
+  nakamaTournament?: Record<string, unknown> | null,
+): TournamentRunRecord => {
+  const resolvedTournament =
+    nakamaTournament === undefined ? getNakamaTournamentById(nk, run.tournamentId) : nakamaTournament;
+
+  if (!hasRunLobbyFillCountdownExpired(run, resolvedTournament, Date.now())) {
+    return run;
+  }
+
+  try {
+    const result = finalizeTournamentRun(logger, nk, run.runId, {});
+    logger.info(
+      "Auto-finalized tournament run %s after the lobby fill countdown expired.",
+      result.run.runId,
+    );
+    return result.run;
+  } catch (error) {
+    logger.warn(
+      "Unable to auto-finalize tournament run %s after the lobby fill countdown expired: %s",
+      run.runId,
+      getErrorMessage(error),
+    );
+    return readRunOrThrow(nk, run.runId);
+  }
 };
 
 export const getNakamaTournamentsById = (
@@ -1393,19 +1472,20 @@ const maybeAutoFinalizeAdminRun = (
   nk: RuntimeNakama,
   run: TournamentRunRecord,
 ): TournamentRunRecord => {
-  if (run.lifecycle === "finalized" || !run.bracket?.finalizedAt) {
-    return run;
+  const maybeTimedOutRun = maybeAutoFinalizeRunForLobbyTimeout(logger, nk, run);
+  if (maybeTimedOutRun.lifecycle === "finalized" || !maybeTimedOutRun.bracket?.finalizedAt) {
+    return maybeTimedOutRun;
   }
 
   try {
-    return finalizeTournamentRun(logger, nk, run.runId, {}).run;
+    return finalizeTournamentRun(logger, nk, maybeTimedOutRun.runId, {}).run;
   } catch (error) {
     logger.warn(
       "Unable to auto-finalize admin tournament run %s while serving internals: %s",
-      run.runId,
+      maybeTimedOutRun.runId,
       getErrorMessage(error),
     );
-    return readRunOrThrow(nk, run.runId);
+    return readRunOrThrow(nk, maybeTimedOutRun.runId);
   }
 };
 

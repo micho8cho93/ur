@@ -1,4 +1,8 @@
 import { getMatchConfig } from '@/logic/matchConfigs';
+import {
+  formatTournamentLobbyCountdown,
+  getTournamentLobbyCountdownMsRemaining,
+} from '@/shared/tournamentLobby';
 import type { PublicTournamentSummary } from '@/src/tournaments/types';
 
 export type TournamentChipTone = 'neutral' | 'info' | 'success' | 'warning';
@@ -41,6 +45,13 @@ const safeParseOptionalTime = (value: string | null): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+type TournamentLobbyCountdownState = Pick<
+  PublicTournamentSummary,
+  'lifecycle' | 'isLocked' | 'entrants' | 'maxEntrants'
+> & {
+  lobbyDeadlineAt?: string | null;
+};
+
 export const hasTournamentStarted = (tournament: Pick<PublicTournamentSummary, 'startAt'>, now = Date.now()): boolean =>
   safeParseTime(tournament.startAt) <= now;
 
@@ -65,6 +76,25 @@ export const isTournamentReadyToLaunch = (
   tournament: Pick<PublicTournamentSummary, 'entrants' | 'maxEntrants' | 'startAt'>,
   now = Date.now(),
 ): boolean => isTournamentFull(tournament) && hasTournamentStarted(tournament, now);
+
+export const getTournamentLobbyCountdownMs = (
+  tournament: TournamentLobbyCountdownState,
+  now = Date.now(),
+): number | null => {
+  if (tournament.lifecycle !== 'open' || isTournamentLocked(tournament) || isTournamentFull(tournament)) {
+    return null;
+  }
+
+  return getTournamentLobbyCountdownMsRemaining(tournament.lobbyDeadlineAt ?? null, now);
+};
+
+export const getTournamentLobbyCountdownLabel = (
+  tournament: TournamentLobbyCountdownState,
+  now = Date.now(),
+): string | null => {
+  const remainingMs = getTournamentLobbyCountdownMs(tournament, now);
+  return remainingMs === null ? null : formatTournamentLobbyCountdown(remainingMs);
+};
 
 export const isTournamentPreStartWaitingRoomVisible = (
   tournament: Pick<PublicTournamentSummary, 'membership' | 'participation' | 'currentRound'>,

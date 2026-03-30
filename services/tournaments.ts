@@ -202,6 +202,7 @@ const normalizePublicTournament = (value: unknown): PublicTournamentDetail => {
     startAt: readStringField(record, ['startAt', 'start_at']) ?? new Date(0).toISOString(),
     endAt: readStringField(record, ['endAt', 'end_at']),
     updatedAt: readStringField(record, ['updatedAt', 'updated_at']) ?? new Date(0).toISOString(),
+    lobbyDeadlineAt: readStringField(record, ['lobbyDeadlineAt', 'lobby_deadline_at']),
     entrants: Math.max(0, Math.floor(readNumberField(record, ['entrants']) ?? 0)),
     maxEntrants: Math.max(0, Math.floor(readNumberField(record, ['maxEntrants', 'max_entrants']) ?? 0)),
     gameMode: readStringField(record, ['gameMode', 'game_mode']) ?? 'standard',

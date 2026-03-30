@@ -22,6 +22,7 @@ export type PublicTournamentSummary = {
   startAt: string;
   endAt: string | null;
   updatedAt: string;
+  lobbyDeadlineAt?: string | null;
   entrants: number;
   maxEntrants: number;
   gameMode: string;

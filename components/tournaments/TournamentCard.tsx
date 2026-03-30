@@ -6,10 +6,12 @@ import {
   formatTournamentDateTime,
   getTournamentCardPrimaryState,
   getTournamentChipState,
+  getTournamentLobbyCountdownLabel,
+  getTournamentLobbyCountdownMs,
   getTournamentModeLabel,
 } from '@/src/tournaments/presentation';
 import type { PublicTournamentSummary } from '@/src/tournaments/types';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
 type TournamentCardProps = {
@@ -54,9 +56,29 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
   onLaunch,
   onViewStandings,
 }) => {
+  const [now, setNow] = useState(() => Date.now());
   const chip = getTournamentChipState(tournament);
   const primary = getTournamentCardPrimaryState(tournament);
   const resolvedPrimaryTitle = primaryTitle ?? primary.label;
+  const lobbyCountdownMs = getTournamentLobbyCountdownMs(tournament, now);
+  const lobbyCountdownLabel = getTournamentLobbyCountdownLabel(tournament, now);
+  const shouldTickCountdown = lobbyCountdownMs !== null && lobbyCountdownMs > 0;
+
+  useEffect(() => {
+    setNow(Date.now());
+
+    if (!shouldTickCountdown) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [shouldTickCountdown, tournament.lobbyDeadlineAt]);
 
   return (
     <View style={styles.card}>
@@ -103,6 +125,13 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
       </View>
 
       <Text style={styles.prizeSummary}>{buildTournamentPrizeSummary(tournament)}</Text>
+
+      {lobbyCountdownLabel ? (
+        <View style={styles.countdownPanel}>
+          <Text style={styles.countdownLabel}>Lobby Autofinalizes In</Text>
+          <Text style={styles.countdownValue}>{lobbyCountdownLabel}</Text>
+        </View>
+      ) : null}
 
       <View style={styles.buttonRow}>
         <Button
@@ -219,6 +248,27 @@ const styles = StyleSheet.create({
   prizeSummary: {
     color: 'rgba(246, 214, 151, 0.92)',
     marginBottom: urTheme.spacing.md,
+  },
+  countdownPanel: {
+    marginBottom: urTheme.spacing.md,
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(240, 192, 64, 0.36)',
+    backgroundColor: 'rgba(150, 89, 26, 0.16)',
+    paddingHorizontal: urTheme.spacing.sm,
+    paddingVertical: urTheme.spacing.sm,
+    gap: 4,
+  },
+  countdownLabel: {
+    ...urTypography.label,
+    color: '#F6DEAF',
+    fontSize: 10,
+  },
+  countdownValue: {
+    color: urTheme.colors.parchment,
+    fontSize: 24,
+    lineHeight: 28,
+    fontFamily: urTypography.title.fontFamily,
   },
   buttonRow: {
     flexDirection: 'row',

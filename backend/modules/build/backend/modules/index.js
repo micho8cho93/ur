@@ -4826,6 +4826,28 @@ var completeTournamentBracketMatch = (bracket, params) => {
 };
 var hasTournamentBracketStarted = (bracket) => Boolean(bracket == null ? void 0 : bracket.startedAt);
 
+// shared/tournamentLobby.ts
+var TOURNAMENT_LOBBY_FILL_COUNTDOWN_SECONDS = 180;
+var TOURNAMENT_LOBBY_FILL_COUNTDOWN_MS = TOURNAMENT_LOBBY_FILL_COUNTDOWN_SECONDS * 1e3;
+var parseIsoMs = (value) => {
+  if (!value) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+var getTournamentLobbyDeadlineMs = (openedAt) => {
+  const openedAtMs = parseIsoMs(openedAt);
+  if (openedAtMs === null) {
+    return null;
+  }
+  return openedAtMs + TOURNAMENT_LOBBY_FILL_COUNTDOWN_MS;
+};
+var getTournamentLobbyDeadlineAt = (openedAt) => {
+  const deadlineMs = getTournamentLobbyDeadlineMs(openedAt);
+  return deadlineMs === null ? null : new Date(deadlineMs).toISOString();
+};
+
 // backend/modules/tournaments/admin.ts
 var RUNS_COLLECTION = "tournament_runs";
 var RUNS_INDEX_KEY = "index";
@@ -5139,6 +5161,56 @@ var getNakamaTournamentById = (nk, tournamentId) => {
   const tournaments = readTournamentArray(nk.tournamentsGetId([tournamentId]));
   return tournaments.length > 0 ? tournaments[0] : null;
 };
+var getRunEntrantCount = (run, nakamaTournament) => {
+  var _a;
+  return Math.max(
+    run.registrations.length,
+    Math.max(0, Math.floor((_a = readNumberField4(nakamaTournament, ["size"])) != null ? _a : 0))
+  );
+};
+var getRunCapacity = (run, nakamaTournament) => {
+  var _a;
+  return Math.max(0, Math.floor((_a = readNumberField4(nakamaTournament, ["maxSize", "max_size"])) != null ? _a : run.maxSize));
+};
+var isRunAwaitingLobbyFill = (run, nakamaTournament) => {
+  var _a;
+  if (run.lifecycle !== "open" || Boolean(run.finalizedAt) || Boolean((_a = run.bracket) == null ? void 0 : _a.finalizedAt) || Boolean(run.bracket)) {
+    return false;
+  }
+  const capacity = getRunCapacity(run, nakamaTournament);
+  if (capacity <= 0) {
+    return false;
+  }
+  return getRunEntrantCount(run, nakamaTournament) < capacity;
+};
+var hasRunLobbyFillCountdownExpired = (run, nakamaTournament, nowMs = Date.now()) => {
+  if (!isRunAwaitingLobbyFill(run, nakamaTournament)) {
+    return false;
+  }
+  const deadlineMs = getTournamentLobbyDeadlineMs(run.openedAt);
+  return deadlineMs !== null && deadlineMs <= nowMs;
+};
+var maybeAutoFinalizeRunForLobbyTimeout = (logger, nk, run, nakamaTournament) => {
+  const resolvedTournament = nakamaTournament === void 0 ? getNakamaTournamentById(nk, run.tournamentId) : nakamaTournament;
+  if (!hasRunLobbyFillCountdownExpired(run, resolvedTournament, Date.now())) {
+    return run;
+  }
+  try {
+    const result = finalizeTournamentRun(logger, nk, run.runId, {});
+    logger.info(
+      "Auto-finalized tournament run %s after the lobby fill countdown expired.",
+      result.run.runId
+    );
+    return result.run;
+  } catch (error) {
+    logger.warn(
+      "Unable to auto-finalize tournament run %s after the lobby fill countdown expired: %s",
+      run.runId,
+      getErrorMessage(error)
+    );
+    return readRunOrThrow(nk, run.runId);
+  }
+};
 var getNakamaTournamentsById = (nk, tournamentIds) => {
   const filteredIds = Array.from(new Set(tournamentIds.filter((id) => id.length > 0)));
   if (filteredIds.length === 0) {
@@ -5192,10 +5264,11 @@ var buildStandingsSnapshot = (nk, tournamentId, limit, overrideExpiry) => {
     nextCursor: result.nextCursor
   };
 };
-var normalizeReconstructedTournamentSnapshotMatch = (value) => {
+var normalizeStoredTournamentMatchSummary = (value, options) => {
   var _a;
   const record = asRecord(value);
-  if (!record || readBooleanField4(record, ["counted"]) !== true) {
+  const requireCounted = (options == null ? void 0 : options.requireCounted) !== false;
+  if (!record || requireCounted && readBooleanField4(record, ["counted"]) !== true) {
     return null;
   }
   const summary = asRecord(record.summary);
@@ -5236,6 +5309,9 @@ var normalizeReconstructedTournamentSnapshotMatch = (value) => {
     players
   };
 };
+var normalizeReconstructedTournamentSnapshotMatch = (value) => {
+  return normalizeStoredTournamentMatchSummary(value, { requireCounted: true });
+};
 var readStoredReconstructedTournamentSnapshotMatches = (nk, resultIds) => {
   if (resultIds.length === 0) {
     return [];
@@ -5254,6 +5330,71 @@ var readStoredReconstructedTournamentSnapshotMatches = (nk, resultIds) => {
       );
     }
   ).filter((entry) => Boolean(entry));
+};
+var buildAdminBracketEntryMatchContextByMatchId = (nk, run) => {
+  var _a, _b;
+  const completedEntries = (_b = (_a = run.bracket) == null ? void 0 : _a.entries.filter(
+    (entry) => entry.status === "completed" && Boolean(entry.matchId)
+  )) != null ? _b : [];
+  if (completedEntries.length === 0) {
+    return /* @__PURE__ */ new Map();
+  }
+  const resultIds = Array.from(
+    new Set(
+      completedEntries.map((entry) => entry.matchId).filter((matchId) => Boolean(matchId)).map((matchId) => `${run.runId}:${matchId}`)
+    )
+  );
+  const objects = nk.storageRead(
+    resultIds.map((resultId) => ({
+      collection: TOURNAMENT_MATCH_RESULTS_COLLECTION,
+      key: resultId
+    }))
+  );
+  return new Map(
+    resultIds.map(
+      (resultId) => {
+        var _a2, _b2;
+        return normalizeStoredTournamentMatchSummary(
+          (_b2 = (_a2 = findStorageObject(objects, TOURNAMENT_MATCH_RESULTS_COLLECTION, resultId)) == null ? void 0 : _a2.value) != null ? _b2 : null,
+          { requireCounted: false }
+        );
+      }
+    ).filter((entry) => Boolean(entry)).map((entry) => [
+      entry.matchId,
+      {
+        usernamesByUserId: entry.players.reduce((accumulator, player) => {
+          var _a2;
+          accumulator[player.userId] = ((_a2 = player.username) == null ? void 0 : _a2.trim()) || null;
+          return accumulator;
+        }, {}),
+        finishedCountsByUserId: entry.players.reduce((accumulator, player) => {
+          accumulator[player.userId] = player.finishedCount;
+          return accumulator;
+        }, {})
+      }
+    ])
+  );
+};
+var buildAdminTournamentRunResponse = (nk, run) => {
+  if (!run.bracket) {
+    return run;
+  }
+  const matchContextByMatchId = buildAdminBracketEntryMatchContextByMatchId(nk, run);
+  return __spreadProps(__spreadValues({}, run), {
+    bracket: __spreadProps(__spreadValues({}, run.bracket), {
+      participants: run.bracket.participants.map((participant) => __spreadValues({}, participant)),
+      entries: run.bracket.entries.map((entry) => {
+        var _a, _b, _c, _d;
+        const matchContext = entry.matchId ? matchContextByMatchId.get(entry.matchId) : null;
+        return __spreadProps(__spreadValues({}, entry), {
+          playerAUsername: entry.playerAUserId && matchContext ? (_a = matchContext.usernamesByUserId[entry.playerAUserId]) != null ? _a : null : null,
+          playerBUsername: entry.playerBUserId && matchContext ? (_b = matchContext.usernamesByUserId[entry.playerBUserId]) != null ? _b : null : null,
+          playerAScore: entry.playerAUserId && matchContext ? (_c = matchContext.finishedCountsByUserId[entry.playerAUserId]) != null ? _c : null : null,
+          playerBScore: entry.playerBUserId && matchContext ? (_d = matchContext.finishedCountsByUserId[entry.playerBUserId]) != null ? _d : null : null
+        });
+      })
+    })
+  });
 };
 var applyReconstructedStandingUpdate = (operator, standing, player) => {
   if (operator === "incr") {
@@ -5744,18 +5885,19 @@ var buildRunResponse = (run, nakamaTournament) => ({
 });
 var maybeAutoFinalizeAdminRun = (logger, nk, run) => {
   var _a;
-  if (run.lifecycle === "finalized" || !((_a = run.bracket) == null ? void 0 : _a.finalizedAt)) {
-    return run;
+  const maybeTimedOutRun = maybeAutoFinalizeRunForLobbyTimeout(logger, nk, run);
+  if (maybeTimedOutRun.lifecycle === "finalized" || !((_a = maybeTimedOutRun.bracket) == null ? void 0 : _a.finalizedAt)) {
+    return maybeTimedOutRun;
   }
   try {
-    return finalizeTournamentRun(logger, nk, run.runId, {}).run;
+    return finalizeTournamentRun(logger, nk, maybeTimedOutRun.runId, {}).run;
   } catch (error) {
     logger.warn(
       "Unable to auto-finalize admin tournament run %s while serving internals: %s",
-      run.runId,
+      maybeTimedOutRun.runId,
       getErrorMessage(error)
     );
-    return readRunOrThrow(nk, run.runId);
+    return readRunOrThrow(nk, maybeTimedOutRun.runId);
   }
 };
 var deleteRunWithRetry = (nk, logger, run) => {
@@ -5857,7 +5999,11 @@ var rpcAdminGetTournamentRun = (ctx, logger, nk, payload) => {
         });
       }
       const nakamaTournament = getNakamaTournamentById(_nk, run.tournamentId);
-      return JSON.stringify(buildRunResponse(run, nakamaTournament));
+      return JSON.stringify({
+        ok: true,
+        run: buildAdminTournamentRunResponse(_nk, run),
+        nakamaTournament
+      });
     },
     {
       action: RPC_ADMIN_GET_TOURNAMENT_RUN
@@ -6922,7 +7068,7 @@ var OVERVIEW_TIMELINE_BUCKET_COUNT = 8;
 var OVERVIEW_TIMELINE_BUCKET_HOURS = 6;
 var DETAIL_TIMELINE_BUCKET_COUNT = 8;
 var DETAIL_TIMELINE_BUCKET_HOURS = 3;
-var parseIsoMs = (value) => {
+var parseIsoMs2 = (value) => {
   if (!value) {
     return null;
   }
@@ -6930,7 +7076,7 @@ var parseIsoMs = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 var maxIso = (...values) => {
-  const timestamps = values.map((value) => typeof value === "string" ? parseIsoMs(value) : null).filter((value) => value !== null);
+  const timestamps = values.map((value) => typeof value === "string" ? parseIsoMs2(value) : null).filter((value) => value !== null);
   if (timestamps.length === 0) {
     return null;
   }
@@ -7024,8 +7170,8 @@ var getRoundLabel = (round, totalRounds) => {
   return `Round ${round}`;
 };
 var getEntryDurationSeconds = (entry) => {
-  const startedAtMs = parseIsoMs(entry.startedAt);
-  const completedAtMs = parseIsoMs(entry.completedAt);
+  const startedAtMs = parseIsoMs2(entry.startedAt);
+  const completedAtMs = parseIsoMs2(entry.completedAt);
   if (startedAtMs === null || completedAtMs === null || completedAtMs < startedAtMs) {
     return null;
   }
@@ -7036,7 +7182,7 @@ var isReadyEntryStale = (entry, nowMs) => {
   if (entry.status !== "ready") {
     return false;
   }
-  const readyAtMs = parseIsoMs((_a = entry.readyAt) != null ? _a : entry.updatedAt);
+  const readyAtMs = parseIsoMs2((_a = entry.readyAt) != null ? _a : entry.updatedAt);
   return readyAtMs !== null && nowMs - readyAtMs >= READY_STALE_WINDOW_MS;
 };
 var isInMatchEntryStale = (entry, nowMs) => {
@@ -7044,7 +7190,7 @@ var isInMatchEntryStale = (entry, nowMs) => {
   if (entry.status !== "in_match") {
     return false;
   }
-  const startedAtMs = parseIsoMs((_a = entry.startedAt) != null ? _a : entry.updatedAt);
+  const startedAtMs = parseIsoMs2((_a = entry.startedAt) != null ? _a : entry.updatedAt);
   return startedAtMs !== null && nowMs - startedAtMs >= IN_MATCH_STALE_WINDOW_MS;
 };
 var buildEntryBlockedReason = (entry, nameByUserId) => {
@@ -7066,13 +7212,13 @@ var buildEntryBlockedReason = (entry, nameByUserId) => {
 var buildEntryStaleReason = (entry, nowMs) => {
   var _a, _b;
   if (entry.status === "ready") {
-    const readyAtMs = parseIsoMs((_a = entry.readyAt) != null ? _a : entry.updatedAt);
+    const readyAtMs = parseIsoMs2((_a = entry.readyAt) != null ? _a : entry.updatedAt);
     if (readyAtMs !== null && nowMs - readyAtMs >= READY_STALE_WINDOW_MS) {
       return `Ready for ${describeElapsedMinutes(nowMs - readyAtMs)} without a match launch.`;
     }
   }
   if (entry.status === "in_match") {
-    const startedAtMs = parseIsoMs((_b = entry.startedAt) != null ? _b : entry.updatedAt);
+    const startedAtMs = parseIsoMs2((_b = entry.startedAt) != null ? _b : entry.updatedAt);
     if (startedAtMs !== null && nowMs - startedAtMs >= IN_MATCH_STALE_WINDOW_MS) {
       return `In match for ${describeElapsedMinutes(nowMs - startedAtMs)} without a result.`;
     }
@@ -7177,7 +7323,7 @@ var buildTournamentLiveSummary = (run, nakamaTournament, auditEntries, nowMs) =>
   const finalizedFromBracket = Boolean((_e = run.bracket) == null ? void 0 : _e.finalizedAt) || totalMatches > 0 && completedMatches === totalMatches;
   const finalizeReady = run.lifecycle !== "finalized" && finalizedFromBracket;
   const startingSoon = (() => {
-    const startAtMs = parseIsoMs(startAt);
+    const startAtMs = parseIsoMs2(startAt);
     return startAtMs !== null && startAtMs > nowMs && startAtMs - nowMs <= STARTING_SOON_WINDOW_MS && run.lifecycle !== "finalized";
   })();
   const alerts = [];
@@ -7283,7 +7429,7 @@ var buildTimelineBuckets = (timestamps, nowMs, bucketCount, bucketHours) => {
       bucketStart: new Date(bucketStartMs).toISOString(),
       bucketEnd: new Date(bucketEndMs).toISOString(),
       count: timestamps.reduce((total, timestamp) => {
-        const parsed = parseIsoMs(timestamp);
+        const parsed = parseIsoMs2(timestamp);
         return parsed !== null && parsed >= bucketStartMs && parsed < bucketEndMs ? total + 1 : total;
       }, 0)
     };
@@ -7343,8 +7489,8 @@ var compareSummariesByUrgency = (left, right) => {
   if (left.urgencyScore !== right.urgencyScore) {
     return right.urgencyScore - left.urgencyScore;
   }
-  const leftActivity = (_b = parseIsoMs((_a = left.lastActivityAt) != null ? _a : left.updatedAt)) != null ? _b : 0;
-  const rightActivity = (_d = parseIsoMs((_c = right.lastActivityAt) != null ? _c : right.updatedAt)) != null ? _d : 0;
+  const leftActivity = (_b = parseIsoMs2((_a = left.lastActivityAt) != null ? _a : left.updatedAt)) != null ? _b : 0;
+  const rightActivity = (_d = parseIsoMs2((_c = right.lastActivityAt) != null ? _c : right.updatedAt)) != null ? _d : 0;
   if (leftActivity !== rightActivity) {
     return rightActivity - leftActivity;
   }
@@ -7355,13 +7501,13 @@ var isOverviewCandidate = (summary, nowMs) => {
   if (summary.lifecycle !== "finalized") {
     return true;
   }
-  const recentActivityMs = parseIsoMs((_b = (_a = summary.lastActivityAt) != null ? _a : summary.finalizedAt) != null ? _b : summary.updatedAt);
+  const recentActivityMs = parseIsoMs2((_b = (_a = summary.lastActivityAt) != null ? _a : summary.finalizedAt) != null ? _b : summary.updatedAt);
   return recentActivityMs !== null && nowMs - recentActivityMs <= RECENT_RUN_WINDOW_MS;
 };
 var buildOverviewResponse = (nk, limit) => {
   var _a;
   const generatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  const nowMs = (_a = parseIsoMs(generatedAt)) != null ? _a : Date.now();
+  const nowMs = (_a = parseIsoMs2(generatedAt)) != null ? _a : Date.now();
   const indexState = readRunIndexState(nk);
   const runs = sortRuns(readRunsByIds(nk, indexState.index.runIds));
   const auditEntries = listTournamentAuditEntries(nk, { limit: 200 });
@@ -7426,7 +7572,7 @@ var buildOverviewResponse = (nk, limit) => {
 var buildDetailResponse = (nk, runId) => {
   var _a;
   const generatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  const nowMs = (_a = parseIsoMs(generatedAt)) != null ? _a : Date.now();
+  const nowMs = (_a = parseIsoMs2(generatedAt)) != null ? _a : Date.now();
   const run = readRunOrThrow(nk, runId);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const auditEntries = listTournamentAuditEntries(nk, {
@@ -7708,14 +7854,6 @@ var getRunEndTimeMs = (run, nakamaTournament) => {
   }
   return Math.floor(endTimeSeconds * 1e3);
 };
-var getRunStartTimeMs = (run, nakamaTournament) => {
-  var _a;
-  const startTimeSeconds = (_a = readNumberField4(nakamaTournament, ["startTime", "start_time"])) != null ? _a : run.startTime;
-  if (typeof startTimeSeconds !== "number" || !Number.isFinite(startTimeSeconds) || startTimeSeconds <= 0) {
-    return null;
-  }
-  return Math.floor(startTimeSeconds * 1e3);
-};
 var getRunEntrants = (run, nakamaTournament) => {
   var _a;
   return Math.max(
@@ -7734,13 +7872,9 @@ var isPublicRunFull = (run, nakamaTournament) => {
   const maxEntrants = getRunMaxEntrants(run, nakamaTournament);
   return maxEntrants > 0 && getRunEntrants(run, nakamaTournament) >= maxEntrants;
 };
-var getLaunchBlockedReason = (run, nakamaTournament, nowMs = Date.now()) => {
+var getLaunchBlockedReason = (run, nakamaTournament) => {
   if (!isPublicRunFull(run, nakamaTournament)) {
     return "lobby";
-  }
-  const startAtMs = getRunStartTimeMs(run, nakamaTournament);
-  if (startAtMs !== null && startAtMs > nowMs) {
-    return "start";
   }
   return null;
 };
@@ -7945,6 +8079,7 @@ var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
       null
     ),
     updatedAt: run.updatedAt,
+    lobbyDeadlineAt: getTournamentLobbyDeadlineAt(run.openedAt),
     entrants: getRunEntrants(run, nakamaTournament),
     maxEntrants: getRunMaxEntrants(run, nakamaTournament),
     gameMode: (_d = readStringField6(metadata, ["gameMode", "game_mode"])) != null ? _d : "standard",
@@ -7978,7 +8113,7 @@ var ensureRunRegistration = (nk, logger, run, membership) => updateRunWithRetry(
     registrations: result.registrations
   });
 });
-var maybeStartBracketForRun = (nk, logger, run, nowMs = Date.now()) => {
+var maybeStartBracketForRun = (nk, logger, run) => {
   if (run.bracket || run.lifecycle !== "open") {
     return run;
   }
@@ -7986,15 +8121,11 @@ var maybeStartBracketForRun = (nk, logger, run, nowMs = Date.now()) => {
   if (!isPublicRunFull(run, nakamaTournament)) {
     return run;
   }
-  const startAtMs = getRunStartTimeMs(run, nakamaTournament);
-  if (startAtMs !== null && startAtMs > nowMs) {
-    return run;
-  }
   return updateRunWithRetry(nk, logger, run.runId, (current) => {
     if (current.bracket) {
       return current;
     }
-    const startedAt = new Date(nowMs).toISOString();
+    const startedAt = (/* @__PURE__ */ new Date()).toISOString();
     return __spreadProps(__spreadValues({}, current), {
       updatedAt: startedAt,
       bracket: createSingleEliminationBracket(current.registrations, startedAt)
@@ -8014,20 +8145,21 @@ var buildTournamentLaunchResponse = (params) => JSON.stringify({
   queueStatus: params.queueStatus,
   statusMessage: params.statusMessage
 });
-var maybeFinalizeCompletedPublicRun = (logger, nk, run) => {
+var maybeFinalizePublicRun = (logger, nk, run) => {
   var _a, _b;
-  if (run.lifecycle === "finalized") {
-    return run;
+  const maybeTimedOutRun = maybeAutoFinalizeRunForLobbyTimeout(logger, nk, run);
+  if (maybeTimedOutRun.lifecycle === "finalized") {
+    return maybeTimedOutRun;
   }
   try {
-    return (_b = (_a = maybeAutoFinalizeTournamentRunById(nk, logger, run.runId)) == null ? void 0 : _a.run) != null ? _b : run;
+    return (_b = (_a = maybeAutoFinalizeTournamentRunById(nk, logger, maybeTimedOutRun.runId)) == null ? void 0 : _a.run) != null ? _b : maybeTimedOutRun;
   } catch (error) {
     logger.warn(
       "Unable to auto-finalize public tournament run %s while serving player status: %s",
-      run.runId,
+      maybeTimedOutRun.runId,
       String(error)
     );
-    return readRunOrThrow(nk, run.runId);
+    return readRunOrThrow(nk, maybeTimedOutRun.runId);
   }
 };
 var rpcListPublicTournaments = (ctx, logger, nk, payload) => {
@@ -8035,7 +8167,7 @@ var rpcListPublicTournaments = (ctx, logger, nk, payload) => {
   const parsed = parseJsonPayload(payload);
   const limit = clampInteger(parsed.limit, DEFAULT_PUBLIC_LIST_LIMIT, 1, 100);
   const runs = listPublicRuns(nk).map(
-    (run) => maybeFinalizeCompletedPublicRun(
+    (run) => maybeFinalizePublicRun(
       logger,
       nk,
       maybeStartBracketForRun(nk, logger, run)
@@ -8089,7 +8221,7 @@ var rpcGetPublicTournament = (ctx, logger, nk, payload) => {
   }
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
-  run = maybeFinalizeCompletedPublicRun(logger, nk, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   assertPublicRunReadable(run, nakamaTournament, membership);
@@ -8119,7 +8251,7 @@ var rpcGetPublicTournamentStandings = (ctx, logger, nk, payload) => {
   }
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
-  run = maybeFinalizeCompletedPublicRun(logger, nk, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   assertPublicRunReadable(run, nakamaTournament, membership);
@@ -8153,6 +8285,8 @@ var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
     throw new Error("runId is required.");
   }
   let run = readRunOrThrow(nk, runId);
+  run = maybeStartBracketForRun(nk, logger, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
   const nakamaTournamentBeforeJoin = getNakamaTournamentById(nk, run.tournamentId);
   assertPublicRunVisible(run, nakamaTournamentBeforeJoin);
   const existingMembership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
@@ -8182,6 +8316,7 @@ var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
   }
   run = ensureRunRegistration(nk, logger, run, membership);
   run = maybeStartBracketForRun(nk, logger, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
   return JSON.stringify({
     ok: true,
     joined,
@@ -8215,7 +8350,7 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
   }
   run = ensureRunRegistration(nk, logger, run, membership);
   run = maybeStartBracketForRun(nk, logger, run);
-  run = maybeFinalizeCompletedPublicRun(logger, nk, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const participation = buildPublicParticipationState(run, membership);
   const isTerminalRun = run.lifecycle === "closed" || run.lifecycle === "finalized" || run.finalizedAt != null || ((_a = run.bracket) == null ? void 0 : _a.finalizedAt) != null;
@@ -8236,12 +8371,9 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
   }
   assertPublicRunVisible(run, nakamaTournament);
   if (!run.bracket) {
-    const launchBlockedReason = getLaunchBlockedReason(run, nakamaTournament, Date.now());
+    const launchBlockedReason = getLaunchBlockedReason(run, nakamaTournament);
     if (launchBlockedReason === "lobby") {
       throw new Error("This tournament is waiting for the lobby to fill.");
-    }
-    if (launchBlockedReason === "start") {
-      throw new Error("This tournament has not started yet.");
     }
     throw new Error("This tournament bracket is not ready yet.");
   }
