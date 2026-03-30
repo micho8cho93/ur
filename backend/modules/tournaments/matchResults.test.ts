@@ -46,6 +46,12 @@ const buildStorageKey = (collection: string, key: string, userId = ""): string =
 const PROGRESSION_COLLECTION = "progression";
 const PROGRESSION_PROFILE_KEY = "profile";
 const XP_REWARD_LEDGER_COLLECTION = "xp_reward_ledger";
+const TOURNAMENT_VARIANTS = [
+  { modeId: "gameMode_1_piece", pieceCountPerSide: 1, label: "1-piece" },
+  { modeId: "gameMode_3_pieces", pieceCountPerSide: 3, label: "3-piece" },
+  { modeId: "gameMode_5_pieces", pieceCountPerSide: 5, label: "5-piece" },
+  { modeId: "standard", pieceCountPerSide: 7, label: "7-piece" },
+] as const;
 
 const createNakama = () => {
   const storage = new Map<string, StoredObject>();
@@ -441,6 +447,119 @@ describe("tournament authoritative match results", () => {
       }),
     );
   });
+
+  it.each(TOURNAMENT_VARIANTS)(
+    "finalizes a bracketed final from authoritative results for $label tournaments even when tournament score writes fail",
+    ({ modeId, pieceCountPerSide }) => {
+    const nk = createNakama();
+    const logger = createLogger();
+    const startedAt = "2026-03-26T10:30:00.000Z";
+    const registrations = buildRegistrations(2);
+    seedRun(nk, {
+      metadata: {
+        gameMode: modeId,
+        xpForTournamentChampion: 420,
+      },
+      maxSize: 2,
+      registrations,
+      bracket: createSingleEliminationBracket(registrations, startedAt),
+    });
+    nk.tournamentRecordWrite.mockImplementation(() => {
+      throw new Error("tournament score write failed");
+    });
+    nk.tournamentRecordsList.mockReturnValue({
+      records: [
+        {
+          rank: 1,
+          owner_id: "user-2",
+          username: "Player 2",
+          score: 0,
+        },
+        {
+          rank: 2,
+          owner_id: "user-1",
+          username: "Player 1",
+          score: 0,
+        },
+      ],
+      owner_records: [],
+      rank_count: 2,
+    });
+
+    const result = processCompletedAuthoritativeTournamentMatch(nk, logger, createCompletion({
+      modeId,
+      players: [
+        {
+          userId: "user-1",
+          username: "Player 1",
+          color: "light",
+          didWin: true,
+          score: 1,
+          finishedCount: pieceCountPerSide,
+          capturesMade: 0,
+          capturesSuffered: 0,
+          playerMoveCount: 4,
+        },
+        {
+          userId: "user-2",
+          username: "Player 2",
+          color: "dark",
+          didWin: false,
+          score: 0,
+          finishedCount: 0,
+          capturesMade: 0,
+          capturesSuffered: 0,
+          playerMoveCount: 4,
+        },
+      ],
+      winnerUserId: "user-1",
+      loserUserId: "user-2",
+    }));
+
+    expect(result.retryableFailure).toBe(false);
+    expect(result.record?.valid).toBe(true);
+    expect(result.record?.counted).toBe(false);
+    expect(result.record?.errorMessage).toBe("tournament score write failed");
+    expect(result.finalizationResult?.run.lifecycle).toBe("finalized");
+    expect(result.updatedRun?.bracket?.finalizedAt).toBe("2026-03-26T11:00:00.000Z");
+    expect(result.finalizationResult?.finalSnapshot.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rank: 1,
+          owner_id: "user-1",
+        }),
+        expect.objectContaining({
+          rank: 2,
+          owner_id: "user-2",
+        }),
+      ]),
+    );
+
+    const storedRun = nk.storage.get(buildStorageKey(TOURNAMENT_RUNS_COLLECTION, "run-1"));
+    expect(storedRun?.value).toEqual(
+      expect.objectContaining({
+        lifecycle: "finalized",
+        metadata: expect.objectContaining({
+          countedMatchCount: 0,
+          lastProcessedWasCounted: false,
+          lastProcessedReason: "tournament score write failed",
+        }),
+        finalSnapshot: expect.objectContaining({
+          records: expect.arrayContaining([
+            expect.objectContaining({
+              rank: 1,
+              owner_id: "user-1",
+            }),
+            expect.objectContaining({
+              rank: 2,
+              owner_id: "user-2",
+            }),
+          ]),
+        }),
+      }),
+    );
+    },
+  );
 
   it("ignores duplicate tournament result processing", () => {
     const nk = createNakama();

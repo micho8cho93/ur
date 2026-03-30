@@ -106,6 +106,12 @@ const mockedProcessCompletedAuthoritativeTournamentMatch =
   processCompletedAuthoritativeTournamentMatch as jest.MockedFunction<typeof processCompletedAuthoritativeTournamentMatch>;
 const mockedMaybeAutoFinalizeTournamentRunById =
   maybeAutoFinalizeTournamentRunById as jest.MockedFunction<typeof maybeAutoFinalizeTournamentRunById>;
+const TOURNAMENT_VARIANTS = [
+  { modeId: 'gameMode_1_piece', label: '1-piece' },
+  { modeId: 'gameMode_3_pieces', label: '3-piece' },
+  { modeId: 'gameMode_5_pieces', label: '5-piece' },
+  { modeId: 'standard', label: '7-piece' },
+] as const;
 
 const createLogger = () => ({
   info: jest.fn(),
@@ -252,7 +258,9 @@ describe('tournament match result synchronization', () => {
     });
   });
 
-  it('treats tournament matches as ranked even for alternate board modes', () => {
+  it.each(TOURNAMENT_VARIANTS)(
+    'treats $label tournament matches as ranked',
+    ({ modeId }) => {
     const runtime = globalThis as RuntimeGlobals;
     const logger = createLogger();
     const nk = createNakama();
@@ -260,7 +268,7 @@ describe('tournament match result synchronization', () => {
 
     const initialized = runtime.matchInit(ctx, logger, nk, {
       playerIds: ['user-light', 'user-dark'],
-      modeId: 'gameMode_1_piece',
+      modeId,
       rankedMatch: true,
       tournamentRunId: 'run-1',
       tournamentId: 'tour-1',
@@ -274,7 +282,8 @@ describe('tournament match result synchronization', () => {
         experimental: false,
       }),
     );
-  });
+    },
+  );
 
   it('retries tournament result processing on later ticks without rebroadcasting duplicate Elo updates', () => {
     const runtime = globalThis as RuntimeGlobals;

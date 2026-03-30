@@ -29,6 +29,13 @@ type StorageWriteRequest = {
   version?: string;
 };
 
+const TOURNAMENT_VARIANTS = [
+  { gameMode: 'gameMode_1_piece', label: '1-piece' },
+  { gameMode: 'gameMode_3_pieces', label: '3-piece' },
+  { gameMode: 'gameMode_5_pieces', label: '5-piece' },
+  { gameMode: 'standard', label: '7-piece' },
+] as const;
+
 const buildStorageKey = (collection: string, key: string, userId = ''): string =>
   `${collection}:${key}:${userId}`;
 
@@ -997,12 +1004,19 @@ describe('public tournament rpc flow', () => {
     expect(nk.tournamentRanksDisable).toHaveBeenCalledWith('tour-1');
   });
 
-  it('blocks stale final-match resumes once standings prove the tournament is complete', () => {
+  it.each(TOURNAMENT_VARIANTS)(
+    'blocks stale final-match resumes for $label tournaments once standings prove the tournament is complete',
+    ({ gameMode }) => {
     const nk = createNakama();
     const logger = createLogger();
     seedOpenRun(nk, {
       entrants: 0,
       maxSize: 2,
+      metadata: {
+        gameMode,
+        region: 'Global',
+        buyIn: 'Free',
+      },
     });
 
     rpcJoinPublicTournament(
@@ -1126,7 +1140,8 @@ describe('public tournament rpc flow', () => {
     );
     expect(listResponse.tournaments).toEqual([]);
     expect(updatedRun.lifecycle).toBe('finalized');
-  });
+    },
+  );
 
   it('returns champion and runner-up participation from finalized bracket data even when participant state is stale', () => {
     const nk = createNakama();

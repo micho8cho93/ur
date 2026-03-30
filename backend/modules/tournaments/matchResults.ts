@@ -642,6 +642,11 @@ const synchronizeTournamentRunFromRecord = (
 } => {
   let updatedRun = fallbackRun;
   let finalizationResult: FinalizeTournamentRunResult | null = null;
+  const shouldAdvanceBracket =
+    record.valid === true &&
+    !record.invalidReason &&
+    Boolean(completion.winnerUserId) &&
+    Boolean(completion.loserUserId);
 
   try {
     updateTournamentRunMetadata(nk, logger, record.runId, record);
@@ -655,7 +660,7 @@ const synchronizeTournamentRunFromRecord = (
     };
   }
 
-  if (record.counted) {
+  if (shouldAdvanceBracket) {
     try {
       updatedRun = updateTournamentRunBracket(nk, logger, completion) ?? readTournamentRunState(nk, record.runId).run ?? updatedRun;
     } catch (error) {
@@ -799,15 +804,19 @@ export const processCompletedAuthoritativeTournamentMatch = (
       tournamentRecordWrites = submitTournamentScores(nk, runState.run, completion, usernames);
     } catch (error) {
       logRetryableTournamentSyncFailure(logger, completion, "score_sync", error);
-      return {
-        skipped: false,
-        duplicate: canRetryPendingRecord,
-        record: existingRecord,
-        updatedRun: runState.run,
-        participantResolutions: buildParticipantResolutions(runState.run, completion.players),
-        finalizationResult: null,
-        retryableFailure: true,
-      };
+      if (!runState.run?.bracket || !completion.winnerUserId || !completion.loserUserId) {
+        return {
+          skipped: false,
+          duplicate: canRetryPendingRecord,
+          record: existingRecord,
+          updatedRun: runState.run,
+          participantResolutions: buildParticipantResolutions(runState.run, completion.players),
+          finalizationResult: null,
+          retryableFailure: true,
+        };
+      }
+
+      errorMessage = getErrorMessage(error);
     }
   }
 

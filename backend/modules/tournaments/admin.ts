@@ -575,6 +575,35 @@ export const resolveChampionUserId = (snapshot: TournamentStandingsSnapshot): st
   return championRecord ? readStandingsRecordOwnerId(championRecord) : null;
 };
 
+const resolveTopRankOwnerId = (
+  snapshot: TournamentStandingsSnapshot,
+  targetRank: number,
+): string | null => {
+  const rankedRecords = snapshot.records
+    .map((record) => ({
+      record,
+      rank: readStandingsRecordRank(record),
+    }))
+    .filter((entry): entry is { record: Record<string, unknown>; rank: number } => entry.rank !== null);
+
+  const matchedRecord = rankedRecords.find((entry) => entry.rank === targetRank)?.record ?? null;
+  return matchedRecord ? readStandingsRecordOwnerId(matchedRecord) : null;
+};
+
+const snapshotMatchesFinalizedBracket = (
+  snapshot: TournamentStandingsSnapshot,
+  run: TournamentRunRecord,
+): boolean => {
+  if (!run.bracket?.finalizedAt || !run.bracket.winnerUserId || !run.bracket.runnerUpUserId) {
+    return true;
+  }
+
+  const championUserId = resolveTopRankOwnerId(snapshot, 1);
+  const runnerUpUserId = resolveTopRankOwnerId(snapshot, 2);
+
+  return championUserId === run.bracket.winnerUserId && runnerUpUserId === run.bracket.runnerUpUserId;
+};
+
 const compareBracketParticipantsForFallbackSnapshot = (
   left: TournamentBracketParticipant,
   right: TournamentBracketParticipant,
@@ -652,25 +681,40 @@ export const finalizeTournamentRun = (
   const standingsLimit = clampInteger(options.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
   const overrideExpiry = resolveOverrideExpiry(options.overrideExpiry ?? null, nakamaTournament);
   const finalizationTimestamp = new Date().toISOString();
+  const bracketFallbackSnapshot = buildBracketStandingsFallbackSnapshot(
+    runBeforeUpdate,
+    overrideExpiry,
+    finalizationTimestamp,
+  );
   const finalSnapshot = (() => {
     if (runBeforeUpdate.finalSnapshot) {
       return runBeforeUpdate.finalSnapshot;
     }
 
     try {
-      return buildStandingsSnapshot(
+      const standingsSnapshot = buildStandingsSnapshot(
         nk,
         runBeforeUpdate.tournamentId,
         standingsLimit,
         overrideExpiry,
       );
+
+      if (!snapshotMatchesFinalizedBracket(standingsSnapshot, runBeforeUpdate)) {
+        logger.warn(
+          "Standings snapshot for %s disagreed with finalized bracket, using bracket fallback.",
+          runBeforeUpdate.runId,
+        );
+        return bracketFallbackSnapshot;
+      }
+
+      return standingsSnapshot;
     } catch (error) {
       logger.warn(
         "Unable to build final standings snapshot for %s during finalization, using bracket fallback: %s",
         runBeforeUpdate.runId,
         getErrorMessage(error),
       );
-      return buildBracketStandingsFallbackSnapshot(runBeforeUpdate, overrideExpiry, finalizationTimestamp);
+      return bracketFallbackSnapshot;
     }
   })();
   let disabledRanks = false;
