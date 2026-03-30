@@ -542,6 +542,44 @@ describe('useTournamentAdvanceFlow', () => {
     expect(mockGetPublicTournamentStatus).toHaveBeenCalledTimes(1);
   });
 
+  it('treats a sixteen-player fourth-round win as finalized even when the public snapshot is still stale', async () => {
+    mockGetPublicTournamentStatus.mockResolvedValue(
+      buildSnapshot(
+        [
+          buildStanding({
+            ownerId: 'user-1',
+            username: 'Michel',
+            rank: 2,
+            round: 4,
+            result: null,
+          }),
+        ],
+        {
+          entrants: 16,
+          maxEntrants: 16,
+          currentRound: 4,
+          participation: buildParticipation({
+            state: 'waiting_next_round',
+            currentRound: 4,
+            finalPlacement: null,
+            lastResult: null,
+            canLaunch: false,
+          }),
+        },
+      ),
+    );
+
+    render(<HookHarness {...baseProps} initialRound={4} />);
+
+    await act(async () => {
+      await flush();
+    });
+
+    expect(screen.getByTestId('phase').props.children).toBe('finalized');
+    expect(screen.getByTestId('status').props.children).toBe('You won the tournament.');
+    expect(mockGetPublicTournamentStatus).toHaveBeenCalledTimes(1);
+  });
+
   it('tracks a local loss until the run is explicitly eliminated', async () => {
     mockGetPublicTournamentStatus
       .mockResolvedValueOnce(

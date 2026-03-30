@@ -1,4 +1,4 @@
-export const TOURNAMENT_SIZE_OPTIONS = [2, 4, 8, 16, 32, 64, 128] as const
+export const TOURNAMENT_SIZE_OPTIONS = [2, 4, 8, 16] as const
 
 export const AUTO_TOURNAMENT_DURATION_SECONDS = 18_000
 

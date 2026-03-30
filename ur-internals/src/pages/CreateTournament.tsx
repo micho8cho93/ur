@@ -29,7 +29,7 @@ const initialState: FormState = {
   runId: '',
   name: '',
   gameMode: 'standard',
-  entrants: '32',
+  entrants: '16',
   startAt: '',
   joinRequired: true,
   enableRanks: true,

@@ -1,5 +1,7 @@
 import {
   createSingleEliminationBracket,
+  getTournamentBracketEntry,
+  getTournamentBracketParticipant,
   type TournamentRunRegistration,
 } from "./bracket";
 import {
@@ -292,6 +294,88 @@ describe("tournament authoritative match results", () => {
           score: 0,
         }),
       ]),
+    );
+  });
+
+  it("advances intermediate-round winners without redundant joins so larger brackets can continue", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    const startedAt = "2026-03-26T10:30:00.000Z";
+    const registrations = buildRegistrations(4);
+    nk.tournamentJoin.mockImplementation(() => {
+      throw new Error("player already joined tournament");
+    });
+    seedRun(nk, {
+      maxSize: 4,
+      registrations,
+      bracket: createSingleEliminationBracket(registrations, startedAt),
+    });
+
+    const result = processCompletedAuthoritativeTournamentMatch(nk, logger, createCompletion({
+      context: {
+        runId: "run-1",
+        tournamentId: "tour-1",
+        round: 1,
+        entryId: "round-1-match-1",
+        eliminationRisk: true,
+      },
+      winnerUserId: "user-1",
+      loserUserId: "user-2",
+      players: [
+        {
+          userId: "user-1",
+          username: "player-1",
+          color: "light",
+          didWin: true,
+          score: 1,
+          finishedCount: 7,
+          capturesMade: 2,
+          capturesSuffered: 0,
+          playerMoveCount: 9,
+        },
+        {
+          userId: "user-2",
+          username: "player-2",
+          color: "dark",
+          didWin: false,
+          score: 0,
+          finishedCount: 4,
+          capturesMade: 0,
+          capturesSuffered: 2,
+          playerMoveCount: 9,
+        },
+      ],
+    }));
+
+    expect(result.retryableFailure).toBe(false);
+    expect(result.record?.counted).toBe(true);
+    expect(result.finalizationResult).toBeNull();
+    expect(nk.tournamentJoin).not.toHaveBeenCalled();
+    expect(nk.tournamentRecordWrite).toHaveBeenCalledTimes(2);
+    expect(getTournamentBracketParticipant(result.updatedRun?.bracket ?? null, "user-1")).toEqual(
+      expect.objectContaining({
+        state: "waiting_next_round",
+        currentRound: 2,
+        currentEntryId: "round-2-match-1",
+        activeMatchId: null,
+        finalPlacement: null,
+      }),
+    );
+    expect(getTournamentBracketParticipant(result.updatedRun?.bracket ?? null, "user-2")).toEqual(
+      expect.objectContaining({
+        state: "eliminated",
+        currentRound: 1,
+        currentEntryId: "round-1-match-1",
+        activeMatchId: null,
+        finalPlacement: 3,
+      }),
+    );
+    expect(getTournamentBracketEntry(result.updatedRun?.bracket ?? null, "round-2-match-1")).toEqual(
+      expect.objectContaining({
+        playerAUserId: "user-1",
+        playerBUserId: null,
+        status: "pending",
+      }),
     );
   });
 

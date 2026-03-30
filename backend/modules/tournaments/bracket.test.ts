@@ -22,6 +22,45 @@ describe('tournament bracket helpers', () => {
     expect(getSingleEliminationRoundCount(2)).toBe(1);
     expect(getSingleEliminationRoundCount(4)).toBe(2);
     expect(getSingleEliminationRoundCount(8)).toBe(3);
+    expect(getSingleEliminationRoundCount(16)).toBe(4);
+  });
+
+  it('builds a four-round bracket for sixteen players', () => {
+    const bracket = createSingleEliminationBracket(buildRegistrations(16), startedAt);
+
+    expect(bracket.size).toBe(16);
+    expect(bracket.totalRounds).toBe(4);
+    expect(getTournamentBracketCurrentRound(bracket)).toBe(1);
+    expect(bracket.entries).toHaveLength(15);
+    expect(bracket.entries.filter((entry) => entry.round === 1)).toHaveLength(8);
+    expect(bracket.entries.filter((entry) => entry.round === 2)).toHaveLength(4);
+    expect(bracket.entries.filter((entry) => entry.round === 3)).toHaveLength(2);
+    expect(bracket.entries.filter((entry) => entry.round === 4)).toHaveLength(1);
+    expect(getTournamentBracketEntry(bracket, 'round-1-match-8')).toEqual(
+      expect.objectContaining({
+        round: 1,
+        status: 'ready',
+        playerAUserId: 'user-15',
+        playerBUserId: 'user-16',
+      }),
+    );
+    expect(getTournamentBracketEntry(bracket, 'round-4-match-1')).toEqual(
+      expect.objectContaining({
+        round: 4,
+        status: 'pending',
+        sourceEntryIds: ['round-3-match-1', 'round-3-match-2'],
+        playerAUserId: null,
+        playerBUserId: null,
+      }),
+    );
+    expect(getTournamentBracketParticipant(bracket, 'user-16')).toEqual(
+      expect.objectContaining({
+        state: 'waiting_next_round',
+        currentRound: 1,
+        currentEntryId: 'round-1-match-8',
+        activeMatchId: null,
+      }),
+    );
   });
 
   it('treats a two-player tournament as a one-round final', () => {
