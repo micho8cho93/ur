@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import React from 'react';
 import * as ReactNative from 'react-native';
 import { Platform, StyleSheet } from 'react-native';
@@ -27,6 +27,12 @@ const tournament: PublicTournamentDetail = {
   region: 'Global',
   buyInLabel: 'Free',
   prizeLabel: 'No prize listed',
+  lobbyDeadlineAt: '2026-03-30T10:03:00.000Z',
+  bots: {
+    autoAdd: false,
+    difficulty: null,
+    count: 0,
+  },
   isLocked: false,
   currentRound: 1,
   membership: {
@@ -63,6 +69,7 @@ describe('TournamentStartWaitingRoom', () => {
 
   beforeEach(() => {
     jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-03-30T10:00:00.000Z'));
     useWindowDimensionsSpy = jest.spyOn(ReactNative, 'useWindowDimensions');
     useWindowDimensionsSpy.mockReturnValue({ width: 1024, height: 768, scale: 1, fontScale: 1 });
     Object.defineProperty(Platform, 'OS', {
@@ -89,10 +96,8 @@ describe('TournamentStartWaitingRoom', () => {
         progression={buildProgressionSnapshot(3120)}
         challengeDefinitions={CHALLENGE_DEFINITIONS.slice(0, 6)}
         challengeProgress={challengeProgress}
-        isRefreshing={false}
         isLaunching={false}
         errorMessage={null}
-        onRefresh={jest.fn()}
       />,
     );
 
@@ -100,6 +105,8 @@ describe('TournamentStartWaitingRoom', () => {
     expect(screen.getByText('Tournament Waiting Room')).toBeTruthy();
     expect(screen.getByText('Spring Open')).toBeTruthy();
     expect(screen.getByText('Lobby 3/8')).toBeTruthy();
+    expect(screen.getByText('Wait 03:00')).toBeTruthy();
+    expect(screen.getByText('Tournament Wait Time')).toBeTruthy();
     expect(screen.getByText('1486 Elo')).toBeTruthy();
 
     act(() => {
@@ -113,9 +120,7 @@ describe('TournamentStartWaitingRoom', () => {
     ).toBeTruthy();
   });
 
-  it('lets the player refresh the lobby manually', () => {
-    const onRefresh = jest.fn();
-
+  it('removes the manual lobby refresh action and keeps error copy visible', () => {
     render(
       <TournamentStartWaitingRoom
         tournament={tournament}
@@ -123,17 +128,14 @@ describe('TournamentStartWaitingRoom', () => {
         progression={buildProgressionSnapshot(3120)}
         challengeDefinitions={CHALLENGE_DEFINITIONS.slice(0, 6)}
         challengeProgress={createDefaultUserChallengeProgressSnapshot('2026-03-30T10:00:00.000Z')}
-        isRefreshing={false}
         isLaunching={false}
         errorMessage="Lobby sync delayed."
-        onRefresh={onRefresh}
       />,
     );
 
-    fireEvent.press(screen.getByText('Refresh Lobby'));
-
     expect(screen.getByText('Lobby sync delayed.')).toBeTruthy();
-    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Refresh Lobby')).toBeNull();
+    expect(screen.getByText('Stay seated here. There is nothing to refresh or confirm once your tournament run is in motion.')).toBeTruthy();
   });
 
   it('switches to the compact scroll-safe layout on narrow mobile web viewports', () => {
@@ -150,10 +152,8 @@ describe('TournamentStartWaitingRoom', () => {
         progression={buildProgressionSnapshot(3120)}
         challengeDefinitions={CHALLENGE_DEFINITIONS.slice(0, 6)}
         challengeProgress={createDefaultUserChallengeProgressSnapshot('2026-03-30T10:00:00.000Z')}
-        isRefreshing={false}
         isLaunching={false}
         errorMessage={null}
-        onRefresh={jest.fn()}
       />,
     );
 

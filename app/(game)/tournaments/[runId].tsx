@@ -18,9 +18,9 @@ import {
   isTournamentPreStartWaitingRoomVisible,
 } from '@/src/tournaments/presentation';
 import { useTournamentDetail } from '@/src/tournaments/useTournamentDetail';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { BackHandler, Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 const multiplayerWideBackground = require('../../../assets/images/multiplayer_bg.png');
 const multiplayerMobileBackground = require('../../../assets/images/multiplayer_bg_mobile.png');
@@ -105,8 +105,26 @@ export default function TournamentDetailScreen() {
     })();
   }, [launchMatch, launchingRunId, playerLaunchReady, showStartWaitingRoom, tournament]);
 
+  useEffect(() => {
+    if (!showStartWaitingRoom) {
+      return;
+    }
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => {
+      subscription.remove();
+    };
+  }, [showStartWaitingRoom]);
+
   return (
     <View style={styles.screen}>
+      <Stack.Screen
+        options={{
+          headerBackVisible: !showStartWaitingRoom,
+          gestureEnabled: !showStartWaitingRoom,
+          headerLeft: showStartWaitingRoom ? () => null : undefined,
+        }}
+      />
       <WideScreenBackground
         source={multiplayerWideBackground}
         visible={showWideBackground}
@@ -160,10 +178,8 @@ export default function TournamentDetailScreen() {
           progression={progression}
           challengeDefinitions={challengeDefinitions}
           challengeProgress={challengeProgress}
-          isRefreshing={isRefreshing}
           isLaunching={launchingRunId === tournament.runId}
           errorMessage={errorMessage}
-          onRefresh={refresh}
         />
       ) : (
         <ScrollView

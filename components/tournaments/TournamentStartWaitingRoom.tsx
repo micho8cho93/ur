@@ -1,6 +1,9 @@
-import { Button } from '@/components/ui/Button';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
+import {
+  formatTournamentLobbyCountdown,
+  getTournamentLobbyCountdownMsRemaining,
+} from '@/shared/tournamentLobby';
 import type { ChallengeDefinition, UserChallengeProgressRpcResponse } from '@/shared/challenges';
 import type { EloRatingProfileRpcResponse } from '@/shared/elo';
 import type { ProgressionSnapshot } from '@/shared/progression';
@@ -16,10 +19,8 @@ type TournamentStartWaitingRoomProps = {
   progression: ProgressionSnapshot | null;
   challengeDefinitions: ChallengeDefinition[];
   challengeProgress: UserChallengeProgressRpcResponse | null;
-  isRefreshing: boolean;
   isLaunching: boolean;
   errorMessage: string | null;
-  onRefresh: () => Promise<void> | void;
 };
 
 type WaitingRoomCard = {
@@ -188,10 +189,8 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
   progression,
   challengeDefinitions,
   challengeProgress,
-  isRefreshing,
   isLaunching,
   errorMessage,
-  onRefresh,
 }) => {
   const { width, height } = useWindowDimensions();
   const isCompactViewport = width < 760 || height < 760;
@@ -199,6 +198,7 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
   const isWideViewport = width >= 1180;
   const [cardIndex, setCardIndex] = useState(0);
   const [shuffleSeed, setShuffleSeed] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const cards = useMemo(
     () =>
       shuffleCards(
@@ -211,6 +211,14 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
   const entrantsLabel = `${tournament.entrants}/${tournament.maxEntrants}`;
   const seatsRemaining = Math.max(0, tournament.maxEntrants - tournament.entrants);
   const currentRound = tournament.participation.currentRound ?? tournament.currentRound ?? 1;
+  const countdownLabel = useMemo(() => {
+    if (tournament.participation.canLaunch || isLaunching) {
+      return null;
+    }
+
+    const remainingMs = getTournamentLobbyCountdownMsRemaining(tournament.lobbyDeadlineAt ?? null, nowMs);
+    return remainingMs === null ? null : formatTournamentLobbyCountdown(remainingMs);
+  }, [isLaunching, nowMs, tournament.lobbyDeadlineAt, tournament.participation.canLaunch]);
   const statusCopy = (() => {
     if (isLaunching || (tournament.participation.state === 'in_match' && tournament.participation.activeMatchId)) {
       return {
@@ -260,6 +268,20 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
     };
   }, [cards.length]);
 
+  useEffect(() => {
+    if (!tournament.lobbyDeadlineAt || tournament.participation.canLaunch || isLaunching) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setNowMs(Date.now());
+    }, 250);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [isLaunching, tournament.lobbyDeadlineAt, tournament.participation.canLaunch]);
+
   return (
     <View testID="tournament-start-waiting-room" style={styles.screen}>
       <Image
@@ -306,6 +328,11 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
             <View style={styles.pill}>
               <Text style={styles.pillText}>Round {currentRound}</Text>
             </View>
+            {countdownLabel ? (
+              <View style={[styles.pill, styles.pillCountdown]}>
+                <Text style={[styles.pillText, styles.pillCountdownText]}>Wait {countdownLabel}</Text>
+              </View>
+            ) : null}
             <View style={[styles.pill, tournament.participation.canLaunch || isLaunching ? styles.pillReady : null]}>
               <Text style={[styles.pillText, tournament.participation.canLaunch || isLaunching ? styles.pillReadyText : null]}>
                 {isLaunching ? 'Launching' : tournament.participation.canLaunch ? 'Ready' : 'Waiting'}
@@ -313,33 +340,66 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
             </View>
           </View>
 
-          <View style={styles.statusPanel}>
-            <Text style={[styles.statusTitle, isCompactViewport && styles.statusTitleCompact]}>{statusCopy.title}</Text>
-            <Text style={[styles.statusBody, isCompactViewport && styles.helperTextCompact]}>{statusCopy.body}</Text>
-            {errorMessage ? <Text style={[styles.errorText, isCompactViewport && styles.helperTextCompact]}>{errorMessage}</Text> : null}
-          </View>
+          <View style={[styles.contentGrid, isWideViewport && styles.contentGridWide]}>
+            <View style={[styles.infoColumn, isWideViewport && styles.infoColumnWide]}>
+              <View style={styles.statusPanel}>
+                <Text style={[styles.statusTitle, isCompactViewport && styles.statusTitleCompact]}>{statusCopy.title}</Text>
+                <Text style={[styles.statusBody, isCompactViewport && styles.helperTextCompact]}>{statusCopy.body}</Text>
+                {errorMessage ? (
+                  <Text style={[styles.errorText, isCompactViewport && styles.helperTextCompact]}>{errorMessage}</Text>
+                ) : null}
+              </View>
 
-          <View
-            style={[
-              styles.cardDeckWrap,
-              isCompactViewport && styles.cardDeckWrapCompact,
-              isWideViewport && styles.cardDeckWrapWide,
-            ]}
-          >
-            <View style={styles.cardShadow} />
-            <View style={[styles.cardGhost, styles.cardGhostRear]} />
-            <View style={[styles.cardGhost, styles.cardGhostFront]} />
+              {countdownLabel ? (
+                <View style={styles.countdownPanel}>
+                  <Text style={styles.countdownLabel}>Tournament Wait Time</Text>
+                  <Text style={[styles.countdownValue, isCompactViewport && styles.countdownValueCompact]}>
+                    {countdownLabel}
+                  </Text>
+                  <Text style={[styles.countdownBody, isCompactViewport && styles.helperTextCompact]}>
+                    Seats stay locked while the clock runs. When the wait reaches zero, the bracket fills and your first
+                    board opens automatically.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.countdownPanel}>
+                  <Text style={styles.countdownLabel}>Hands-Free Transition</Text>
+                  <Text style={[styles.countdownValue, styles.countdownValueReady, isCompactViewport && styles.countdownValueCompact]}>
+                    {isLaunching ? 'Opening Board' : 'Stand By'}
+                  </Text>
+                  <Text style={[styles.countdownBody, isCompactViewport && styles.helperTextCompact]}>
+                    Your seat is locked. Stay on this screen and the match will take over as soon as pairings are live.
+                  </Text>
+                </View>
+              )}
+
+              <Text style={[styles.rotationNote, isCompactViewport && styles.helperTextCompact]}>
+                Stay seated here. There is nothing to refresh or confirm once your tournament run is in motion.
+              </Text>
+            </View>
+
             <View
               style={[
-                styles.card,
-                isCompactViewport && styles.cardCompact,
-                isWideViewport && styles.cardWide,
-                { borderColor: `${activeCard.accent}66` },
+                styles.cardDeckWrap,
+                isCompactViewport && styles.cardDeckWrapCompact,
+                isWideViewport && styles.cardDeckWrapWide,
               ]}
             >
-              <Text style={[styles.cardEyebrow, { color: activeCard.accent }]}>{activeCard.eyebrow}</Text>
-              <Text style={[styles.cardTitle, isCompactViewport && styles.cardTitleCompact]}>{activeCard.title}</Text>
-              <Text style={[styles.cardBody, isCompactViewport && styles.cardBodyCompact]}>{activeCard.body}</Text>
+              <View style={styles.cardShadow} />
+              <View style={[styles.cardGhost, styles.cardGhostRear]} />
+              <View style={[styles.cardGhost, styles.cardGhostFront]} />
+              <View
+                style={[
+                  styles.card,
+                  isCompactViewport && styles.cardCompact,
+                  isWideViewport && styles.cardWide,
+                  { borderColor: `${activeCard.accent}66` },
+                ]}
+              >
+                <Text style={[styles.cardEyebrow, { color: activeCard.accent }]}>{activeCard.eyebrow}</Text>
+                <Text style={[styles.cardTitle, isCompactViewport && styles.cardTitleCompact]}>{activeCard.title}</Text>
+                <Text style={[styles.cardBody, isCompactViewport && styles.cardBodyCompact]}>{activeCard.body}</Text>
+              </View>
             </View>
           </View>
 
@@ -353,21 +413,6 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
                 ]}
               />
             ))}
-          </View>
-
-          <Text style={[styles.rotationNote, isCompactViewport && styles.helperTextCompact]}>
-            The archive reshuffles every 15 seconds while the lobby is waiting.
-          </Text>
-
-          <View style={styles.actionRow}>
-            <Button
-              title={isRefreshing ? 'Refreshing...' : 'Refresh Lobby'}
-              variant="outline"
-              disabled={isLaunching}
-              onPress={() => {
-                void onRefresh();
-              }}
-            />
           </View>
         </View>
       </ScrollView>
@@ -503,18 +548,40 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(181, 128, 38, 0.24)',
     borderColor: 'rgba(246, 214, 151, 0.3)',
   },
+  pillCountdown: {
+    backgroundColor: 'rgba(39, 61, 96, 0.5)',
+    borderColor: 'rgba(130, 182, 255, 0.32)',
+  },
   pillText: {
     ...urTypography.label,
     color: '#D6EAFF',
     fontSize: 10,
   },
+  pillCountdownText: {
+    color: '#D8EBFF',
+  },
   pillReadyText: {
     color: '#F6E2AD',
   },
+  contentGrid: {
+    width: '100%',
+    gap: urTheme.spacing.md,
+  },
+  contentGridWide: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  infoColumn: {
+    width: '100%',
+    gap: urTheme.spacing.sm,
+  },
+  infoColumnWide: {
+    flex: 0.95,
+    maxWidth: 360,
+  },
   statusPanel: {
     width: '100%',
-    maxWidth: 720,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: urTheme.spacing.xs,
     borderRadius: urTheme.radii.lg,
     borderWidth: 1,
@@ -528,7 +595,7 @@ const styles = StyleSheet.create({
     color: '#F8ECD6',
     fontSize: 21,
     lineHeight: 27,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   statusTitleCompact: {
     fontSize: 18,
@@ -538,7 +605,7 @@ const styles = StyleSheet.create({
     color: 'rgba(215, 231, 251, 0.84)',
     fontSize: 14,
     lineHeight: 20,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   helperTextCompact: {
     fontSize: 12,
@@ -548,15 +615,47 @@ const styles = StyleSheet.create({
     color: '#F6AAA2',
     fontSize: 13,
     lineHeight: 18,
-    textAlign: 'center',
+    textAlign: 'left',
+  },
+  countdownPanel: {
+    width: '100%',
+    gap: urTheme.spacing.xs,
+    borderRadius: urTheme.radii.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(130, 182, 255, 0.18)',
+    backgroundColor: 'rgba(10, 18, 29, 0.62)',
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.md,
+  },
+  countdownLabel: {
+    ...urTypography.label,
+    color: '#BFDFFF',
+    fontSize: 11,
+  },
+  countdownValue: {
+    ...urTypography.title,
+    color: '#F7E9CE',
+    fontSize: 30,
+    lineHeight: 36,
+  },
+  countdownValueCompact: {
+    fontSize: 26,
+    lineHeight: 32,
+  },
+  countdownValueReady: {
+    color: '#F0D79A',
+  },
+  countdownBody: {
+    color: 'rgba(215, 231, 251, 0.82)',
+    fontSize: 13,
+    lineHeight: 19,
   },
   cardDeckWrap: {
     width: '100%',
-    maxWidth: 620,
+    maxWidth: 640,
     minHeight: 320,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: urTheme.spacing.xs,
   },
   cardDeckWrapCompact: {
     minHeight: 260,
@@ -663,11 +762,6 @@ const styles = StyleSheet.create({
     color: 'rgba(214, 228, 246, 0.72)',
     fontSize: 12,
     lineHeight: 17,
-    textAlign: 'center',
-    maxWidth: 560,
-  },
-  actionRow: {
-    width: '100%',
-    maxWidth: 240,
+    textAlign: 'left',
   },
 });

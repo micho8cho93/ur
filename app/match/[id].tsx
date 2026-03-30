@@ -903,7 +903,6 @@ export function GameRoom() {
   const matchCueIdRef = useRef(0);
   const offlineMatchTelemetryRef = useRef(createOfflineMatchTelemetry());
   const submittedOfflineRewardMatchIdsRef = useRef(new Set<string>());
-  const tournamentWaitingRoomEntryInFlightRef = useRef(false);
   const lastQueuedMatchCueRef = useRef<{
     kind: MatchMomentCueKind;
     matchId: string | null;
@@ -915,6 +914,7 @@ export function GameRoom() {
     matchId: matchId ?? null,
     state: gameState,
   });
+  const previousRenderedMatchIdRef = useRef<string | null>(matchId ?? null);
   const tutorialHydratingStateRef = useRef(false);
   const previousTurnTimerStateRef = useRef<{
     matchId: string | null;
@@ -1018,15 +1018,6 @@ export function GameRoom() {
         tournamentRewardFallbackActive &&
         didPlayerWin &&
         !['eliminated', 'finalized'].includes(tournamentAdvanceFlow.phase)));
-  const showTournamentAdvanceModal =
-    showWinModal &&
-    isTournamentMatch &&
-    isTournamentRewardSummaryPrimary &&
-    tournamentOutcome === 'advancing' &&
-    tournamentRewardSummary?.shouldEnterWaitingRoom === true &&
-    tournamentAdvanceResolutionState === 'waiting' &&
-    !hasEnteredTournamentWaitingRoom &&
-    !hasTournamentAdvanceResolvedTerminal;
   const showTournamentFallbackPendingModal =
     showWinModal &&
     isTournamentMatch &&
@@ -1048,14 +1039,12 @@ export function GameRoom() {
     showWinModal &&
     (!isTournamentMatch ||
       showTournamentAdvanceResolutionModal ||
-      showTournamentAdvanceModal ||
       showTournamentFallbackPendingModal ||
       isTournamentResultModal);
   const tournamentResultModalTitle = useMemo(() => {
     if (
       !isTournamentMatch ||
       (!showTournamentAdvanceResolutionModal &&
-        !showTournamentAdvanceModal &&
         !showTournamentFallbackPendingModal &&
         !isTournamentResultModal)
     ) {
@@ -1063,10 +1052,6 @@ export function GameRoom() {
     }
 
     if (showTournamentAdvanceResolutionModal) {
-      return 'Victory';
-    }
-
-    if (showTournamentAdvanceModal) {
       return 'Victory';
     }
 
@@ -1121,7 +1106,6 @@ export function GameRoom() {
     isTournamentRewardSummaryPrimary,
     showTournamentFallbackPendingModal,
     showTournamentAdvanceResolutionModal,
-    showTournamentAdvanceModal,
     tournamentAdvanceFlow.isChampion,
     tournamentAdvanceFlow.phase,
     tournamentTerminalOutcomeOverride,
@@ -1134,7 +1118,6 @@ export function GameRoom() {
     if (
       !isTournamentMatch ||
       (!showTournamentAdvanceResolutionModal &&
-        !showTournamentAdvanceModal &&
         !showTournamentFallbackPendingModal &&
         !isTournamentResultModal)
     ) {
@@ -1143,9 +1126,6 @@ export function GameRoom() {
 
     if (showTournamentAdvanceResolutionModal) {
       baseMessage = 'Finalizing your tournament result before deciding whether another round is needed.';
-    } else if (showTournamentAdvanceModal) {
-      baseMessage =
-        'Your rewards are locked in. Enter the waiting room and the next match will launch automatically when the bracket is ready.';
     } else if (showTournamentFallbackPendingModal) {
       baseMessage = tournamentAdvanceFlow.subtleStatusText
         ? `${tournamentAdvanceFlow.statusText} ${tournamentAdvanceFlow.subtleStatusText}`
@@ -1207,7 +1187,6 @@ export function GameRoom() {
     onlineMatchEnd?.reason,
     showTournamentFallbackPendingModal,
     showTournamentAdvanceResolutionModal,
-    showTournamentAdvanceModal,
     tournamentExitValidationFailed,
     tournamentAdvanceFlow.finalPlacement,
     tournamentAdvanceFlow.isChampion,
@@ -1219,22 +1198,16 @@ export function GameRoom() {
     winModalMessage,
   ]);
   const tournamentCountdownLabel = useMemo(() => {
-    if ((!showTournamentAdvanceModal && !shouldAutoExitTournamentResultModal) || tournamentWaitingRoomCountdownMs === null) {
+    if (!shouldAutoExitTournamentResultModal || tournamentWaitingRoomCountdownMs === null) {
       return null;
     }
 
     const remainingSeconds = Math.max(0, Math.ceil(tournamentWaitingRoomCountdownMs / 1000));
-    return showTournamentAdvanceModal
-      ? `Entering the waiting room automatically in ${remainingSeconds}s.`
-      : `Returning to the home page automatically in ${remainingSeconds}s.`;
-  }, [shouldAutoExitTournamentResultModal, showTournamentAdvanceModal, tournamentWaitingRoomCountdownMs]);
+    return `Returning to the home page automatically in ${remainingSeconds}s.`;
+  }, [shouldAutoExitTournamentResultModal, tournamentWaitingRoomCountdownMs]);
   const resultModalActionLabel = useMemo(() => {
     if (showTournamentAdvanceResolutionModal) {
       return undefined;
-    }
-
-    if (showTournamentAdvanceModal) {
-      return 'Wait for the Next Round';
     }
 
     if (showTournamentFallbackPendingModal) {
@@ -1249,7 +1222,6 @@ export function GameRoom() {
   }, [
     isTournamentResultModal,
     showTournamentFallbackPendingModal,
-    showTournamentAdvanceModal,
     showTournamentAdvanceResolutionModal,
     tournamentExitValidationFailed,
   ]);
@@ -1887,6 +1859,12 @@ export function GameRoom() {
   }, [gameState.winner]);
 
   useEffect(() => {
+    if (previousRenderedMatchIdRef.current === (matchId ?? null)) {
+      return;
+    }
+
+    previousRenderedMatchIdRef.current = matchId ?? null;
+    setShowWinModal(false);
     setTournamentRewardSummary(null);
     setTournamentRewardFallbackActive(false);
     setTournamentTerminalOutcomeOverride(null);
@@ -1895,7 +1873,6 @@ export function GameRoom() {
     setTournamentWaitingRoomCountdownMs(null);
     setIsValidatingTournamentExit(false);
     setTournamentExitValidationFailed(false);
-    tournamentWaitingRoomEntryInFlightRef.current = false;
   }, [matchId]);
 
   useEffect(() => {
@@ -1908,6 +1885,7 @@ export function GameRoom() {
     if (!tournamentRunIdParam) {
       setTournamentTerminalOutcomeOverride(null);
       setTournamentAdvanceResolutionState('waiting');
+      setHasEnteredTournamentWaitingRoom(true);
       return;
     }
 
@@ -1933,6 +1911,7 @@ export function GameRoom() {
 
         setTournamentTerminalOutcomeOverride(null);
         setTournamentAdvanceResolutionState('waiting');
+        setHasEnteredTournamentWaitingRoom(true);
       })
       .catch(() => {
         if (cancelled) {
@@ -1941,6 +1920,7 @@ export function GameRoom() {
 
         setTournamentTerminalOutcomeOverride(null);
         setTournamentAdvanceResolutionState('waiting');
+        setHasEnteredTournamentWaitingRoom(true);
       });
 
     return () => {
@@ -2025,48 +2005,6 @@ export function GameRoom() {
     return true;
   }, [tournamentRunIdParam]);
 
-  const attemptTournamentWaitingRoomEntry = React.useCallback(async (options?: { source?: 'manual' | 'auto' }) => {
-    if (tournamentWaitingRoomEntryInFlightRef.current) {
-      return;
-    }
-
-    if (!isTournamentMatch || !tournamentRunIdParam) {
-      setTournamentTerminalOutcomeOverride(null);
-      setTournamentAdvanceResolutionState('waiting');
-      setHasEnteredTournamentWaitingRoom(true);
-      return;
-    }
-
-    tournamentWaitingRoomEntryInFlightRef.current = true;
-
-    try {
-      const snapshot = await getPublicTournamentStatus(tournamentRunIdParam);
-
-      if (isServerConfirmedTournamentStatusSnapshot(snapshot)) {
-        setTournamentTerminalOutcomeOverride(deriveServerConfirmedTournamentOutcomeFromSnapshot(snapshot));
-        setTournamentAdvanceResolutionState('terminal');
-
-        if (options?.source === 'manual') {
-          void exitMatchToHome({ refreshTournamentStatus: true });
-        }
-
-        return;
-      }
-    } catch {
-      // Fall back to the waiting room when a refresh is unavailable.
-    } finally {
-      tournamentWaitingRoomEntryInFlightRef.current = false;
-    }
-
-    setTournamentTerminalOutcomeOverride(null);
-    setTournamentAdvanceResolutionState('waiting');
-    setHasEnteredTournamentWaitingRoom(true);
-  }, [exitMatchToHome, isTournamentMatch, tournamentRunIdParam]);
-
-  const handleEnterTournamentWaitingRoom = React.useCallback(() => {
-    void attemptTournamentWaitingRoomEntry({ source: 'manual' });
-  }, [attemptTournamentWaitingRoomEntry]);
-
   const handleTournamentResultExit = React.useCallback(async (options?: { source?: 'manual' | 'auto' }) => {
     if (isValidatingTournamentExit) {
       return;
@@ -2132,30 +2070,6 @@ export function GameRoom() {
 
     void exitMatchToHome();
   }, [exitMatchToHome, handleTournamentResultExit, isTournamentMatch, isTournamentResultModal]);
-
-  useEffect(() => {
-    if (!showTournamentAdvanceModal) {
-      setTournamentWaitingRoomCountdownMs(null);
-      return;
-    }
-
-    const startedAt = Date.now();
-    setTournamentWaitingRoomCountdownMs(TOURNAMENT_REWARD_MODAL_COUNTDOWN_MS);
-
-    const interval = setInterval(() => {
-      const remainingMs = Math.max(0, TOURNAMENT_REWARD_MODAL_COUNTDOWN_MS - (Date.now() - startedAt));
-      setTournamentWaitingRoomCountdownMs(remainingMs);
-
-      if (remainingMs <= 0) {
-        clearInterval(interval);
-        void attemptTournamentWaitingRoomEntry({ source: 'auto' });
-      }
-    }, 250);
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [attemptTournamentWaitingRoomEntry, showTournamentAdvanceModal]);
 
   useEffect(() => {
     if (!shouldAutoExitTournamentResultModal) {
@@ -3458,9 +3372,7 @@ export function GameRoom() {
       matchChallengeSummary={matchChallengeSummary}
       matchRewardsErrorMessage={matchRewardsErrorMessage}
       tournamentRewardSummary={isTournamentRewardSummaryPrimary ? tournamentRewardSummary : null}
-      tournamentCountdownLabel={
-        showTournamentAdvanceModal || shouldAutoExitTournamentResultModal ? tournamentCountdownLabel : null
-      }
+      tournamentCountdownLabel={shouldAutoExitTournamentResultModal ? tournamentCountdownLabel : null}
     />
   );
 
@@ -5215,9 +5127,7 @@ export function GameRoom() {
         onAction={
           showTournamentAdvanceResolutionModal || showTournamentFallbackPendingModal
             ? undefined
-            : showTournamentAdvanceModal
-              ? handleEnterTournamentWaitingRoom
-              : handleExit
+            : handleExit
         }
         maxWidth={520}
       >

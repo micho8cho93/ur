@@ -343,42 +343,61 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
             </View>
           </View>
 
-          <View style={styles.statusPanel}>
-            <Text style={[styles.statusTitle, isCompactViewport && styles.statusTitleCompact]}>{statusText}</Text>
-            {subtleStatusText ? (
-              <Text style={[styles.statusBody, isCompactViewport && styles.helperTextCompact]}>{subtleStatusText}</Text>
-            ) : null}
-            {retryMessage ? (
-              <Text style={[styles.retryText, isCompactViewport && styles.helperTextCompact]}>{retryMessage}</Text>
-            ) : null}
-            {phase === 'finalized' && typeof finalPlacement === 'number' ? (
-              <Text style={styles.finalPlacementText}>
-                {isChampion ? 'Final placement: Champion' : `Final placement: #${finalPlacement}`}
-              </Text>
-            ) : null}
-          </View>
+          <View style={[styles.contentGrid, isWideViewport && styles.contentGridWide]}>
+            <View style={[styles.infoColumn, isWideViewport && styles.infoColumnWide]}>
+              <View style={styles.statusPanel}>
+                <Text style={[styles.statusTitle, isCompactViewport && styles.statusTitleCompact]}>{statusText}</Text>
+                {subtleStatusText ? (
+                  <Text style={[styles.statusBody, isCompactViewport && styles.helperTextCompact]}>{subtleStatusText}</Text>
+                ) : null}
+                {retryMessage ? (
+                  <Text style={[styles.retryText, isCompactViewport && styles.helperTextCompact]}>{retryMessage}</Text>
+                ) : null}
+                {phase === 'finalized' && typeof finalPlacement === 'number' ? (
+                  <Text style={styles.finalPlacementText}>
+                    {isChampion ? 'Final placement: Champion' : `Final placement: #${finalPlacement}`}
+                  </Text>
+                ) : null}
+              </View>
 
-          <View
-            style={[
-              styles.cardDeckWrap,
-              isCompactViewport && styles.cardDeckWrapCompact,
-              isWideViewport && styles.cardDeckWrapWide,
-            ]}
-          >
-            <View style={styles.cardShadow} />
-            <View style={[styles.cardGhost, styles.cardGhostRear]} />
-            <View style={[styles.cardGhost, styles.cardGhostFront]} />
+              {!showExitActions ? (
+                <View style={styles.transitionPanel}>
+                  <Text style={styles.transitionLabel}>Seamless Handoff</Text>
+                  <Text style={[styles.transitionTitle, isCompactViewport && styles.transitionTitleCompact]}>
+                    Stay on the board
+                  </Text>
+                  <Text style={[styles.transitionBody, isCompactViewport && styles.helperTextCompact]}>
+                    Once you are in this room, the court carries your session forward automatically. There is nothing to
+                    leave, refresh, or confirm between rounds.
+                  </Text>
+                </View>
+              ) : null}
+
+              <Text style={[styles.rotationNote, isCompactViewport && styles.helperTextCompact]}>{rotationNote}</Text>
+            </View>
+
             <View
               style={[
-                styles.card,
-                isCompactViewport && styles.cardCompact,
-                isWideViewport && styles.cardWide,
-                { borderColor: `${activeCard.accent}66` },
+                styles.cardDeckWrap,
+                isCompactViewport && styles.cardDeckWrapCompact,
+                isWideViewport && styles.cardDeckWrapWide,
               ]}
             >
-              <Text style={[styles.cardEyebrow, { color: activeCard.accent }]}>{activeCard.eyebrow}</Text>
-              <Text style={[styles.cardTitle, isCompactViewport && styles.cardTitleCompact]}>{activeCard.title}</Text>
-              <Text style={[styles.cardBody, isCompactViewport && styles.cardBodyCompact]}>{activeCard.body}</Text>
+              <View style={styles.cardShadow} />
+              <View style={[styles.cardGhost, styles.cardGhostRear]} />
+              <View style={[styles.cardGhost, styles.cardGhostFront]} />
+              <View
+                style={[
+                  styles.card,
+                  isCompactViewport && styles.cardCompact,
+                  isWideViewport && styles.cardWide,
+                  { borderColor: `${activeCard.accent}66` },
+                ]}
+              >
+                <Text style={[styles.cardEyebrow, { color: activeCard.accent }]}>{activeCard.eyebrow}</Text>
+                <Text style={[styles.cardTitle, isCompactViewport && styles.cardTitleCompact]}>{activeCard.title}</Text>
+                <Text style={[styles.cardBody, isCompactViewport && styles.cardBodyCompact]}>{activeCard.body}</Text>
+              </View>
             </View>
           </View>
 
@@ -390,8 +409,6 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
               />
             ))}
           </View>
-
-          <Text style={[styles.rotationNote, isCompactViewport && styles.helperTextCompact]}>{rotationNote}</Text>
 
           {showExitActions ? (
             <View style={styles.actionRow}>
@@ -540,10 +557,25 @@ const styles = StyleSheet.create({
   pillReadyText: {
     color: '#F6E2AD',
   },
+  contentGrid: {
+    width: '100%',
+    gap: urTheme.spacing.md,
+  },
+  contentGridWide: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  infoColumn: {
+    width: '100%',
+    gap: urTheme.spacing.sm,
+  },
+  infoColumnWide: {
+    flex: 0.95,
+    maxWidth: 360,
+  },
   statusPanel: {
     width: '100%',
-    maxWidth: 720,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: urTheme.spacing.xs,
     borderRadius: urTheme.radii.lg,
     borderWidth: 1,
@@ -557,7 +589,7 @@ const styles = StyleSheet.create({
     color: '#F8ECD6',
     fontSize: 21,
     lineHeight: 27,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   statusTitleCompact: {
     fontSize: 18,
@@ -567,13 +599,13 @@ const styles = StyleSheet.create({
     color: 'rgba(215, 231, 251, 0.84)',
     fontSize: 14,
     lineHeight: 20,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   retryText: {
     color: '#F0D79A',
     fontSize: 13,
     lineHeight: 19,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   helperTextCompact: {
     fontSize: 12,
@@ -585,13 +617,42 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
+  transitionPanel: {
+    width: '100%',
+    gap: urTheme.spacing.xs,
+    borderRadius: urTheme.radii.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(246, 214, 151, 0.18)',
+    backgroundColor: 'rgba(24, 17, 11, 0.54)',
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.md,
+  },
+  transitionLabel: {
+    ...urTypography.label,
+    color: '#E8C979',
+    fontSize: 11,
+  },
+  transitionTitle: {
+    ...urTypography.subtitle,
+    color: '#F8ECD6',
+    fontSize: 22,
+    lineHeight: 28,
+  },
+  transitionTitleCompact: {
+    fontSize: 19,
+    lineHeight: 25,
+  },
+  transitionBody: {
+    color: 'rgba(239, 226, 202, 0.82)',
+    fontSize: 13,
+    lineHeight: 19,
+  },
   cardDeckWrap: {
     width: '100%',
-    maxWidth: 620,
+    maxWidth: 640,
     minHeight: 320,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: urTheme.spacing.xs,
   },
   cardDeckWrapCompact: {
     minHeight: 260,
@@ -701,8 +762,7 @@ const styles = StyleSheet.create({
     color: 'rgba(216, 232, 251, 0.72)',
     fontSize: 12,
     lineHeight: 18,
-    textAlign: 'center',
-    maxWidth: 620,
+    textAlign: 'left',
   },
   actionRow: {
     width: '100%',
