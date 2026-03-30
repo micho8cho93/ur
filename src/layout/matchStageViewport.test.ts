@@ -90,8 +90,8 @@ describe('resolveMatchStageViewportHorizontalPadding', () => {
 });
 
 describe('resolveMatchStageReserveTrayScale', () => {
-  it('shrinks tablet-landscape reserve trays by 15 percent', () => {
-    expect(resolveMatchStageReserveTrayScale({ defaultTrayScale: 0.94, isTabletLandscape: true })).toBe(0.8);
+  it('applies the reduced tablet-landscape reserve tray fit', () => {
+    expect(resolveMatchStageReserveTrayScale({ defaultTrayScale: 0.94, isTabletLandscape: true })).toBe(0.68);
   });
 
   it('preserves the default tray scale outside tablet landscape', () => {

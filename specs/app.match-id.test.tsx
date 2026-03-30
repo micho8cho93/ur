@@ -83,6 +83,10 @@ const mockDiceStageVisual = jest.fn(() => {
   const { View } = require('react-native');
   return <View testID="mock-dice-stage-visual" />;
 });
+const mockPieceRail = jest.fn(() => {
+  const { View } = require('react-native');
+  return <View testID="mock-piece-rail" />;
+});
 
 const mockMatchMomentIndicator = jest.fn(({ cue }: { cue: { message: string } | null }) => {
   const { Text } = require('react-native');
@@ -309,10 +313,8 @@ jest.mock('@/components/game/Board', () => {
 });
 
 jest.mock('@/components/game/PieceRail', () => {
-  const React = require('react');
-  const { View } = require('react-native');
   return {
-    PieceRail: () => <View testID="mock-piece-rail" />,
+    PieceRail: (props: unknown) => mockPieceRail(props),
   };
 });
 
@@ -1552,6 +1554,62 @@ describe('GameRoom match dice stage', () => {
       expect(screen.getByTestId('mobile-match-status-popover')).toBeTruthy();
       expect(screen.getByText('Private Match - ABCD12')).toBeTruthy();
     } finally {
+      Object.defineProperty(global, 'window', {
+        configurable: true,
+        value: previousWindow,
+      });
+    }
+  });
+
+  it('keeps tablet-landscape tray sizing active when Safari chrome shrinks the visible web viewport', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+    const reactNative = jest.requireActual('react-native') as typeof import('react-native');
+    const useWindowDimensionsSpy = jest.spyOn(reactNative, 'useWindowDimensions');
+    useWindowDimensionsSpy.mockReturnValue({ width: 1194, height: 834, scale: 2, fontScale: 1 });
+
+    const previousWindow = global.window;
+    const mockWindow = {
+      ...previousWindow,
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      innerWidth: 1194,
+      innerHeight: 834,
+      visualViewport: {
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        width: 1194,
+        height: 724,
+      },
+    } as typeof window;
+    Object.defineProperty(global, 'window', {
+      configurable: true,
+      value: mockWindow,
+    });
+
+    try {
+      render(<GameRoom />);
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const lightTrayCall = mockPieceRail.mock.calls.find(([props]) => props?.color === 'light');
+      const darkTrayCall = mockPieceRail.mock.calls.find(([props]) => props?.color === 'dark');
+
+      expect(lightTrayCall?.[0]).toMatchObject({
+        color: 'light',
+        trayScale: 0.68,
+      });
+      expect(darkTrayCall?.[0]).toMatchObject({
+        color: 'dark',
+        trayScale: 0.68,
+      });
+    } finally {
+      useWindowDimensionsSpy.mockRestore();
       Object.defineProperty(global, 'window', {
         configurable: true,
         value: previousWindow,

@@ -3384,8 +3384,10 @@ export function GameRoom() {
           : 'Online Match';
 
   const matchStageViewportMode = useMemo(
-    () => resolveMatchStageViewportMode({ width: viewportWidth, height: viewportHeight }),
-    [viewportHeight, viewportWidth],
+    // Use the stable layout viewport for mode classification so Safari chrome does not
+    // knock tablet web sessions out of the tablet-landscape layout path.
+    () => resolveMatchStageViewportMode({ width, height }),
+    [height, width],
   );
   const isWebLayout = Platform.OS === 'web';
   const isTabletLandscapeWebLayout = isWebLayout && matchStageViewportMode.isTabletLandscape;
