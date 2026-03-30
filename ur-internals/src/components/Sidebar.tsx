@@ -53,6 +53,10 @@ interface SidebarProps {
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { adminIdentity, logout, isAuthenticating } = useSession()
   const adminLabel = adminIdentity ? getAdminLabel(adminIdentity) : null
+  const adminSectionClassName = collapsed ? 'sidebar__admin sidebar__admin--collapsed' : 'sidebar__admin'
+  const signOutButtonClassName = collapsed
+    ? 'button button--secondary sidebar__admin-action'
+    : 'button button--secondary button--block'
 
   return (
     <aside className="sidebar">
@@ -79,23 +83,32 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       </div>
 
       {adminIdentity ? (
-        <div className="sidebar__admin">
-          <div className="sidebar__admin-header">
-            <p className="meta-label">Signed in</p>
-            <span className="session-pill session-pill--ready">{adminIdentity.role}</span>
-          </div>
+        <div
+          className={adminSectionClassName}
+          title={collapsed && adminLabel ? `${adminLabel} · ${adminIdentity.role}` : undefined}
+        >
+          {!collapsed ? (
+            <div className="sidebar__admin-header">
+              <p className="meta-label">Signed in</p>
+              <span className="session-pill session-pill--ready">{adminIdentity.role}</span>
+            </div>
+          ) : null}
           <div className="sidebar__admin-avatar" aria-hidden="true">
             {getMonogram(adminLabel ?? 'Admin')}
           </div>
-          <div className="sidebar__admin-copy">
-            <strong>{adminLabel}</strong>
-            <span className="muted">{adminIdentity.email ?? adminIdentity.userId}</span>
-          </div>
+          {!collapsed ? (
+            <div className="sidebar__admin-copy">
+              <strong>{adminLabel}</strong>
+              <span className="muted">{adminIdentity.email ?? adminIdentity.userId}</span>
+            </div>
+          ) : null}
           <button
-            className="button button--secondary button--block"
+            className={signOutButtonClassName}
             type="button"
             onClick={() => void logout()}
             disabled={isAuthenticating}
+            aria-label="Sign out"
+            title={collapsed ? 'Sign out' : undefined}
           >
             {collapsed ? 'Out' : 'Sign out'}
           </button>
@@ -123,11 +136,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         ))}
       </nav>
 
-      <div className="sidebar__footer">
-        <p className="meta-label">API target</p>
-        <strong>{getTargetLabel()}</strong>
-        <span>{env.useMockData ? 'Mock mode enabled for development.' : 'Live RPC requests enabled.'}</span>
-      </div>
+      {!collapsed ? (
+        <div className="sidebar__footer">
+          <p className="meta-label">API target</p>
+          <strong>{getTargetLabel()}</strong>
+          <span>{env.useMockData ? 'Mock mode enabled for development.' : 'Live RPC requests enabled.'}</span>
+        </div>
+      ) : null}
     </aside>
   )
 }

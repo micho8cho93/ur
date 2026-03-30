@@ -784,6 +784,8 @@ export function TournamentDetailPage() {
   const queueEntries = liveEntries.filter((entry) => entry.status !== 'completed')
   const blockedEntries = liveEntries.filter((entry) => entry.stale || entry.blockedReason)
   const fieldFillPercent = Math.round((liveSummary.entrants / Math.max(1, liveSummary.capacity)) * 100)
+  const finalizeReadinessLabel =
+    liveSummary.finalizeReady || tournament.status === 'Finalized' ? 'Ready' : 'In progress'
 
   return (
     <>
@@ -923,7 +925,7 @@ export function TournamentDetailPage() {
           />
           <StatCard
             label="Finalize readiness"
-            value={liveSummary.finalizeReady ? 'Ready now' : 'Still live'}
+            value={finalizeReadinessLabel}
             helper={tournament.status === 'Finalized' ? 'Finalized export available.' : 'Tracks completion and closeout state.'}
             tone={liveSummary.finalizeReady || tournament.status === 'Finalized' ? 'success' : 'warning'}
           />
