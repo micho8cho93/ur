@@ -9,6 +9,7 @@ describe('urMatchProtocol', () => {
         matchId: 'match-1',
         revision: 3,
         gameState: createInitialState(),
+        historyCount: 0,
         players: {
           light: {
             userId: 'light-user',
@@ -44,6 +45,26 @@ describe('urMatchProtocol', () => {
   });
 
   it('rejects malformed authoritative snapshot fields', () => {
+    expect(
+      isStateSnapshotPayload({
+        type: 'state_snapshot',
+        matchId: 'match-1',
+        revision: 3,
+        gameState: createInitialState(),
+        historyCount: -1,
+        players: {
+          light: {
+            userId: 'light-user',
+            title: 'Michel',
+          },
+          dark: {
+            userId: 'dark-user',
+            title: 'Guest',
+          },
+        },
+      }),
+    ).toBe(false);
+
     expect(
       isStateSnapshotPayload({
         type: 'state_snapshot',

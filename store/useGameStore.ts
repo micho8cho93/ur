@@ -40,6 +40,7 @@ interface GameStore {
   authoritativeActiveTimedPlayerColor: PlayerColor | null;
   authoritativeActiveTimedPhase: GameState['phase'] | null;
   authoritativePlayers: StateSnapshotPlayers | null;
+  authoritativeHistoryCount: number;
   authoritativeAfkAccumulatedMs: Record<PlayerColor, number> | null;
   authoritativeAfkRemainingMs: number | null;
   authoritativeMatchEnd: MatchEndPayload | null;
@@ -93,6 +94,7 @@ const EMPTY_AUTHORITATIVE_ONLINE_STATE = {
   authoritativeActiveTimedPlayerColor: null,
   authoritativeActiveTimedPhase: null,
   authoritativePlayers: null,
+  authoritativeHistoryCount: 0,
   authoritativeAfkAccumulatedMs: null,
   authoritativeAfkRemainingMs: null,
   authoritativeMatchEnd: null,
@@ -209,6 +211,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         authoritativeActiveTimedPlayerColor: snapshot.activeTimedPlayerColor ?? null,
         authoritativeActiveTimedPhase: snapshot.activeTimedPhase ?? null,
         authoritativePlayers: snapshot.players,
+        authoritativeHistoryCount: snapshot.historyCount ?? snapshot.gameState.history.length,
         authoritativeAfkAccumulatedMs: snapshot.afkAccumulatedMs
           ? { light: snapshot.afkAccumulatedMs.light, dark: snapshot.afkAccumulatedMs.dark }
           : null,

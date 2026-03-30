@@ -62,6 +62,7 @@ export type StateSnapshotPayload = {
   matchId: string;
   revision: number;
   gameState: GameState;
+  historyCount?: number;
   players: StateSnapshotPlayers;
   serverTimeMs?: number;
   turnDurationMs?: number;
@@ -144,6 +145,9 @@ const isGamePhase = (value: unknown): value is GameState["phase"] =>
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
+const isNonNegativeInteger = (value: unknown): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0;
+
 const isNullableFiniteNumber = (value: unknown): value is number | null =>
   value === null || isFiniteNumber(value);
 
@@ -201,6 +205,7 @@ export const isStateSnapshotPayload = (value: unknown): value is StateSnapshotPa
   typeof value.revision === "number" &&
   Number.isInteger(value.revision) &&
   isRecord(value.gameState) &&
+  isOptional(value.historyCount, isNonNegativeInteger) &&
   isStateSnapshotPlayers(value.players) &&
   isOptional(value.serverTimeMs, isFiniteNumber) &&
   isOptional(value.turnDurationMs, isFiniteNumber) &&

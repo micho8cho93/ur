@@ -80,6 +80,7 @@ const AUDIO_POLYPHONY: Record<SoundEffectEvent, number> = {
 class GameAudio {
   private sounds: Partial<Record<AudioEvent, AudioPlayer[]>> = {};
   private soundCursor: Partial<Record<AudioEvent, number>> = {};
+  private loadPromises: Partial<Record<AudioEvent, Promise<void>>> = {};
   private warned = new Set<string>();
   private initialized = false;
   private initPromise: Promise<void> | null = null;
@@ -188,6 +189,84 @@ class GameAudio {
     soundGroup.forEach((player) => {
       player.volume = nextVolume;
     });
+  }
+
+  private async loadEventGroup(eventKey: AudioEvent) {
+    if (eventKey === 'bgm') {
+      const loadedBgmTracks: AudioPlayer[] = [];
+
+      for (const [sourceIndex, source] of BGM_SOURCES.entries()) {
+        const sound = await this.loadSound('bgm', source, `load-bgm-${sourceIndex}`, `bgm track ${sourceIndex + 1}`);
+        if (sound) {
+          const trackIndex = loadedBgmTracks.length;
+          sound.addListener('playbackStatusUpdate', (status) => {
+            this.handleBgmStatusUpdate(trackIndex, status);
+          });
+          loadedBgmTracks.push(sound);
+        }
+      }
+
+      if (loadedBgmTracks.length > 0) {
+        this.sounds.bgm = loadedBgmTracks;
+      }
+      return;
+    }
+
+    if (eventKey === 'roll') {
+      const loadedRollSequence: AudioPlayer[] = [];
+
+      for (const [index, source] of ROLL_SEQUENCE_SOURCES.entries()) {
+        const sound = await this.loadSound('roll', source, `load-roll-${index}`, `roll cue ${index + 1}`);
+        if (sound) {
+          loadedRollSequence.push(sound);
+        }
+      }
+
+      if (loadedRollSequence.length > 0) {
+        this.sounds.roll = loadedRollSequence;
+      }
+      return;
+    }
+
+    const soundEffectEvent = eventKey as SoundEffectEvent;
+    const loadedSounds: AudioPlayer[] = [];
+
+    for (let index = 0; index < AUDIO_POLYPHONY[soundEffectEvent]; index += 1) {
+      const sound = await this.loadSound(soundEffectEvent, SOUND_EFFECT_SOURCES[soundEffectEvent], `load-${soundEffectEvent}`);
+      if (sound) {
+        loadedSounds.push(sound);
+      }
+    }
+
+    if (loadedSounds.length > 0) {
+      this.sounds[soundEffectEvent] = loadedSounds;
+      this.soundCursor[soundEffectEvent] = 0;
+    }
+  }
+
+  private async ensureEventLoaded(eventKey: AudioEvent) {
+    await this.ensureInit();
+
+    if (this.sounds[eventKey]?.length) {
+      return;
+    }
+
+    const existingLoad = this.loadPromises[eventKey];
+    if (existingLoad) {
+      await existingLoad;
+      return;
+    }
+
+    const loadPromise = this.loadEventGroup(eventKey);
+    this.loadPromises[eventKey] = loadPromise;
+
+    try {
+      await loadPromise;
+    } finally {
+      if (this.loadPromises[eventKey] === loadPromise) {
+        delete this.loadPromises[eventKey];
+      }
+    }
   }
 
   private refillBgmQueue(trackCount: number) {
@@ -440,56 +519,6 @@ class GameAudio {
       this.warnOnce('audio-mode', 'Audio mode initialization failed. Continuing without guaranteed playback mode.', error);
     }
 
-    await Promise.all([
-      ...(Object.keys(SOUND_EFFECT_SOURCES) as SoundEffectEvent[]).map(async (eventKey) => {
-        const loadedSounds: AudioPlayer[] = [];
-
-        for (let index = 0; index < AUDIO_POLYPHONY[eventKey]; index += 1) {
-          const sound = await this.loadSound(eventKey, SOUND_EFFECT_SOURCES[eventKey], `load-${eventKey}`);
-          if (sound) {
-            loadedSounds.push(sound);
-          }
-        }
-
-        if (loadedSounds.length > 0) {
-          this.sounds[eventKey] = loadedSounds;
-          this.soundCursor[eventKey] = 0;
-        }
-      }),
-      (async () => {
-        const loadedBgmTracks: AudioPlayer[] = [];
-
-        for (const [sourceIndex, source] of BGM_SOURCES.entries()) {
-          const sound = await this.loadSound('bgm', source, `load-bgm-${sourceIndex}`, `bgm track ${sourceIndex + 1}`);
-          if (sound) {
-            const trackIndex = loadedBgmTracks.length;
-            sound.addListener('playbackStatusUpdate', (status) => {
-              this.handleBgmStatusUpdate(trackIndex, status);
-            });
-            loadedBgmTracks.push(sound);
-          }
-        }
-
-        if (loadedBgmTracks.length > 0) {
-          this.sounds.bgm = loadedBgmTracks;
-        }
-      })(),
-      (async () => {
-        const loadedRollSequence: AudioPlayer[] = [];
-
-        for (const [index, source] of ROLL_SEQUENCE_SOURCES.entries()) {
-          const sound = await this.loadSound('roll', source, `load-roll-${index}`, `roll cue ${index + 1}`);
-          if (sound) {
-            loadedRollSequence.push(sound);
-          }
-        }
-
-        if (loadedRollSequence.length > 0) {
-          this.sounds.roll = loadedRollSequence;
-        }
-      })(),
-    ]);
-
     this.initialized = true;
   }
 
@@ -501,7 +530,7 @@ class GameAudio {
   }
 
   async play(eventKey: AudioEvent) {
-    await this.ensureInit();
+    await this.ensureEventLoaded(eventKey);
 
     if (eventKey === 'bgm' && !this.preferences.musicEnabled) {
       return;
@@ -628,6 +657,7 @@ class GameAudio {
 
     this.sounds = {};
     this.soundCursor = {};
+    this.loadPromises = {};
     this.bgmQueue = [];
     this.bgmCurrentPlayerIndex = null;
     this.bgmLastPlayerIndex = null;

@@ -1,14 +1,10 @@
-import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
 import { urTheme } from '@/constants/urTheme';
-import { sendPresenceHeartbeat } from '@/services/presence';
 import { AuthProvider } from '@/src/auth/AuthProvider';
 import { ChallengesProvider } from '@/src/challenges/ChallengesContext';
 import { EloRatingProvider } from '@/src/elo/EloContext';
 import { ProgressionProvider } from '@/src/progression/ProgressionContext';
-import { useAuth } from '@/src/auth/useAuth';
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
-import { useEffect } from 'react';
 import { LogBox, View } from 'react-native';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 
@@ -19,38 +15,6 @@ LogBox.ignoreLogs([
 ]);
 
 function RootNavigator() {
-  const { user, isUsernameOnboardingLoading, isUsernameOnboardingRequired } = useAuth();
-  const canSendPresenceHeartbeat =
-    Boolean(user) &&
-    (user?.provider !== 'google' || (!isUsernameOnboardingLoading && !isUsernameOnboardingRequired));
-
-  useEffect(() => {
-    if (!canSendPresenceHeartbeat) {
-      return;
-    }
-
-    if (!isNakamaEnabled() || !hasNakamaConfig()) {
-      return;
-    }
-
-    const sendHeartbeat = async () => {
-      try {
-        await sendPresenceHeartbeat();
-      } catch {
-        // Presence heartbeat is best-effort and should not block UI.
-      }
-    };
-
-    void sendHeartbeat();
-    const intervalId = setInterval(() => {
-      void sendHeartbeat();
-    }, 10_000);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [canSendPresenceHeartbeat]);
-
   return (
     <View style={{ flex: 1, backgroundColor: urTheme.colors.night }}>
       <Stack

@@ -3,6 +3,7 @@ import { urTheme } from '@/constants/urTheme';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import { getPathVariantDefinition } from '@/logic/pathVariants';
 import { Coordinates, GameState, MoveAction, PlayerColor } from '@/logic/types';
+import { getAppendedHistoryEntries } from '@/shared/historyWindow';
 import { useGameStore } from '@/store/useGameStore';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -280,7 +281,9 @@ export const Board: React.FC<BoardProps> = ({
   const storeGameState = useGameStore((state) => state.gameState);
   const storeValidMoves = useGameStore((state) => state.validMoves);
   const storeMakeMove = useGameStore((state) => state.makeMove);
+  const storeOnlineMode = useGameStore((state) => state.onlineMode);
   const storePlayerColor = useGameStore((state) => state.playerColor);
+  const storeAuthoritativeHistoryCount = useGameStore((state) => state.authoritativeHistoryCount) ?? 0;
   const { width } = useWindowDimensions();
   const [selectedMove, setSelectedMove] = useState<MoveAction | null>(null);
   const [hoveredMove, setHoveredMove] = useState<MoveAction | null>(null);
@@ -300,6 +303,11 @@ export const Board: React.FC<BoardProps> = ({
   const validMoves = validMovesOverride ?? storeValidMoves;
   const makeMove = onMakeMoveOverride ?? storeMakeMove;
   const playerColor = playerColorOverride ?? storePlayerColor;
+  const historyEntryCount = gameStateOverride
+    ? gameState.history.length
+    : storeOnlineMode === 'nakama'
+      ? Math.max(storeAuthoritativeHistoryCount, gameState.history.length)
+      : gameState.history.length;
   const notifyInteraction = React.useCallback(() => {
     onInteraction?.();
   }, [onInteraction]);
@@ -315,6 +323,7 @@ export const Board: React.FC<BoardProps> = ({
   );
   const pathLength = pathDefinition.pathLength;
   const previousGameStateRef = React.useRef<GameState | null>(null);
+  const previousHistoryCountRef = React.useRef<number>(historyEntryCount);
   const getPathForColor = React.useCallback(
     (color: 'light' | 'dark') => (color === 'light' ? pathDefinition.light : pathDefinition.dark),
     [pathDefinition.dark, pathDefinition.light],
@@ -777,7 +786,7 @@ export const Board: React.FC<BoardProps> = ({
     }
 
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-  }, [freezeMotion, gameState.history.length]);
+  }, [freezeMotion, historyEntryCount]);
 
   useEffect(() => {
     if (freezeMotion || !spawnMove) {
@@ -878,6 +887,7 @@ export const Board: React.FC<BoardProps> = ({
       setBlockedPreview(null);
       clearAnimatedMove();
       previousGameStateRef.current = gameState;
+      previousHistoryCountRef.current = historyEntryCount;
       return;
     }
 
@@ -885,13 +895,16 @@ export const Board: React.FC<BoardProps> = ({
 
     if (!previousGameState) {
       previousGameStateRef.current = gameState;
+      previousHistoryCountRef.current = historyEntryCount;
       return;
     }
 
-    const newHistoryEntries =
-      gameState.history.length > previousGameState.history.length
-        ? gameState.history.slice(previousGameState.history.length)
-        : [];
+    const newHistoryEntries = getAppendedHistoryEntries(
+      previousGameState.history,
+      previousHistoryCountRef.current,
+      gameState.history,
+      historyEntryCount,
+    );
     const didApplyMove = newHistoryEntries.some((entry) => entry.includes('moved to'));
 
     if (didApplyMove) {
@@ -941,7 +954,8 @@ export const Board: React.FC<BoardProps> = ({
     }
 
     previousGameStateRef.current = gameState;
-  }, [buildAnimatedMove, clearAnimatedMove, freezeMotion, gameState]);
+    previousHistoryCountRef.current = historyEntryCount;
+  }, [buildAnimatedMove, clearAnimatedMove, freezeMotion, gameState, historyEntryCount]);
 
   useEffect(() => {
     if (freezeMotion || !animatedMove) {

@@ -382,14 +382,6 @@ jest.mock('@/components/game/AudioSettingsModal', () => {
   };
 });
 
-jest.mock('@/components/HowToPlayModal', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  return {
-    HowToPlayModal: () => <View testID="mock-how-to-play" />,
-  };
-});
-
 jest.mock('@/components/tutorial/PlayTutorialCoachModal', () => {
   const React = require('react');
   const { Pressable, Text, View } = require('react-native');

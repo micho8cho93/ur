@@ -118,6 +118,7 @@ describe('useGameStore', () => {
       authoritativeActiveTimedPlayer: 'light-user',
       authoritativeActiveTimedPlayerColor: 'light',
       authoritativeActiveTimedPhase: 'rolling',
+      authoritativeHistoryCount: 7,
       authoritativePlayers: {
         light: { userId: 'light-user', title: 'Michel' },
         dark: { userId: 'dark-user', title: 'Guest' },
@@ -233,6 +234,7 @@ describe('useGameStore', () => {
         matchId: 'new-match',
         revision: 4,
         gameState: newerState,
+        historyCount: 42,
         serverTimeMs: 2_000,
         turnDurationMs: 10_000,
         turnStartedAtMs: 1_500,
@@ -270,6 +272,7 @@ describe('useGameStore', () => {
       light: { userId: 'light-user', title: 'Michel' },
       dark: { userId: 'dark-user', title: 'Guest' },
     });
+    expect(state.authoritativeHistoryCount).toBe(42);
     expect(state.authoritativeAfkAccumulatedMs).toEqual({ light: 0, dark: 25_000 });
     expect(state.authoritativeAfkRemainingMs).toBe(60_000);
     expect(state.authoritativeMatchEnd).toEqual({

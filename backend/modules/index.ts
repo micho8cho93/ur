@@ -276,6 +276,7 @@ type RuntimeRecord = Record<string, unknown>;
 
 const TICK_RATE = 10;
 const MAX_PLAYERS = 2;
+const MAX_SNAPSHOT_HISTORY_ENTRIES = 12;
 const ONLINE_TTL_MS = 30_000;
 const ONLINE_TURN_DURATION_MS = 10_000;
 const ONLINE_AFK_FORFEIT_MS = 60_000;
@@ -2691,11 +2692,19 @@ function broadcastSnapshot(dispatcher: nkruntime.MatchDispatcher, state: MatchSt
   const activeTimedPlayerColor = state.timer.activePlayerColor;
   const turnRemainingMs =
     state.timer.turnDeadlineMs === null ? 0 : Math.max(0, state.timer.turnDeadlineMs - nowMs);
+  const snapshotGameState =
+    state.gameState.history.length <= MAX_SNAPSHOT_HISTORY_ENTRIES
+      ? state.gameState
+      : {
+          ...state.gameState,
+          history: state.gameState.history.slice(-MAX_SNAPSHOT_HISTORY_ENTRIES),
+        };
   const payload: StateSnapshotPayload = {
     type: "state_snapshot",
     matchId,
     revision: state.revision,
-    gameState: state.gameState,
+    gameState: snapshotGameState,
+    historyCount: state.gameState.history.length,
     players: {
       light: buildSnapshotPlayer(state, "light"),
       dark: buildSnapshotPlayer(state, "dark"),

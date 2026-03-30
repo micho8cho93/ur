@@ -76,6 +76,7 @@ import {
   getSnapshotScoreTitle,
 } from '@/src/match/playerTitles';
 import { isTournamentBotUserId } from '@/shared/tournamentBots';
+import { getAppendedHistoryEntries } from '@/shared/historyWindow';
 import { useGameStore } from '@/store/useGameStore';
 import {
   resolveMobileReserveRailTopOffset,
@@ -576,6 +577,7 @@ export function GameRoom() {
   const authoritativeTurnRemainingMs = useGameStore((state) => state.authoritativeTurnRemainingMs);
   const authoritativeActiveTimedPlayerColor = useGameStore((state) => state.authoritativeActiveTimedPlayerColor);
   const authoritativeActiveTimedPhase = useGameStore((state) => state.authoritativeActiveTimedPhase);
+  const authoritativeHistoryCount = useGameStore((state) => state.authoritativeHistoryCount) ?? 0;
   const authoritativePlayers = useGameStore((state) => state.authoritativePlayers);
   const authoritativeMatchEnd = useGameStore((state) => state.authoritativeMatchEnd);
   const authoritativeSnapshotReceivedAtMs = useGameStore((state) => state.authoritativeSnapshotReceivedAtMs);
@@ -615,6 +617,9 @@ export function GameRoom() {
   const offlineBotRewardMode: CompletedBotMatchRewardMode | undefined =
     isPlaythroughTutorialMatch ? 'base_win_only' : undefined;
   const authenticatedUserId = userId ?? user?.nakamaUserId ?? user?.id ?? null;
+  const effectiveHistoryCount = isOffline
+    ? gameState.history.length
+    : Math.max(authoritativeHistoryCount, gameState.history.length);
   const humanScoreTitle = useMemo(() => getHumanScoreTitle(user), [user]);
   const resolvedPlayerColor = useMemo(
     () =>
@@ -888,7 +893,7 @@ export function GameRoom() {
   const rollButtonRequestRef = useRef<{
     serverRevision: number;
     currentTurn: PlayerColor;
-    historyLength: number;
+    historyCount: number;
   } | null>(null);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heldRollResultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -910,9 +915,10 @@ export function GameRoom() {
   } | null>(null);
   const suppressMatchCuesUntilInteractionRef = useRef(false);
   const hasShownOpeningCueRef = useRef<string | null>(null);
-  const previousStateRef = useRef<{ matchId: string | null; state: GameState }>({
+  const previousStateRef = useRef<{ matchId: string | null; state: GameState; historyCount: number }>({
     matchId: matchId ?? null,
     state: gameState,
+    historyCount: effectiveHistoryCount,
   });
   const previousRenderedMatchIdRef = useRef<string | null>(matchId ?? null);
   const tutorialHydratingStateRef = useRef(false);
@@ -1414,7 +1420,7 @@ export function GameRoom() {
         rollButtonRequestRef.current = {
           serverRevision,
           currentTurn: gameState.currentTurn,
-          historyLength: gameState.history.length,
+          historyCount: effectiveHistoryCount,
         };
         setRollButtonLatchPhase('awaitingOutcome');
         localRollAudioPendingRef.current = true;
@@ -1553,7 +1559,7 @@ export function GameRoom() {
     rollButtonRequestRef.current = {
       serverRevision,
       currentTurn: gameState.currentTurn,
-      historyLength: gameState.history.length,
+      historyCount: effectiveHistoryCount,
     };
     setRollButtonLatchPhase('awaitingOutcome');
     localRollAudioPendingRef.current = true;
@@ -1575,7 +1581,7 @@ export function GameRoom() {
     diceAnimationEnabled,
     scheduleRollVisualFallback,
     gameState.currentTurn,
-    gameState.history.length,
+    effectiveHistoryCount,
     roll,
     rollButtonLatchPhase,
     rollingVisual,
@@ -2412,7 +2418,7 @@ export function GameRoom() {
         (
           serverRevision > rollRequest.serverRevision ||
           gameState.currentTurn !== rollRequest.currentTurn ||
-          gameState.history.length > rollRequest.historyLength
+          effectiveHistoryCount > rollRequest.historyCount
         );
 
       if (stateAdvancedSinceRoll && gameState.phase === 'rolling' && gameState.rollValue === null) {
@@ -2427,7 +2433,7 @@ export function GameRoom() {
     }
   }, [
     gameState.currentTurn,
-    gameState.history.length,
+    effectiveHistoryCount,
     gameState.phase,
     gameState.rollValue,
     gameState.winner,
@@ -2467,13 +2473,13 @@ export function GameRoom() {
       return;
     }
 
-    if (gameState.winner !== null || gameState.phase === 'ended' || gameState.history.length > 0) {
+    if (gameState.winner !== null || gameState.phase === 'ended' || effectiveHistoryCount > 0) {
       return;
     }
 
     hasShownOpeningCueRef.current = matchId;
     enqueueMatchCue('play');
-  }, [cueSystemReady, enqueueMatchCue, gameState.history.length, gameState.phase, gameState.winner, hasAssignedColor, introsComplete, matchId]);
+  }, [cueSystemReady, effectiveHistoryCount, enqueueMatchCue, gameState.phase, gameState.winner, hasAssignedColor, introsComplete, matchId]);
   useEffect(() => {
     if (!isOffline) {
       return;
@@ -3108,13 +3114,13 @@ export function GameRoom() {
     const previousSnapshot = previousStateRef.current;
     if (previousSnapshot.matchId !== (matchId ?? null)) {
       offlineMatchTelemetryRef.current = createOfflineMatchTelemetry();
-      previousStateRef.current = { matchId: matchId ?? null, state: gameState };
+      previousStateRef.current = { matchId: matchId ?? null, state: gameState, historyCount: effectiveHistoryCount };
       return;
     }
 
     if (tutorialHydratingStateRef.current) {
       tutorialHydratingStateRef.current = false;
-      previousStateRef.current = { matchId: matchId ?? null, state: gameState };
+      previousStateRef.current = { matchId: matchId ?? null, state: gameState, historyCount: effectiveHistoryCount };
       return;
     }
 
@@ -3122,8 +3128,12 @@ export function GameRoom() {
     const isBotRoll = isOffline && gameState.currentTurn === 'dark';
     const rollValueChanged = previous.rollValue !== gameState.rollValue;
     let shouldSkipResolvedRollAudio = false;
-    const newHistoryEntries =
-      gameState.history.length > previous.history.length ? gameState.history.slice(previous.history.length) : [];
+    const newHistoryEntries = getAppendedHistoryEntries(
+      previous.history,
+      previousSnapshot.historyCount,
+      gameState.history,
+      effectiveHistoryCount,
+    );
 
     if (isOffline) {
       if (rollValueChanged && gameState.rollValue !== null) {
@@ -3211,10 +3221,11 @@ export function GameRoom() {
       void gameAudio.play(resultCue);
     }
 
-    previousStateRef.current = { matchId: matchId ?? null, state: gameState };
+    previousStateRef.current = { matchId: matchId ?? null, state: gameState, historyCount: effectiveHistoryCount };
   }, [
     didPlayerWin,
     enqueueMatchCue,
+    effectiveHistoryCount,
     diceAnimationEnabled,
     gameState,
     hasAssignedColor,
