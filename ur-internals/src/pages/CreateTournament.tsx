@@ -1,7 +1,10 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createTournament } from '../api/tournaments'
+import { ActionToolbar } from '../components/ActionToolbar'
+import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
+import { SectionPanel } from '../components/SectionPanel'
 import {
   getTournamentStructureDescription,
   TOURNAMENT_STRUCTURE_OPTIONS,
@@ -125,141 +128,190 @@ export function CreateTournamentPage() {
     }
   }
 
+  const entrantCount = Number(form.entrants)
+  const roundCount = getSingleEliminationRoundCount(entrantCount)
+  const roundLabel =
+    roundCount > 0 ? formatSingleEliminationRoundLabel(roundCount) : 'Unsupported bracket size'
+  const awardsXp = Number(form.xpPerMatchWin) > 0 || Number(form.xpForTournamentChampion) > 0
+  const structureLabel =
+    TOURNAMENT_STRUCTURE_OPTIONS.find((option) => option.value === form.gameMode)?.label ??
+    form.gameMode
+
   return (
     <>
       <PageHeader
-        eyebrow="CreateTournament"
+        eyebrow="Create Tournament"
         title="Create a tournament run"
         description="Creates a draft single-elimination tournament run in Nakama. Drafts stay hidden from public players until you open them from the admin dashboard."
         actions={
-          <Link to="/tournaments" className="button">
-            Cancel
-          </Link>
+          <ActionToolbar>
+            <Link to="/tournaments" className="button button--secondary">
+              Cancel
+            </Link>
+          </ActionToolbar>
         }
       />
 
       {error ? <div className="alert alert--error">{error}</div> : null}
 
-      <section className="panel">
-        <form className="form" onSubmit={handleSubmit}>
-          <div className="form-grid">
-            <div className="field">
-              <label htmlFor="runId">Run id</label>
-              <input
-                id="runId"
-                name="runId"
-                value={form.runId}
-                onChange={(event) => updateField('runId', event)}
-                placeholder="spring-crown-2026"
-              />
-            </div>
+      <div className="create-layout">
+        <form className="form create-form" onSubmit={handleSubmit}>
+          <SectionPanel
+            title="Identity & schedule"
+            subtitle="Define the internal run identifier, player-facing name, and launch window."
+          >
+            <div className="form-grid">
+              <div className="field">
+                <label htmlFor="runId">Run id</label>
+                <input
+                  id="runId"
+                  name="runId"
+                  value={form.runId}
+                  onChange={(event) => updateField('runId', event)}
+                  placeholder="spring-crown-2026"
+                />
+                <span className="field__hint">Optional stable id for operators and exports.</span>
+              </div>
 
-            <div className="field">
-              <label htmlFor="name">Tournament name</label>
-              <input
-                id="name"
-                name="name"
-                value={form.name}
-                onChange={(event) => updateField('name', event)}
-                placeholder="Spring Crown 2026"
-                required
-              />
-            </div>
+              <div className="field">
+                <label htmlFor="name">Tournament name</label>
+                <input
+                  id="name"
+                  name="name"
+                  value={form.name}
+                  onChange={(event) => updateField('name', event)}
+                  placeholder="Spring Crown 2026"
+                  required
+                />
+                <span className="field__hint">Primary label shown throughout admin and player surfaces.</span>
+              </div>
 
-            <div className="field">
-              <label htmlFor="gameMode">Game structure</label>
-              <select
-                id="gameMode"
-                name="gameMode"
-                value={form.gameMode}
-                onChange={(event) => updateField('gameMode', event)}
-              >
-                {TOURNAMENT_STRUCTURE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <span className="muted">{getTournamentStructureDescription(form.gameMode)}</span>
-            </div>
+              <div className="field">
+                <label htmlFor="startAt">Start date</label>
+                <input
+                  id="startAt"
+                  name="startAt"
+                  type="datetime-local"
+                  value={form.startAt}
+                  onChange={(event) => updateField('startAt', event)}
+                  required
+                />
+                <span className="field__hint">Controls when the run is scheduled to begin.</span>
+              </div>
 
-            <div className="field">
-              <label htmlFor="startAt">Start date</label>
-              <input
-                id="startAt"
-                name="startAt"
-                type="datetime-local"
-                value={form.startAt}
-                onChange={(event) => updateField('startAt', event)}
-                required
-              />
+              <div className="field field--full">
+                <label htmlFor="description">Description</label>
+                <textarea
+                  id="description"
+                  name="description"
+                  value={form.description}
+                  onChange={(event) => updateField('description', event)}
+                  placeholder="Describe the format, operator expectations, and prize plan."
+                />
+                <span className="field__hint">Operator context and player-facing copy for this run.</span>
+              </div>
             </div>
+          </SectionPanel>
 
-            <div className="field">
-              <label htmlFor="entrants">Entrant cap</label>
-              <select
-                id="entrants"
-                name="entrants"
-                value={form.entrants}
-                onChange={(event) => updateField('entrants', event)}
-                required
-              >
-                {TOURNAMENT_SIZE_OPTIONS.map((size) => {
-                  const roundCount = getSingleEliminationRoundCount(size)
-                  return (
-                    <option key={size} value={size}>
-                      {size} players • {formatSingleEliminationRoundLabel(roundCount)}
+          <SectionPanel
+            title="Tournament structure & field"
+            subtitle="Configure the bracket format and the maximum field size."
+          >
+            <div className="form-grid">
+              <div className="field">
+                <label htmlFor="gameMode">Game structure</label>
+                <select
+                  id="gameMode"
+                  name="gameMode"
+                  value={form.gameMode}
+                  onChange={(event) => updateField('gameMode', event)}
+                >
+                  {TOURNAMENT_STRUCTURE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
                     </option>
-                  )
-                })}
-              </select>
-              <span className="muted">
-                Single-elimination only. The bracket will use{' '}
-                {formatSingleEliminationRoundLabel(
-                  getSingleEliminationRoundCount(Number(form.entrants)),
-                )}{' '}
-                and finalize automatically when a winner is decided.
-              </span>
-            </div>
+                  ))}
+                </select>
+                <span className="field__hint">{getTournamentStructureDescription(form.gameMode)}</span>
+              </div>
 
-            <div className="field">
-              <label htmlFor="xpPerMatchWin">XP per tournament game win</label>
-              <input
-                id="xpPerMatchWin"
-                name="xpPerMatchWin"
-                type="number"
-                min="0"
-                value={form.xpPerMatchWin}
-                onChange={(event) => updateField('xpPerMatchWin', event)}
-                required
-              />
-              <span className="muted">Set to 0 if this tournament should not award XP for individual match wins.</span>
+              <div className="field">
+                <label htmlFor="entrants">Entrant cap</label>
+                <select
+                  id="entrants"
+                  name="entrants"
+                  value={form.entrants}
+                  onChange={(event) => updateField('entrants', event)}
+                  required
+                >
+                  {TOURNAMENT_SIZE_OPTIONS.map((size) => {
+                    const optionRoundCount = getSingleEliminationRoundCount(size)
+                    return (
+                      <option key={size} value={size}>
+                        {size} players • {formatSingleEliminationRoundLabel(optionRoundCount)}
+                      </option>
+                    )
+                  })}
+                </select>
+                <span className="field__hint">
+                  Single-elimination only. This field size creates {roundLabel} and finalizes automatically when a winner is decided.
+                </span>
+              </div>
             </div>
+          </SectionPanel>
 
-            <div className="field">
-              <label htmlFor="xpForTournamentChampion">XP for winning the tournament</label>
-              <input
-                id="xpForTournamentChampion"
-                name="xpForTournamentChampion"
-                type="number"
-                min="0"
-                value={form.xpForTournamentChampion}
-                onChange={(event) => updateField('xpForTournamentChampion', event)}
-                required
-              />
-              <span className="muted">
-                This champion bonus is awarded once when the run is finalized. Public elimination runs finalize automatically after the deciding match.
-              </span>
+          <SectionPanel
+            title="XP rewards"
+            subtitle="Set tournament match and champion reward values."
+          >
+            <div className="form-grid">
+              <div className="field">
+                <label htmlFor="xpPerMatchWin">XP per tournament game win</label>
+                <input
+                  id="xpPerMatchWin"
+                  name="xpPerMatchWin"
+                  type="number"
+                  min="0"
+                  value={form.xpPerMatchWin}
+                  onChange={(event) => updateField('xpPerMatchWin', event)}
+                  required
+                />
+                <span className="field__hint">Set to 0 if this run should not award XP for individual match wins.</span>
+              </div>
+
+              <div className="field">
+                <label htmlFor="xpForTournamentChampion">XP for winning the tournament</label>
+                <input
+                  id="xpForTournamentChampion"
+                  name="xpForTournamentChampion"
+                  type="number"
+                  min="0"
+                  value={form.xpForTournamentChampion}
+                  onChange={(event) => updateField('xpForTournamentChampion', event)}
+                  required
+                />
+                <span className="field__hint">
+                  This champion bonus is awarded once when the run is finalized.
+                </span>
+              </div>
             </div>
+          </SectionPanel>
 
-            <div className="field field--full field--checkboxes">
+          <SectionPanel
+            title="Join & rank behavior"
+            subtitle="Retain the existing tournament participation and ranking controls."
+          >
+            <div className="field field--checkboxes">
               <label className="checkbox">
                 <input
                   type="checkbox"
                   checked={form.joinRequired}
                   onChange={(event) => updateField('joinRequired', event)}
                 />
-                <span>Require tournament join before counted matches are recorded</span>
+                <span>
+                  <strong>Require join before scoring</strong>
+                  <small>Counted matches only record after a player has explicitly joined the tournament.</small>
+                </span>
               </label>
 
               <label className="checkbox">
@@ -268,32 +320,77 @@ export function CreateTournamentPage() {
                   checked={form.enableRanks}
                   onChange={(event) => updateField('enableRanks', event)}
                 />
-                <span>Enable rank tracking</span>
+                <span>
+                  <strong>Enable rank tracking</strong>
+                  <small>Keep ranking snapshots and standings visible across the internals workflow.</small>
+                </span>
               </label>
             </div>
+          </SectionPanel>
 
-            <div className="field field--full">
-              <label htmlFor="description">Description</label>
-              <textarea
-                id="description"
-                name="description"
-                value={form.description}
-                onChange={(event) => updateField('description', event)}
-                placeholder="Describe the format, operator expectations, and prize plan."
-              />
+          <section className="panel form-submit-panel">
+            <div className="form-submit-panel__copy">
+              <p className="panel__eyebrow">Publish flow</p>
+              <h3 className="panel__title">Create draft run</h3>
+              <p className="panel__subtitle">
+                After creation, open the run from internals to make it visible on `urgame.live`.
+              </p>
             </div>
-          </div>
 
-          <div className="form__actions">
-            <button className="button button--primary" type="submit" disabled={isSaving}>
-              {isSaving ? 'Creating...' : 'Create tournament'}
-            </button>
-            <span className="muted">
-              After creation, open the run from internals to make it visible on `urgame.live`.
-            </span>
-          </div>
+            <ActionToolbar>
+              <button className="button button--primary" type="submit" disabled={isSaving}>
+                {isSaving ? 'Creating...' : 'Create tournament'}
+              </button>
+              <Link to="/tournaments" className="button button--secondary">
+                Return to queue
+              </Link>
+            </ActionToolbar>
+          </section>
         </form>
-      </section>
+
+        <aside className="create-sidebar stack">
+          <SectionPanel
+            title="Run summary"
+            subtitle="Live configuration snapshot derived from the current form state."
+          >
+            <MetaStrip className="meta-strip--compact">
+              <MetaStripItem label="Structure" value={structureLabel} hint={roundLabel} tone="accent" />
+              <MetaStripItem label="Field size" value={`${form.entrants} players`} hint="Single-elimination bracket" />
+              <MetaStripItem
+                label="Visibility"
+                value="Draft until opened"
+                hint="Players cannot see or join the run before open."
+                tone="warning"
+              />
+              <MetaStripItem
+                label="Rewards"
+                value={awardsXp ? 'XP enabled' : 'No XP rewards'}
+                hint={`${form.xpPerMatchWin} per win / ${form.xpForTournamentChampion} champion`}
+              />
+            </MetaStrip>
+          </SectionPanel>
+
+          <SectionPanel
+            title="Operator notes"
+            subtitle="Behavior preserved from the current tournament implementation."
+          >
+            <ul className="list list--dense">
+              <li className="list__item">
+                <strong>Open manually</strong>
+                <span className="muted">The run is created in draft state and remains hidden until opened from the tournament queue.</span>
+              </li>
+              <li className="list__item">
+                <strong>Finalize automatically</strong>
+                <span className="muted">Public elimination runs finalize after the deciding match resolves.</span>
+              </li>
+              <li className="list__item">
+                <strong>Bracket sizing</strong>
+                <span className="muted">Supported sizes remain power-of-two brackets only.</span>
+              </li>
+            </ul>
+          </SectionPanel>
+        </aside>
+      </div>
     </>
   )
 }

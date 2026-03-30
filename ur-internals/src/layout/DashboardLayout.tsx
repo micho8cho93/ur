@@ -21,9 +21,9 @@ export function DashboardLayout() {
 
       <div className="shell__content">
         <header className="topbar">
-          <div>
+          <div className="topbar__workspace">
             <p className="topbar__eyebrow">Operations dashboard</p>
-            <h1>Backend control room</h1>
+            <h1>Tournament control center</h1>
           </div>
 
           <div className="topbar__status">
@@ -35,7 +35,10 @@ export function DashboardLayout() {
               }
               aria-hidden="true"
             />
-            <span>{statusLabel}</span>
+            <div className="topbar__status-copy">
+              <strong>{env.useMockData ? 'Simulation' : 'Live admin session'}</strong>
+              <span>{statusLabel}</span>
+            </div>
           </div>
         </header>
 

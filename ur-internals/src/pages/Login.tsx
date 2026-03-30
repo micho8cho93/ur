@@ -47,67 +47,85 @@ export function LoginPage() {
 
   return (
     <div className="auth-shell">
-      <section className="auth-panel">
-        <div className="auth-hero">
-          <p className="meta-label">Ur Game Internals</p>
-          <h1>Admin sign-in</h1>
-          <p className="auth-copy">
-            Sign in with the admin test account, verify access through{' '}
-            <code>rpc_admin_whoami</code>, and then enter the dashboard.
-          </p>
+      <section className="auth-panel auth-panel--wide">
+        <div className="auth-panel__intro">
+          <div className="auth-hero">
+            <p className="meta-label">Ur Game Internals</p>
+            <h1>Operator access</h1>
+            <p className="auth-copy">
+              Sign in with the admin test account, verify access through{' '}
+              <code>rpc_admin_whoami</code>, and then enter the dashboard.
+            </p>
+          </div>
+
+          <div className="auth-meta">
+            <div className="metric-card">
+              <span className="meta-label">Target</span>
+              <strong>{getTargetLabel()}</strong>
+            </div>
+            <div className="metric-card">
+              <span className="meta-label">Access</span>
+              <strong>Test admin account</strong>
+            </div>
+          </div>
+
+          <ul className="list list--dense auth-notes">
+            <li className="list__item">
+              <strong>Session verification</strong>
+              <span className="muted">Successful auth stores the Nakama session token locally and restores it on reload when possible.</span>
+            </li>
+            <li className="list__item">
+              <strong>Quick credentials</strong>
+              <span className="muted">
+                <code>admin</code> / <code>password</code>
+              </span>
+            </li>
+          </ul>
         </div>
 
-        <div className="auth-meta">
-          <div className="metric-card">
-            <span className="meta-label">Target</span>
-            <strong>{getTargetLabel()}</strong>
+        <div className="auth-panel__form-block">
+          <div className="auth-panel__form-copy">
+            <p className="meta-label">Secure access</p>
+            <h2>Admin sign-in</h2>
+            <p className="auth-footnote">Use your Nakama admin credentials to enter the operations workspace.</p>
           </div>
-          <div className="metric-card">
-            <span className="meta-label">Access</span>
-            <strong>Test admin account</strong>
-          </div>
+
+          {errorMessage ? <div className="alert alert--error">{errorMessage}</div> : null}
+
+          <form className="form auth-form" onSubmit={handleUsernameLogin}>
+            <div className="field">
+              <label htmlFor="username">Username</label>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                autoComplete="username"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="admin"
+                required
+              />
+            </div>
+
+            <div className="field">
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Your Nakama password"
+                required
+              />
+            </div>
+
+            <button className="button button--primary auth-button" type="submit" disabled={isAuthenticating}>
+              {isAuthenticating ? 'Signing in...' : 'Sign in'}
+            </button>
+          </form>
         </div>
-
-        {errorMessage ? <div className="alert alert--error">{errorMessage}</div> : null}
-
-        <form className="form auth-form" onSubmit={handleUsernameLogin}>
-          <div className="field">
-            <label htmlFor="username">Username</label>
-            <input
-              id="username"
-              name="username"
-              type="text"
-              autoComplete="username"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="admin"
-              required
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Your Nakama password"
-              required
-            />
-          </div>
-
-          <button className="button button--primary auth-button" type="submit" disabled={isAuthenticating}>
-            {isAuthenticating ? 'Signing in...' : 'Sign in'}
-          </button>
-        </form>
-
-        <p className="muted auth-footnote">
-          Quick test credentials: <code>admin</code> / <code>password</code>. Successful sign-in
-          stores the Nakama session token locally and refreshes it on reload when possible.
-        </p>
       </section>
     </div>
   )

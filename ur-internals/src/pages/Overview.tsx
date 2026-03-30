@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom'
 import { listAuditLog } from '../api/auditLog'
 import { getTournamentLiveOverview } from '../api/liveStatus'
 import { useSession } from '../auth/useSession'
+import { ActionToolbar } from '../components/ActionToolbar'
 import { PageHeader } from '../components/PageHeader'
+import { SectionPanel } from '../components/SectionPanel'
 import { StatCard } from '../components/StatCard'
 import { StatusBadge } from '../components/StatusBadge'
 import { buildTournamentLiveOverviewKpis } from '../liveOps'
@@ -236,9 +238,11 @@ export function OverviewPage() {
         title="Tournament ops dashboard"
         description="Cross-tournament operational view with live bracket pressure, queue health, finalize readiness, and audit activity."
         actions={
-          <Link className="button button--primary" to="/tournaments/new">
-            Create tournament
-          </Link>
+          <ActionToolbar>
+            <Link className="button button--primary" to="/tournaments/new">
+              Create tournament
+            </Link>
+          </ActionToolbar>
         }
       />
 
@@ -282,24 +286,24 @@ export function OverviewPage() {
         />
       </section>
 
-      <section className="panel stack">
-        <div className="panel__header">
-          <div>
-            <h3 className="panel__title">Urgent runs</h3>
-            <span className="panel__subtitle">Sorted by stale states, ready matches, and live bracket pressure.</span>
-          </div>
-          <Link to="/tournaments" className="button">
-            View all
-          </Link>
-        </div>
-
+      <SectionPanel
+        title="Urgent runs"
+        subtitle="Sorted by stale states, ready matches, and live bracket pressure."
+        actions={
+          <ActionToolbar>
+            <Link to="/tournaments" className="button button--secondary">
+              View all runs
+            </Link>
+          </ActionToolbar>
+        }
+      >
         {isLoading ? (
           <div className="empty-state">Loading live tournament status...</div>
         ) : summaries.length === 0 ? (
           <div className="empty-state">No active or recent tournament runs were returned.</div>
         ) : (
-          <div className="table-wrap">
-            <table className="table">
+          <div className="table-wrap table-wrap--edge">
+            <table className="table table--dense table--queue">
               <thead>
                 <tr>
                   <th>Run</th>
@@ -315,11 +319,20 @@ export function OverviewPage() {
               </thead>
               <tbody>
                 {summaries.map((summary) => (
-                  <tr key={summary.runId}>
+                  <tr
+                    key={summary.runId}
+                    className={
+                      summary.actionNeeded
+                        ? 'table__row table__row--warning'
+                        : 'table__row'
+                    }
+                  >
                     <td>
-                      <div className="stack stack--compact">
-                        <strong>{summary.title}</strong>
-                        <span className="muted mono">{summary.runId}</span>
+                      <div className="table__entity">
+                        <div className="stack stack--compact">
+                          <strong>{summary.title}</strong>
+                          <span className="muted mono">{summary.runId}</span>
+                        </div>
                         <div className="alert-chip-row">{renderAlertStrip(summary)}</div>
                       </div>
                     </td>
@@ -340,7 +353,9 @@ export function OverviewPage() {
                       </div>
                     </td>
                     <td>
-                      <Link to={`/tournaments/${summary.runId}`}>Control room</Link>
+                      <Link className="table__link" to={`/tournaments/${summary.runId}`}>
+                        Control room
+                      </Link>
                     </td>
                   </tr>
                 ))}
@@ -348,17 +363,13 @@ export function OverviewPage() {
             </table>
           </div>
         )}
-      </section>
+      </SectionPanel>
 
       <section className="split-grid">
-        <article className="panel">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Bracket progress</h3>
-              <span className="panel__subtitle">How far each visible run has advanced through its bracket.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Bracket progress"
+          subtitle="How far each visible run has advanced through its bracket."
+        >
           {summaries.length === 0 ? (
             <div className="empty-state">Bracket progress appears once runs are available.</div>
           ) : (
@@ -381,16 +392,12 @@ export function OverviewPage() {
               })),
             )
           )}
-        </article>
+        </SectionPanel>
 
-        <article className="panel">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Active matches by round</h3>
-              <span className="panel__subtitle">Cross-run heat map of where live play is currently concentrated.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Active matches by round"
+          subtitle="Cross-run heat map of where live play is currently concentrated."
+        >
           {activeMatchesByRound.length === 0 ? (
             <div className="empty-state">No rounds currently have active matches.</div>
           ) : (
@@ -403,18 +410,14 @@ export function OverviewPage() {
               })),
             )
           )}
-        </article>
+        </SectionPanel>
       </section>
 
       <section className="split-grid">
-        <article className="panel">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Registration fill vs capacity</h3>
-              <span className="panel__subtitle">Current entrant pressure against configured bracket size.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Registration fill vs capacity"
+          subtitle="Current entrant pressure against configured bracket size."
+        >
           {summaries.length === 0 ? (
             <div className="empty-state">No capacity data available yet.</div>
           ) : (
@@ -428,49 +431,41 @@ export function OverviewPage() {
               })),
             )
           )}
-        </article>
+        </SectionPanel>
 
-        <article className="panel">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Completions over time</h3>
-              <span className="panel__subtitle">Completed bracket entries across recent runs.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Completions over time"
+          subtitle="Completed bracket entries across recent runs."
+        >
           {renderTimelineChart(completionBuckets, 'No completed matches recorded in the current time window.')}
-        </article>
+        </SectionPanel>
       </section>
 
       <section className="split-grid">
-        <article className="panel">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Audit activity timeline</h3>
-              <span className="panel__subtitle">Operator actions across the visible tournament set.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Audit activity timeline"
+          subtitle="Operator actions across the visible tournament set."
+        >
           {renderTimelineChart(auditTimeline, 'No audit events recorded in the current time window.')}
-        </article>
+        </SectionPanel>
 
-        <article className="panel">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Recent audit activity</h3>
-              <span className="panel__subtitle">Most recent operator events from the admin audit trail.</span>
-            </div>
-            <Link to="/audit-log" className="button">
-              Full log
-            </Link>
-          </div>
-
+        <SectionPanel
+          title="Recent audit activity"
+          subtitle="Most recent operator events from the admin audit trail."
+          actions={
+            <ActionToolbar>
+              <Link to="/audit-log" className="button button--secondary">
+                Full log
+              </Link>
+            </ActionToolbar>
+          }
+        >
           {isLoading ? (
             <div className="empty-state">Loading activity...</div>
           ) : auditLog.length === 0 ? (
             <div className="empty-state">No audit entries returned yet.</div>
           ) : (
-            <ul className="list">
+            <ul className="list list--dense">
               {auditLog.slice(0, 6).map((entry) => (
                 <li key={entry.id} className="list__item">
                   <div className="list__meta">
@@ -485,7 +480,7 @@ export function OverviewPage() {
               ))}
             </ul>
           )}
-        </article>
+        </SectionPanel>
       </section>
     </>
   )

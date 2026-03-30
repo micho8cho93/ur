@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useSession } from '../auth/useSession'
 import { listAuditLog } from '../api/auditLog'
+import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
+import { SectionPanel } from '../components/SectionPanel'
 import type { AuditLogEntry } from '../types/audit'
 
 function formatDateTime(value: string) {
@@ -16,6 +18,9 @@ export function AuditLogPage() {
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const uniqueActors = new Set(auditLog.map((entry) => entry.actorUserId)).size
+  const uniqueTargets = new Set(auditLog.map((entry) => entry.tournamentId)).size
+  const latestTimestamp = auditLog[0]?.createdAt ?? null
 
   useEffect(() => {
     let active = true
@@ -56,28 +61,49 @@ export function AuditLogPage() {
   return (
     <>
       <PageHeader
-        eyebrow="AuditLog"
+        eyebrow="Audit Log"
         title="Admin activity log"
         description="Aggregated audit trail built from the per-run Nakama admin audit RPC."
       />
 
       {error ? <div className="alert alert--error">{error}</div> : null}
 
-      <section className="panel">
-        <div className="panel__header">
-          <div>
-            <h3 className="panel__title">Recent events</h3>
-            <span className="panel__subtitle">Flattened and sorted across visible tournament runs.</span>
-          </div>
-        </div>
+      <MetaStrip>
+        <MetaStripItem
+          label="Events loaded"
+          value={isLoading ? '...' : auditLog.length}
+          hint="Most recent admin events across visible runs."
+          tone="accent"
+        />
+        <MetaStripItem
+          label="Operators"
+          value={isLoading ? '...' : uniqueActors}
+          hint="Unique actors represented in this view."
+        />
+        <MetaStripItem
+          label="Targets"
+          value={isLoading ? '...' : uniqueTargets}
+          hint="Unique tournament runs referenced."
+        />
+        <MetaStripItem
+          label="Latest event"
+          value={isLoading ? '...' : latestTimestamp ? formatDateTime(latestTimestamp) : 'No events'}
+          hint="Newest row in the current response."
+          tone="warning"
+        />
+      </MetaStrip>
 
+      <SectionPanel
+        title="Recent events"
+        subtitle="Flattened and sorted across visible tournament runs."
+      >
         {isLoading ? (
           <div className="empty-state">Loading audit log...</div>
         ) : auditLog.length === 0 ? (
           <div className="empty-state">No audit entries returned for this admin session.</div>
         ) : (
-          <div className="table-wrap">
-            <table className="table">
+          <div className="table-wrap table-wrap--edge">
+            <table className="table table--dense table--logs">
               <thead>
                 <tr>
                   <th>Action</th>
@@ -89,19 +115,46 @@ export function AuditLogPage() {
               </thead>
               <tbody>
                 {auditLog.map((entry) => (
-                  <tr key={entry.id}>
-                    <td className="mono">{entry.action}</td>
-                    <td>{entry.actor}</td>
-                    <td>{entry.target}</td>
-                    <td>{entry.summary}</td>
-                    <td>{formatDateTime(entry.createdAt)}</td>
+                  <tr key={entry.id} className="table__row">
+                    <td>
+                      <div className="stack stack--compact">
+                        <strong className="mono">{entry.action}</strong>
+                        <span className="muted mono">{entry.id}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="stack stack--compact">
+                        <strong>{entry.actor}</strong>
+                        <span className="muted mono">{entry.actorUserId}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="stack stack--compact">
+                        <strong>{entry.target}</strong>
+                        <span className="muted mono">{entry.tournamentId}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="stack stack--compact">
+                        <span>{entry.summary}</span>
+                        <span className="muted">
+                          {Object.keys(entry.metadata).length} metadata field
+                          {Object.keys(entry.metadata).length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="stack stack--compact">
+                        <strong>{formatDateTime(entry.createdAt)}</strong>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-      </section>
+      </SectionPanel>
     </>
   )
 }

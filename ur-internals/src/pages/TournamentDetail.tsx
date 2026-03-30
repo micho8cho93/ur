@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getTournamentAuditLog } from '../api/auditLog'
 import { getTournamentLiveDetail } from '../api/liveStatus'
@@ -11,7 +11,11 @@ import {
   openTournament,
 } from '../api/tournaments'
 import { useSession } from '../auth/useSession'
+import { ActionToolbar } from '../components/ActionToolbar'
+import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
+import { SectionPanel } from '../components/SectionPanel'
+import { StatCard } from '../components/StatCard'
 import { StatusBadge } from '../components/StatusBadge'
 import { getTournamentStructureLabel } from '../tournamentStructure'
 import type { AuditLogEntry } from '../types/audit'
@@ -85,6 +89,38 @@ function formatEntryStatus(status: TournamentLiveEntry['status']) {
   }
 
   return 'Pending'
+}
+
+function getEntrySignalClassName(entry: TournamentLiveEntry) {
+  if (entry.stale) {
+    return 'signal-badge signal-badge--danger'
+  }
+
+  if (entry.blockedReason) {
+    return 'signal-badge signal-badge--warning'
+  }
+
+  if (entry.status === 'in_match') {
+    return 'signal-badge signal-badge--success'
+  }
+
+  if (entry.status === 'ready') {
+    return 'signal-badge signal-badge--accent'
+  }
+
+  return 'signal-badge'
+}
+
+function getEntrySignalLabel(entry: TournamentLiveEntry) {
+  if (entry.stale) {
+    return 'Stale'
+  }
+
+  if (entry.blockedReason) {
+    return 'Blocked'
+  }
+
+  return formatEntryStatus(entry.status)
 }
 
 function describeEntry(entry: TournamentStandings['entries'][number]) {
@@ -413,7 +449,7 @@ export function TournamentDetailPage() {
   const canDeleteTournaments = adminIdentity?.role === 'admin'
   const canFinalizeTournaments = adminIdentity?.role === 'admin'
 
-  async function loadDetailData(showLoading = true) {
+  const loadDetailData = useCallback(async (showLoading = true) => {
     if (!tournamentId) {
       setError('Missing tournament id.')
       setIsLoading(false)
@@ -449,7 +485,7 @@ export function TournamentDetailPage() {
     setLiveDetail(nextLiveDetail)
     setStandings(nextStandings)
     setAuditEntries(nextAuditLog)
-  }
+  }, [tournamentId])
 
   useEffect(() => {
     let active = true
@@ -493,7 +529,7 @@ export function TournamentDetailPage() {
       active = false
       window.clearInterval(intervalId)
     }
-  }, [sessionToken, tournamentId])
+  }, [loadDetailData, sessionToken])
 
   async function handleOpenTournament() {
     if (!tournament) {
@@ -617,11 +653,11 @@ export function TournamentDetailPage() {
     return (
       <section className="panel stack">
         <PageHeader
-          eyebrow="TournamentDetail"
+          eyebrow="Tournament Detail"
           title="Tournament not found"
           description="The requested run was not returned by the admin API."
           actions={
-            <Link to="/tournaments" className="button">
+            <Link to="/tournaments" className="button button--secondary">
               Back to tournaments
             </Link>
           }
@@ -648,15 +684,21 @@ export function TournamentDetailPage() {
   const liveEntries = liveDetail?.liveEntries ?? []
   const queueEntries = liveEntries.filter((entry) => entry.status !== 'completed')
   const blockedEntries = liveEntries.filter((entry) => entry.stale || entry.blockedReason)
+  const fieldFillPercent = Math.round((liveSummary.entrants / Math.max(1, liveSummary.capacity)) * 100)
 
   return (
     <>
-      <PageHeader
-        eyebrow="TournamentDetail"
-        title={tournament.name}
-        description="Live tournament control room with queue health, round pressure, bracket progress, and finalized export support."
-        actions={
-          <div className="page-header__actions">
+      <section className="control-hero">
+        <div className="control-hero__header">
+          <div className="control-hero__copy">
+            <p className="page-header__eyebrow">Tournament Detail</p>
+            <h2>{tournament.name}</h2>
+            <p className="page-header__description">
+              Live tournament control room with queue health, round pressure, bracket progress, and finalized export support.
+            </p>
+          </div>
+
+          <ActionToolbar className="action-toolbar--wrap">
             {tournament.status === 'Draft' ? (
               <button
                 className="button button--primary"
@@ -683,7 +725,7 @@ export function TournamentDetailPage() {
             ) : null}
             {tournament.status === 'Finalized' ? (
               <button
-                className="button"
+                className="button button--secondary"
                 type="button"
                 disabled={isDeleting || isOpening || isFinalizing || isDownloadingExport}
                 onClick={() => {
@@ -705,64 +747,95 @@ export function TournamentDetailPage() {
                 {isDeleting ? 'Deleting...' : 'Delete tournament'}
               </button>
             ) : null}
-            <Link to="/tournaments" className="button">
+            <Link to="/tournaments" className="button button--secondary">
               Back to tournaments
             </Link>
-          </div>
-        }
-      />
-
-      <section className="panel detail-hero">
-        <div className="detail-hero__meta">
-          <StatusBadge status={liveSummary.lifecycle} />
-          <span className="button">{getTournamentStructureLabel(tournament.gameMode)}</span>
-          <span className="button">{tournament.operator.toUpperCase()}</span>
-          <span className="button mono">{tournament.id}</span>
+          </ActionToolbar>
         </div>
-        <p className="detail-hero__summary">{tournament.description}</p>
-        <div className="alert-chip-row">{renderAlertStrip(liveSummary.alerts)}</div>
 
-        <div className="metric-grid">
-          <div className="metric-card">
-            <span className="meta-label">Lifecycle</span>
-            <strong>{liveSummary.lifecycle}</strong>
-          </div>
-          <div className="metric-card">
-            <span className="meta-label">Round progress</span>
-            <strong>
-              {liveSummary.totalMatches > 0
+        <MetaStrip className="meta-strip--compact meta-strip--hero">
+          <MetaStripItem
+            label="Lifecycle"
+            value={<StatusBadge status={liveSummary.lifecycle} />}
+            hint={liveSummary.finalizeReady ? 'Finalization window open.' : 'Current tournament state.'}
+            tone={liveSummary.finalizeReady ? 'success' : 'accent'}
+          />
+          <MetaStripItem
+            label="Format"
+            value={getTournamentStructureLabel(tournament.gameMode)}
+            hint={`${tournament.roundCount} rounds configured`}
+          />
+          <MetaStripItem
+            label="Operator"
+            value={tournament.operator.toUpperCase()}
+            hint={tournament.authoritative ? 'Authoritative tournament run' : 'Non-authoritative tournament run'}
+          />
+          <MetaStripItem
+            label="Run id"
+            value={<span className="mono">{tournament.id}</span>}
+            hint={tournament.tournamentId !== tournament.id ? `Tournament id ${tournament.tournamentId}` : 'Primary run identifier'}
+          />
+          <MetaStripItem
+            label="Field"
+            value={`${liveSummary.entrants}/${liveSummary.capacity}`}
+            hint={`${fieldFillPercent}% registered`}
+          />
+          <MetaStripItem
+            label="Start"
+            value={formatDateTime(tournament.startAt)}
+            hint={tournament.openedAt ? `Opened ${formatDateTime(tournament.openedAt)}` : 'Not opened yet'}
+          />
+        </MetaStrip>
+
+        {tournament.description ? <p className="control-hero__summary">{tournament.description}</p> : null}
+        <div className="alert-chip-row control-hero__alerts">{renderAlertStrip(liveSummary.alerts)}</div>
+
+        <section className="stats-grid" aria-label="Tournament KPIs">
+          <StatCard
+            label="Lifecycle state"
+            value={liveSummary.lifecycle}
+            helper={liveSummary.finalizeReady ? 'Ready to finalize.' : 'Current bracket lifecycle.'}
+            tone="accent"
+          />
+          <StatCard
+            label="Round progress"
+            value={
+              liveSummary.totalMatches > 0
                 ? `${liveSummary.completedMatches}/${liveSummary.totalMatches}`
-                : 'Not seeded'}
-            </strong>
-          </div>
-          <div className="metric-card">
-            <span className="meta-label">Active matches</span>
-            <strong>{liveSummary.activeMatches}</strong>
-          </div>
-          <div className="metric-card">
-            <span className="meta-label">Waiting players</span>
-            <strong>{liveSummary.waitingPlayers}</strong>
-          </div>
-          <div className="metric-card">
-            <span className="meta-label">Last result</span>
-            <strong>{liveSummary.lastResultAt ? formatTimeAgo(liveSummary.lastResultAt) : 'No results yet'}</strong>
-          </div>
-          <div className="metric-card">
-            <span className="meta-label">Finalize readiness</span>
-            <strong>{liveSummary.finalizeReady ? 'Ready now' : 'Still live'}</strong>
-          </div>
-        </div>
+                : 'Not seeded'
+            }
+            helper={liveSummary.currentRound ? `Current round ${liveSummary.currentRound}.` : 'Bracket not seeded yet.'}
+          />
+          <StatCard
+            label="Active matches"
+            value={String(liveSummary.activeMatches)}
+            helper="Live matches currently in progress."
+            tone="success"
+          />
+          <StatCard
+            label="Waiting players"
+            value={String(liveSummary.waitingPlayers)}
+            helper="Advanced players awaiting resolution."
+          />
+          <StatCard
+            label="Last result"
+            value={liveSummary.lastResultAt ? formatTimeAgo(liveSummary.lastResultAt) : 'No results'}
+            helper={liveSummary.lastResultAt ? formatDateTime(liveSummary.lastResultAt) : 'No completed match recorded yet.'}
+          />
+          <StatCard
+            label="Finalize readiness"
+            value={liveSummary.finalizeReady ? 'Ready now' : 'Still live'}
+            helper={tournament.status === 'Finalized' ? 'Finalized export available.' : 'Tracks completion and closeout state.'}
+            tone={liveSummary.finalizeReady || tournament.status === 'Finalized' ? 'success' : 'warning'}
+          />
+        </section>
       </section>
 
-      <section className="panel stack">
-        <div className="panel__header">
-          <div>
-            <h3 className="panel__title">Live bracket by round</h3>
-            <span className="panel__subtitle">Pending, ready, active, and completed counts grouped by round.</span>
-          </div>
-          <span className="muted">Polling every 10s</span>
-        </div>
-
+      <SectionPanel
+        title="Live bracket by round"
+        subtitle="Pending, ready, active, and completed counts grouped by round."
+        actions={<span className="panel__status-note">Polling every 10s</span>}
+      >
         {!liveDetail || liveDetail.roundStats.length === 0 ? (
           <div className="empty-state">
             {tournament.bracket
@@ -804,17 +877,13 @@ export function TournamentDetailPage() {
             ))}
           </div>
         )}
-      </section>
+      </SectionPanel>
 
       <section className="split-grid">
-        <article className="panel">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Participant state breakdown</h3>
-              <span className="panel__subtitle">Where players currently sit in the bracket lifecycle.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Participant state breakdown"
+          subtitle="Where players currently sit in the bracket lifecycle."
+        >
           {renderCountRows([
             {
               key: 'lobby',
@@ -853,16 +922,12 @@ export function TournamentDetailPage() {
               hint: 'Winning slot',
             },
           ])}
-        </article>
+        </SectionPanel>
 
-        <article className="panel">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Round completion by round</h3>
-              <span className="panel__subtitle">Progress pressure across the current bracket.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Round completion by round"
+          subtitle="Progress pressure across the current bracket."
+        >
           {!liveDetail || liveDetail.roundStats.length === 0 ? (
             <div className="empty-state">No round completion data yet.</div>
           ) : (
@@ -879,18 +944,14 @@ export function TournamentDetailPage() {
               })),
             )
           )}
-        </article>
+        </SectionPanel>
       </section>
 
       <section className="split-grid">
-        <article className="panel">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Match duration distribution</h3>
-              <span className="panel__subtitle">Histogram of completed match durations.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Match duration distribution"
+          subtitle="Histogram of completed match durations."
+        >
           {!liveDetail || liveDetail.matchDurationBuckets.every((bucket) => bucket.count === 0) ? (
             <div className="empty-state">Completed matches will populate duration buckets here.</div>
           ) : (
@@ -903,16 +964,12 @@ export function TournamentDetailPage() {
               })),
             )
           )}
-        </article>
+        </SectionPanel>
 
-        <article className="panel">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Seed survival</h3>
-              <span className="panel__subtitle">How quickly higher seeds are falling out by round.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Seed survival"
+          subtitle="How quickly higher seeds are falling out by round."
+        >
           {!liveDetail || liveDetail.seedSurvival.length === 0 ? (
             <div className="empty-state">Seed survival appears after the bracket is seeded.</div>
           ) : (
@@ -928,23 +985,19 @@ export function TournamentDetailPage() {
               })),
             )
           )}
-        </article>
+        </SectionPanel>
       </section>
 
       <section className="split-grid">
-        <article className="panel stack">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Match queue</h3>
-              <span className="panel__subtitle">Live ready, pending, and active bracket entries.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Match queue"
+          subtitle="Live ready, pending, and active bracket entries."
+        >
           {queueEntries.length === 0 ? (
             <div className="empty-state">No queued or active matches right now.</div>
           ) : (
-            <div className="table-wrap">
-              <table className="table">
+            <div className="table-wrap table-wrap--edge">
+              <table className="table table--dense table--operations">
                 <thead>
                   <tr>
                     <th>Round</th>
@@ -956,22 +1009,52 @@ export function TournamentDetailPage() {
                 </thead>
                 <tbody>
                   {queueEntries.map((entry) => (
-                    <tr key={entry.entryId}>
+                    <tr
+                      key={entry.entryId}
+                      className={
+                        entry.stale
+                          ? 'table__row table__row--critical'
+                          : entry.blockedReason
+                            ? 'table__row table__row--warning'
+                            : 'table__row'
+                      }
+                    >
                       <td>
-                        <div className="stack stack--compact">
-                          <strong>Round {entry.round}</strong>
-                          <span className="muted mono">{entry.entryId}</span>
+                        <div className="table__entity">
+                          <div className="stack stack--compact">
+                            <strong>Round {entry.round}</strong>
+                            <span className="muted mono">{entry.entryId}</span>
+                          </div>
+                          <span className="table__subline">Slot {entry.slot}</span>
                         </div>
                       </td>
-                      <td>{formatEntryStatus(entry.status)}</td>
                       <td>
-                        {entry.playerADisplayName ?? 'TBD'} vs {entry.playerBDisplayName ?? 'TBD'}
+                        <span className={getEntrySignalClassName(entry)}>
+                          {getEntrySignalLabel(entry)}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="table__entity">
+                          <strong>
+                            {entry.playerADisplayName ?? 'TBD'} vs {entry.playerBDisplayName ?? 'TBD'}
+                          </strong>
+                          <span className="table__subline mono">
+                            {entry.matchId ? `Match ${entry.matchId}` : 'Match id pending'}
+                          </span>
+                        </div>
                       </td>
                       <td>{entry.blockedReason ?? entry.staleReason ?? 'Healthy queue state'}</td>
                       <td>
-                        {formatDateTime(
-                          entry.startedAt ?? entry.readyAt ?? entry.completedAt ?? null,
-                        )}
+                        <div className="stack stack--compact">
+                          <strong>{formatDateTime(entry.startedAt ?? entry.readyAt ?? entry.completedAt ?? null)}</strong>
+                          <span className="muted">
+                            {entry.startedAt
+                              ? 'Started'
+                              : entry.readyAt
+                                ? 'Ready'
+                                : 'Awaiting launch'}
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -979,21 +1062,17 @@ export function TournamentDetailPage() {
               </table>
             </div>
           )}
-        </article>
+        </SectionPanel>
 
-        <article className="panel stack">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Blocked / stale states</h3>
-              <span className="panel__subtitle">Entries that need a launch, an upstream result, or manual investigation.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Blocked / stale states"
+          subtitle="Entries that need a launch, an upstream result, or manual investigation."
+        >
           {blockedEntries.length === 0 ? (
             <div className="empty-state">No blocked or stale states detected.</div>
           ) : (
-            <div className="table-wrap">
-              <table className="table">
+            <div className="table-wrap table-wrap--edge">
+              <table className="table table--dense table--operations">
                 <thead>
                   <tr>
                     <th>Entry</th>
@@ -1004,34 +1083,45 @@ export function TournamentDetailPage() {
                 </thead>
                 <tbody>
                   {blockedEntries.map((entry) => (
-                    <tr key={`${entry.entryId}-blocked`}>
+                    <tr
+                      key={`${entry.entryId}-blocked`}
+                      className={entry.stale ? 'table__row table__row--critical' : 'table__row table__row--warning'}
+                    >
                       <td>
-                        <div className="stack stack--compact">
-                          <strong>Round {entry.round}</strong>
-                          <span className="muted mono">{entry.entryId}</span>
+                        <div className="table__entity">
+                          <div className="stack stack--compact">
+                            <strong>Round {entry.round}</strong>
+                            <span className="muted mono">{entry.entryId}</span>
+                          </div>
+                          <span className="table__subline">Slot {entry.slot}</span>
                         </div>
                       </td>
-                      <td>{entry.stale ? 'Stale' : formatEntryStatus(entry.status)}</td>
+                      <td>
+                        <span className={getEntrySignalClassName(entry)}>{getEntrySignalLabel(entry)}</span>
+                      </td>
                       <td>{entry.staleReason ?? entry.blockedReason ?? 'Operator review needed'}</td>
-                      <td>{formatDateTime(entry.startedAt ?? entry.readyAt ?? null)}</td>
+                      <td>
+                        <div className="stack stack--compact">
+                          <strong>{formatDateTime(entry.startedAt ?? entry.readyAt ?? null)}</strong>
+                          <span className="muted">
+                            {entry.stale ? 'Exceeded healthy window' : 'Waiting for upstream resolution'}
+                          </span>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-        </article>
+        </SectionPanel>
       </section>
 
       <section className="split-grid">
-        <article className="panel stack">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Bracket history</h3>
-              <span className="panel__subtitle">Round-by-round summaries for recent and completed pairings.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Bracket history"
+          subtitle="Round-by-round summaries for recent and completed pairings."
+        >
           {historyRounds.length === 0 ? (
             <div className="empty-state">
               {tournament.bracket
@@ -1066,36 +1156,28 @@ export function TournamentDetailPage() {
               ))}
             </div>
           )}
-        </article>
+        </SectionPanel>
 
-        <article className="panel stack">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Audit activity timeline</h3>
-              <span className="panel__subtitle">Recent operator activity for this run only.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Audit activity timeline"
+          subtitle="Recent operator activity for this run only."
+        >
           {renderTimelineChart(
             liveDetail?.auditActivityTimeline ?? [],
             'No audit activity recorded in the current time window.',
           )}
-        </article>
+        </SectionPanel>
       </section>
 
       <section className="split-grid">
-        <article className="panel stack">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Standings</h3>
-              <span className="panel__subtitle">
-                {standings.generatedAt
-                  ? `Generated ${formatDateTime(standings.generatedAt)}`
-                  : 'No standings snapshot yet.'}
-              </span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Standings"
+          subtitle={
+            standings.generatedAt
+              ? `Generated ${formatDateTime(standings.generatedAt)}`
+              : 'No standings snapshot yet.'
+          }
+        >
           {standings.entries.length === 0 ? (
             <div className="empty-state">
               {tournament.status === 'Draft'
@@ -1103,8 +1185,8 @@ export function TournamentDetailPage() {
                 : 'No standings entries returned for this run.'}
             </div>
           ) : (
-            <div className="table-wrap">
-              <table className="table">
+            <div className="table-wrap table-wrap--edge">
+              <table className="table table--dense table--operations">
                 <thead>
                   <tr>
                     <th>Rank</th>
@@ -1116,12 +1198,14 @@ export function TournamentDetailPage() {
                 </thead>
                 <tbody>
                   {standings.entries.map((entry) => (
-                    <tr key={`${entry.ownerId}-${entry.rank ?? 'na'}`}>
+                    <tr key={`${entry.ownerId}-${entry.rank ?? 'na'}`} className="table__row">
                       <td>{entry.rank ?? '-'}</td>
                       <td>
-                        <div className="stack stack--compact">
-                          <strong>{entry.username}</strong>
-                          <span className="muted mono">{entry.ownerId}</span>
+                        <div className="table__entity">
+                          <div className="stack stack--compact">
+                            <strong>{entry.username}</strong>
+                            <span className="muted mono">{entry.ownerId}</span>
+                          </div>
                         </div>
                       </td>
                       <td>{entry.score}</td>
@@ -1136,20 +1220,16 @@ export function TournamentDetailPage() {
               </table>
             </div>
           )}
-        </article>
+        </SectionPanel>
 
-        <article className="panel stack">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Audit trace</h3>
-              <span className="panel__subtitle">Per-run audit entries from the admin log.</span>
-            </div>
-          </div>
-
+        <SectionPanel
+          title="Audit trace"
+          subtitle="Per-run audit entries from the admin log."
+        >
           {auditEntries.length === 0 ? (
             <div className="empty-state">No audit entries returned for this run.</div>
           ) : (
-            <ul className="list">
+            <ul className="list list--dense">
               {auditEntries.map((entry) => (
                 <li key={entry.id} className="list__item">
                   <div className="list__meta">
@@ -1164,22 +1244,18 @@ export function TournamentDetailPage() {
               ))}
             </ul>
           )}
-        </article>
+        </SectionPanel>
       </section>
 
-      <section className="panel stack">
-        <div className="panel__header">
-          <div>
-            <h3 className="panel__title">Entry records</h3>
-            <span className="panel__subtitle">Last written tournament record metadata per owner.</span>
-          </div>
-        </div>
-
+      <SectionPanel
+        title="Entry records"
+        subtitle="Last written tournament record metadata per owner."
+      >
         {standings.entries.length === 0 ? (
           <div className="empty-state">No entry records available yet.</div>
         ) : (
-          <div className="table-wrap">
-            <table className="table">
+          <div className="table-wrap table-wrap--edge">
+            <table className="table table--dense table--operations">
               <thead>
                 <tr>
                   <th>Player</th>
@@ -1189,17 +1265,28 @@ export function TournamentDetailPage() {
               </thead>
               <tbody>
                 {standings.entries.map((entry) => (
-                  <tr key={`${entry.ownerId}-entry`}>
-                    <td>{entry.username}</td>
+                  <tr key={`${entry.ownerId}-entry`} className="table__row">
+                    <td>
+                      <div className="table__entity">
+                        <div className="stack stack--compact">
+                          <strong>{entry.username}</strong>
+                          <span className="muted mono">{entry.ownerId}</span>
+                        </div>
+                      </div>
+                    </td>
                     <td>{describeEntry(entry)}</td>
-                    <td>{formatDateTime(entry.updatedAt)}</td>
+                    <td>
+                      <div className="stack stack--compact">
+                        <strong>{formatDateTime(entry.updatedAt)}</strong>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-      </section>
+      </SectionPanel>
     </>
   )
 }

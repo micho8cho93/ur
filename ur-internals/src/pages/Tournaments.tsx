@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { deleteTournament, listTournaments, openTournament } from '../api/tournaments'
+import { ActionToolbar } from '../components/ActionToolbar'
+import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
+import { SectionPanel } from '../components/SectionPanel'
 import { StatusBadge } from '../components/StatusBadge'
 import { getTournamentStructureLabel } from '../tournamentStructure'
 import type { Tournament } from '../types/tournament'
@@ -22,6 +25,10 @@ export function TournamentsPage() {
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const canDeleteTournaments = adminIdentity?.role === 'admin'
+  const openRuns = tournaments.filter((tournament) => tournament.status === 'Open').length
+  const draftRuns = tournaments.filter((tournament) => tournament.status === 'Draft').length
+  const finalizedRuns = tournaments.filter((tournament) => tournament.status === 'Finalized').length
+  const totalEntrants = tournaments.reduce((sum, tournament) => sum + tournament.entrants, 0)
 
   useEffect(() => {
     let active = true
@@ -111,29 +118,53 @@ export function TournamentsPage() {
         title="Tournament runs"
         description="Live list of tournament runs returned by the Nakama admin list RPC, including lifecycle, capacity, and scoring settings."
         actions={
-          <Link className="button button--primary" to="/tournaments/new">
-            New tournament
-          </Link>
+          <ActionToolbar>
+            <Link className="button button--primary" to="/tournaments/new">
+              New tournament
+            </Link>
+          </ActionToolbar>
         }
       />
 
       {error ? <div className="alert alert--error">{error}</div> : null}
 
-      <section className="panel">
-        <div className="panel__header">
-          <div>
-            <h3 className="panel__title">All runs</h3>
-            <span className="panel__subtitle">Backed by `rpc_admin_list_tournaments`.</span>
-          </div>
-        </div>
+      <MetaStrip>
+        <MetaStripItem
+          label="Visible runs"
+          value={isLoading ? '...' : tournaments.length}
+          hint="Total rows returned by the admin list RPC."
+          tone="accent"
+        />
+        <MetaStripItem
+          label="Open now"
+          value={isLoading ? '...' : openRuns}
+          hint="Runs currently serving live tournament operations."
+          tone="success"
+        />
+        <MetaStripItem
+          label="Draft queue"
+          value={isLoading ? '...' : draftRuns}
+          hint="Runs staged but not yet opened to players."
+          tone="warning"
+        />
+        <MetaStripItem
+          label="Entrants tracked"
+          value={isLoading ? '...' : totalEntrants}
+          hint={isLoading ? 'Awaiting load.' : `${finalizedRuns} finalized runs in this view.`}
+        />
+      </MetaStrip>
 
+      <SectionPanel
+        title="All runs"
+        subtitle="Backed by `rpc_admin_list_tournaments`."
+      >
         {isLoading ? (
           <div className="empty-state">Loading tournaments...</div>
         ) : tournaments.length === 0 ? (
           <div className="empty-state">No tournament runs returned for this admin session.</div>
         ) : (
-          <div className="table-wrap">
-            <table className="table">
+          <div className="table-wrap table-wrap--edge">
+            <table className="table table--dense table--operations">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -146,24 +177,55 @@ export function TournamentsPage() {
               </thead>
               <tbody>
                 {tournaments.map((tournament) => (
-                  <tr key={tournament.id}>
+                  <tr
+                    key={tournament.id}
+                    className={
+                      tournament.status === 'Draft'
+                        ? 'table__row table__row--muted'
+                        : 'table__row'
+                    }
+                  >
                     <td>
-                      <div className="stack stack--compact">
-                        <strong>{tournament.name}</strong>
-                        <span className="muted mono">{tournament.id}</span>
+                      <div className="table__entity">
+                        <div className="stack stack--compact">
+                          <strong>{tournament.name}</strong>
+                          <span className="muted mono">{tournament.id}</span>
+                        </div>
+                        <span className="table__subline">
+                          {tournament.operator.toUpperCase()} operator
+                        </span>
                       </div>
                     </td>
                     <td>
                       <StatusBadge status={tournament.status} />
                     </td>
-                    <td>{getTournamentStructureLabel(tournament.gameMode)}</td>
-                    <td>{formatDateTime(tournament.startAt)}</td>
                     <td>
-                      {tournament.entrants}/{tournament.maxEntrants}
+                      <div className="stack stack--compact">
+                        <strong>{getTournamentStructureLabel(tournament.gameMode)}</strong>
+                        <span className="muted">{tournament.roundCount} rounds</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="stack stack--compact">
+                        <strong>{formatDateTime(tournament.startAt)}</strong>
+                        <span className="muted">Created {formatDateTime(tournament.createdAt)}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="stack stack--compact">
+                        <strong>
+                          {tournament.entrants}/{tournament.maxEntrants}
+                        </strong>
+                        <span className="muted">
+                          {Math.round((tournament.entrants / Math.max(1, tournament.maxEntrants)) * 100)}% full
+                        </span>
+                      </div>
                     </td>
                     <td>
                       <div className="table__actions">
-                        <Link to={`/tournaments/${tournament.id}`}>Details</Link>
+                        <Link className="table__link" to={`/tournaments/${tournament.id}`}>
+                          Control room
+                        </Link>
                         {tournament.status === 'Draft' ? (
                           <button
                             className="button button--primary"
@@ -196,7 +258,7 @@ export function TournamentsPage() {
             </table>
           </div>
         )}
-      </section>
+      </SectionPanel>
     </>
   )
 }

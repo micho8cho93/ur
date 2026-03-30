@@ -12,5 +12,10 @@ const classNameByStatus: Record<TournamentStatus, string> = {
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {
-  return <span className={classNameByStatus[status]}>{status}</span>
+  return (
+    <span className={classNameByStatus[status]}>
+      <span className="status-badge__dot" aria-hidden="true" />
+      <span>{status}</span>
+    </span>
+  )
 }

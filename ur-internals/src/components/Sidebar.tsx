@@ -3,10 +3,10 @@ import { useSession } from '../auth/useSession'
 import env from '../config/env'
 
 const navItems = [
-  { label: 'Overview', to: '/' },
-  { label: 'Tournaments', to: '/tournaments' },
-  { label: 'Create Tournament', to: '/tournaments/new' },
-  { label: 'Audit Log', to: '/audit-log' },
+  { label: 'Overview', to: '/', short: '01' },
+  { label: 'Tournaments', to: '/tournaments', short: '02' },
+  { label: 'Create Tournament', to: '/tournaments/new', short: '03' },
+  { label: 'Audit Log', to: '/audit-log', short: '04' },
 ]
 
 function getLinkClassName({ isActive }: NavLinkRenderProps) {
@@ -41,7 +41,7 @@ export function Sidebar() {
         <p className="sidebar__eyebrow">Ur Game</p>
         <h1 className="sidebar__title">Internals</h1>
         <p className="sidebar__subtitle">
-          Tournament operations, auditability, and direct Nakama admin RPC access.
+          Tournament operations, queue monitoring, and direct Nakama admin control.
         </p>
       </div>
 
@@ -51,9 +51,16 @@ export function Sidebar() {
             <p className="meta-label">Signed in</p>
             <span className="session-pill session-pill--ready">{adminIdentity.role}</span>
           </div>
-          <strong>{getAdminLabel(adminIdentity)}</strong>
-          <span className="muted">{adminIdentity.email ?? adminIdentity.userId}</span>
-          <button className="button" type="button" onClick={() => void logout()} disabled={isAuthenticating}>
+          <div className="sidebar__admin-copy">
+            <strong>{getAdminLabel(adminIdentity)}</strong>
+            <span className="muted">{adminIdentity.email ?? adminIdentity.userId}</span>
+          </div>
+          <button
+            className="button button--secondary button--block"
+            type="button"
+            onClick={() => void logout()}
+            disabled={isAuthenticating}
+          >
             Sign out
           </button>
         </div>
@@ -67,8 +74,13 @@ export function Sidebar() {
             end={item.to === '/'}
             className={getLinkClassName}
           >
-            <span>{item.label}</span>
-            <span aria-hidden="true">+</span>
+            <span className="sidebar__link-index" aria-hidden="true">
+              {item.short}
+            </span>
+            <span className="sidebar__link-label">{item.label}</span>
+            <span className="sidebar__link-indicator" aria-hidden="true">
+              {item.to === '/' ? 'OV' : 'GO'}
+            </span>
           </NavLink>
         ))}
       </nav>
