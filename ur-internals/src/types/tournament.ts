@@ -1,5 +1,6 @@
 export type TournamentStatus = 'Draft' | 'Open' | 'Closed' | 'Finalized'
 export type TournamentOperator = 'best' | 'set' | 'incr'
+export type TournamentLiveAlertLevel = 'info' | 'warning' | 'critical' | 'success'
 export type TournamentBracketParticipantState =
   | 'lobby'
   | 'in_match'
@@ -119,6 +120,137 @@ export interface TournamentStandings {
   entries: TournamentEntry[]
   rankCount: number | null
   generatedAt: string | null
+}
+
+export interface TournamentLiveAlert {
+  code:
+    | 'starting_soon'
+    | 'ready_matches'
+    | 'active_matches'
+    | 'waiting_players'
+    | 'stale_match'
+    | 'finalize_ready'
+    | 'finalized'
+  level: TournamentLiveAlertLevel
+  message: string
+  count: number
+}
+
+export interface TournamentParticipantStateCounts {
+  lobby: number
+  inMatch: number
+  waitingNextRound: number
+  eliminated: number
+  runnerUp: number
+  champion: number
+}
+
+export interface TournamentRoundStats {
+  round: number
+  label: string
+  totalMatches: number
+  pending: number
+  ready: number
+  inMatch: number
+  completed: number
+  completionPercent: number
+}
+
+export interface TournamentLiveEntry {
+  entryId: string
+  round: number
+  slot: number
+  status: TournamentBracketEntryStatus
+  playerAUserId: string | null
+  playerADisplayName: string | null
+  playerBUserId: string | null
+  playerBDisplayName: string | null
+  winnerUserId: string | null
+  loserUserId: string | null
+  matchId: string | null
+  readyAt: string | null
+  startedAt: string | null
+  completedAt: string | null
+  durationSeconds: number | null
+  stale: boolean
+  staleReason: string | null
+  blockedReason: string | null
+}
+
+export interface TournamentLiveSummary {
+  runId: string
+  tournamentId: string
+  title: string
+  lifecycle: TournamentStatus
+  startAt: string | null
+  openedAt: string | null
+  closedAt: string | null
+  finalizedAt: string | null
+  updatedAt: string
+  entrants: number
+  capacity: number
+  registrationFillPercent: number
+  currentRound: number | null
+  totalRounds: number | null
+  totalMatches: number
+  completedMatches: number
+  pendingMatches: number
+  readyMatches: number
+  activeMatches: number
+  waitingPlayers: number
+  playersInMatch: number
+  lastActivityAt: string | null
+  lastResultAt: string | null
+  startingSoon: boolean
+  finalizeReady: boolean
+  actionNeeded: boolean
+  urgencyScore: number
+  alerts: TournamentLiveAlert[]
+}
+
+export interface TournamentTimelineBucket {
+  bucketStart: string
+  bucketEnd: string
+  count: number
+}
+
+export interface TournamentActiveMatchesByRound {
+  round: number
+  count: number
+}
+
+export interface TournamentMatchDurationBucket {
+  label: string
+  minSeconds: number | null
+  maxSeconds: number | null
+  count: number
+}
+
+export interface TournamentSeedSurvivalPoint {
+  round: number
+  label: string
+  survivingCount: number
+  topSeedRemaining: number | null
+  averageSeedRemaining: number | null
+}
+
+export interface TournamentLiveOverviewData {
+  generatedAt: string
+  summaries: TournamentLiveSummary[]
+  activeMatchesByRound: TournamentActiveMatchesByRound[]
+  completionsOverTime: TournamentTimelineBucket[]
+  auditActivityTimeline: TournamentTimelineBucket[]
+}
+
+export interface TournamentLiveDetailData {
+  generatedAt: string
+  summary: TournamentLiveSummary
+  roundStats: TournamentRoundStats[]
+  participantStateCounts: TournamentParticipantStateCounts
+  liveEntries: TournamentLiveEntry[]
+  matchDurationBuckets: TournamentMatchDurationBucket[]
+  seedSurvival: TournamentSeedSurvivalPoint[]
+  auditActivityTimeline: TournamentTimelineBucket[]
 }
 
 export interface CreateTournamentInput {

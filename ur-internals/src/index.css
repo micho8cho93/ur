@@ -381,7 +381,7 @@ button {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -432,6 +432,10 @@ button {
 
 .stat-card--success {
   background: linear-gradient(180deg, rgba(239, 250, 245, 0.96), rgba(224, 242, 233, 0.92));
+}
+
+.stat-card--warning {
+  background: linear-gradient(180deg, rgba(255, 248, 232, 0.98), rgba(246, 232, 192, 0.94));
 }
 
 .stat-card__value {
@@ -574,6 +578,188 @@ button {
   justify-content: space-between;
   gap: 12px;
   color: var(--muted);
+}
+
+.alert-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.alert-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.alert-chip--info {
+  background: rgba(216, 234, 246, 0.92);
+  color: var(--info);
+}
+
+.alert-chip--warning {
+  background: rgba(245, 230, 189, 0.95);
+  color: var(--warning);
+}
+
+.alert-chip--critical {
+  background: rgba(255, 228, 228, 0.95);
+  color: var(--danger);
+}
+
+.alert-chip--success {
+  background: rgba(216, 236, 226, 0.95);
+  color: var(--success);
+}
+
+.chart-list {
+  display: grid;
+  gap: 12px;
+}
+
+.chart-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.chart-row__copy {
+  display: grid;
+  gap: 4px;
+}
+
+.chart-row__copy span,
+.round-ops-card__header span,
+.spark-chart__label {
+  color: var(--muted);
+}
+
+.chart-row__bar {
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(143, 77, 46, 0.1);
+  overflow: hidden;
+}
+
+.chart-row__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent) 0%, #c98a55 100%);
+}
+
+.chart-row__value {
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+.spark-chart {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+  gap: 10px;
+  align-items: end;
+  min-height: 220px;
+}
+
+.spark-chart__bucket {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
+.spark-chart__value {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+.spark-chart__rail {
+  width: 100%;
+  height: 132px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 8px;
+  border-radius: 18px;
+  background: rgba(143, 77, 46, 0.08);
+}
+
+.spark-chart__bar {
+  width: 100%;
+  border-radius: 12px 12px 6px 6px;
+  background: linear-gradient(180deg, rgba(111, 56, 31, 0.9), rgba(201, 138, 85, 0.88));
+}
+
+.spark-chart__label {
+  font-size: 0.74rem;
+  text-align: center;
+}
+
+.round-ops-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.round-ops-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255, 253, 249, 0.95);
+  border: 1px solid rgba(143, 77, 46, 0.12);
+}
+
+.round-ops-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.round-ops-card__header > div {
+  display: grid;
+  gap: 4px;
+}
+
+.round-ops-card__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(143, 77, 46, 0.1);
+  color: var(--accent-strong);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.round-ops-card__counts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.round-ops-card__counts span {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 248, 240, 0.95);
+  border: 1px solid rgba(143, 77, 46, 0.08);
+  color: var(--muted);
+}
+
+.round-ops-card__counts strong {
+  color: var(--text);
+  font-size: 1.1rem;
 }
 
 .history-rounds {
@@ -850,6 +1036,14 @@ button {
   .metric-grid,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .chart-row {
+    grid-template-columns: 1fr;
+  }
+
+  .spark-chart {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .table td:last-child,

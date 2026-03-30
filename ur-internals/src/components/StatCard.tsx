@@ -2,7 +2,7 @@ interface StatCardProps {
   label: string
   value: string
   helper: string
-  tone?: 'default' | 'accent' | 'success'
+  tone?: 'default' | 'accent' | 'success' | 'warning'
 }
 
 export function StatCard({

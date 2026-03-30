@@ -20,6 +20,10 @@ import {
 } from "./admin";
 import { RPC_ADMIN_EXPORT_TOURNAMENT, rpcAdminExportTournament } from "./export";
 import { RPC_ADMIN_WHOAMI, rpcAdminWhoAmI } from "./auth";
+import {
+  RPC_ADMIN_GET_TOURNAMENT_LIVE_STATUS,
+  rpcAdminGetTournamentLiveStatus,
+} from "./liveStatus";
 import { RPC_TOURNAMENT_JOIN } from "./definitions";
 import { rpcJoinTournament } from "./joins";
 import {
@@ -46,6 +50,7 @@ export const registerTournamentRpcs = (initializer: RuntimeInitializer): void =>
   initializer.registerRpc(RPC_ADMIN_CLOSE_TOURNAMENT, rpcAdminCloseTournament);
   initializer.registerRpc(RPC_ADMIN_FINALIZE_TOURNAMENT, rpcAdminFinalizeTournament);
   initializer.registerRpc(RPC_ADMIN_EXPORT_TOURNAMENT, rpcAdminExportTournament);
+  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_LIVE_STATUS, rpcAdminGetTournamentLiveStatus);
   initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_STANDINGS, rpcAdminGetTournamentStandings);
   initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG, rpcAdminGetTournamentAuditLog);
   initializer.registerRpc(RPC_TOURNAMENT_JOIN, rpcJoinTournament);
@@ -62,6 +67,7 @@ export * from "./auth";
 export * from "./definitions";
 export * from "./export";
 export * from "./joins";
+export * from "./liveStatus";
 export * from "./matchResults";
 export * from "./public";
 export * from "./rewards";

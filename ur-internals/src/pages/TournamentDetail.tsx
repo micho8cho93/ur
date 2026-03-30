@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useSession } from '../auth/useSession'
 import { getTournamentAuditLog } from '../api/auditLog'
+import { getTournamentLiveDetail } from '../api/liveStatus'
 import {
   deleteTournament,
   exportTournament,
@@ -10,12 +10,22 @@ import {
   getTournamentStandings,
   openTournament,
 } from '../api/tournaments'
+import { useSession } from '../auth/useSession'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
 import { getTournamentStructureLabel } from '../tournamentStructure'
-import { formatSingleEliminationRoundLabel } from '../tournamentSizing'
 import type { AuditLogEntry } from '../types/audit'
-import type { Tournament, TournamentEntry, TournamentStandings } from '../types/tournament'
+import type {
+  Tournament,
+  TournamentLiveAlert,
+  TournamentLiveDetailData,
+  TournamentLiveEntry,
+  TournamentStandings,
+  TournamentStatus,
+  TournamentTimelineBucket,
+} from '../types/tournament'
+
+const LIVE_POLL_INTERVAL_MS = 10000
 
 function formatDateTime(value: string | null) {
   if (!value) {
@@ -28,7 +38,56 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value))
 }
 
-function describeEntry(entry: TournamentEntry) {
+function formatTimeAgo(value: string | null) {
+  if (!value) {
+    return 'No activity'
+  }
+
+  const diffMs = Date.now() - new Date(value).getTime()
+  const diffMinutes = Math.max(0, Math.round(diffMs / 60000))
+
+  if (diffMinutes < 1) {
+    return 'Just now'
+  }
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`
+  }
+
+  const diffHours = Math.round(diffMinutes / 60)
+  if (diffHours < 24) {
+    return `${diffHours}h ago`
+  }
+
+  const diffDays = Math.round(diffHours / 24)
+  return `${diffDays}d ago`
+}
+
+function formatBucketLabel(value: string) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+  }).format(new Date(value))
+}
+
+function formatEntryStatus(status: TournamentLiveEntry['status']) {
+  if (status === 'in_match') {
+    return 'In match'
+  }
+
+  if (status === 'ready') {
+    return 'Ready'
+  }
+
+  if (status === 'completed') {
+    return 'Completed'
+  }
+
+  return 'Pending'
+}
+
+function describeEntry(entry: TournamentStandings['entries'][number]) {
   const parts = [
     entry.result ? `Result: ${entry.result}` : null,
     entry.round ? `Round ${entry.round}` : null,
@@ -152,7 +211,7 @@ function describeHistoryMatch(
       return {
         key: entry.entryId,
         headline: `Match ${slot}: ${playerA} has advanced and is waiting for an opponent.`,
-        detail: `This spot will fill once the prior result is confirmed.`,
+        detail: 'This spot will fill once the prior result is confirmed.',
       }
     }
 
@@ -160,7 +219,7 @@ function describeHistoryMatch(
       return {
         key: entry.entryId,
         headline: `Match ${slot}: ${playerB} has advanced and is waiting for an opponent.`,
-        detail: `This spot will fill once the prior result is confirmed.`,
+        detail: 'This spot will fill once the prior result is confirmed.',
       }
     }
 
@@ -220,6 +279,117 @@ function buildTournamentHistoryRounds(
   })
 }
 
+function renderAlertStrip(alerts: TournamentLiveAlert[]) {
+  if (alerts.length === 0) {
+    return <span className="alert-chip alert-chip--info">Quiet</span>
+  }
+
+  return (
+    <>
+      {alerts.map((alert) => (
+        <span
+          key={alert.code}
+          className={`alert-chip alert-chip--${alert.level}`}
+          title={alert.message}
+        >
+          {alert.message}
+        </span>
+      ))}
+    </>
+  )
+}
+
+function renderProgressRows(
+  rows: Array<{
+    key: string
+    label: string
+    valueLabel: string
+    progress: number
+    hint: string
+  }>,
+) {
+  const maxProgress = Math.max(...rows.map((row) => row.progress), 1)
+
+  return (
+    <div className="chart-list">
+      {rows.map((row) => (
+        <div key={row.key} className="chart-row">
+          <div className="chart-row__copy">
+            <strong>{row.label}</strong>
+            <span>{row.hint}</span>
+          </div>
+          <div className="chart-row__bar">
+            <span
+              className="chart-row__fill"
+              style={{ width: `${Math.max(6, (row.progress / maxProgress) * 100)}%` }}
+            />
+          </div>
+          <span className="chart-row__value">{row.valueLabel}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function renderCountRows(
+  rows: Array<{
+    key: string
+    label: string
+    value: number
+    hint: string
+  }>,
+) {
+  const maxValue = Math.max(...rows.map((row) => row.value), 1)
+
+  return (
+    <div className="chart-list">
+      {rows.map((row) => (
+        <div key={row.key} className="chart-row">
+          <div className="chart-row__copy">
+            <strong>{row.label}</strong>
+            <span>{row.hint}</span>
+          </div>
+          <div className="chart-row__bar">
+            <span
+              className="chart-row__fill"
+              style={{ width: `${Math.max(6, (row.value / maxValue) * 100)}%` }}
+            />
+          </div>
+          <span className="chart-row__value">{row.value}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function renderTimelineChart(
+  buckets: TournamentTimelineBucket[],
+  emptyLabel: string,
+) {
+  const maxValue = Math.max(...buckets.map((bucket) => bucket.count), 0)
+
+  if (maxValue === 0) {
+    return <div className="empty-state">{emptyLabel}</div>
+  }
+
+  return (
+    <div className="spark-chart" role="img" aria-label={emptyLabel}>
+      {buckets.map((bucket) => (
+        <div key={bucket.bucketStart} className="spark-chart__bucket">
+          <span className="spark-chart__value">{bucket.count}</span>
+          <span className="spark-chart__rail">
+            <span
+              className="spark-chart__bar"
+              style={{ height: `${Math.max(12, (bucket.count / maxValue) * 100)}%` }}
+            />
+          </span>
+          <span className="spark-chart__label">{formatBucketLabel(bucket.bucketStart)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const emptyStandings: TournamentStandings = {
   entries: [],
   rankCount: null,
@@ -231,6 +401,7 @@ export function TournamentDetailPage() {
   const { tournamentId } = useParams()
   const navigate = useNavigate()
   const [tournament, setTournament] = useState<Tournament | null>(null)
+  const [liveDetail, setLiveDetail] = useState<TournamentLiveDetailData | null>(null)
   const [standings, setStandings] = useState<TournamentStandings>(emptyStandings)
   const [auditEntries, setAuditEntries] = useState<AuditLogEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -242,47 +413,50 @@ export function TournamentDetailPage() {
   const canDeleteTournaments = adminIdentity?.role === 'admin'
   const canFinalizeTournaments = adminIdentity?.role === 'admin'
 
+  async function loadDetailData(showLoading = true) {
+    if (!tournamentId) {
+      setError('Missing tournament id.')
+      setIsLoading(false)
+      return
+    }
+
+    if (showLoading) {
+      setIsLoading(true)
+    }
+
+    setError(null)
+
+    const nextTournament = await getTournament(tournamentId)
+
+    if (!nextTournament) {
+      setTournament(null)
+      setLiveDetail(null)
+      setStandings(emptyStandings)
+      setAuditEntries([])
+      return
+    }
+
+    const nextLiveDetail = await getTournamentLiveDetail(tournamentId)
+
+    const [nextStandings, nextAuditLog] = await Promise.all([
+      nextTournament.status === 'Draft'
+        ? Promise.resolve(emptyStandings)
+        : getTournamentStandings(tournamentId, 100),
+      getTournamentAuditLog(tournamentId, 50),
+    ])
+
+    setTournament(nextTournament)
+    setLiveDetail(nextLiveDetail)
+    setStandings(nextStandings)
+    setAuditEntries(nextAuditLog)
+  }
+
   useEffect(() => {
     let active = true
 
-    async function loadDetail() {
-      if (!tournamentId) {
-        setError('Missing tournament id.')
-        setIsLoading(false)
-        return
-      }
-
-      setIsLoading(true)
-      setError(null)
-
+    async function load() {
       try {
-        const nextTournament = await getTournament(tournamentId)
-
-        if (!active) {
-          return
-        }
-
-        if (!nextTournament) {
-          setTournament(null)
-          setStandings(emptyStandings)
-          setAuditEntries([])
-          return
-        }
-
-        const [nextStandings, nextAuditLog] = await Promise.all([
-          nextTournament.status === 'Draft'
-            ? Promise.resolve(emptyStandings)
-            : getTournamentStandings(tournamentId, 100),
-          getTournamentAuditLog(tournamentId, 50),
-        ])
-
-        if (!active) {
-          return
-        }
-
-        setTournament(nextTournament)
-        setStandings(nextStandings)
-        setAuditEntries(nextAuditLog)
+        await loadDetailData(true)
       } catch (loadError) {
         if (!active) {
           return
@@ -298,10 +472,26 @@ export function TournamentDetailPage() {
       }
     }
 
-    void loadDetail()
+    void load()
+    const intervalId = window.setInterval(() => {
+      if (!active) {
+        return
+      }
+
+      void loadDetailData(false).catch((loadError) => {
+        if (!active) {
+          return
+        }
+
+        const message =
+          loadError instanceof Error ? loadError.message : 'Unable to refresh live tournament status.'
+        setError(message)
+      })
+    }, LIVE_POLL_INTERVAL_MS)
 
     return () => {
       active = false
+      window.clearInterval(intervalId)
     }
   }, [sessionToken, tournamentId])
 
@@ -314,15 +504,8 @@ export function TournamentDetailPage() {
     setIsOpening(true)
 
     try {
-      const openedTournament = await openTournament(tournament.id)
-      const [nextStandings, nextAuditLog] = await Promise.all([
-        getTournamentStandings(openedTournament.id, 100),
-        getTournamentAuditLog(openedTournament.id, 50),
-      ])
-
-      setTournament(openedTournament)
-      setStandings(nextStandings)
-      setAuditEntries(nextAuditLog)
+      await openTournament(tournament.id)
+      await loadDetailData(false)
     } catch (openError) {
       const message =
         openError instanceof Error ? openError.message : 'Unable to open tournament.'
@@ -370,15 +553,8 @@ export function TournamentDetailPage() {
     setIsFinalizing(true)
 
     try {
-      const finalizedTournament = await finalizeTournament(tournament.id)
-      const [nextStandings, nextAuditLog] = await Promise.all([
-        getTournamentStandings(finalizedTournament.id, 100),
-        getTournamentAuditLog(finalizedTournament.id, 50),
-      ])
-
-      setTournament(finalizedTournament)
-      setStandings(nextStandings)
-      setAuditEntries(nextAuditLog)
+      await finalizeTournament(tournament.id)
+      await loadDetailData(false)
     } catch (finalizeError) {
       const message =
         finalizeError instanceof Error ? finalizeError.message : 'Unable to finalize tournament.'
@@ -397,15 +573,12 @@ export function TournamentDetailPage() {
     setIsDownloadingExport(true)
 
     try {
-      const bundle = await exportTournament(tournament.id)
-      const payload = {
-        exportedAt: bundle.exportedAt,
+      const bundle = await exportTournament(tournament.id, {
         tournament,
         standings,
         auditEntries,
-        raw: bundle,
-      }
-      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      })
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
         type: 'application/json',
       })
       const objectUrl = window.URL.createObjectURL(blob)
@@ -427,7 +600,10 @@ export function TournamentDetailPage() {
     }
   }
 
-  const historyRounds = tournament ? buildTournamentHistoryRounds(tournament, standings) : []
+  const historyRounds = useMemo(
+    () => (tournament ? buildTournamentHistoryRounds(tournament, standings) : []),
+    [standings, tournament],
+  )
 
   if (isLoading) {
     return <div className="empty-state">Loading tournament detail...</div>
@@ -443,7 +619,7 @@ export function TournamentDetailPage() {
         <PageHeader
           eyebrow="TournamentDetail"
           title="Tournament not found"
-          description="The requested run was not returned by the Nakama admin RPC."
+          description="The requested run was not returned by the admin API."
           actions={
             <Link to="/tournaments" className="button">
               Back to tournaments
@@ -454,12 +630,31 @@ export function TournamentDetailPage() {
     )
   }
 
+  const liveSummary = liveDetail?.summary ?? {
+    lifecycle: tournament.status as TournamentStatus,
+    alerts: [],
+    currentRound: null,
+    totalMatches: 0,
+    completedMatches: 0,
+    activeMatches: 0,
+    waitingPlayers: 0,
+    lastResultAt: null,
+    finalizeReady: false,
+    readyMatches: 0,
+    pendingMatches: 0,
+    entrants: tournament.entrants,
+    capacity: tournament.maxEntrants,
+  }
+  const liveEntries = liveDetail?.liveEntries ?? []
+  const queueEntries = liveEntries.filter((entry) => entry.status !== 'completed')
+  const blockedEntries = liveEntries.filter((entry) => entry.stale || entry.blockedReason)
+
   return (
     <>
       <PageHeader
         eyebrow="TournamentDetail"
         title={tournament.name}
-        description="Run configuration, standings records, and audit trail for a single tournament run."
+        description="Live tournament control room with queue health, round pressure, bracket progress, and finalized export support."
         actions={
           <div className="page-header__actions">
             {tournament.status === 'Draft' ? (
@@ -519,83 +714,376 @@ export function TournamentDetailPage() {
 
       <section className="panel detail-hero">
         <div className="detail-hero__meta">
-          <StatusBadge status={tournament.status} />
+          <StatusBadge status={liveSummary.lifecycle} />
           <span className="button">{getTournamentStructureLabel(tournament.gameMode)}</span>
           <span className="button">{tournament.operator.toUpperCase()}</span>
+          <span className="button mono">{tournament.id}</span>
         </div>
         <p className="detail-hero__summary">{tournament.description}</p>
+        <div className="alert-chip-row">{renderAlertStrip(liveSummary.alerts)}</div>
 
         <div className="metric-grid">
           <div className="metric-card">
-            <span className="meta-label">Start</span>
-            <strong>{formatDateTime(tournament.startAt)}</strong>
+            <span className="meta-label">Lifecycle</span>
+            <strong>{liveSummary.lifecycle}</strong>
           </div>
           <div className="metric-card">
-            <span className="meta-label">Entries</span>
+            <span className="meta-label">Round progress</span>
             <strong>
-              {tournament.entrants}/{tournament.maxEntrants}
+              {liveSummary.totalMatches > 0
+                ? `${liveSummary.completedMatches}/${liveSummary.totalMatches}`
+                : 'Not seeded'}
             </strong>
           </div>
           <div className="metric-card">
-            <span className="meta-label">Bracket rounds</span>
-            <strong>{formatSingleEliminationRoundLabel(tournament.roundCount)}</strong>
+            <span className="meta-label">Active matches</span>
+            <strong>{liveSummary.activeMatches}</strong>
           </div>
           <div className="metric-card">
-            <span className="meta-label">XP per match win</span>
-            <strong>{tournament.xpPerMatchWin}</strong>
+            <span className="meta-label">Waiting players</span>
+            <strong>{liveSummary.waitingPlayers}</strong>
           </div>
           <div className="metric-card">
-            <span className="meta-label">Champion XP</span>
-            <strong>{tournament.xpForTournamentChampion}</strong>
+            <span className="meta-label">Last result</span>
+            <strong>{liveSummary.lastResultAt ? formatTimeAgo(liveSummary.lastResultAt) : 'No results yet'}</strong>
+          </div>
+          <div className="metric-card">
+            <span className="meta-label">Finalize readiness</span>
+            <strong>{liveSummary.finalizeReady ? 'Ready now' : 'Still live'}</strong>
           </div>
         </div>
+      </section>
+
+      <section className="panel stack">
+        <div className="panel__header">
+          <div>
+            <h3 className="panel__title">Live bracket by round</h3>
+            <span className="panel__subtitle">Pending, ready, active, and completed counts grouped by round.</span>
+          </div>
+          <span className="muted">Polling every 10s</span>
+        </div>
+
+        {!liveDetail || liveDetail.roundStats.length === 0 ? (
+          <div className="empty-state">
+            {tournament.bracket
+              ? 'Round stats are still being assembled for this run.'
+              : 'Bracket stats appear once the field locks and pairings are seeded.'}
+          </div>
+        ) : (
+          <div className="round-ops-grid">
+            {liveDetail.roundStats.map((round) => (
+              <article key={round.round} className="round-ops-card">
+                <div className="round-ops-card__header">
+                  <div>
+                    <strong>{round.label}</strong>
+                    <span>{round.completionPercent}% complete</span>
+                  </div>
+                  <span className="round-ops-card__badge">
+                    {round.completed}/{round.totalMatches}
+                  </span>
+                </div>
+                <div className="round-ops-card__counts">
+                  <span>
+                    Pending
+                    <strong>{round.pending}</strong>
+                  </span>
+                  <span>
+                    Ready
+                    <strong>{round.ready}</strong>
+                  </span>
+                  <span>
+                    In match
+                    <strong>{round.inMatch}</strong>
+                  </span>
+                  <span>
+                    Completed
+                    <strong>{round.completed}</strong>
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="split-grid">
+        <article className="panel">
+          <div className="panel__header">
+            <div>
+              <h3 className="panel__title">Participant state breakdown</h3>
+              <span className="panel__subtitle">Where players currently sit in the bracket lifecycle.</span>
+            </div>
+          </div>
+
+          {renderCountRows([
+            {
+              key: 'lobby',
+              label: 'Lobby',
+              value: liveDetail?.participantStateCounts.lobby ?? 0,
+              hint: 'Registered but not yet assigned',
+            },
+            {
+              key: 'in_match',
+              label: 'In match',
+              value: liveDetail?.participantStateCounts.inMatch ?? 0,
+              hint: 'Players currently playing',
+            },
+            {
+              key: 'waiting',
+              label: 'Waiting next round',
+              value: liveDetail?.participantStateCounts.waitingNextRound ?? 0,
+              hint: 'Advanced players waiting on the bracket',
+            },
+            {
+              key: 'eliminated',
+              label: 'Eliminated',
+              value: liveDetail?.participantStateCounts.eliminated ?? 0,
+              hint: 'Players already knocked out',
+            },
+            {
+              key: 'runner_up',
+              label: 'Runner-up',
+              value: liveDetail?.participantStateCounts.runnerUp ?? 0,
+              hint: 'Finalist locked in',
+            },
+            {
+              key: 'champion',
+              label: 'Champion',
+              value: liveDetail?.participantStateCounts.champion ?? 0,
+              hint: 'Winning slot',
+            },
+          ])}
+        </article>
+
+        <article className="panel">
+          <div className="panel__header">
+            <div>
+              <h3 className="panel__title">Round completion by round</h3>
+              <span className="panel__subtitle">Progress pressure across the current bracket.</span>
+            </div>
+          </div>
+
+          {!liveDetail || liveDetail.roundStats.length === 0 ? (
+            <div className="empty-state">No round completion data yet.</div>
+          ) : (
+            renderProgressRows(
+              liveDetail.roundStats.map((round) => ({
+                key: String(round.round),
+                label: round.label,
+                valueLabel: `${round.completed}/${round.totalMatches}`,
+                progress: round.completionPercent,
+                hint:
+                  round.totalMatches > 0
+                    ? `${round.totalMatches - round.completed} unresolved matches`
+                    : 'No pairings yet',
+              })),
+            )
+          )}
+        </article>
+      </section>
+
+      <section className="split-grid">
+        <article className="panel">
+          <div className="panel__header">
+            <div>
+              <h3 className="panel__title">Match duration distribution</h3>
+              <span className="panel__subtitle">Histogram of completed match durations.</span>
+            </div>
+          </div>
+
+          {!liveDetail || liveDetail.matchDurationBuckets.every((bucket) => bucket.count === 0) ? (
+            <div className="empty-state">Completed matches will populate duration buckets here.</div>
+          ) : (
+            renderCountRows(
+              liveDetail.matchDurationBuckets.map((bucket) => ({
+                key: bucket.label,
+                label: bucket.label,
+                value: bucket.count,
+                hint: bucket.count === 1 ? '1 completed match' : `${bucket.count} completed matches`,
+              })),
+            )
+          )}
+        </article>
+
+        <article className="panel">
+          <div className="panel__header">
+            <div>
+              <h3 className="panel__title">Seed survival</h3>
+              <span className="panel__subtitle">How quickly higher seeds are falling out by round.</span>
+            </div>
+          </div>
+
+          {!liveDetail || liveDetail.seedSurvival.length === 0 ? (
+            <div className="empty-state">Seed survival appears after the bracket is seeded.</div>
+          ) : (
+            renderCountRows(
+              liveDetail.seedSurvival.map((point) => ({
+                key: String(point.round),
+                label: point.label,
+                value: point.survivingCount,
+                hint:
+                  point.topSeedRemaining !== null
+                    ? `Top seed remaining: #${point.topSeedRemaining}`
+                    : 'No seeds remaining yet',
+              })),
+            )
+          )}
+        </article>
       </section>
 
       <section className="split-grid">
         <article className="panel stack">
           <div className="panel__header">
             <div>
-              <h3 className="panel__title">Configuration</h3>
-              <span className="panel__subtitle">Normalized from the run record and Nakama tournament.</span>
+              <h3 className="panel__title">Match queue</h3>
+              <span className="panel__subtitle">Live ready, pending, and active bracket entries.</span>
             </div>
           </div>
 
-          <div className="metric-grid">
-            <div className="metric-card">
-              <span className="meta-label">Run id</span>
-              <strong className="mono">{tournament.id}</strong>
+          {queueEntries.length === 0 ? (
+            <div className="empty-state">No queued or active matches right now.</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Round</th>
+                    <th>Status</th>
+                    <th>Players</th>
+                    <th>Context</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {queueEntries.map((entry) => (
+                    <tr key={entry.entryId}>
+                      <td>
+                        <div className="stack stack--compact">
+                          <strong>Round {entry.round}</strong>
+                          <span className="muted mono">{entry.entryId}</span>
+                        </div>
+                      </td>
+                      <td>{formatEntryStatus(entry.status)}</td>
+                      <td>
+                        {entry.playerADisplayName ?? 'TBD'} vs {entry.playerBDisplayName ?? 'TBD'}
+                      </td>
+                      <td>{entry.blockedReason ?? entry.staleReason ?? 'Healthy queue state'}</td>
+                      <td>
+                        {formatDateTime(
+                          entry.startedAt ?? entry.readyAt ?? entry.completedAt ?? null,
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div className="metric-card">
-              <span className="meta-label">Tournament id</span>
-              <strong className="mono">{tournament.tournamentId}</strong>
-            </div>
-            <div className="metric-card">
-              <span className="meta-label">Created by</span>
-              <strong>{tournament.createdBy}</strong>
-            </div>
-            <div className="metric-card">
-              <span className="meta-label">Structure</span>
-              <strong>{getTournamentStructureLabel(tournament.gameMode)}</strong>
-            </div>
-            <div className="metric-card">
-              <span className="meta-label">Join required</span>
-              <strong>{tournament.joinRequired ? 'Yes' : 'No'}</strong>
-            </div>
-            <div className="metric-card">
-              <span className="meta-label">XP per match win</span>
-              <strong>{tournament.xpPerMatchWin}</strong>
-            </div>
-            <div className="metric-card">
-              <span className="meta-label">Champion XP</span>
-              <strong>{tournament.xpForTournamentChampion}</strong>
-            </div>
-            <div className="metric-card">
-              <span className="meta-label">Finish rule</span>
-              <strong>Automatic on champion</strong>
-            </div>
-          </div>
+          )}
         </article>
 
+        <article className="panel stack">
+          <div className="panel__header">
+            <div>
+              <h3 className="panel__title">Blocked / stale states</h3>
+              <span className="panel__subtitle">Entries that need a launch, an upstream result, or manual investigation.</span>
+            </div>
+          </div>
+
+          {blockedEntries.length === 0 ? (
+            <div className="empty-state">No blocked or stale states detected.</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Entry</th>
+                    <th>Status</th>
+                    <th>Reason</th>
+                    <th>When</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {blockedEntries.map((entry) => (
+                    <tr key={`${entry.entryId}-blocked`}>
+                      <td>
+                        <div className="stack stack--compact">
+                          <strong>Round {entry.round}</strong>
+                          <span className="muted mono">{entry.entryId}</span>
+                        </div>
+                      </td>
+                      <td>{entry.stale ? 'Stale' : formatEntryStatus(entry.status)}</td>
+                      <td>{entry.staleReason ?? entry.blockedReason ?? 'Operator review needed'}</td>
+                      <td>{formatDateTime(entry.startedAt ?? entry.readyAt ?? null)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+      </section>
+
+      <section className="split-grid">
+        <article className="panel stack">
+          <div className="panel__header">
+            <div>
+              <h3 className="panel__title">Bracket history</h3>
+              <span className="panel__subtitle">Round-by-round summaries for recent and completed pairings.</span>
+            </div>
+          </div>
+
+          {historyRounds.length === 0 ? (
+            <div className="empty-state">
+              {tournament.bracket
+                ? 'Bracket history is still being assembled for this run.'
+                : 'Round history appears once the field locks and bracket pairings are created.'}
+            </div>
+          ) : (
+            <div className="history-rounds">
+              {historyRounds.map((round) => (
+                <details
+                  key={round.round}
+                  className="history-round"
+                  open={round.round === historyRounds[historyRounds.length - 1]?.round}
+                >
+                  <summary className="history-round__summary">
+                    <div className="history-round__summary-copy">
+                      <strong>{round.title}</strong>
+                      <span className="muted">{round.summary}</span>
+                    </div>
+                    <span className="history-round__toggle">Details</span>
+                  </summary>
+
+                  <ul className="history-round__list">
+                    {round.matches.map((match) => (
+                      <li key={match.key} className="history-round__item">
+                        <strong>{match.headline}</strong>
+                        <span className="muted">{match.detail}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ))}
+            </div>
+          )}
+        </article>
+
+        <article className="panel stack">
+          <div className="panel__header">
+            <div>
+              <h3 className="panel__title">Audit activity timeline</h3>
+              <span className="panel__subtitle">Recent operator activity for this run only.</span>
+            </div>
+          </div>
+
+          {renderTimelineChart(
+            liveDetail?.auditActivityTimeline ?? [],
+            'No audit activity recorded in the current time window.',
+          )}
+        </article>
+      </section>
+
+      <section className="split-grid">
         <article className="panel stack">
           <div className="panel__header">
             <div>
@@ -623,7 +1111,7 @@ export function TournamentDetailPage() {
                     <th>Player</th>
                     <th>Score</th>
                     <th>Subscore</th>
-                    <th>Counted Matches</th>
+                    <th>Counted matches</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -649,94 +1137,12 @@ export function TournamentDetailPage() {
             </div>
           )}
         </article>
-      </section>
-
-      <section className="panel stack">
-        <div className="panel__header">
-          <div>
-            <h3 className="panel__title">Tournament history</h3>
-            <span className="panel__subtitle">
-              Single-elimination bracket results grouped into round-by-round summaries.
-            </span>
-          </div>
-        </div>
-
-        {historyRounds.length === 0 ? (
-          <div className="empty-state">
-            {tournament.bracket
-              ? 'Bracket history is still being assembled for this run.'
-              : 'Round history appears once the tournament field locks and bracket pairings are created.'}
-          </div>
-        ) : (
-          <div className="history-rounds">
-            {historyRounds.map((round) => (
-              <details
-                key={round.round}
-                className="history-round"
-                open={round.round === historyRounds[historyRounds.length - 1]?.round}
-              >
-                <summary className="history-round__summary">
-                  <div className="history-round__summary-copy">
-                    <strong>{round.title}</strong>
-                    <span className="muted">{round.summary}</span>
-                  </div>
-                  <span className="history-round__toggle">Details</span>
-                </summary>
-
-                <ul className="history-round__list">
-                  {round.matches.map((match) => (
-                    <li key={match.key} className="history-round__item">
-                      <strong>{match.headline}</strong>
-                      <span className="muted">{match.detail}</span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="split-grid">
-        <article className="panel stack">
-          <div className="panel__header">
-            <div>
-              <h3 className="panel__title">Entries</h3>
-              <span className="panel__subtitle">Last written tournament record metadata per owner.</span>
-            </div>
-          </div>
-
-          {standings.entries.length === 0 ? (
-            <div className="empty-state">No entry records available yet.</div>
-          ) : (
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Player</th>
-                    <th>Summary</th>
-                    <th>Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {standings.entries.map((entry) => (
-                    <tr key={`${entry.ownerId}-entry`}>
-                      <td>{entry.username}</td>
-                      <td>{describeEntry(entry)}</td>
-                      <td>{formatDateTime(entry.updatedAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </article>
 
         <article className="panel stack">
           <div className="panel__header">
             <div>
               <h3 className="panel__title">Audit trace</h3>
-              <span className="panel__subtitle">Returned by the per-run audit RPC.</span>
+              <span className="panel__subtitle">Per-run audit entries from the admin log.</span>
             </div>
           </div>
 
@@ -759,6 +1165,40 @@ export function TournamentDetailPage() {
             </ul>
           )}
         </article>
+      </section>
+
+      <section className="panel stack">
+        <div className="panel__header">
+          <div>
+            <h3 className="panel__title">Entry records</h3>
+            <span className="panel__subtitle">Last written tournament record metadata per owner.</span>
+          </div>
+        </div>
+
+        {standings.entries.length === 0 ? (
+          <div className="empty-state">No entry records available yet.</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th>Summary</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {standings.entries.map((entry) => (
+                  <tr key={`${entry.ownerId}-entry`}>
+                    <td>{entry.username}</td>
+                    <td>{describeEntry(entry)}</td>
+                    <td>{formatDateTime(entry.updatedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </>
   )

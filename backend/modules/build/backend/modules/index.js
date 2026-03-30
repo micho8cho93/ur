@@ -6799,6 +6799,668 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
   };
 };
 
+// backend/modules/tournaments/export.ts
+var RPC_ADMIN_EXPORT_TOURNAMENT = "rpc_admin_export_tournament";
+var readTournamentAuditEntries = (nk, runId) => {
+  var _a, _b;
+  const objects = nk.storageRead([
+    {
+      collection: TOURNAMENT_AUDIT_COLLECTION,
+      key: TOURNAMENT_AUDIT_LOG_KEY
+    }
+  ]);
+  const log = asRecord(
+    (_b = (_a = findStorageObject(objects, TOURNAMENT_AUDIT_COLLECTION, TOURNAMENT_AUDIT_LOG_KEY)) == null ? void 0 : _a.value) != null ? _b : null
+  );
+  const entries = Array.isArray(log == null ? void 0 : log.entries) ? log.entries : [];
+  return entries.map((entry) => {
+    var _a2;
+    return (_a2 = asRecord(entry)) != null ? _a2 : null;
+  }).filter((entry) => Boolean(entry)).filter((entry) => {
+    const targetId = readStringField6(entry, ["targetId", "target_id"]);
+    const tournamentId = readStringField6(entry, ["tournamentId", "tournament_id"]);
+    return targetId === runId || tournamentId === runId;
+  });
+};
+var readTournamentMatchResults = (nk, resultIds) => {
+  if (resultIds.length === 0) {
+    return [];
+  }
+  const objects = nk.storageRead(
+    resultIds.map((resultId) => ({
+      collection: TOURNAMENT_MATCH_RESULTS_COLLECTION2,
+      key: resultId
+    }))
+  );
+  return resultIds.map(
+    (resultId) => {
+      var _a, _b;
+      return asRecord((_b = (_a = findStorageObject(objects, TOURNAMENT_MATCH_RESULTS_COLLECTION2, resultId)) == null ? void 0 : _a.value) != null ? _b : null);
+    }
+  ).filter((entry) => Boolean(entry));
+};
+var resolveExportableRun = (logger, nk, runId) => {
+  var _a;
+  const existingRun = readRunOrThrow(nk, runId);
+  if (existingRun.lifecycle === "finalized") {
+    return existingRun;
+  }
+  if ((_a = existingRun.bracket) == null ? void 0 : _a.finalizedAt) {
+    return finalizeTournamentRun(logger, nk, runId, {}).run;
+  }
+  throw new Error("Tournament export is only available after the run is finalized.");
+};
+var resolveFinalStandingsSnapshot = (nk, run, nakamaTournament) => {
+  var _a, _b, _c;
+  if (run.finalSnapshot) {
+    return run.finalSnapshot;
+  }
+  const participantCount = (_c = (_b = (_a = run.bracket) == null ? void 0 : _a.participants.length) != null ? _b : run.registrations.length) != null ? _c : Math.max(1, run.maxSize);
+  return resolveRunStandingsSnapshot(
+    nk,
+    run,
+    Math.max(1, participantCount),
+    resolveOverrideExpiry(null, nakamaTournament)
+  );
+};
+var rpcAdminExportTournament = (ctx, logger, nk, payload) => {
+  return runAuditedAdminRpc(
+    (_ctx, _logger, _nk, _payload) => {
+      assertAdmin(_ctx, "viewer", _nk);
+      const parsed = parseJsonPayload(_payload);
+      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      if (!runId) {
+        throw new Error("runId is required.");
+      }
+      const run = resolveExportableRun(_logger, _nk, runId);
+      const nakamaTournament = getNakamaTournamentById(_nk, run.tournamentId);
+      const standings = resolveFinalStandingsSnapshot(_nk, run, nakamaTournament);
+      const countedResultIds = readStringArrayField(run.metadata, [
+        "countedResultIds",
+        "counted_result_ids"
+      ]);
+      const lastProcessedResultId = readStringField6(run.metadata, [
+        "lastProcessedResultId",
+        "last_processed_result_id"
+      ]);
+      const resultIds = Array.from(
+        new Set(
+          countedResultIds.concat(
+            lastProcessedResultId && !countedResultIds.includes(lastProcessedResultId) ? [lastProcessedResultId] : []
+          )
+        )
+      );
+      return JSON.stringify({
+        ok: true,
+        exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        run,
+        nakamaTournament,
+        standings,
+        auditEntries: readTournamentAuditEntries(_nk, run.runId),
+        matchResults: readTournamentMatchResults(_nk, resultIds)
+      });
+    },
+    {
+      action: RPC_ADMIN_EXPORT_TOURNAMENT
+    },
+    ctx,
+    logger,
+    nk,
+    payload
+  );
+};
+
+// backend/modules/tournaments/liveStatus.ts
+var RPC_ADMIN_GET_TOURNAMENT_LIVE_STATUS = "rpc_admin_get_tournament_live_status";
+var STARTING_SOON_WINDOW_MS = 60 * 60 * 1e3;
+var READY_STALE_WINDOW_MS = 10 * 60 * 1e3;
+var IN_MATCH_STALE_WINDOW_MS = 25 * 60 * 1e3;
+var RECENT_RUN_WINDOW_MS = 72 * 60 * 60 * 1e3;
+var DEFAULT_OVERVIEW_LIMIT = 12;
+var MAX_OVERVIEW_LIMIT = 50;
+var OVERVIEW_TIMELINE_BUCKET_COUNT = 8;
+var OVERVIEW_TIMELINE_BUCKET_HOURS = 6;
+var DETAIL_TIMELINE_BUCKET_COUNT = 8;
+var DETAIL_TIMELINE_BUCKET_HOURS = 3;
+var parseIsoMs = (value) => {
+  if (!value) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+var maxIso = (...values) => {
+  const timestamps = values.map((value) => typeof value === "string" ? parseIsoMs(value) : null).filter((value) => value !== null);
+  if (timestamps.length === 0) {
+    return null;
+  }
+  return new Date(Math.max(...timestamps)).toISOString();
+};
+var toIsoFromUnixSeconds = (seconds) => {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
+    return null;
+  }
+  return new Date(seconds * 1e3).toISOString();
+};
+var formatCountLabel = (count, singular, plural = `${singular}s`) => `${count} ${count === 1 ? singular : plural}`;
+var describeElapsedMinutes = (durationMs) => {
+  const minutes = Math.max(1, Math.round(durationMs / 6e4));
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+};
+var buildParticipantNameMap = (run) => {
+  var _a, _b;
+  const names = /* @__PURE__ */ new Map();
+  run.registrations.forEach((registration) => {
+    names.set(registration.userId, registration.displayName);
+  });
+  (_a = run.bracket) == null ? void 0 : _a.participants.forEach((participant) => {
+    names.set(participant.userId, participant.displayName);
+  });
+  (_b = run.finalSnapshot) == null ? void 0 : _b.records.forEach((record) => {
+    const normalized = asRecord(record);
+    const ownerId = readStringField6(normalized, ["ownerId", "owner_id"]);
+    const username = readStringField6(normalized, ["username"]);
+    if (ownerId && username) {
+      names.set(ownerId, username);
+    }
+  });
+  return names;
+};
+var getEntrantCount = (run, nakamaTournament) => {
+  const nakamaSize = readNumberField4(nakamaTournament, ["size", "size"]);
+  return Math.max(
+    run.registrations.length,
+    typeof nakamaSize === "number" && Number.isFinite(nakamaSize) ? Math.floor(nakamaSize) : 0
+  );
+};
+var createEmptyParticipantStateCounts = () => ({
+  lobby: 0,
+  inMatch: 0,
+  waitingNextRound: 0,
+  eliminated: 0,
+  runnerUp: 0,
+  champion: 0
+});
+var incrementParticipantStateCount = (counts, state) => {
+  if (state === "in_match") {
+    counts.inMatch += 1;
+    return;
+  }
+  if (state === "waiting_next_round") {
+    counts.waitingNextRound += 1;
+    return;
+  }
+  if (state === "eliminated") {
+    counts.eliminated += 1;
+    return;
+  }
+  if (state === "runner_up") {
+    counts.runnerUp += 1;
+    return;
+  }
+  if (state === "champion") {
+    counts.champion += 1;
+    return;
+  }
+  counts.lobby += 1;
+};
+var buildParticipantStateCounts = (run) => {
+  var _a, _b;
+  const counts = createEmptyParticipantStateCounts();
+  const participants = (_b = (_a = run.bracket) == null ? void 0 : _a.participants) != null ? _b : [];
+  if (participants.length === 0) {
+    counts.lobby = run.registrations.length;
+    return counts;
+  }
+  participants.forEach((participant) => {
+    incrementParticipantStateCount(counts, participant.state);
+  });
+  return counts;
+};
+var getRoundLabel = (round, totalRounds) => {
+  if (typeof totalRounds === "number" && round === totalRounds) {
+    return "Final";
+  }
+  return `Round ${round}`;
+};
+var getEntryDurationSeconds = (entry) => {
+  const startedAtMs = parseIsoMs(entry.startedAt);
+  const completedAtMs = parseIsoMs(entry.completedAt);
+  if (startedAtMs === null || completedAtMs === null || completedAtMs < startedAtMs) {
+    return null;
+  }
+  return Math.floor((completedAtMs - startedAtMs) / 1e3);
+};
+var isReadyEntryStale = (entry, nowMs) => {
+  var _a;
+  if (entry.status !== "ready") {
+    return false;
+  }
+  const readyAtMs = parseIsoMs((_a = entry.readyAt) != null ? _a : entry.updatedAt);
+  return readyAtMs !== null && nowMs - readyAtMs >= READY_STALE_WINDOW_MS;
+};
+var isInMatchEntryStale = (entry, nowMs) => {
+  var _a;
+  if (entry.status !== "in_match") {
+    return false;
+  }
+  const startedAtMs = parseIsoMs((_a = entry.startedAt) != null ? _a : entry.updatedAt);
+  return startedAtMs !== null && nowMs - startedAtMs >= IN_MATCH_STALE_WINDOW_MS;
+};
+var buildEntryBlockedReason = (entry, nameByUserId) => {
+  var _a, _b;
+  if (entry.status === "pending") {
+    if (entry.playerAUserId && !entry.playerBUserId) {
+      return `${(_a = nameByUserId.get(entry.playerAUserId)) != null ? _a : entry.playerAUserId} is waiting for an opponent.`;
+    }
+    if (!entry.playerAUserId && entry.playerBUserId) {
+      return `${(_b = nameByUserId.get(entry.playerBUserId)) != null ? _b : entry.playerBUserId} is waiting for an opponent.`;
+    }
+    if (entry.sourceEntryIds.length > 0) {
+      return `Waiting for winners from ${entry.sourceEntryIds.join(", ")}.`;
+    }
+    return "Waiting for the bracket to resolve upstream results.";
+  }
+  return null;
+};
+var buildEntryStaleReason = (entry, nowMs) => {
+  var _a, _b;
+  if (entry.status === "ready") {
+    const readyAtMs = parseIsoMs((_a = entry.readyAt) != null ? _a : entry.updatedAt);
+    if (readyAtMs !== null && nowMs - readyAtMs >= READY_STALE_WINDOW_MS) {
+      return `Ready for ${describeElapsedMinutes(nowMs - readyAtMs)} without a match launch.`;
+    }
+  }
+  if (entry.status === "in_match") {
+    const startedAtMs = parseIsoMs((_b = entry.startedAt) != null ? _b : entry.updatedAt);
+    if (startedAtMs !== null && nowMs - startedAtMs >= IN_MATCH_STALE_WINDOW_MS) {
+      return `In match for ${describeElapsedMinutes(nowMs - startedAtMs)} without a result.`;
+    }
+  }
+  return null;
+};
+var sortLiveEntries = (entries) => {
+  const statusPriority = {
+    in_match: 0,
+    ready: 1,
+    pending: 2,
+    completed: 3
+  };
+  return entries.slice().sort((left, right) => {
+    if (statusPriority[left.status] !== statusPriority[right.status]) {
+      return statusPriority[left.status] - statusPriority[right.status];
+    }
+    if (left.round !== right.round) {
+      return left.round - right.round;
+    }
+    return left.slot - right.slot;
+  });
+};
+var buildLiveEntries = (run, nowMs) => {
+  var _a, _b;
+  const nameByUserId = buildParticipantNameMap(run);
+  return sortLiveEntries(
+    ((_b = (_a = run.bracket) == null ? void 0 : _a.entries) != null ? _b : []).map((entry) => {
+      var _a2, _b2;
+      const staleReason = buildEntryStaleReason(entry, nowMs);
+      return {
+        entryId: entry.entryId,
+        round: entry.round,
+        slot: entry.slot,
+        status: entry.status,
+        playerAUserId: entry.playerAUserId,
+        playerADisplayName: entry.playerAUserId ? (_a2 = nameByUserId.get(entry.playerAUserId)) != null ? _a2 : entry.playerAUserId : null,
+        playerBUserId: entry.playerBUserId,
+        playerBDisplayName: entry.playerBUserId ? (_b2 = nameByUserId.get(entry.playerBUserId)) != null ? _b2 : entry.playerBUserId : null,
+        winnerUserId: entry.winnerUserId,
+        loserUserId: entry.loserUserId,
+        matchId: entry.matchId,
+        readyAt: entry.readyAt,
+        startedAt: entry.startedAt,
+        completedAt: entry.completedAt,
+        durationSeconds: getEntryDurationSeconds(entry),
+        stale: staleReason !== null,
+        staleReason,
+        blockedReason: buildEntryBlockedReason(entry, nameByUserId)
+      };
+    })
+  );
+};
+var buildRoundStats = (bracket) => {
+  if (!bracket || bracket.entries.length === 0) {
+    return [];
+  }
+  const rounds = Array.from(new Set(bracket.entries.map((entry) => entry.round))).sort((left, right) => left - right);
+  return rounds.map((round) => {
+    const entries = bracket.entries.filter((entry) => entry.round === round);
+    const pending = entries.filter((entry) => entry.status === "pending").length;
+    const ready = entries.filter((entry) => entry.status === "ready").length;
+    const inMatch = entries.filter((entry) => entry.status === "in_match").length;
+    const completed = entries.filter((entry) => entry.status === "completed").length;
+    return {
+      round,
+      label: getRoundLabel(round, bracket.totalRounds),
+      totalMatches: entries.length,
+      pending,
+      ready,
+      inMatch,
+      completed,
+      completionPercent: entries.length > 0 ? Math.round(completed / entries.length * 100) : 0
+    };
+  });
+};
+var buildTournamentLiveSummary = (run, nakamaTournament, auditEntries, nowMs) => {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+  const participantCounts = buildParticipantStateCounts(run);
+  const roundStats = buildRoundStats(run.bracket);
+  const entries = (_b = (_a = run.bracket) == null ? void 0 : _a.entries) != null ? _b : [];
+  const totalMatches = entries.length;
+  const completedMatches = roundStats.reduce((total, round) => total + round.completed, 0);
+  const pendingMatches = roundStats.reduce((total, round) => total + round.pending, 0);
+  const readyMatches = roundStats.reduce((total, round) => total + round.ready, 0);
+  const activeMatches = roundStats.reduce((total, round) => total + round.inMatch, 0);
+  const staleEntryCount = entries.filter(
+    (entry) => isReadyEntryStale(entry, nowMs) || isInMatchEntryStale(entry, nowMs)
+  ).length;
+  const startAt = (_d = toIsoFromUnixSeconds((_c = readNumberField4(nakamaTournament, ["startTime", "start_time"])) != null ? _c : run.startTime)) != null ? _d : null;
+  const currentRound = getTournamentBracketCurrentRound(run.bracket);
+  const lastResultAt = entries.reduce(
+    (latest, entry) => maxIso(latest, entry.completedAt),
+    null
+  );
+  const lastActivityAt = maxIso(
+    run.updatedAt,
+    lastResultAt,
+    ...entries.flatMap((entry) => [entry.updatedAt, entry.readyAt, entry.startedAt, entry.completedAt]),
+    ...auditEntries.map((entry) => entry.createdAt)
+  );
+  const finalizedFromBracket = Boolean((_e = run.bracket) == null ? void 0 : _e.finalizedAt) || totalMatches > 0 && completedMatches === totalMatches;
+  const finalizeReady = run.lifecycle !== "finalized" && finalizedFromBracket;
+  const startingSoon = (() => {
+    const startAtMs = parseIsoMs(startAt);
+    return startAtMs !== null && startAtMs > nowMs && startAtMs - nowMs <= STARTING_SOON_WINDOW_MS && run.lifecycle !== "finalized";
+  })();
+  const alerts = [];
+  if (staleEntryCount > 0) {
+    alerts.push({
+      code: "stale_match",
+      level: "critical",
+      message: `${formatCountLabel(staleEntryCount, "stale match")} needs operator attention.`,
+      count: staleEntryCount
+    });
+  }
+  if (readyMatches > 0) {
+    alerts.push({
+      code: "ready_matches",
+      level: "warning",
+      message: `${formatCountLabel(readyMatches, "match")} ready to launch.`,
+      count: readyMatches
+    });
+  }
+  if (activeMatches > 0) {
+    alerts.push({
+      code: "active_matches",
+      level: "info",
+      message: `${formatCountLabel(activeMatches, "active match")} in progress.`,
+      count: activeMatches
+    });
+  }
+  if (participantCounts.waitingNextRound > 0) {
+    alerts.push({
+      code: "waiting_players",
+      level: readyMatches > 0 || activeMatches > 0 ? "info" : "warning",
+      message: `${formatCountLabel(participantCounts.waitingNextRound, "player")} waiting for the next round.`,
+      count: participantCounts.waitingNextRound
+    });
+  }
+  if (startingSoon) {
+    alerts.push({
+      code: "starting_soon",
+      level: "info",
+      message: "Run starts within the next hour.",
+      count: 1
+    });
+  }
+  if (finalizeReady) {
+    alerts.push({
+      code: "finalize_ready",
+      level: "success",
+      message: "Bracket is complete and ready to finalize.",
+      count: 1
+    });
+  }
+  if (run.lifecycle === "finalized") {
+    alerts.push({
+      code: "finalized",
+      level: "success",
+      message: "Run is finalized and export-ready.",
+      count: 1
+    });
+  }
+  const actionNeeded = alerts.some((alert) => alert.level === "warning" || alert.level === "critical");
+  const entrants = getEntrantCount(run, nakamaTournament);
+  const capacity = Math.max(run.maxSize, entrants);
+  const registrationFillPercent = capacity > 0 ? Math.round(entrants / capacity * 100) : 0;
+  const urgencyScore = staleEntryCount * 100 + readyMatches * 35 + activeMatches * 20 + participantCounts.waitingNextRound * 8 + (startingSoon ? 15 : 0) + (run.lifecycle === "open" ? 10 : 0) + (finalizeReady ? 5 : 0);
+  return {
+    runId: run.runId,
+    tournamentId: run.tournamentId,
+    title: run.title,
+    lifecycle: run.lifecycle,
+    startAt,
+    openedAt: run.openedAt,
+    closedAt: run.closedAt,
+    finalizedAt: (_h = (_g = run.finalizedAt) != null ? _g : (_f = run.bracket) == null ? void 0 : _f.finalizedAt) != null ? _h : null,
+    updatedAt: run.updatedAt,
+    entrants,
+    capacity,
+    registrationFillPercent,
+    currentRound,
+    totalRounds: (_k = (_j = (_i = run.bracket) == null ? void 0 : _i.totalRounds) != null ? _j : run.maxNumScore) != null ? _k : null,
+    totalMatches,
+    completedMatches,
+    pendingMatches,
+    readyMatches,
+    activeMatches,
+    waitingPlayers: participantCounts.waitingNextRound,
+    playersInMatch: participantCounts.inMatch,
+    lastActivityAt,
+    lastResultAt,
+    startingSoon,
+    finalizeReady,
+    actionNeeded,
+    urgencyScore,
+    alerts
+  };
+};
+var buildTimelineBuckets = (timestamps, nowMs, bucketCount, bucketHours) => {
+  const bucketWidthMs = bucketHours * 60 * 60 * 1e3;
+  const firstBucketStartMs = nowMs - bucketWidthMs * (bucketCount - 1);
+  return Array.from({ length: bucketCount }, (_, index) => {
+    const bucketStartMs = firstBucketStartMs + index * bucketWidthMs;
+    const bucketEndMs = bucketStartMs + bucketWidthMs;
+    return {
+      bucketStart: new Date(bucketStartMs).toISOString(),
+      bucketEnd: new Date(bucketEndMs).toISOString(),
+      count: timestamps.reduce((total, timestamp) => {
+        const parsed = parseIsoMs(timestamp);
+        return parsed !== null && parsed >= bucketStartMs && parsed < bucketEndMs ? total + 1 : total;
+      }, 0)
+    };
+  });
+};
+var buildMatchDurationBuckets = (bracket) => {
+  var _a;
+  const durations = ((_a = bracket == null ? void 0 : bracket.entries) != null ? _a : []).map((entry) => getEntryDurationSeconds(entry)).filter((duration) => duration !== null);
+  const buckets = [
+    { label: "<5m", minSeconds: 0, maxSeconds: 5 * 60, count: 0 },
+    { label: "5-10m", minSeconds: 5 * 60, maxSeconds: 10 * 60, count: 0 },
+    { label: "10-15m", minSeconds: 10 * 60, maxSeconds: 15 * 60, count: 0 },
+    { label: "15-20m", minSeconds: 15 * 60, maxSeconds: 20 * 60, count: 0 },
+    { label: "20m+", minSeconds: 20 * 60, maxSeconds: null, count: 0 }
+  ];
+  durations.forEach((duration) => {
+    var _a2;
+    const bucket = (_a2 = buckets.find((candidate) => {
+      if (candidate.maxSeconds === null) {
+        return duration >= candidate.minSeconds;
+      }
+      return duration >= candidate.minSeconds && duration < candidate.maxSeconds;
+    })) != null ? _a2 : buckets[buckets.length - 1];
+    bucket.count += 1;
+  });
+  return buckets;
+};
+var buildSeedSurvival = (bracket) => {
+  if (!bracket || bracket.participants.length === 0) {
+    return [];
+  }
+  const seedByUserId = bracket.participants.reduce((accumulator, participant) => {
+    accumulator[participant.userId] = participant.seed;
+    return accumulator;
+  }, {});
+  const remainingUserIds = new Set(bracket.participants.map((participant) => participant.userId));
+  return Array.from({ length: bracket.totalRounds }, (_, index) => index + 1).map((round) => {
+    var _a;
+    bracket.entries.filter((entry) => entry.round === round && entry.status === "completed" && entry.loserUserId).forEach((entry) => {
+      if (entry.loserUserId) {
+        remainingUserIds.delete(entry.loserUserId);
+      }
+    });
+    const remainingSeeds = Array.from(remainingUserIds).map((userId) => seedByUserId[userId]).filter((seed) => typeof seed === "number" && Number.isFinite(seed)).sort((left, right) => left - right);
+    const averageSeedRemaining = remainingSeeds.length > 0 ? Number((remainingSeeds.reduce((total, seed) => total + seed, 0) / remainingSeeds.length).toFixed(2)) : null;
+    return {
+      round,
+      label: getRoundLabel(round, bracket.totalRounds),
+      survivingCount: remainingSeeds.length,
+      topSeedRemaining: (_a = remainingSeeds[0]) != null ? _a : null,
+      averageSeedRemaining
+    };
+  });
+};
+var compareSummariesByUrgency = (left, right) => {
+  var _a, _b, _c, _d;
+  if (left.urgencyScore !== right.urgencyScore) {
+    return right.urgencyScore - left.urgencyScore;
+  }
+  const leftActivity = (_b = parseIsoMs((_a = left.lastActivityAt) != null ? _a : left.updatedAt)) != null ? _b : 0;
+  const rightActivity = (_d = parseIsoMs((_c = right.lastActivityAt) != null ? _c : right.updatedAt)) != null ? _d : 0;
+  if (leftActivity !== rightActivity) {
+    return rightActivity - leftActivity;
+  }
+  return left.runId.localeCompare(right.runId);
+};
+var isOverviewCandidate = (summary, nowMs) => {
+  var _a, _b;
+  if (summary.lifecycle !== "finalized") {
+    return true;
+  }
+  const recentActivityMs = parseIsoMs((_b = (_a = summary.lastActivityAt) != null ? _a : summary.finalizedAt) != null ? _b : summary.updatedAt);
+  return recentActivityMs !== null && nowMs - recentActivityMs <= RECENT_RUN_WINDOW_MS;
+};
+var buildOverviewResponse = (nk, limit) => {
+  var _a;
+  const generatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const nowMs = (_a = parseIsoMs(generatedAt)) != null ? _a : Date.now();
+  const indexState = readRunIndexState(nk);
+  const runs = sortRuns(readRunsByIds(nk, indexState.index.runIds));
+  const auditEntries = listTournamentAuditEntries(nk, { limit: 200 });
+  const auditsByRunId = auditEntries.reduce((accumulator, entry) => {
+    var _a2;
+    const runId = entry.tournamentId || entry.targetId;
+    if (!runId) {
+      return accumulator;
+    }
+    accumulator[runId] = (_a2 = accumulator[runId]) != null ? _a2 : [];
+    accumulator[runId].push(entry);
+    return accumulator;
+  }, {});
+  const tournamentsById = runs.reduce((accumulator, run) => {
+    accumulator[run.runId] = getNakamaTournamentById(nk, run.tournamentId);
+    return accumulator;
+  }, {});
+  const summaries = runs.map((run) => {
+    var _a2, _b;
+    return buildTournamentLiveSummary(run, (_a2 = tournamentsById[run.runId]) != null ? _a2 : null, (_b = auditsByRunId[run.runId]) != null ? _b : [], nowMs);
+  }).filter((summary) => isOverviewCandidate(summary, nowMs)).sort(compareSummariesByUrgency).slice(0, limit);
+  const includedRunIds = new Set(summaries.map((summary) => summary.runId));
+  const activeMatchesByRound = runs.filter((run) => includedRunIds.has(run.runId)).flatMap((run) => buildRoundStats(run.bracket)).reduce((accumulator, round) => {
+    var _a2;
+    accumulator[round.round] = ((_a2 = accumulator[round.round]) != null ? _a2 : 0) + round.inMatch;
+    return accumulator;
+  }, {});
+  const completionTimestamps = runs.filter((run) => includedRunIds.has(run.runId)).flatMap((run) => {
+    var _a2, _b;
+    return ((_b = (_a2 = run.bracket) == null ? void 0 : _a2.entries) != null ? _b : []).map((entry) => entry.completedAt).filter((value) => Boolean(value));
+  });
+  const auditTimestamps = auditEntries.filter((entry) => {
+    var _a2;
+    const runId = (_a2 = entry.tournamentId) != null ? _a2 : entry.targetId;
+    return typeof runId === "string" && includedRunIds.has(runId);
+  }).map((entry) => entry.createdAt);
+  return {
+    ok: true,
+    generatedAt,
+    summaries,
+    activeMatchesByRound: Object.keys(activeMatchesByRound).map((round) => {
+      var _a2;
+      return {
+        round: Number(round),
+        count: (_a2 = activeMatchesByRound[Number(round)]) != null ? _a2 : 0
+      };
+    }).sort((left, right) => left.round - right.round),
+    completionsOverTime: buildTimelineBuckets(
+      completionTimestamps,
+      nowMs,
+      OVERVIEW_TIMELINE_BUCKET_COUNT,
+      OVERVIEW_TIMELINE_BUCKET_HOURS
+    ),
+    auditActivityTimeline: buildTimelineBuckets(
+      auditTimestamps,
+      nowMs,
+      OVERVIEW_TIMELINE_BUCKET_COUNT,
+      OVERVIEW_TIMELINE_BUCKET_HOURS
+    )
+  };
+};
+var buildDetailResponse = (nk, runId) => {
+  var _a;
+  const generatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const nowMs = (_a = parseIsoMs(generatedAt)) != null ? _a : Date.now();
+  const run = readRunOrThrow(nk, runId);
+  const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
+  const auditEntries = listTournamentAuditEntries(nk, {
+    tournamentId: run.runId,
+    limit: 200
+  });
+  return {
+    ok: true,
+    generatedAt,
+    summary: buildTournamentLiveSummary(run, nakamaTournament, auditEntries, nowMs),
+    roundStats: buildRoundStats(run.bracket),
+    participantStateCounts: buildParticipantStateCounts(run),
+    liveEntries: buildLiveEntries(run, nowMs),
+    matchDurationBuckets: buildMatchDurationBuckets(run.bracket),
+    seedSurvival: buildSeedSurvival(run.bracket),
+    auditActivityTimeline: buildTimelineBuckets(
+      auditEntries.map((entry) => entry.createdAt),
+      nowMs,
+      DETAIL_TIMELINE_BUCKET_COUNT,
+      DETAIL_TIMELINE_BUCKET_HOURS
+    )
+  };
+};
+var rpcAdminGetTournamentLiveStatus = (ctx, _logger, nk, payload) => {
+  assertAdmin(ctx, "viewer", nk);
+  const parsed = parseJsonPayload(payload);
+  const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+  if (runId) {
+    return JSON.stringify(buildDetailResponse(nk, runId));
+  }
+  const limit = clampInteger(parsed.limit, DEFAULT_OVERVIEW_LIMIT, 1, MAX_OVERVIEW_LIMIT);
+  return JSON.stringify(buildOverviewResponse(nk, limit));
+};
+
 // backend/modules/tournaments/joins.ts
 var resolveDisplayName = (ctx, requestDisplayName, userId) => {
   if (requestDisplayName && requestDisplayName.trim().length > 0) {
@@ -6934,7 +7596,7 @@ var normalizeMembershipRecord = (value, fallbackRunId, fallbackUserId) => {
     updatedAt
   };
 };
-var toIsoFromUnixSeconds = (seconds, fallback) => {
+var toIsoFromUnixSeconds2 = (seconds, fallback) => {
   if (typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0) {
     return new Date(seconds * 1e3).toISOString();
   }
@@ -7274,11 +7936,11 @@ var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
     name: run.title,
     description: run.description || "No description configured.",
     lifecycle: run.lifecycle,
-    startAt: (_b = toIsoFromUnixSeconds(
+    startAt: (_b = toIsoFromUnixSeconds2(
       (_a = readNumberField4(nakamaTournament, ["startTime", "start_time"])) != null ? _a : run.startTime,
       createdAt
     )) != null ? _b : createdAt,
-    endAt: toIsoFromUnixSeconds(
+    endAt: toIsoFromUnixSeconds2(
       (_c = readNumberField4(nakamaTournament, ["endTime", "end_time"])) != null ? _c : run.endTime,
       null
     ),
@@ -7707,6 +8369,28 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
     queueStatus: "active_match",
     statusMessage: "Tournament match ready."
   });
+};
+
+// backend/modules/tournaments/index.ts
+var registerTournamentRpcs = (initializer) => {
+  initializer.registerRpc(RPC_ADMIN_WHOAMI, rpcAdminWhoAmI);
+  initializer.registerRpc(RPC_ADMIN_LIST_TOURNAMENTS, rpcAdminListTournaments);
+  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_RUN, rpcAdminGetTournamentRun);
+  initializer.registerRpc(RPC_ADMIN_CREATE_TOURNAMENT_RUN, rpcAdminCreateTournamentRun);
+  initializer.registerRpc(RPC_ADMIN_OPEN_TOURNAMENT, rpcAdminOpenTournament);
+  initializer.registerRpc(RPC_ADMIN_DELETE_TOURNAMENT, rpcAdminDeleteTournament);
+  initializer.registerRpc(RPC_ADMIN_CLOSE_TOURNAMENT, rpcAdminCloseTournament);
+  initializer.registerRpc(RPC_ADMIN_FINALIZE_TOURNAMENT, rpcAdminFinalizeTournament);
+  initializer.registerRpc(RPC_ADMIN_EXPORT_TOURNAMENT, rpcAdminExportTournament);
+  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_LIVE_STATUS, rpcAdminGetTournamentLiveStatus);
+  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_STANDINGS, rpcAdminGetTournamentStandings);
+  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG, rpcAdminGetTournamentAuditLog);
+  initializer.registerRpc(RPC_TOURNAMENT_JOIN, rpcJoinTournament);
+  initializer.registerRpc(RPC_LIST_PUBLIC_TOURNAMENTS, rpcListPublicTournaments);
+  initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT, rpcGetPublicTournament);
+  initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT_STANDINGS, rpcGetPublicTournamentStandings);
+  initializer.registerRpc(RPC_JOIN_PUBLIC_TOURNAMENT, rpcJoinPublicTournament);
+  initializer.registerRpc(RPC_LAUNCH_TOURNAMENT_MATCH, rpcLaunchTournamentMatch);
 };
 
 // backend/modules/index.ts
@@ -8479,22 +9163,7 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
   initializer.registerRpc(RPC_GET_USERNAME_ONBOARDING_STATUS_NAME, rpcGetUsernameOnboardingStatus);
   initializer.registerRpc(RPC_CLAIM_USERNAME_NAME, rpcClaimUsername);
-  initializer.registerRpc(RPC_ADMIN_WHOAMI, rpcAdminWhoAmI);
-  initializer.registerRpc(RPC_ADMIN_LIST_TOURNAMENTS, rpcAdminListTournaments);
-  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_RUN, rpcAdminGetTournamentRun);
-  initializer.registerRpc(RPC_ADMIN_CREATE_TOURNAMENT_RUN, rpcAdminCreateTournamentRun);
-  initializer.registerRpc(RPC_ADMIN_OPEN_TOURNAMENT, rpcAdminOpenTournament);
-  initializer.registerRpc(RPC_ADMIN_DELETE_TOURNAMENT, rpcAdminDeleteTournament);
-  initializer.registerRpc(RPC_ADMIN_CLOSE_TOURNAMENT, rpcAdminCloseTournament);
-  initializer.registerRpc(RPC_ADMIN_FINALIZE_TOURNAMENT, rpcAdminFinalizeTournament);
-  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_STANDINGS, rpcAdminGetTournamentStandings);
-  initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG, rpcAdminGetTournamentAuditLog);
-  initializer.registerRpc(RPC_TOURNAMENT_JOIN, rpcJoinTournament);
-  initializer.registerRpc(RPC_LIST_PUBLIC_TOURNAMENTS, rpcListPublicTournaments);
-  initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT, rpcGetPublicTournament);
-  initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT_STANDINGS, rpcGetPublicTournamentStandings);
-  initializer.registerRpc(RPC_JOIN_PUBLIC_TOURNAMENT, rpcJoinPublicTournament);
-  initializer.registerRpc(RPC_LAUNCH_TOURNAMENT_MATCH, rpcLaunchTournamentMatch);
+  registerTournamentRpcs(initializer);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,

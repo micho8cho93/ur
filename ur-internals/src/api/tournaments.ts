@@ -1,5 +1,7 @@
 import env from '../config/env'
 import { mockAuditLog, mockTournamentEntriesById, mockTournaments } from '../data/mockData'
+import { buildTournamentExportFallbackBundle } from '../liveOps'
+import type { AuditLogEntry } from '../types/audit'
 import type {
   CreateTournamentInput,
   Tournament,
@@ -18,7 +20,7 @@ import {
   AUTO_TOURNAMENT_DURATION_SECONDS,
   getSingleEliminationRoundCount,
 } from '../tournamentSizing'
-import { callRpc } from './client'
+import { ApiError, callRpc } from './client'
 import {
   asRecord,
   readArrayField,
@@ -586,7 +588,29 @@ export async function deleteTournament(runId: string): Promise<Tournament> {
   return normalizeTournament(asRecord(response)?.run, asRecord(response)?.nakamaTournament)
 }
 
-export async function exportTournament(runId: string): Promise<TournamentExportBundle> {
+function isMissingExportRpcError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const message = error.message.toLowerCase()
+  return (
+    message.includes('function not found') ||
+    message.includes('rpc function not found') ||
+    (error instanceof ApiError && error.status === 404)
+  )
+}
+
+type ExportTournamentFallbackContext = {
+  tournament: Tournament
+  standings: TournamentStandings
+  auditEntries: AuditLogEntry[]
+}
+
+export async function exportTournament(
+  runId: string,
+  fallback?: ExportTournamentFallbackContext,
+): Promise<TournamentExportBundle> {
   if (env.useMockData) {
     await wait(180)
     const tournament = mockTournaments.find((entry) => entry.id === runId)
@@ -599,92 +623,38 @@ export async function exportTournament(runId: string): Promise<TournamentExportB
       throw new Error('Tournament export is only available after the run is finalized.')
     }
 
-    const standingsEntries = mockTournamentEntriesById[runId] ?? []
-    const participantNames = new Map(
-      (tournament.bracket?.participants ?? []).map((participant) => [participant.userId, participant.displayName]),
-    )
-
-    return {
-      exportedAt: new Date().toISOString(),
-      run: {
-        runId: tournament.id,
-        tournamentId: tournament.tournamentId,
-        title: tournament.name,
-        description: tournament.description,
-        lifecycle: 'finalized',
-        metadata: tournament.metadata,
-        registrations: tournament.registrations,
-        bracket: tournament.bracket,
-        finalSnapshot: tournament.finalSnapshot,
-        openedAt: tournament.openedAt,
-        closedAt: tournament.closedAt,
-        finalizedAt: tournament.finalizedAt,
+    return buildTournamentExportFallbackBundle(
+      tournament,
+      {
+        entries: (mockTournamentEntriesById[runId] ?? []).map((entry) => ({ ...entry })),
+        rankCount: mockTournamentEntriesById[runId]?.length ?? 0,
+        generatedAt: new Date().toISOString(),
       },
-      nakamaTournament: {
-        id: tournament.tournamentId,
-        size: tournament.entrants,
-        maxSize: tournament.maxEntrants,
-        startTime: Math.floor(new Date(tournament.startAt).getTime() / 1000),
-        endTime: tournament.endAt ? Math.floor(new Date(tournament.endAt).getTime() / 1000) : 0,
-      },
-      standings:
-        tournament.finalSnapshot ?? {
-          generatedAt: new Date().toISOString(),
-          overrideExpiry: 0,
-          rankCount: standingsEntries.length,
-          records: standingsEntries.map((entry) => ({
-            rank: entry.rank,
-            owner_id: entry.ownerId,
-            username: entry.username,
-            score: entry.score,
-            subscore: entry.subscore,
-            num_score: entry.attempts,
-            max_num_score: entry.maxAttempts,
-            metadata: entry.metadata,
-          })),
-          prevCursor: null,
-          nextCursor: null,
-        },
-      auditEntries: mockAuditLog
+      mockAuditLog
         .filter((entry) => entry.tournamentId === runId)
-        .map((entry) => ({
-          id: entry.id,
-          action: entry.action,
-          actorLabel: entry.actor,
-          actorUserId: entry.actorUserId,
-          tournamentId: entry.tournamentId,
-          tournamentName: entry.target,
-          createdAt: entry.createdAt,
-          metadata: entry.metadata,
-        })),
-      matchResults: (tournament.bracket?.entries ?? [])
-        .filter((entry) => entry.status === 'completed')
-        .map((entry) => ({
-          resultId: `${runId}:${entry.matchId ?? entry.entryId}`,
-          matchId: entry.matchId,
-          runId,
-          tournamentId: tournament.tournamentId,
-          summary: {
-            round: entry.round,
-            entryId: entry.entryId,
-            completedAt: entry.completedAt,
-            winnerUserId: entry.winnerUserId,
-            loserUserId: entry.loserUserId,
-            players: [entry.playerAUserId, entry.playerBUserId]
-              .filter((userId): userId is string => Boolean(userId))
-              .map((userId) => ({
-                userId,
-                username: participantNames.get(userId) ?? userId,
-                didWin: userId === entry.winnerUserId,
-              })),
-          },
-        })),
-    }
+        .map((entry) => ({ ...entry, metadata: { ...entry.metadata } })),
+    )
   }
 
-  const response = await callRpc<TournamentExportBundle>(RPC_ADMIN_EXPORT_TOURNAMENT, {
-    runId,
-  })
+  try {
+    const response = await callRpc<TournamentExportBundle>(RPC_ADMIN_EXPORT_TOURNAMENT, {
+      runId,
+    })
 
-  return response
+    return response
+  } catch (error) {
+    if (
+      fallback &&
+      fallback.tournament.status === 'Finalized' &&
+      isMissingExportRpcError(error)
+    ) {
+      return buildTournamentExportFallbackBundle(
+        fallback.tournament,
+        fallback.standings,
+        fallback.auditEntries,
+      )
+    }
+
+    throw error
+  }
 }
