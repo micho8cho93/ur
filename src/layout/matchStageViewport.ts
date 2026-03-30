@@ -5,7 +5,8 @@ const TABLET_MIN_SHORT_SIDE = MOBILE_LAYOUT_BREAKPOINT;
 const TABLET_MAX_SHORT_SIDE = 1024;
 const TABLET_MAX_LONG_SIDE = 1366;
 const TABLET_LANDSCAPE_SIDE_COLUMN_SCALE = 0.9;
-const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_RATIO = 0.1;
+const TABLET_LANDSCAPE_RESERVE_TRAY_SCALE = 0.8;
+const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_RATIO = 0.11;
 const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_MIN = 32;
 
 export interface MatchStageViewportMode {
@@ -100,6 +101,14 @@ export const resolveMatchStageViewportHorizontalPadding = ({
       Math.round(Math.max(0, viewportWidth) * TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_RATIO),
     )
     : 0;
+
+export const resolveMatchStageReserveTrayScale = ({
+  defaultTrayScale,
+  isTabletLandscape,
+}: {
+  defaultTrayScale: number;
+  isTabletLandscape: boolean;
+}): number => (isTabletLandscape ? TABLET_LANDSCAPE_RESERVE_TRAY_SCALE : defaultTrayScale);
 
 export const resolveMatchStageTabletPortraitTuning = (
   isTabletPortrait: boolean,

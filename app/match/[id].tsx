@@ -78,6 +78,7 @@ import {
 import { useGameStore } from '@/store/useGameStore';
 import {
   resolveMobileWebBoardTrayAlignmentCorrection,
+  resolveMatchStageReserveTrayScale,
   resolveMatchStageSideColumnWidth,
   resolveMatchStageTabletPortraitTuning,
   resolveMatchStageViewportHorizontalPadding,
@@ -3386,8 +3387,10 @@ export function GameRoom() {
     () => resolveMatchStageViewportMode({ width: viewportWidth, height: viewportHeight }),
     [viewportHeight, viewportWidth],
   );
+  const isWebLayout = Platform.OS === 'web';
+  const isTabletLandscapeWebLayout = isWebLayout && matchStageViewportMode.isTabletLandscape;
   const viewportHorizontalPadding = resolveMatchStageViewportHorizontalPadding({
-    isTabletLandscape: matchStageViewportMode.isTabletLandscape,
+    isTabletLandscape: isTabletLandscapeWebLayout,
     viewportWidth,
   });
   const stageContentWidth = Math.min(Math.max(viewportWidth - viewportHorizontalPadding * 2, 0), urTheme.layout.stage.maxWidth);
@@ -3396,14 +3399,16 @@ export function GameRoom() {
     [matchStageViewportMode.isTabletPortrait],
   );
   const useSideColumns = matchStageViewportMode.useSideColumns;
-  const isWebLayout = Platform.OS === 'web';
   const isMobileLayout = matchStageViewportMode.useMobileLayout;
   const isMobileWebLayout = isWebLayout && isMobileLayout;
   const showMobileWebStatusInfoButton = isMobileWebLayout && Boolean(onlineMatchStatusPillText);
   const showInlineMatchStatusPopover = showMobileWebStatusInfoButton && showMatchStatusInfo;
   const useMobileSideReserveRails = matchStageViewportMode.useMobileSideReserveRails;
   const showWebSideDiceVisual = Platform.OS === 'web' && useSideColumns;
-  const reserveTrayScale = matchStageViewportMode.isTabletLandscape ? 0.94 : tabletPortraitTuning.trayScale;
+  const reserveTrayScale = resolveMatchStageReserveTrayScale({
+    defaultTrayScale: tabletPortraitTuning.trayScale,
+    isTabletLandscape: isTabletLandscapeWebLayout,
+  });
   const boardClusterGap = useSideColumns || useMobileSideReserveRails ? urTheme.spacing.xs : urTheme.spacing.sm;
   const sideColumnWidth = useSideColumns
     ? resolveMatchStageSideColumnWidth({

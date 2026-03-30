@@ -1,5 +1,6 @@
 import {
   resolveMobileWebBoardTrayAlignmentCorrection,
+  resolveMatchStageReserveTrayScale,
   resolveMatchStageSideColumnWidth,
   resolveMatchStageTabletPortraitTuning,
   resolveMatchStageViewportHorizontalPadding,
@@ -80,11 +81,21 @@ describe('resolveMatchStageSideColumnWidth', () => {
 
 describe('resolveMatchStageViewportHorizontalPadding', () => {
   it('adds side breathing room on tablet landscape', () => {
-    expect(resolveMatchStageViewportHorizontalPadding({ isTabletLandscape: true, viewportWidth: 1194 })).toBe(119);
+    expect(resolveMatchStageViewportHorizontalPadding({ isTabletLandscape: true, viewportWidth: 1194 })).toBe(131);
   });
 
   it('keeps other layouts flush with the existing viewport padding logic', () => {
     expect(resolveMatchStageViewportHorizontalPadding({ isTabletLandscape: false, viewportWidth: 1194 })).toBe(0);
+  });
+});
+
+describe('resolveMatchStageReserveTrayScale', () => {
+  it('shrinks tablet-landscape reserve trays by 15 percent', () => {
+    expect(resolveMatchStageReserveTrayScale({ defaultTrayScale: 0.94, isTabletLandscape: true })).toBe(0.8);
+  });
+
+  it('preserves the default tray scale outside tablet landscape', () => {
+    expect(resolveMatchStageReserveTrayScale({ defaultTrayScale: 1.08, isTabletLandscape: false })).toBe(1.08);
   });
 });
 
