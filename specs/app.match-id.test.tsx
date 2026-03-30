@@ -2294,6 +2294,57 @@ describe('GameRoom match dice stage', () => {
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
   });
 
+  it('auto-returns eliminated players to the home page after 20 seconds', async () => {
+    mockSearchParams.id = 'tournament-loss-auto-exit';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-loss-auto-exit',
+    });
+    mockStoreState.matchId = 'tournament-loss-auto-exit';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'dark',
+    };
+    mockRefreshProgression.mockImplementation(() => new Promise(() => {}));
+    mockRefreshChallenges.mockImplementation(() => new Promise(() => {}));
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-loss-auto-exit', {
+        didWin: false,
+        tournamentOutcome: 'eliminated',
+        totalXpDelta: 0,
+        shouldEnterWaitingRoom: false,
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Return to Home Page')).toBeTruthy();
+
+    await act(async () => {
+      jest.advanceTimersByTime(20_000);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(mockRouterReplace).toHaveBeenCalledWith('/'));
+  });
+
   it('shows a fallback defeat modal for the loser when the tournament reward summary never arrives', async () => {
     mockSearchParams.id = 'tournament-loss-fallback';
     mockSearchParams.offline = '0';
@@ -2406,8 +2457,85 @@ describe('GameRoom match dice stage', () => {
     });
 
     expect(screen.getByText('Victory')).toBeTruthy();
-    expect(screen.getByText('Enter Waiting Room')).toBeTruthy();
+    expect(screen.getByText('Wait for the Next Round')).toBeTruthy();
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
+  });
+
+  it('keeps a four-player semifinal winner on the wait-for-next-round modal instead of finalizing early', async () => {
+    mockSearchParams.id = 'tournament-four-player-semifinal';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentRound = '1';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-four-player-semifinal',
+    });
+    mockStoreState.matchId = 'tournament-four-player-semifinal';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockRefreshProgression.mockImplementation(() => new Promise(() => {}));
+    mockRefreshChallenges.mockImplementation(() => new Promise(() => {}));
+    mockGetPublicTournamentStatus.mockResolvedValueOnce({
+      tournament: {
+        runId: 'run-1',
+        tournamentId: 'tournament-1',
+        name: 'Spring Open',
+        description: 'A public run.',
+        lifecycle: 'open',
+        startAt: '2026-03-27T09:00:00.000Z',
+        endAt: null,
+        updatedAt: '2026-03-27T10:00:00.000Z',
+        entrants: 4,
+        maxEntrants: 4,
+        gameMode: 'standard',
+        region: 'Global',
+        buyInLabel: 'Free',
+        prizeLabel: 'No prize listed',
+        currentRound: 2,
+        membership: {
+          isJoined: true,
+          joinedAt: '2026-03-27T09:00:00.000Z',
+        },
+        participation: {
+          state: 'waiting_next_round',
+          currentRound: 2,
+          currentEntryId: 'round-2-match-1',
+          activeMatchId: null,
+          finalPlacement: null,
+          lastResult: 'win',
+          canLaunch: false,
+        },
+      },
+      standings: [],
+    });
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-four-player-semifinal', {
+        tournamentOutcome: 'advancing',
+        shouldEnterWaitingRoom: true,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Victory')).toBeTruthy();
+    expect(screen.getByText('Wait for the Next Round')).toBeTruthy();
+    expect(screen.queryByText('Tournament Won')).toBeNull();
   });
 
   it('replaces the waiting-room CTA with a return-home action once the final win is finalized', async () => {
@@ -2489,7 +2617,7 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByText('Tournament Won')).toBeTruthy();
     expect(await screen.findByText('You won the tournament and finished as champion.')).toBeTruthy();
     expect(screen.getByText('Return to Home Page')).toBeTruthy();
-    expect(screen.queryByText('Enter Waiting Room')).toBeNull();
+    expect(screen.queryByText('Wait for the Next Round')).toBeNull();
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
 
     await act(async () => {
@@ -2573,7 +2701,7 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByText('Tournament Won')).toBeTruthy();
     expect(screen.getByText('You won the tournament and finished as champion.')).toBeTruthy();
     expect(screen.getByText('Return to Home Page')).toBeTruthy();
-    expect(screen.queryByText('Enter Waiting Room')).toBeNull();
+    expect(screen.queryByText('Wait for the Next Round')).toBeNull();
 
     await act(async () => {
       fireEvent.press(screen.getByText('Return to Home Page'));
@@ -2862,7 +2990,7 @@ describe('GameRoom match dice stage', () => {
 
     expect(screen.getByText('Tournament Won')).toBeTruthy();
     expect(screen.getByText('Return to Home Page')).toBeTruthy();
-    expect(screen.queryByText('Enter Waiting Room')).toBeNull();
+    expect(screen.queryByText('Wait for the Next Round')).toBeNull();
 
     await act(async () => {
       fireEvent.press(screen.getByText('Return to Home Page'));
@@ -2949,7 +3077,7 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByText('Tournament Won')).toBeTruthy();
     expect(screen.getByText('You won the tournament and finished as champion.')).toBeTruthy();
     expect(screen.getByText('Return to Home Page')).toBeTruthy();
-    expect(screen.queryByText('Enter Waiting Room')).toBeNull();
+    expect(screen.queryByText('Wait for the Next Round')).toBeNull();
   });
 
   it('treats a larger final round as terminal before the waiting-room CTA appears', async () => {
@@ -3025,10 +3153,10 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByText('Tournament Won')).toBeTruthy();
     expect(screen.getByText('You won the tournament and finished as champion.')).toBeTruthy();
     expect(screen.getByText('Return to Home Page')).toBeTruthy();
-    expect(screen.queryByText('Enter Waiting Room')).toBeNull();
+    expect(screen.queryByText('Wait for the Next Round')).toBeNull();
   });
 
-  it('auto-enters the waiting room after 15 seconds when the victory modal is untouched', async () => {
+  it('auto-enters the waiting room after 20 seconds when the victory modal is untouched', async () => {
     mockSearchParams.id = 'tournament-auto-enter';
     mockSearchParams.offline = '0';
     mockSearchParams.tournamentRunId = 'run-1';
@@ -3068,11 +3196,11 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Enter Waiting Room')).toBeTruthy();
+    expect(screen.getByText('Wait for the Next Round')).toBeTruthy();
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
 
     await act(async () => {
-      jest.advanceTimersByTime(15_000);
+      jest.advanceTimersByTime(20_000);
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -3126,10 +3254,10 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Enter Waiting Room')).toBeTruthy();
+    expect(screen.getByText('Wait for the Next Round')).toBeTruthy();
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Enter Waiting Room'));
+      fireEvent.press(screen.getByText('Wait for the Next Round'));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -3155,7 +3283,7 @@ describe('GameRoom match dice stage', () => {
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
     expect(screen.getByText('Tournament Won')).toBeTruthy();
     expect(screen.getByText('Return to Home Page')).toBeTruthy();
-    expect(screen.queryByText('Enter Waiting Room')).toBeNull();
+    expect(screen.queryByText('Wait for the Next Round')).toBeNull();
   });
 
   it('resolves a stale final-win summary before auto-entry and keeps the return-home modal visible', async () => {
@@ -3228,10 +3356,10 @@ describe('GameRoom match dice stage', () => {
 
     expect(screen.getByText('Tournament Won')).toBeTruthy();
     expect(screen.getByText('Return to Home Page')).toBeTruthy();
-    expect(screen.queryByText('Enter Waiting Room')).toBeNull();
+    expect(screen.queryByText('Wait for the Next Round')).toBeNull();
 
     await act(async () => {
-      jest.advanceTimersByTime(15_000);
+      jest.advanceTimersByTime(20_000);
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -3330,7 +3458,7 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    expect(await screen.findByText('Enter Waiting Room')).toBeTruthy();
+    expect(await screen.findByText('Wait for the Next Round')).toBeTruthy();
     expect(screen.getByText(`+${totalXp} XP from challenges`)).toBeTruthy();
     expect(screen.getByText('Show 2 completed challenges')).toBeTruthy();
     expect(screen.queryByText(definitions[0].name)).toBeNull();
@@ -3390,7 +3518,7 @@ describe('GameRoom match dice stage', () => {
     });
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Enter Waiting Room'));
+      fireEvent.press(screen.getByText('Wait for the Next Round'));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -3452,7 +3580,7 @@ describe('GameRoom match dice stage', () => {
     });
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Enter Waiting Room'));
+      fireEvent.press(screen.getByText('Wait for the Next Round'));
       await Promise.resolve();
       await Promise.resolve();
     });

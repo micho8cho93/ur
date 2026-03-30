@@ -157,7 +157,7 @@ const TUTORIAL_NO_MOVE_DELAY_MS = 850 * TUTORIAL_PACING_MULTIPLIER;
 const ONLINE_MATCH_REWARD_REFRESH_RETRY_MS = 1200;
 const MATCH_PRESENTATION_READY_FALLBACK_MS = 1200;
 const TOURNAMENT_REWARD_SUMMARY_FALLBACK_MS = 4_000;
-const TOURNAMENT_REWARD_MODAL_COUNTDOWN_MS = 15_000;
+const TOURNAMENT_REWARD_MODAL_COUNTDOWN_MS = 20_000;
 const TOURNAMENT_EXIT_VALIDATION_TIMEOUT_MS = 5_000;
 const MATCH_LEAVE_TIMEOUT_MS = 1_500;
 const SHOULD_BYPASS_CINEMATIC_INTROS = process.env.NODE_ENV === 'test';
@@ -248,9 +248,9 @@ const deriveFinalRoundTournamentTerminalOutcome = (
 ): 'champion' | 'runner_up' | null => {
   const totalRounds = getSingleEliminationRoundCountFromSnapshot(snapshot);
   const currentRound =
+    options.initialRound ??
     snapshot?.tournament?.participation?.currentRound ??
     snapshot?.tournament?.currentRound ??
-    options.initialRound ??
     null;
 
   if (totalRounds === null || currentRound !== totalRounds) {
@@ -994,6 +994,7 @@ export function GameRoom() {
       (!isTournamentRewardSummaryPrimary &&
         tournamentRewardFallbackActive &&
         (tournamentAdvanceFlow.phase === 'eliminated' || tournamentAdvanceFlow.phase === 'finalized')));
+  const shouldAutoExitTournamentResultModal = isTournamentResultModal && !didPlayerWin;
   const shouldRenderResultModal =
     showWinModal &&
     (!isTournamentMatch ||
@@ -1169,20 +1170,22 @@ export function GameRoom() {
     winModalMessage,
   ]);
   const tournamentCountdownLabel = useMemo(() => {
-    if (!showTournamentAdvanceModal || tournamentWaitingRoomCountdownMs === null) {
+    if ((!showTournamentAdvanceModal && !shouldAutoExitTournamentResultModal) || tournamentWaitingRoomCountdownMs === null) {
       return null;
     }
 
     const remainingSeconds = Math.max(0, Math.ceil(tournamentWaitingRoomCountdownMs / 1000));
-    return `Entering the waiting room automatically in ${remainingSeconds}s.`;
-  }, [showTournamentAdvanceModal, tournamentWaitingRoomCountdownMs]);
+    return showTournamentAdvanceModal
+      ? `Entering the waiting room automatically in ${remainingSeconds}s.`
+      : `Returning to the home page automatically in ${remainingSeconds}s.`;
+  }, [shouldAutoExitTournamentResultModal, showTournamentAdvanceModal, tournamentWaitingRoomCountdownMs]);
   const resultModalActionLabel = useMemo(() => {
     if (showTournamentAdvanceResolutionModal) {
       return undefined;
     }
 
     if (showTournamentAdvanceModal) {
-      return 'Enter Waiting Room';
+      return 'Wait for the Next Round';
     }
 
     if (showTournamentFallbackPendingModal) {
@@ -2015,8 +2018,24 @@ export function GameRoom() {
     void attemptTournamentWaitingRoomEntry({ source: 'manual' });
   }, [attemptTournamentWaitingRoomEntry]);
 
-  const handleTournamentResultExit = React.useCallback(async () => {
+  const handleTournamentResultExit = React.useCallback(async (options?: { source?: 'manual' | 'auto' }) => {
     if (isValidatingTournamentExit) {
+      return;
+    }
+
+    if (options?.source === 'auto') {
+      let didExit = false;
+      setTournamentExitValidationFailed(false);
+      setIsValidatingTournamentExit(true);
+
+      try {
+        await exitMatchToHome();
+        didExit = true;
+      } finally {
+        if (!didExit) {
+          setIsValidatingTournamentExit(false);
+        }
+      }
       return;
     }
 
@@ -2088,6 +2107,30 @@ export function GameRoom() {
       clearInterval(interval);
     };
   }, [attemptTournamentWaitingRoomEntry, showTournamentAdvanceModal]);
+
+  useEffect(() => {
+    if (!shouldAutoExitTournamentResultModal) {
+      setTournamentWaitingRoomCountdownMs(null);
+      return;
+    }
+
+    const startedAt = Date.now();
+    setTournamentWaitingRoomCountdownMs(TOURNAMENT_REWARD_MODAL_COUNTDOWN_MS);
+
+    const interval = setInterval(() => {
+      const remainingMs = Math.max(0, TOURNAMENT_REWARD_MODAL_COUNTDOWN_MS - (Date.now() - startedAt));
+      setTournamentWaitingRoomCountdownMs(remainingMs);
+
+      if (remainingMs <= 0) {
+        clearInterval(interval);
+        void handleTournamentResultExit({ source: 'auto' });
+      }
+    }, 250);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [handleTournamentResultExit, shouldAutoExitTournamentResultModal]);
 
   useEffect(() => {
     if (!tournamentRewardSummary) {
@@ -3364,7 +3407,9 @@ export function GameRoom() {
       matchChallengeSummary={matchChallengeSummary}
       matchRewardsErrorMessage={matchRewardsErrorMessage}
       tournamentRewardSummary={isTournamentRewardSummaryPrimary ? tournamentRewardSummary : null}
-      tournamentCountdownLabel={showTournamentAdvanceModal ? tournamentCountdownLabel : null}
+      tournamentCountdownLabel={
+        showTournamentAdvanceModal || shouldAutoExitTournamentResultModal ? tournamentCountdownLabel : null
+      }
     />
   );
 

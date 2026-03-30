@@ -78,7 +78,7 @@ describe('TournamentWaitingRoom', () => {
     useWindowDimensionsSpy.mockRestore();
   });
 
-  it('renders the full-screen intermission state with the rotating reward card', () => {
+  it('renders the full-screen intermission state with the start-room visual shell and reward cards', () => {
     render(
       <TournamentWaitingRoom
         visible
@@ -103,8 +103,8 @@ describe('TournamentWaitingRoom', () => {
     expect(screen.getByText('Spring Open')).toBeTruthy();
     expect(screen.getByText('Round 3')).toBeTruthy();
     expect(screen.getByText('Another match is still in progress.')).toBeTruthy();
-    expect(screen.getByText('Elo Locked')).toBeTruthy();
-    expect(screen.getByText('+24')).toBeTruthy();
+    expect(screen.getByText('Challenges Locked')).toBeTruthy();
+    expect(screen.getByText('2 challenges completed')).toBeTruthy();
     expect(screen.queryByText('Return to Home Page')).toBeNull();
   });
 
@@ -131,7 +131,7 @@ describe('TournamentWaitingRoom', () => {
       />,
     );
 
-    expect(screen.getByText('Elo Locked')).toBeTruthy();
+    expect(screen.getByText('Challenges Locked')).toBeTruthy();
 
     act(() => {
       jest.advanceTimersByTime(15_000);
@@ -144,7 +144,11 @@ describe('TournamentWaitingRoom', () => {
       jest.advanceTimersByTime(15_000);
     });
 
-    expect(screen.getByText('Challenges Locked')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Mesopotamia grew between the Tigris and Euphrates, where cities like Ur became major centers of trade and ritual.',
+      ),
+    ).toBeTruthy();
   });
 
   it('renders finalized champion copy when the tournament is complete', () => {
@@ -234,7 +238,7 @@ describe('TournamentWaitingRoom', () => {
     );
 
     expect(screen.getByTestId('tournament-waiting-room-scroll')).toBeTruthy();
-    expect(StyleSheet.flatten(screen.getByText('Spring Open').props.style).fontSize).toBe(26);
-    expect(StyleSheet.flatten(screen.getByText('+24').props.style).fontSize).toBe(28);
+    expect(StyleSheet.flatten(screen.getByText('Spring Open').props.style).fontSize).toBe(30);
+    expect(StyleSheet.flatten(screen.getByText('2 challenges completed').props.style).fontSize).toBe(30);
   });
 });

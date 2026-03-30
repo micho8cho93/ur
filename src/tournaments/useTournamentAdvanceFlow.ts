@@ -99,9 +99,9 @@ const deriveFinalRoundFallback = (
 ): { isTerminal: boolean; isChampion: boolean; finalPlacement: number | null } => {
   const totalRounds = getSingleEliminationRoundCount(tournament);
   const currentRound =
+    options.initialRound ??
     tournament.participation.currentRound ??
     tournament.currentRound ??
-    options.initialRound ??
     null;
 
   if (totalRounds === null || currentRound !== totalRounds) {
