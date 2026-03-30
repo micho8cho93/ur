@@ -1022,6 +1022,16 @@ const finalizeCompletedMatch = (
   });
 
   state.resultRecorded = true;
+
+  if (
+    state.tournamentContext &&
+    tournamentProcessingResult &&
+    !tournamentProcessingResult.finalizationResult &&
+    Boolean(tournamentProcessingResult.updatedRun?.bracket?.finalizedAt)
+  ) {
+    maybeFinalizeRecordedTournamentRun(logger, nk, state, matchId, "result_recorded");
+  }
+
   return true;
 };
 
@@ -1030,7 +1040,7 @@ const maybeFinalizeRecordedTournamentRun = (
   nk: nkruntime.Nakama,
   state: MatchState,
   matchId: string,
-  source: "leave" | "terminate",
+  source: "leave" | "terminate" | "result_recorded",
 ): void => {
   if (!state.tournamentContext || !state.gameState.winner) {
     return;

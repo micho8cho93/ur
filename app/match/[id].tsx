@@ -158,6 +158,7 @@ const MATCH_PRESENTATION_READY_FALLBACK_MS = 1200;
 const TOURNAMENT_REWARD_SUMMARY_FALLBACK_MS = 4_000;
 const TOURNAMENT_REWARD_MODAL_COUNTDOWN_MS = 15_000;
 const TOURNAMENT_EXIT_VALIDATION_TIMEOUT_MS = 5_000;
+const MATCH_LEAVE_TIMEOUT_MS = 1_500;
 const SHOULD_BYPASS_CINEMATIC_INTROS = process.env.NODE_ENV === 'test';
 
 const measureViewInWindow = (
@@ -1913,23 +1914,34 @@ export function GameRoom() {
     tournamentRewardSummary,
   ]);
 
-  const leaveCurrentMatch = React.useCallback(() => {
-    if (!isOffline && socketRef.current && matchId) {
-      suppressReconnectRef.current = true;
-      void socketRef.current.leaveMatch(matchId).catch(() => { });
+  const leaveCurrentMatch = React.useCallback(async () => {
+    if (isOffline || !socketRef.current || !matchId) {
+      return;
+    }
+
+    suppressReconnectRef.current = true;
+
+    try {
+      await withTimeout(socketRef.current.leaveMatch(matchId), MATCH_LEAVE_TIMEOUT_MS);
+    } catch {
+      // Disconnect below so the server still observes the session closing.
+    } finally {
       nakamaService.disconnectSocket(true);
     }
   }, [isOffline, matchId]);
 
   const exitMatchToHome = React.useCallback(
-    (options?: { refreshTournamentStatus?: boolean }) => {
+    async (options?: { refreshTournamentStatus?: boolean }) => {
       if (options?.refreshTournamentStatus && isTournamentMatch && tournamentRunIdParam) {
-        void getPublicTournamentStatus(tournamentRunIdParam).catch(() => null);
+        await withTimeout(
+          getPublicTournamentStatus(tournamentRunIdParam).catch(() => null),
+          TOURNAMENT_EXIT_VALIDATION_TIMEOUT_MS,
+        );
       }
 
       setShowTopMenu(false);
       setShowMatchStatusInfo(false);
-      leaveCurrentMatch();
+      await leaveCurrentMatch();
       setShowWinModal(false);
       reset();
       router.replace('/');
@@ -1982,7 +1994,7 @@ export function GameRoom() {
         setTournamentAdvanceResolutionState('terminal');
 
         if (options?.source === 'manual') {
-          exitMatchToHome();
+          void exitMatchToHome({ refreshTournamentStatus: true });
         }
 
         return;
@@ -2008,7 +2020,7 @@ export function GameRoom() {
     }
 
     if (tournamentExitValidationFailed || !tournamentRunIdParam) {
-      exitMatchToHome();
+      await exitMatchToHome({ refreshTournamentStatus: true });
       return;
     }
 
@@ -2019,7 +2031,7 @@ export function GameRoom() {
     try {
       shouldExit = await validateTournamentResultBeforeExit();
       if (shouldExit) {
-        exitMatchToHome();
+        await exitMatchToHome({ refreshTournamentStatus: true });
         return;
       }
 
@@ -2049,7 +2061,7 @@ export function GameRoom() {
       return;
     }
 
-    exitMatchToHome();
+    void exitMatchToHome();
   }, [exitMatchToHome, handleTournamentResultExit, isTournamentMatch, isTournamentResultModal]);
 
   useEffect(() => {
