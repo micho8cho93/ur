@@ -759,6 +759,27 @@ const buildRunResponse = (run: TournamentRunRecord, nakamaTournament: Record<str
   nakamaTournament,
 });
 
+const maybeAutoFinalizeAdminRun = (
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  run: TournamentRunRecord,
+): TournamentRunRecord => {
+  if (run.lifecycle === "finalized" || !run.bracket?.finalizedAt) {
+    return run;
+  }
+
+  try {
+    return finalizeTournamentRun(logger, nk, run.runId, {}).run;
+  } catch (error) {
+    logger.warn(
+      "Unable to auto-finalize admin tournament run %s while serving internals: %s",
+      run.runId,
+      getErrorMessage(error),
+    );
+    return readRunOrThrow(nk, run.runId);
+  }
+};
+
 const deleteRunWithRetry = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
@@ -820,7 +841,9 @@ export const rpcAdminListTournaments = (
       const lifecycleFilter = readStringField(parsed, ["lifecycle"]);
 
       const indexState = readRunIndexState(_nk);
-      const runs = sortRuns(readRunsByIds(_nk, indexState.index.runIds));
+      const runs = sortRuns(readRunsByIds(_nk, indexState.index.runIds).map((run) =>
+        maybeAutoFinalizeAdminRun(_logger, _nk, run),
+      ));
       const filteredRuns =
         lifecycleFilter && (lifecycleFilter === "draft" || lifecycleFilter === "open" || lifecycleFilter === "closed" || lifecycleFilter === "finalized")
           ? runs.filter((run) => run.lifecycle === lifecycleFilter)
@@ -869,7 +892,8 @@ export const rpcAdminGetTournamentRun = (
         throw new Error("runId is required.");
       }
 
-      const run = normalizeRunRecord(readRunObject(_nk, runId)?.value ?? null, runId);
+      const existingRun = normalizeRunRecord(readRunObject(_nk, runId)?.value ?? null, runId);
+      const run = existingRun ? maybeAutoFinalizeAdminRun(_logger, _nk, existingRun) : null;
       if (!run) {
         return JSON.stringify({
           ok: true,
@@ -1226,7 +1250,7 @@ export const rpcAdminGetTournamentStandings = (
         throw new Error("runId is required.");
       }
 
-      const run = readRunOrThrow(_nk, runId);
+      const run = maybeAutoFinalizeAdminRun(_logger, _nk, readRunOrThrow(_nk, runId));
       const nakamaTournament = getNakamaTournamentById(_nk, run.tournamentId);
       const limit = clampInteger(parsed.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
       const overrideExpiry = resolveOverrideExpiry(

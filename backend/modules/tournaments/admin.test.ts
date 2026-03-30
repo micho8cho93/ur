@@ -11,6 +11,7 @@ import {
   RUNS_INDEX_KEY,
 } from "./admin";
 import { ADMIN_COLLECTION, ADMIN_ROLE_KEY } from "./auth";
+import { completeTournamentBracketMatch, createSingleEliminationBracket } from "./bracket";
 import {
   GLOBAL_STORAGE_USER_ID,
   PROGRESSION_COLLECTION,
@@ -333,6 +334,142 @@ describe("admin tournament run creation", () => {
         runId: "test-tournament",
       }),
     );
+  });
+
+  it("auto-finalizes completed bracket runs while serving admin list and detail responses", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk, "admin-1", "viewer");
+
+    const startedAt = "2026-03-27T10:00:00.000Z";
+    const registrations = [
+      {
+        userId: "champion-user",
+        displayName: "Champion",
+        joinedAt: startedAt,
+        seed: 1,
+      },
+      {
+        userId: "runner-up-user",
+        displayName: "Runner Up",
+        joinedAt: startedAt,
+        seed: 2,
+      },
+    ];
+    const finalizedBracket = completeTournamentBracketMatch(
+      createSingleEliminationBracket(registrations, startedAt),
+      {
+        entryId: "round-1-match-1",
+        matchId: "match-final",
+        winnerUserId: "champion-user",
+        loserUserId: "runner-up-user",
+        completedAt: "2026-03-27T10:05:00.000Z",
+      },
+    );
+
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, RUNS_INDEX_KEY), {
+      collection: RUNS_COLLECTION,
+      key: RUNS_INDEX_KEY,
+      value: {
+        runIds: ["test-tournament"],
+        updatedAt: startedAt,
+      },
+      version: "index-v1",
+    });
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, "test-tournament"), {
+      collection: RUNS_COLLECTION,
+      key: "test-tournament",
+      value: {
+        runId: "test-tournament",
+        tournamentId: "test-tournament",
+        title: "Test Tournament",
+        description: "Completed bracket",
+        category: 0,
+        authoritative: true,
+        sortOrder: "desc",
+        operator: "incr",
+        resetSchedule: "",
+        metadata: {
+          xpForTournamentChampion: 0,
+        },
+        startTime: 1_774_572_800,
+        endTime: 1_774_580_000,
+        duration: 7_200,
+        maxSize: 2,
+        maxNumScore: 1,
+        joinRequired: true,
+        enableRanks: true,
+        lifecycle: "open",
+        registrations,
+        bracket: finalizedBracket,
+        createdAt: startedAt,
+        updatedAt: "2026-03-27T10:05:00.000Z",
+        createdByUserId: "admin-1",
+        createdByLabel: "Viewer",
+        openedAt: startedAt,
+        closedAt: null,
+        finalizedAt: null,
+        finalSnapshot: null,
+      },
+      version: "run-v1",
+    });
+    nk.tournamentRecordsList.mockReturnValue({
+      records: [
+        {
+          rank: 1,
+          owner_id: "champion-user",
+          username: "Champion",
+          score: 1,
+        },
+        {
+          rank: 2,
+          owner_id: "runner-up-user",
+          username: "Runner Up",
+          score: 0,
+        },
+      ],
+      owner_records: [],
+      rank_count: 2,
+    });
+
+    const listResponse = JSON.parse(
+      rpcAdminListTournaments(
+        {
+          userId: "admin-1",
+          username: "Viewer",
+        },
+        logger,
+        nk,
+        JSON.stringify({ limit: 10 }),
+      ),
+    ) as {
+      runs: Array<{ runId: string; lifecycle: string; finalizedAt: string | null }>;
+    };
+    const getResponse = JSON.parse(
+      rpcAdminGetTournamentRun(
+        {
+          userId: "admin-1",
+          username: "Viewer",
+        },
+        logger,
+        nk,
+        JSON.stringify({ runId: "test-tournament" }),
+      ),
+    ) as {
+      run: { lifecycle: string; finalizedAt: string | null };
+    };
+
+    expect(listResponse.runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "test-tournament",
+          lifecycle: "finalized",
+        }),
+      ]),
+    );
+    expect(getResponse.run.lifecycle).toBe("finalized");
+    expect(getResponse.run.finalizedAt).not.toBeNull();
+    expect(nk.tournamentRanksDisable).toHaveBeenCalledWith("test-tournament");
   });
 
   it("opens a draft run and creates the Nakama tournament with the runtime argument order", () => {

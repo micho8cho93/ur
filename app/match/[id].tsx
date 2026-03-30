@@ -55,6 +55,7 @@ import { buildMatchChallengeRewardSummary, type MatchChallengeRewardSummary } fr
 import { useAuth } from '@/src/auth/useAuth';
 import { useChallenges } from '@/src/challenges/useChallenges';
 import { useEloRating } from '@/src/elo/useEloRating';
+import { resolveDidPlayerWin, resolveMatchPlayerColor } from '@/src/match/playerOutcome';
 import {
   buildOfflineCompletedMatchSummary,
   createOfflineMatchTelemetry,
@@ -63,6 +64,10 @@ import {
   recordOfflineRoll,
 } from '@/src/offlineMatch/offlineMatchRewards';
 import { useProgression } from '@/src/progression/useProgression';
+import {
+  deriveServerConfirmedTournamentOutcome,
+  isServerConfirmedTournamentTerminal,
+} from '@/src/tournaments/terminalOutcome';
 import { useTournamentAdvanceFlow } from '@/src/tournaments/useTournamentAdvanceFlow';
 import {
   getBotScoreTitle,
@@ -304,6 +309,15 @@ const deriveTerminalTournamentOutcomeFromSnapshot = (
 
   return deriveFinalRoundTournamentTerminalOutcome(snapshot, options);
 };
+
+const isServerConfirmedTournamentStatusSnapshot = (
+  snapshot: TournamentStatusSnapshot | null | undefined,
+): boolean => isServerConfirmedTournamentTerminal(snapshot?.tournament);
+
+const deriveServerConfirmedTournamentOutcomeFromSnapshot = (
+  snapshot: TournamentStatusSnapshot | null | undefined,
+): 'champion' | 'runner_up' | 'eliminated' | null =>
+  deriveServerConfirmedTournamentOutcome(snapshot?.tournament);
 
 type MatchMomentCueKind = 'play' | 'rosette' | 'opponentJoined' | 'opponentForfeit';
 type RollButtonLatchPhase = 'idle' | 'awaitingOutcome' | 'awaitingTurnReset';
@@ -563,6 +577,7 @@ export function GameRoom() {
   const applyServerSnapshot = useGameStore((state) => state.applyServerSnapshot);
   const setGameStateFromServer = useGameStore((state) => state.setGameStateFromServer);
   const setPlayerColor = useGameStore((state) => state.setPlayerColor);
+  const setUserId = useGameStore((state) => state.setUserId);
   const setOnlineMode = useGameStore((state) => state.setOnlineMode);
   const setMatchPresences = useGameStore((state) => state.setMatchPresences);
   const updateMatchPresences = useGameStore((state) => state.updateMatchPresences);
@@ -594,7 +609,17 @@ export function GameRoom() {
   const rulesIntro = useMemo(() => getMatchRulesIntro(effectiveMatchConfig.modeId), [effectiveMatchConfig.modeId]);
   const offlineBotRewardMode: CompletedBotMatchRewardMode | undefined =
     isPlaythroughTutorialMatch ? 'base_win_only' : undefined;
+  const authenticatedUserId = userId ?? user?.nakamaUserId ?? user?.id ?? null;
   const humanScoreTitle = useMemo(() => getHumanScoreTitle(user), [user]);
+  const resolvedPlayerColor = useMemo(
+    () =>
+      resolveMatchPlayerColor({
+        playerColor,
+        authoritativePlayers,
+        userId: authenticatedUserId,
+      }),
+    [authenticatedUserId, authoritativePlayers, playerColor],
+  );
   const scoreTitles = useMemo<Record<PlayerColor, string>>(() => {
     if (isOffline) {
       return {
@@ -604,13 +629,16 @@ export function GameRoom() {
     }
 
     return {
-      light: getSnapshotScoreTitle(authoritativePlayers, 'light') ?? (playerColor === 'light' ? humanScoreTitle : 'LIGHT'),
-      dark: getSnapshotScoreTitle(authoritativePlayers, 'dark') ?? (playerColor === 'dark' ? humanScoreTitle : 'DARK'),
+      light:
+        getSnapshotScoreTitle(authoritativePlayers, 'light') ??
+        (resolvedPlayerColor === 'light' ? humanScoreTitle : 'LIGHT'),
+      dark:
+        getSnapshotScoreTitle(authoritativePlayers, 'dark') ??
+        (resolvedPlayerColor === 'dark' ? humanScoreTitle : 'DARK'),
     };
-  }, [authoritativePlayers, humanScoreTitle, isOffline, playerColor, resolvedBotDifficulty]);
+  }, [authoritativePlayers, humanScoreTitle, isOffline, resolvedBotDifficulty, resolvedPlayerColor]);
   const practiceModeRewardLabel = isPracticeModeMatch ? getPracticeModeRewardLabel(effectiveMatchConfig) : null;
-
-  const hasAssignedColor = playerColor === 'light' || playerColor === 'dark';
+  const hasAssignedColor = resolvedPlayerColor === 'light' || resolvedPlayerColor === 'dark';
   const canSyncOfflineBotRewards =
     effectiveMatchConfig.allowsXp && isOffline && isNakamaEnabled() && hasNakamaConfig() && Boolean(user);
   const shouldShowAccountRewards =
@@ -631,10 +659,15 @@ export function GameRoom() {
           ? 'This mode does not affect Elo.'
           : 'Elo was unchanged for this match.';
   const effectiveMatchToken = storedMatchId === matchId ? matchToken : null;
-  const isMyTurn = hasAssignedColor && gameState.currentTurn === playerColor;
+  const isMyTurn = hasAssignedColor && gameState.currentTurn === resolvedPlayerColor;
   const didPlayerWin =
-    gameState.winner !== null && hasAssignedColor ? gameState.winner === playerColor : gameState.winner === 'light';
-  const tournamentPlayerUserId = userId ?? user?.nakamaUserId ?? user?.id ?? null;
+    resolveDidPlayerWin({
+      winnerColor: gameState.winner,
+      resolvedPlayerColor,
+      authoritativeMatchEnd,
+      userId: authenticatedUserId,
+    }) === true;
+  const tournamentPlayerUserId = authenticatedUserId;
   const initialTournamentRound = useMemo(() => {
     if (!tournamentRoundParam) {
       return null;
@@ -793,7 +826,7 @@ export function GameRoom() {
     ((isTournamentRewardSummaryPrimary &&
       tournamentOutcome === 'advancing' &&
       tournamentRewardSummary?.shouldEnterWaitingRoom === true) ||
-      (!isTournamentRewardSummaryPrimary && tournamentRewardFallbackActive && didPlayerWin));
+      (!isTournamentRewardSummaryPrimary && tournamentRewardFallbackActive));
   const isScriptedTutorialPhase =
     isPlaythroughTutorialMatch &&
     tutorialCoachPhase !== 'idle' &&
@@ -943,6 +976,14 @@ export function GameRoom() {
     tournamentAdvanceResolutionState === 'waiting' &&
     !hasEnteredTournamentWaitingRoom &&
     !hasTournamentAdvanceResolvedTerminal;
+  const showTournamentFallbackPendingModal =
+    showWinModal &&
+    isTournamentMatch &&
+    !isTournamentRewardSummaryPrimary &&
+    tournamentRewardFallbackActive &&
+    !didPlayerWin &&
+    !hasTournamentAdvanceResolvedTerminal &&
+    !['eliminated', 'finalized'].includes(tournamentAdvanceFlow.phase);
   const isTournamentResultModal =
     showWinModal &&
     isTournamentMatch &&
@@ -953,11 +994,18 @@ export function GameRoom() {
         (tournamentAdvanceFlow.phase === 'eliminated' || tournamentAdvanceFlow.phase === 'finalized')));
   const shouldRenderResultModal =
     showWinModal &&
-    (!isTournamentMatch || showTournamentAdvanceResolutionModal || showTournamentAdvanceModal || isTournamentResultModal);
+    (!isTournamentMatch ||
+      showTournamentAdvanceResolutionModal ||
+      showTournamentAdvanceModal ||
+      showTournamentFallbackPendingModal ||
+      isTournamentResultModal);
   const tournamentResultModalTitle = useMemo(() => {
     if (
       !isTournamentMatch ||
-      (!showTournamentAdvanceResolutionModal && !showTournamentAdvanceModal && !isTournamentResultModal)
+      (!showTournamentAdvanceResolutionModal &&
+        !showTournamentAdvanceModal &&
+        !showTournamentFallbackPendingModal &&
+        !isTournamentResultModal)
     ) {
       return winModalTitle;
     }
@@ -968,6 +1016,10 @@ export function GameRoom() {
 
     if (showTournamentAdvanceModal) {
       return 'Victory';
+    }
+
+    if (showTournamentFallbackPendingModal) {
+      return winModalTitle;
     }
 
     if (tournamentTerminalOutcomeOverride === 'eliminated') {
@@ -1015,6 +1067,7 @@ export function GameRoom() {
     isTournamentMatch,
     isTournamentResultModal,
     isTournamentRewardSummaryPrimary,
+    showTournamentFallbackPendingModal,
     showTournamentAdvanceResolutionModal,
     showTournamentAdvanceModal,
     tournamentAdvanceFlow.isChampion,
@@ -1028,7 +1081,10 @@ export function GameRoom() {
 
     if (
       !isTournamentMatch ||
-      (!showTournamentAdvanceResolutionModal && !showTournamentAdvanceModal && !isTournamentResultModal)
+      (!showTournamentAdvanceResolutionModal &&
+        !showTournamentAdvanceModal &&
+        !showTournamentFallbackPendingModal &&
+        !isTournamentResultModal)
     ) {
       return baseMessage;
     }
@@ -1038,6 +1094,10 @@ export function GameRoom() {
     } else if (showTournamentAdvanceModal) {
       baseMessage =
         'Your rewards are locked in. Enter the waiting room and the next match will launch automatically when the bracket is ready.';
+    } else if (showTournamentFallbackPendingModal) {
+      baseMessage = tournamentAdvanceFlow.subtleStatusText
+        ? `${tournamentAdvanceFlow.statusText} ${tournamentAdvanceFlow.subtleStatusText}`
+        : tournamentAdvanceFlow.statusText;
     } else if (tournamentTerminalOutcomeOverride === 'eliminated') {
       baseMessage = onlineMatchEnd?.reason === 'forfeit_inactivity'
         ? 'You forfeited due to inactivity and were eliminated from the tournament.'
@@ -1093,12 +1153,15 @@ export function GameRoom() {
     isValidatingTournamentExit,
     isTournamentRewardSummaryPrimary,
     onlineMatchEnd?.reason,
+    showTournamentFallbackPendingModal,
     showTournamentAdvanceResolutionModal,
     showTournamentAdvanceModal,
     tournamentExitValidationFailed,
     tournamentAdvanceFlow.finalPlacement,
     tournamentAdvanceFlow.isChampion,
     tournamentAdvanceFlow.phase,
+    tournamentAdvanceFlow.statusText,
+    tournamentAdvanceFlow.subtleStatusText,
     tournamentTerminalOutcomeOverride,
     tournamentOutcome,
     winModalMessage,
@@ -1120,6 +1183,10 @@ export function GameRoom() {
       return 'Enter Waiting Room';
     }
 
+    if (showTournamentFallbackPendingModal) {
+      return undefined;
+    }
+
     if (isTournamentResultModal) {
       return tournamentExitValidationFailed ? 'Leave Anyway' : 'Return to Home Page';
     }
@@ -1127,6 +1194,7 @@ export function GameRoom() {
     return 'Return to Menu';
   }, [
     isTournamentResultModal,
+    showTournamentFallbackPendingModal,
     showTournamentAdvanceModal,
     showTournamentAdvanceResolutionModal,
     tournamentExitValidationFailed,
@@ -1672,6 +1740,25 @@ export function GameRoom() {
 
   useGameLoop(isOffline && !isScriptedTutorialPhase && introsComplete && !showRulesIntroModal);
   useEffect(() => {
+    if (isOffline || !authenticatedUserId || userId === authenticatedUserId) {
+      return;
+    }
+
+    setUserId(authenticatedUserId);
+  }, [authenticatedUserId, isOffline, setUserId, userId]);
+
+  useEffect(() => {
+    if (playerColor || !authenticatedUserId || !authoritativePlayers) {
+      return;
+    }
+
+    const inferredPlayerColor = getPlayerColorForUserId(authoritativePlayers, authenticatedUserId);
+    if (inferredPlayerColor) {
+      setPlayerColor(inferredPlayerColor);
+    }
+  }, [authenticatedUserId, authoritativePlayers, playerColor, setPlayerColor]);
+
+  useEffect(() => {
     setShowRulesIntroModal(Boolean(rulesIntro));
   }, [matchId, rulesIntro]);
   useEffect(() => {
@@ -1860,21 +1947,18 @@ export function GameRoom() {
       TOURNAMENT_EXIT_VALIDATION_TIMEOUT_MS,
     );
 
-    if (!snapshot || !isTerminalTournamentStatusSnapshot(snapshot, { didPlayerWin, initialRound: initialTournamentRound })) {
+    if (!snapshot || !isServerConfirmedTournamentStatusSnapshot(snapshot)) {
       return false;
     }
 
-    const nextOutcome = deriveTerminalTournamentOutcomeFromSnapshot(snapshot, {
-      didPlayerWin,
-      initialRound: initialTournamentRound,
-    });
+    const nextOutcome = deriveServerConfirmedTournamentOutcomeFromSnapshot(snapshot);
 
     if (nextOutcome) {
       setTournamentTerminalOutcomeOverride(nextOutcome);
     }
 
     return true;
-  }, [didPlayerWin, initialTournamentRound, tournamentRunIdParam]);
+  }, [tournamentRunIdParam]);
 
   const attemptTournamentWaitingRoomEntry = React.useCallback(async (options?: { source?: 'manual' | 'auto' }) => {
     if (tournamentWaitingRoomEntryInFlightRef.current) {
@@ -1893,13 +1977,8 @@ export function GameRoom() {
     try {
       const snapshot = await getPublicTournamentStatus(tournamentRunIdParam);
 
-      if (isTerminalTournamentStatusSnapshot(snapshot, { didPlayerWin, initialRound: initialTournamentRound })) {
-        setTournamentTerminalOutcomeOverride(
-          deriveTerminalTournamentOutcomeFromSnapshot(snapshot, {
-            didPlayerWin,
-            initialRound: initialTournamentRound,
-          }),
-        );
+      if (isServerConfirmedTournamentStatusSnapshot(snapshot)) {
+        setTournamentTerminalOutcomeOverride(deriveServerConfirmedTournamentOutcomeFromSnapshot(snapshot));
         setTournamentAdvanceResolutionState('terminal');
 
         if (options?.source === 'manual') {
@@ -1917,7 +1996,7 @@ export function GameRoom() {
     setTournamentTerminalOutcomeOverride(null);
     setTournamentAdvanceResolutionState('waiting');
     setHasEnteredTournamentWaitingRoom(true);
-  }, [didPlayerWin, exitMatchToHome, initialTournamentRound, isTournamentMatch, tournamentRunIdParam]);
+  }, [exitMatchToHome, isTournamentMatch, tournamentRunIdParam]);
 
   const handleEnterTournamentWaitingRoom = React.useCallback(() => {
     void attemptTournamentWaitingRoomEntry({ source: 'manual' });
@@ -1925,11 +2004,6 @@ export function GameRoom() {
 
   const handleTournamentResultExit = React.useCallback(async () => {
     if (isValidatingTournamentExit) {
-      return;
-    }
-
-    if (tournamentAdvanceResolutionState === 'terminal') {
-      exitMatchToHome();
       return;
     }
 
@@ -1960,7 +2034,6 @@ export function GameRoom() {
   }, [
     exitMatchToHome,
     isValidatingTournamentExit,
-    tournamentAdvanceResolutionState,
     tournamentExitValidationFailed,
     tournamentRunIdParam,
     validateTournamentResultBeforeExit,
@@ -2648,7 +2721,7 @@ export function GameRoom() {
         if (!isStateSnapshotPayload(payload)) {
           return;
         }
-        const assignedColorFromSnapshot = getPlayerColorForUserId(payload.players, userId);
+        const assignedColorFromSnapshot = getPlayerColorForUserId(payload.players, authenticatedUserId);
         console.info('[Nakama][snapshot]', {
           matchId: payload.matchId,
           revision: payload.revision,
@@ -2662,7 +2735,7 @@ export function GameRoom() {
           darkFinished: payload.gameState.dark.finishedCount,
         });
         applyServerSnapshot(payload);
-        if (userId) {
+        if (authenticatedUserId) {
           const assignedColor = assignedColorFromSnapshot;
           if (assignedColor) {
             setPlayerColor(assignedColor);
@@ -2884,7 +2957,7 @@ export function GameRoom() {
     setIsRefreshingMatchRewards,
     setHasEnteredTournamentWaitingRoom,
     updateMatchPresences,
-    userId,
+    authenticatedUserId,
   ]);
   useEffect(() => {
     if (!matchId) return;
@@ -5018,7 +5091,7 @@ export function GameRoom() {
         actionLabel={resultModalActionLabel}
         actionLoading={isTournamentResultModal && isValidatingTournamentExit}
         onAction={
-          showTournamentAdvanceResolutionModal
+          showTournamentAdvanceResolutionModal || showTournamentFallbackPendingModal
             ? undefined
             : showTournamentAdvanceModal
               ? handleEnterTournamentWaitingRoom

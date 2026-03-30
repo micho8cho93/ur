@@ -752,6 +752,7 @@ export const rpcGetPublicTournamentStandings = (
 
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
+  run = maybeFinalizeCompletedPublicRun(logger, nk, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   assertPublicRunReadable(run, nakamaTournament, membership);

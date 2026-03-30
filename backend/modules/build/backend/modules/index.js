@@ -5361,6 +5361,22 @@ var buildRunResponse = (run, nakamaTournament) => ({
   run,
   nakamaTournament
 });
+var maybeAutoFinalizeAdminRun = (logger, nk, run) => {
+  var _a;
+  if (run.lifecycle === "finalized" || !((_a = run.bracket) == null ? void 0 : _a.finalizedAt)) {
+    return run;
+  }
+  try {
+    return finalizeTournamentRun(logger, nk, run.runId, {}).run;
+  } catch (error) {
+    logger.warn(
+      "Unable to auto-finalize admin tournament run %s while serving internals: %s",
+      run.runId,
+      getErrorMessage(error)
+    );
+    return readRunOrThrow(nk, run.runId);
+  }
+};
 var deleteRunWithRetry = (nk, logger, run) => {
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const indexState = readRunIndexState(nk);
@@ -5408,7 +5424,9 @@ var rpcAdminListTournaments = (ctx, logger, nk, payload) => {
       const limit = clampInteger(parsed.limit, 50, 1, MAX_RUN_LIST_LIMIT);
       const lifecycleFilter = readStringField6(parsed, ["lifecycle"]);
       const indexState = readRunIndexState(_nk);
-      const runs = sortRuns(readRunsByIds(_nk, indexState.index.runIds));
+      const runs = sortRuns(readRunsByIds(_nk, indexState.index.runIds).map(
+        (run) => maybeAutoFinalizeAdminRun(_logger, _nk, run)
+      ));
       const filteredRuns = lifecycleFilter && (lifecycleFilter === "draft" || lifecycleFilter === "open" || lifecycleFilter === "closed" || lifecycleFilter === "finalized") ? runs.filter((run) => run.lifecycle === lifecycleFilter) : runs;
       const limitedRuns = filteredRuns.slice(0, limit);
       const tournamentsById = getNakamaTournamentsById(
@@ -5448,7 +5466,8 @@ var rpcAdminGetTournamentRun = (ctx, logger, nk, payload) => {
       if (!runId) {
         throw new Error("runId is required.");
       }
-      const run = normalizeRunRecord((_b = (_a = readRunObject(_nk, runId)) == null ? void 0 : _a.value) != null ? _b : null, runId);
+      const existingRun = normalizeRunRecord((_b = (_a = readRunObject(_nk, runId)) == null ? void 0 : _a.value) != null ? _b : null, runId);
+      const run = existingRun ? maybeAutoFinalizeAdminRun(_logger, _nk, existingRun) : null;
       if (!run) {
         return JSON.stringify({
           ok: true,
@@ -5740,7 +5759,7 @@ var rpcAdminGetTournamentStandings = (ctx, logger, nk, payload) => {
       if (!runId) {
         throw new Error("runId is required.");
       }
-      const run = readRunOrThrow(_nk, runId);
+      const run = maybeAutoFinalizeAdminRun(_logger, _nk, readRunOrThrow(_nk, runId));
       const nakamaTournament = getNakamaTournamentById(_nk, run.tournamentId);
       const limit = clampInteger(parsed.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
       const overrideExpiry = resolveOverrideExpiry(
@@ -6406,6 +6425,7 @@ var rpcGetPublicTournamentStandings = (ctx, logger, nk, payload) => {
   }
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
+  run = maybeFinalizeCompletedPublicRun(logger, nk, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   assertPublicRunReadable(run, nakamaTournament, membership);

@@ -280,10 +280,8 @@ export const getPublicTournamentStatus = async (
   runId: string,
   limit?: number,
 ): Promise<PublicTournamentStatusSnapshot> => {
-  const [tournament, standings] = await Promise.all([
-    getPublicTournament(runId),
-    getPublicTournamentStandings(runId, limit),
-  ]);
+  const tournament = await getPublicTournament(runId);
+  const standings = await getPublicTournamentStandings(runId, limit);
 
   return {
     tournament,
