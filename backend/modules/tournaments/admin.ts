@@ -123,6 +123,7 @@ export const MAX_STANDINGS_LIMIT = 10000;
 const MAX_RUN_LIST_LIMIT = 100;
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 const TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION = "tournament_run_memberships";
+const TOURNAMENT_MATCH_RESULTS_COLLECTION = "tournament_match_results";
 
 const readBooleanField = (value: unknown, keys: string[]): boolean | null => {
   const record = asRecord(value);
@@ -154,6 +155,24 @@ const readMetadataField = (value: unknown, keys: string[]): RuntimeMetadata => {
   }
 
   return {};
+};
+
+const readStringArrayField = (value: unknown, keys: string[]): string[] => {
+  const record = asRecord(value);
+  if (!record) {
+    return [];
+  }
+
+  for (const key of keys) {
+    const field = record[key];
+    if (!Array.isArray(field)) {
+      continue;
+    }
+
+    return field.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+  }
+
+  return [];
 };
 
 const normalizeSortOrder = (value: unknown): SortOrder => {
@@ -518,6 +537,340 @@ export const buildStandingsSnapshot = (
   };
 };
 
+type ReconstructedTournamentSnapshotPlayer = {
+  userId: string;
+  username: string | null;
+  didWin: boolean;
+  score: number;
+  finishedCount: number;
+};
+
+type ReconstructedTournamentSnapshotMatch = {
+  matchId: string;
+  completedAt: string;
+  round: number | null;
+  entryId: string | null;
+  players: ReconstructedTournamentSnapshotPlayer[];
+};
+
+type ReconstructedTournamentStanding = {
+  userId: string;
+  username: string;
+  score: number;
+  subscore: number;
+  attempts: number;
+  latestCompletedAt: string | null;
+  latestRound: number | null;
+  latestEntryId: string | null;
+  latestMatchId: string | null;
+  latestOpponentUserId: string | null;
+  lastResult: "win" | "loss" | null;
+};
+
+const normalizeReconstructedTournamentSnapshotMatch = (
+  value: unknown,
+): ReconstructedTournamentSnapshotMatch | null => {
+  const record = asRecord(value);
+  if (!record || readBooleanField(record, ["counted"]) !== true) {
+    return null;
+  }
+
+  const summary = asRecord(record.summary);
+  const matchId = readStringField(record, ["matchId", "match_id"]);
+  const completedAt =
+    readStringField(summary, ["completedAt", "completed_at"]) ??
+    readStringField(record, ["updatedAt", "updated_at", "createdAt", "created_at"]);
+
+  if (!summary || !matchId || !completedAt) {
+    return null;
+  }
+
+  const players = Array.isArray(summary.players)
+    ? summary.players
+        .map((entry) => {
+          const player = asRecord(entry);
+          const userId = readStringField(player, ["userId", "user_id"]);
+
+          if (!player || !userId) {
+            return null;
+          }
+
+          return {
+            userId,
+            username: readStringField(player, ["username"]),
+            didWin: readBooleanField(player, ["didWin"]) === true,
+            score: Math.max(0, Math.floor(readNumberField(player, ["score"]) ?? 0)),
+            finishedCount: Math.max(
+              0,
+              Math.floor(readNumberField(player, ["finishedCount", "finished_count"]) ?? 0),
+            ),
+          };
+        })
+        .filter((entry): entry is ReconstructedTournamentSnapshotPlayer => Boolean(entry))
+    : [];
+
+  if (players.length === 0) {
+    return null;
+  }
+
+  return {
+    matchId,
+    completedAt,
+    round: (() => {
+      const round = readNumberField(summary, ["round"]);
+      return typeof round === "number" && Number.isFinite(round) ? Math.max(1, Math.floor(round)) : null;
+    })(),
+    entryId: readStringField(summary, ["entryId", "entry_id"]),
+    players,
+  };
+};
+
+const readStoredReconstructedTournamentSnapshotMatches = (
+  nk: RuntimeNakama,
+  resultIds: string[],
+): ReconstructedTournamentSnapshotMatch[] => {
+  if (resultIds.length === 0) {
+    return [];
+  }
+
+  const objects = nk.storageRead(
+    resultIds.map((resultId) => ({
+      collection: TOURNAMENT_MATCH_RESULTS_COLLECTION,
+      key: resultId,
+    })),
+  ) as RuntimeStorageObject[];
+
+  return resultIds
+    .map((resultId) =>
+      normalizeReconstructedTournamentSnapshotMatch(
+        findStorageObject(objects, TOURNAMENT_MATCH_RESULTS_COLLECTION, resultId)?.value ?? null,
+      ),
+    )
+    .filter((entry): entry is ReconstructedTournamentSnapshotMatch => Boolean(entry));
+};
+
+const applyReconstructedStandingUpdate = (
+  operator: TournamentRunRecord["operator"],
+  standing: ReconstructedTournamentStanding,
+  player: ReconstructedTournamentSnapshotPlayer,
+): void => {
+  if (operator === "incr") {
+    standing.score += player.score;
+    standing.subscore += player.finishedCount;
+    return;
+  }
+
+  if (
+    operator === "best" &&
+    (player.score > standing.score ||
+      (player.score === standing.score && player.finishedCount > standing.subscore))
+  ) {
+    standing.score = player.score;
+    standing.subscore = player.finishedCount;
+    return;
+  }
+
+  if (operator === "set") {
+    standing.score = player.score;
+    standing.subscore = player.finishedCount;
+  }
+};
+
+const buildReconstructedFinalStandingsSnapshot = (
+  nk: RuntimeNakama,
+  run: TournamentRunRecord,
+  overrideExpiry: number,
+  generatedAt: string,
+): TournamentStandingsSnapshot | null => {
+  const countedResultIds = readStringArrayField(run.metadata, ["countedResultIds", "counted_result_ids"]);
+  if (countedResultIds.length === 0) {
+    return null;
+  }
+
+  const matches = readStoredReconstructedTournamentSnapshotMatches(nk, countedResultIds);
+  if (matches.length !== countedResultIds.length) {
+    return null;
+  }
+
+  const participants = run.bracket?.participants.length
+    ? run.bracket.participants.slice().sort(compareBracketParticipantsForFallbackSnapshot)
+    : run.registrations
+        .slice()
+        .sort((left, right) => {
+          if (left.seed !== right.seed) {
+            return left.seed - right.seed;
+          }
+
+          const joinedCompare = left.joinedAt.localeCompare(right.joinedAt);
+          if (joinedCompare !== 0) {
+            return joinedCompare;
+          }
+
+          return left.userId.localeCompare(right.userId);
+        })
+        .map((registration) => ({
+          userId: registration.userId,
+          displayName: registration.displayName,
+          joinedAt: registration.joinedAt,
+          seed: registration.seed,
+          state: "lobby" as const,
+          currentRound: null,
+          currentEntryId: null,
+          activeMatchId: null,
+          finalPlacement: null,
+          lastResult: null,
+          updatedAt: run.updatedAt,
+        }));
+
+  const standingsByUserId = participants.reduce<Record<string, ReconstructedTournamentStanding>>(
+    (accumulator, participant) => {
+      accumulator[participant.userId] = {
+        userId: participant.userId,
+        username: participant.displayName,
+        score: 0,
+        subscore: 0,
+        attempts: 0,
+        latestCompletedAt: null,
+        latestRound: null,
+        latestEntryId: null,
+        latestMatchId: null,
+        latestOpponentUserId: null,
+        lastResult: participant.lastResult,
+      };
+      return accumulator;
+    },
+    {},
+  );
+
+  matches.forEach((match) => {
+    match.players.forEach((player) => {
+      const standing =
+        standingsByUserId[player.userId] ??
+        (standingsByUserId[player.userId] = {
+          userId: player.userId,
+          username: player.username?.trim() || player.userId,
+          score: 0,
+          subscore: 0,
+          attempts: 0,
+          latestCompletedAt: null,
+          latestRound: null,
+          latestEntryId: null,
+          latestMatchId: null,
+          latestOpponentUserId: null,
+          lastResult: null,
+        });
+
+      standing.attempts += 1;
+      if (player.username?.trim()) {
+        standing.username = player.username.trim();
+      }
+      applyReconstructedStandingUpdate(run.operator, standing, player);
+
+      if (!standing.latestCompletedAt || match.completedAt.localeCompare(standing.latestCompletedAt) >= 0) {
+        standing.latestCompletedAt = match.completedAt;
+        standing.latestRound = match.round;
+        standing.latestEntryId = match.entryId;
+        standing.latestMatchId = match.matchId;
+        standing.latestOpponentUserId =
+          match.players.find((candidate) => candidate.userId !== player.userId)?.userId ?? null;
+        standing.lastResult = player.didWin ? "win" : "loss";
+      }
+    });
+  });
+
+  const knownParticipantUserIds = new Set(participants.map((participant) => participant.userId));
+  const extraParticipants = Object.keys(standingsByUserId)
+    .filter((userId) => !knownParticipantUserIds.has(userId))
+    .sort((leftUserId, rightUserId) => {
+      const left = standingsByUserId[leftUserId];
+      const right = standingsByUserId[rightUserId];
+
+      if (left.score !== right.score) {
+        return right.score - left.score;
+      }
+
+      if (left.subscore !== right.subscore) {
+        return right.subscore - left.subscore;
+      }
+
+      if (left.attempts !== right.attempts) {
+        return right.attempts - left.attempts;
+      }
+
+      return left.username.localeCompare(right.username);
+    })
+    .map((userId) => {
+      const standing = standingsByUserId[userId];
+
+      return {
+        userId,
+        displayName: standing.username,
+        joinedAt: run.createdAt,
+        seed: Number.MAX_SAFE_INTEGER,
+        state: "lobby" as const,
+        currentRound: standing.latestRound,
+        currentEntryId: standing.latestEntryId,
+        activeMatchId: standing.latestMatchId,
+        finalPlacement: null,
+        lastResult: standing.lastResult,
+        updatedAt: standing.latestCompletedAt ?? run.updatedAt,
+      };
+    });
+  const orderedParticipants = participants.concat(extraParticipants);
+
+  const records = orderedParticipants.map((participant, index) => {
+    const standing = standingsByUserId[participant.userId] ?? {
+      userId: participant.userId,
+      username: participant.displayName,
+      score: 0,
+      subscore: 0,
+      attempts: 0,
+      latestCompletedAt: null,
+      latestRound: null,
+      latestEntryId: null,
+      latestMatchId: null,
+      latestOpponentUserId: null,
+      lastResult: participant.lastResult,
+    };
+
+    return {
+      rank:
+        typeof participant.finalPlacement === "number" && Number.isFinite(participant.finalPlacement)
+          ? participant.finalPlacement
+          : index + 1,
+      owner_id: participant.userId,
+      username: standing.username || participant.displayName,
+      score: standing.score,
+      subscore: standing.subscore,
+      num_score: standing.attempts,
+      max_num_score: run.maxNumScore,
+      create_time: run.createdAt,
+      update_time: standing.latestCompletedAt ?? participant.updatedAt ?? run.updatedAt ?? generatedAt,
+      metadata: {
+        state: participant.state,
+        round: standing.latestRound ?? participant.currentRound,
+        entryId: standing.latestEntryId ?? participant.currentEntryId,
+        matchId: standing.latestMatchId ?? participant.activeMatchId,
+        activeMatchId: participant.activeMatchId,
+        finalPlacement: participant.finalPlacement,
+        result: standing.lastResult ?? participant.lastResult,
+        seed: participant.seed,
+        opponentUserId: standing.latestOpponentUserId,
+        completedAt: standing.latestCompletedAt,
+      },
+    };
+  });
+
+  return {
+    generatedAt,
+    overrideExpiry,
+    rankCount: records.length,
+    records,
+    prevCursor: null,
+    nextCursor: null,
+  };
+};
+
 const canReuseStoredStandingsSnapshot = (
   snapshot: TournamentStandingsSnapshot | null,
   limit: number,
@@ -537,10 +890,37 @@ export const resolveRunStandingsSnapshot = (
   limit: number,
   overrideExpiry: number,
 ): TournamentStandingsSnapshot => {
+  const reconstructedSnapshot =
+    run.lifecycle === "finalized"
+      ? buildReconstructedFinalStandingsSnapshot(
+          nk,
+          run,
+          overrideExpiry,
+          run.finalSnapshot?.generatedAt ?? new Date().toISOString(),
+        )
+      : null;
+
   if (run.lifecycle === "finalized" && canReuseStoredStandingsSnapshot(run.finalSnapshot, limit)) {
+    if (
+      reconstructedSnapshot &&
+      !snapshotMatchesReconstructedCountedData(run.finalSnapshot, reconstructedSnapshot)
+    ) {
+      return {
+        ...reconstructedSnapshot,
+        records: reconstructedSnapshot.records.slice(0, limit),
+      };
+    }
+
     return {
       ...run.finalSnapshot,
       records: run.finalSnapshot.records.slice(0, limit),
+    };
+  }
+
+  if (run.lifecycle === "finalized" && reconstructedSnapshot) {
+    return {
+      ...reconstructedSnapshot,
+      records: reconstructedSnapshot.records.slice(0, limit),
     };
   }
 
@@ -554,6 +934,15 @@ const readStandingsRecordRank = (record: Record<string, unknown>): number | null
 
 const readStandingsRecordOwnerId = (record: Record<string, unknown>): string | null =>
   readStringField(record, ["ownerId", "owner_id"]);
+
+const readStandingsRecordScore = (record: Record<string, unknown>): number =>
+  Math.max(0, Math.floor(readNumberField(record, ["score"]) ?? 0));
+
+const readStandingsRecordSubscore = (record: Record<string, unknown>): number =>
+  Math.max(0, Math.floor(readNumberField(record, ["subscore"]) ?? 0));
+
+const readStandingsRecordAttemptCount = (record: Record<string, unknown>): number =>
+  Math.max(0, Math.floor(readNumberField(record, ["numScore", "num_score"]) ?? 0));
 
 export const resolveChampionUserId = (snapshot: TournamentStandingsSnapshot): string | null => {
   if (snapshot.records.length === 0) {
@@ -602,6 +991,44 @@ const snapshotMatchesFinalizedBracket = (
   const runnerUpUserId = resolveTopRankOwnerId(snapshot, 2);
 
   return championUserId === run.bracket.winnerUserId && runnerUpUserId === run.bracket.runnerUpUserId;
+};
+
+const snapshotMatchesReconstructedCountedData = (
+  snapshot: TournamentStandingsSnapshot | null,
+  reconstructedSnapshot: TournamentStandingsSnapshot,
+): boolean => {
+  if (!snapshot) {
+    return false;
+  }
+
+  const actualByUserId = snapshot.records.reduce<Record<string, Record<string, unknown>>>(
+    (accumulator, record) => {
+      const ownerId = readStandingsRecordOwnerId(record);
+      if (ownerId) {
+        accumulator[ownerId] = record;
+      }
+      return accumulator;
+    },
+    {},
+  );
+
+  return reconstructedSnapshot.records.every((expectedRecord) => {
+    const ownerId = readStandingsRecordOwnerId(expectedRecord);
+    if (!ownerId) {
+      return false;
+    }
+
+    const actualRecord = actualByUserId[ownerId];
+    if (!actualRecord) {
+      return false;
+    }
+
+    return (
+      readStandingsRecordScore(actualRecord) === readStandingsRecordScore(expectedRecord) &&
+      readStandingsRecordSubscore(actualRecord) === readStandingsRecordSubscore(expectedRecord) &&
+      readStandingsRecordAttemptCount(actualRecord) === readStandingsRecordAttemptCount(expectedRecord)
+    );
+  });
 };
 
 const compareBracketParticipantsForFallbackSnapshot = (
@@ -686,6 +1113,23 @@ export const finalizeTournamentRun = (
     overrideExpiry,
     finalizationTimestamp,
   );
+  const reconstructedSnapshot = (() => {
+    try {
+      return buildReconstructedFinalStandingsSnapshot(
+        nk,
+        runBeforeUpdate,
+        overrideExpiry,
+        finalizationTimestamp,
+      );
+    } catch (error) {
+      logger.warn(
+        "Unable to reconstruct counted-match standings for %s during finalization: %s",
+        runBeforeUpdate.runId,
+        getErrorMessage(error),
+      );
+      return null;
+    }
+  })();
   const finalSnapshot = (() => {
     if (runBeforeUpdate.finalSnapshot) {
       return runBeforeUpdate.finalSnapshot;
@@ -700,6 +1144,14 @@ export const finalizeTournamentRun = (
       );
 
       if (!snapshotMatchesFinalizedBracket(standingsSnapshot, runBeforeUpdate)) {
+        if (reconstructedSnapshot && snapshotMatchesFinalizedBracket(reconstructedSnapshot, runBeforeUpdate)) {
+          logger.warn(
+            "Standings snapshot for %s disagreed with finalized bracket, using counted-match reconstruction.",
+            runBeforeUpdate.runId,
+          );
+          return reconstructedSnapshot;
+        }
+
         logger.warn(
           "Standings snapshot for %s disagreed with finalized bracket, using bracket fallback.",
           runBeforeUpdate.runId,
@@ -707,8 +1159,28 @@ export const finalizeTournamentRun = (
         return bracketFallbackSnapshot;
       }
 
+      if (
+        reconstructedSnapshot &&
+        !snapshotMatchesReconstructedCountedData(standingsSnapshot, reconstructedSnapshot)
+      ) {
+        logger.warn(
+          "Standings snapshot for %s looked stale compared with counted match results, using counted-match reconstruction.",
+          runBeforeUpdate.runId,
+        );
+        return reconstructedSnapshot;
+      }
+
       return standingsSnapshot;
     } catch (error) {
+      if (reconstructedSnapshot && snapshotMatchesFinalizedBracket(reconstructedSnapshot, runBeforeUpdate)) {
+        logger.warn(
+          "Unable to build final standings snapshot for %s during finalization, using counted-match reconstruction: %s",
+          runBeforeUpdate.runId,
+          getErrorMessage(error),
+        );
+        return reconstructedSnapshot;
+      }
+
       logger.warn(
         "Unable to build final standings snapshot for %s during finalization, using bracket fallback: %s",
         runBeforeUpdate.runId,

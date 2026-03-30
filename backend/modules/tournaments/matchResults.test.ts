@@ -577,11 +577,28 @@ describe("tournament authoritative match results", () => {
   it("auto-finalizes the tournament and awards champion XP after the deciding match", () => {
     const nk = createNakama();
     const logger = createLogger();
+    const startedAt = "2026-03-26T10:30:00.000Z";
+    const registrations = [
+      {
+        userId: "user-light",
+        displayName: "light-user",
+        joinedAt: "2026-03-26T10:00:00.000Z",
+        seed: 1,
+      },
+      {
+        userId: "user-dark",
+        displayName: "dark-user",
+        joinedAt: "2026-03-26T10:01:00.000Z",
+        seed: 2,
+      },
+    ];
     seedRun(nk, {
       metadata: {
         xpForTournamentChampion: 420,
       },
       maxSize: 2,
+      registrations,
+      bracket: createSingleEliminationBracket(registrations, startedAt),
     });
     nk.tournamentsGetId.mockImplementation((ids: string[]) =>
       ids.includes("tour-1")
@@ -600,13 +617,17 @@ describe("tournament authoritative match results", () => {
           rank: 1,
           owner_id: "user-light",
           username: "light-user",
-          score: 1,
+          score: 0,
+          subscore: 0,
+          num_score: 0,
         },
         {
           rank: 2,
           owner_id: "user-dark",
           username: "dark-user",
           score: 0,
+          subscore: 0,
+          num_score: 0,
         },
       ],
       owner_records: [],
@@ -617,6 +638,24 @@ describe("tournament authoritative match results", () => {
 
     expect(result.record?.counted).toBe(true);
     expect(nk.tournamentRanksDisable).toHaveBeenCalledWith("tour-1");
+    expect(result.finalizationResult?.finalSnapshot.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rank: 1,
+          owner_id: "user-light",
+          score: 1,
+          subscore: 7,
+          num_score: 1,
+        }),
+        expect.objectContaining({
+          rank: 2,
+          owner_id: "user-dark",
+          score: 0,
+          subscore: 4,
+          num_score: 1,
+        }),
+      ]),
+    );
 
     const storedRun = nk.storage.get(buildStorageKey(TOURNAMENT_RUNS_COLLECTION, "run-1"));
     expect(storedRun?.value).toEqual(
@@ -627,6 +666,16 @@ describe("tournament authoritative match results", () => {
             expect.objectContaining({
               rank: 1,
               owner_id: "user-light",
+              score: 1,
+              subscore: 7,
+              num_score: 1,
+            }),
+            expect.objectContaining({
+              rank: 2,
+              owner_id: "user-dark",
+              score: 0,
+              subscore: 4,
+              num_score: 1,
             }),
           ]),
         }),

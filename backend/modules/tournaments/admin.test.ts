@@ -941,4 +941,188 @@ describe("admin tournament run creation", () => {
     );
     expect(nk.tournamentRecordsList).not.toHaveBeenCalled();
   });
+
+  it("reconstructs finalized standings for internals when the stored final snapshot is stale", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk, "admin-1", "viewer");
+    const startedAt = "2026-03-27T10:05:00.000Z";
+    const completedAt = "2026-03-27T12:00:00.000Z";
+    const registrations = [
+      {
+        userId: "user-1",
+        displayName: "Champion",
+        joinedAt: "2026-03-27T10:06:00.000Z",
+        seed: 1,
+      },
+      {
+        userId: "user-2",
+        displayName: "Finalist",
+        joinedAt: "2026-03-27T10:07:00.000Z",
+        seed: 2,
+      },
+    ];
+    const finalizedBracket = completeTournamentBracketMatch(
+      createSingleEliminationBracket(registrations, startedAt),
+      {
+        entryId: "round-1-match-1",
+        matchId: "match-1",
+        winnerUserId: "user-1",
+        loserUserId: "user-2",
+        completedAt,
+      },
+    );
+
+    nk.storage.set(buildStorageKey(RUNS_COLLECTION, "finalized-tournament"), {
+      collection: RUNS_COLLECTION,
+      key: "finalized-tournament",
+      value: {
+        runId: "finalized-tournament",
+        tournamentId: "finalized-tournament",
+        title: "Finalized Tournament",
+        description: "Saved final snapshot",
+        category: 0,
+        authoritative: true,
+        sortOrder: "desc",
+        operator: "incr",
+        resetSchedule: "",
+        metadata: {
+          gameMode: "Classic ladder",
+          region: "Global",
+          buyIn: "Free",
+          countedMatchCount: 1,
+          countedResultIds: ["finalized-tournament:match-1"],
+        },
+        startTime: 1_774_572_800,
+        endTime: 1_774_580_000,
+        duration: 7_200,
+        maxSize: 2,
+        maxNumScore: 1,
+        joinRequired: true,
+        enableRanks: true,
+        lifecycle: "finalized",
+        createdAt: "2026-03-27T10:00:00.000Z",
+        updatedAt: "2026-03-27T12:05:00.000Z",
+        createdByUserId: "admin-1",
+        createdByLabel: "Admin",
+        openedAt: startedAt,
+        closedAt: completedAt,
+        finalizedAt: "2026-03-27T12:05:00.000Z",
+        registrations,
+        bracket: finalizedBracket,
+        finalSnapshot: {
+          generatedAt: "2026-03-27T12:05:00.000Z",
+          overrideExpiry: 0,
+          rankCount: 2,
+          records: [
+            {
+              rank: 1,
+              owner_id: "user-1",
+              username: "Champion",
+              score: 0,
+              subscore: 0,
+              num_score: 0,
+              metadata: {
+                result: "win",
+              },
+            },
+            {
+              rank: 2,
+              owner_id: "user-2",
+              username: "Finalist",
+              score: 0,
+              subscore: 0,
+              num_score: 0,
+              metadata: {
+                result: "loss",
+              },
+            },
+          ],
+          prevCursor: null,
+          nextCursor: null,
+        },
+      },
+      version: "run-v1",
+    });
+    nk.storage.set(buildStorageKey("tournament_match_results", "finalized-tournament:match-1"), {
+      collection: "tournament_match_results",
+      key: "finalized-tournament:match-1",
+      value: {
+        resultId: "finalized-tournament:match-1",
+        matchId: "match-1",
+        runId: "finalized-tournament",
+        tournamentId: "finalized-tournament",
+        createdAt: completedAt,
+        updatedAt: completedAt,
+        valid: true,
+        counted: true,
+        invalidReason: null,
+        errorMessage: null,
+        summary: {
+          completedAt,
+          round: 1,
+          entryId: "round-1-match-1",
+          players: [
+            {
+              userId: "user-1",
+              username: "Champion",
+              didWin: true,
+              score: 1,
+              finishedCount: 7,
+            },
+            {
+              userId: "user-2",
+              username: "Finalist",
+              didWin: false,
+              score: 0,
+              finishedCount: 4,
+            },
+          ],
+        },
+      },
+      version: "result-v1",
+    });
+
+    const response = JSON.parse(
+      rpcAdminGetTournamentStandings(
+        {
+          userId: "admin-1",
+          username: "Viewer",
+        },
+        logger,
+        nk,
+        JSON.stringify({
+          runId: "finalized-tournament",
+          limit: 10,
+        }),
+      ),
+    ) as {
+      standings: {
+        records: Array<{
+          owner_id: string;
+          score: number;
+          subscore: number;
+          num_score: number;
+        }>;
+      };
+    };
+
+    expect(response.standings.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          owner_id: "user-1",
+          score: 1,
+          subscore: 7,
+          num_score: 1,
+        }),
+        expect.objectContaining({
+          owner_id: "user-2",
+          score: 0,
+          subscore: 4,
+          num_score: 1,
+        }),
+      ]),
+    );
+    expect(nk.tournamentRecordsList).not.toHaveBeenCalled();
+  });
 });
