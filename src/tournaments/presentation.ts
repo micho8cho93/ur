@@ -3,6 +3,7 @@ import {
   formatTournamentLobbyCountdown,
   getTournamentLobbyCountdownMsRemaining,
 } from '@/shared/tournamentLobby';
+import { getTournamentBotStatusLabel } from '@/shared/tournamentBots';
 import type { PublicTournamentSummary } from '@/src/tournaments/types';
 
 export type TournamentChipTone = 'neutral' | 'info' | 'success' | 'warning';
@@ -211,6 +212,9 @@ export const formatTournamentDateTime = (value: string | null): string => {
 
 export const buildTournamentPrizeSummary = (tournament: Pick<PublicTournamentSummary, 'buyInLabel' | 'prizeLabel'>): string =>
   `${tournament.buyInLabel} • ${tournament.prizeLabel}`;
+
+export const buildTournamentBotSummary = (tournament: Pick<PublicTournamentSummary, 'bots'>): string =>
+  getTournamentBotStatusLabel(tournament.bots);
 
 const getJoinedTournamentPrimaryState = (tournament: PublicTournamentSummary, now = Date.now()): TournamentPrimaryState => {
   const participationState = tournament.participation?.state ?? null;

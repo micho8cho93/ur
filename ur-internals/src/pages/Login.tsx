@@ -26,7 +26,7 @@ export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { authError, clearAuthError, isAuthenticating, loginWithUsername } = useSession()
-  const [username, setUsername] = useState('admin')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
   const redirectTo = resolveRedirectTo(location.state)
@@ -53,8 +53,8 @@ export function LoginPage() {
             <p className="meta-label">Ur Game Internals</p>
             <h1>Operator access</h1>
             <p className="auth-copy">
-              Sign in with the admin test account, verify access through{' '}
-              <code>rpc_admin_whoami</code>, and then enter the dashboard.
+              Sign in with a real Nakama account, verify access through <code>rpc_admin_whoami</code>,
+              and then enter the dashboard.
             </p>
           </div>
 
@@ -65,7 +65,7 @@ export function LoginPage() {
             </div>
             <div className="metric-card">
               <span className="meta-label">Access</span>
-              <strong>Test admin account</strong>
+              <strong>Explicit admin role required</strong>
             </div>
           </div>
 
@@ -75,9 +75,9 @@ export function LoginPage() {
               <span className="muted">Successful auth stores the Nakama session token locally and restores it on reload when possible.</span>
             </li>
             <li className="list__item">
-              <strong>Quick credentials</strong>
+              <strong>Admin assignment</strong>
               <span className="muted">
-                <code>admin</code> / <code>password</code>
+                Accounts need a real Nakama password and an explicit admin role assignment before they can enter internals.
               </span>
             </li>
           </ul>
@@ -87,14 +87,14 @@ export function LoginPage() {
           <div className="auth-panel__form-copy">
             <p className="meta-label">Secure access</p>
             <h2>Admin sign-in</h2>
-            <p className="auth-footnote">Use your Nakama admin credentials to enter the operations workspace.</p>
+            <p className="auth-footnote">Use your Nakama operator credentials to enter the operations workspace.</p>
           </div>
 
           {errorMessage ? <div className="alert alert--error">{errorMessage}</div> : null}
 
           <form className="form auth-form" onSubmit={handleUsernameLogin}>
             <div className="field">
-              <label htmlFor="username">Username</label>
+              <label htmlFor="username">Username or email</label>
               <input
                 id="username"
                 name="username"
@@ -102,7 +102,7 @@ export function LoginPage() {
                 autoComplete="username"
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
-                placeholder="admin"
+                placeholder="you@example.com"
                 required
               />
             </div>

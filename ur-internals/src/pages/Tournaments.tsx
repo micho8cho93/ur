@@ -7,6 +7,7 @@ import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
 import { StatusBadge } from '../components/StatusBadge'
+import { formatTournamentBotSummary } from '../tournamentBots'
 import { getTournamentStructureLabel } from '../tournamentStructure'
 import type { Tournament } from '../types/tournament'
 
@@ -200,11 +201,12 @@ export function TournamentsPage() {
                       <StatusBadge status={tournament.status} />
                     </td>
                     <td>
-                      <div className="stack stack--compact">
-                        <strong>{getTournamentStructureLabel(tournament.gameMode)}</strong>
-                        <span className="muted">{tournament.roundCount} rounds</span>
-                      </div>
-                    </td>
+                        <div className="stack stack--compact">
+                          <strong>{getTournamentStructureLabel(tournament.gameMode)}</strong>
+                          <span className="muted">{tournament.roundCount} rounds</span>
+                          <span className="muted">{formatTournamentBotSummary(tournament)}</span>
+                        </div>
+                      </td>
                     <td>
                       <div className="stack stack--compact">
                         <strong>{formatDateTime(tournament.startAt)}</strong>

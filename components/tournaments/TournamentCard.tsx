@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import {
+  buildTournamentBotSummary,
   buildTournamentPrizeSummary,
   formatTournamentDateTime,
   getTournamentCardPrimaryState,
@@ -63,6 +64,8 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
   const lobbyCountdownMs = getTournamentLobbyCountdownMs(tournament, now);
   const lobbyCountdownLabel = getTournamentLobbyCountdownLabel(tournament, now);
   const shouldTickCountdown = lobbyCountdownMs !== null && lobbyCountdownMs > 0;
+  const botSummary = buildTournamentBotSummary(tournament);
+  const countdownLabelTitle = tournament.bots.autoAdd ? 'Bot Fill Starts In' : 'Lobby Autofinalizes In';
 
   useEffect(() => {
     setNow(Date.now());
@@ -125,10 +128,11 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
       </View>
 
       <Text style={styles.prizeSummary}>{buildTournamentPrizeSummary(tournament)}</Text>
+      <Text style={styles.botSummary}>{botSummary}</Text>
 
       {lobbyCountdownLabel ? (
         <View style={styles.countdownPanel}>
-          <Text style={styles.countdownLabel}>Lobby Autofinalizes In</Text>
+          <Text style={styles.countdownLabel}>{countdownLabelTitle}</Text>
           <Text style={styles.countdownValue}>{lobbyCountdownLabel}</Text>
         </View>
       ) : null}
@@ -247,6 +251,10 @@ const styles = StyleSheet.create({
   },
   prizeSummary: {
     color: 'rgba(246, 214, 151, 0.92)',
+    marginBottom: urTheme.spacing.sm,
+  },
+  botSummary: {
+    color: 'rgba(216, 232, 251, 0.82)',
     marginBottom: urTheme.spacing.md,
   },
   countdownPanel: {

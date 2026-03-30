@@ -34,7 +34,14 @@ import {
 import { maybeAutoFinalizeTournamentRunById } from "./matchResults";
 import type { RuntimeContext, RuntimeLogger, RuntimeNakama } from "./types";
 import { requireCompletedUsernameOnboarding } from "../usernameOnboarding";
+import { DEFAULT_BOT_DIFFICULTY } from "../../../logic/bot/types";
 import { getTournamentLobbyDeadlineAt } from "../../../shared/tournamentLobby";
+import {
+  buildTournamentBotDisplayNames,
+  buildTournamentBotSummary,
+  isTournamentBotUserId,
+  normalizeTournamentBotPolicy,
+} from "../../../shared/tournamentBots";
 import {
   MAX_WRITE_ATTEMPTS,
   RuntimeStorageObject,
@@ -95,6 +102,7 @@ type PublicTournamentResponse = {
   region: string;
   buyInLabel: string;
   prizeLabel: string;
+  bots: ReturnType<typeof buildTournamentBotSummary>;
   isLocked: boolean;
   currentRound: number | null;
   membership: PublicMembershipState;
@@ -141,6 +149,33 @@ const toIsoFromUnixSeconds = (seconds: number | null, fallback: string | null): 
 };
 
 const readMetadata = (run: TournamentRunRecord): Record<string, unknown> => asRecord(run.metadata) ?? {};
+
+const getRunBotUserIds = (run: TournamentRunRecord): string[] => {
+  const userIds = new Set<string>();
+
+  run.registrations.forEach((registration) => {
+    if (isTournamentBotUserId(registration.userId)) {
+      userIds.add(registration.userId);
+    }
+  });
+
+  run.bracket?.participants.forEach((participant) => {
+    if (isTournamentBotUserId(participant.userId)) {
+      userIds.add(participant.userId);
+    }
+  });
+
+  run.bracket?.entries.forEach((entry) => {
+    if (isTournamentBotUserId(entry.playerAUserId)) {
+      userIds.add(entry.playerAUserId);
+    }
+    if (isTournamentBotUserId(entry.playerBUserId)) {
+      userIds.add(entry.playerBUserId);
+    }
+  });
+
+  return Array.from(userIds);
+};
 
 const formatPrizeLabel = (metadata: Record<string, unknown>): string => {
   const explicitPrize = readStringField(metadata, ["prizePool", "prize_pool", "prizeLabel", "prize_label"]);
@@ -624,6 +659,7 @@ const buildPublicTournamentResponse = (
     region: readStringField(metadata, ["region"]) ?? "Global",
     buyInLabel: readStringField(metadata, ["buyIn", "buy_in"]) ?? "Free",
     prizeLabel: formatPrizeLabel(metadata),
+    bots: buildTournamentBotSummary(run.metadata, getRunBotUserIds(run)),
     isLocked: hasTournamentBracketStarted(run.bracket),
     currentRound: participation.currentRound ?? getTournamentBracketCurrentRound(run.bracket),
     membership: buildMembershipState(resolvedMembership),
@@ -1091,12 +1127,23 @@ export const rpcLaunchTournamentMatch = (
   const metadata = readMetadata(run);
   const modeId = readStringField(metadata, ["gameMode", "game_mode"]) ?? "standard";
   const rewardSettings = resolveTournamentXpRewardSettings(metadata);
+  const botPolicy = normalizeTournamentBotPolicy(run.metadata);
+  const botUserId =
+    isTournamentBotUserId(entry.playerAUserId) && entry.playerAUserId !== userId
+      ? entry.playerAUserId
+      : isTournamentBotUserId(entry.playerBUserId) && entry.playerBUserId !== userId
+        ? entry.playerBUserId
+        : null;
+  const botDisplayName =
+    botUserId
+      ? buildTournamentBotDisplayNames([botUserId], botPolicy.difficulty)[botUserId] ?? botUserId
+      : null;
   const matchId = nk.matchCreate("authoritative_match", {
     playerIds: [entry.playerAUserId, entry.playerBUserId].filter((candidate): candidate is string => Boolean(candidate)),
     modeId,
     rankedMatch: true,
     casualMatch: false,
-    botMatch: false,
+    botMatch: Boolean(botUserId),
     privateMatch: false,
     winRewardSource: "pvp_win",
     allowsChallengeRewards: true,
@@ -1107,6 +1154,13 @@ export const rpcLaunchTournamentMatch = (
     tournamentMatchWinXp: rewardSettings.xpPerMatchWin,
     tournamentChampionXp: rewardSettings.xpForTournamentChampion,
     tournamentEliminationRisk: true,
+    ...(botUserId
+      ? {
+          botDifficulty: botPolicy.difficulty ?? DEFAULT_BOT_DIFFICULTY,
+          botUserId,
+          botDisplayName,
+        }
+      : {}),
   });
   const launchedAt = new Date().toISOString();
 

@@ -1,6 +1,7 @@
 import { Session } from '@heroiclabs/nakama-js';
 
 import { nakamaService } from '@/services/nakama';
+import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty, type BotDifficulty } from '@/logic/bot/types';
 import type {
   PublicTournamentDetail,
   PublicTournamentStanding,
@@ -183,6 +184,24 @@ const normalizeParticipationState = (value: unknown): TournamentParticipationSta
   };
 };
 
+const normalizeTournamentBots = (value: unknown): PublicTournamentDetail['bots'] => {
+  const record = asRecord(value);
+  const autoAdd = record?.autoAdd === true;
+  const difficultyValue = readStringField(record, ['difficulty']);
+  const difficulty: BotDifficulty | null =
+    difficultyValue && isBotDifficulty(difficultyValue)
+      ? difficultyValue
+      : autoAdd
+        ? DEFAULT_BOT_DIFFICULTY
+        : null;
+
+  return {
+    autoAdd,
+    difficulty,
+    count: Math.max(0, Math.floor(readNumberField(record, ['count']) ?? 0)),
+  };
+};
+
 const normalizePublicTournament = (value: unknown): PublicTournamentDetail => {
   const record = asRecord(value) ?? {};
 
@@ -209,6 +228,7 @@ const normalizePublicTournament = (value: unknown): PublicTournamentDetail => {
     region: readStringField(record, ['region']) ?? 'Global',
     buyInLabel: readStringField(record, ['buyInLabel', 'buy_in_label']) ?? 'Free',
     prizeLabel: readStringField(record, ['prizeLabel', 'prize_label']) ?? 'No prize listed',
+    bots: normalizeTournamentBots(record.bots),
     isLocked: record.isLocked === true,
     currentRound: readNumberField(record, ['currentRound', 'current_round']),
     membership: normalizeMembershipState(record.membership),

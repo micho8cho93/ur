@@ -75,6 +75,7 @@ import {
   getPlayerColorForUserId,
   getSnapshotScoreTitle,
 } from '@/src/match/playerTitles';
+import { isTournamentBotUserId } from '@/shared/tournamentBots';
 import { useGameStore } from '@/store/useGameStore';
 import {
   resolveMobileReserveRailTopOffset,
@@ -701,8 +702,42 @@ export function GameRoom() {
 
     return presenceIds.size;
   }, [isOffline, matchPresences, userId]);
-  const hasOpponentJoined = !isOffline && (joinedPlayerCount >= 2 || gameState.winner !== null);
-  const requiresOpponentPresence = isPrivateMatch || isTournamentMatch;
+  const tournamentBotOpponentColor = useMemo<PlayerColor | null>(() => {
+    if (isOffline || !isTournamentMatch || !authoritativePlayers) {
+      return null;
+    }
+
+    if (
+      authoritativePlayers.light.userId !== authenticatedUserId &&
+      isTournamentBotUserId(authoritativePlayers.light.userId)
+    ) {
+      return 'light';
+    }
+
+    if (
+      authoritativePlayers.dark.userId !== authenticatedUserId &&
+      isTournamentBotUserId(authoritativePlayers.dark.userId)
+    ) {
+      return 'dark';
+    }
+
+    return null;
+  }, [authoritativePlayers, authenticatedUserId, isOffline, isTournamentMatch]);
+  const tournamentBotOpponentTitle = useMemo(() => {
+    if (!tournamentBotOpponentColor) {
+      return null;
+    }
+
+    return (
+      getSnapshotScoreTitle(authoritativePlayers, tournamentBotOpponentColor) ??
+      scoreTitles[tournamentBotOpponentColor]
+    );
+  }, [authoritativePlayers, scoreTitles, tournamentBotOpponentColor]);
+  const hasTournamentBotOpponent = tournamentBotOpponentColor !== null;
+  const hasOpponentJoined =
+    !isOffline &&
+    (joinedPlayerCount >= 2 || gameState.winner !== null || hasTournamentBotOpponent);
+  const requiresOpponentPresence = isPrivateMatch || (isTournamentMatch && !hasTournamentBotOpponent);
   const isOpponentReadyToPlay = !requiresOpponentPresence || hasOpponentJoined;
   const isOnlineInteractionReady = isOffline || socketState === 'connected';
   const canRoll = isMyTurn && gameState.phase === 'rolling' && isOpponentReadyToPlay && isOnlineInteractionReady;
@@ -720,14 +755,26 @@ export function GameRoom() {
       return privateMatchCode ? `Private Match - ${privateMatchCode}` : 'Private Match';
     }
 
-    const opponentStatus = hasOpponentJoined ? 'Opponent Joined' : 'Waiting for Opponent';
+    const opponentStatus = tournamentBotOpponentTitle
+      ? `${tournamentBotOpponentTitle} Ready`
+      : hasOpponentJoined
+        ? 'Opponent Joined'
+        : 'Waiting for Opponent';
 
     if (isTournamentMatch) {
       return `${tournamentDisplayName} - ${opponentStatus}`;
     }
 
     return `Online Match - ${opponentStatus}`;
-  }, [hasOpponentJoined, isOffline, isPrivateMatch, isTournamentMatch, privateMatchCode, tournamentDisplayName]);
+  }, [
+    hasOpponentJoined,
+    isOffline,
+    isPrivateMatch,
+    isTournamentMatch,
+    privateMatchCode,
+    tournamentBotOpponentTitle,
+    tournamentDisplayName,
+  ]);
 
   const handleCopyPrivateCode = React.useCallback(async () => {
     if (!privateMatchCode) {

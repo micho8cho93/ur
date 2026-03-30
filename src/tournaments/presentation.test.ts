@@ -1,4 +1,5 @@
 import {
+  buildTournamentBotSummary,
   getTournamentCardPrimaryState,
   getTournamentDetailPrimaryState,
   getTournamentChipState,
@@ -25,6 +26,11 @@ const baseTournament: PublicTournamentSummary = {
   region: 'Global',
   buyInLabel: 'Free',
   prizeLabel: 'No prize listed',
+  bots: {
+    autoAdd: false,
+    difficulty: null,
+    count: 0,
+  },
   isLocked: false,
   currentRound: null,
   membership: {
@@ -321,5 +327,29 @@ describe('tournament presentation helpers', () => {
 
     expect(isTournamentPlayerLaunchReady(joinedLobbyTournament)).toBe(false);
     expect(isTournamentPlayerLaunchReady(joinedReadyTournament)).toBe(true);
+  });
+
+  it('formats tournament bot labels for disabled, enabled, and inserted states', () => {
+    expect(buildTournamentBotSummary(baseTournament)).toBe('Bots off');
+    expect(
+      buildTournamentBotSummary({
+        ...baseTournament,
+        bots: {
+          autoAdd: true,
+          difficulty: 'easy',
+          count: 0,
+        },
+      }),
+    ).toBe('Bot fill enabled · easy');
+    expect(
+      buildTournamentBotSummary({
+        ...baseTournament,
+        bots: {
+          autoAdd: true,
+          difficulty: 'hard',
+          count: 2,
+        },
+      }),
+    ).toBe('Includes 2 hard bots');
   });
 });

@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_DB: nakama
       POSTGRES_USER: nakama
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nakama}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -24,9 +24,14 @@ services:
       - ./nakama.yml:/nakama/data/nakama.yml:ro
       - ./modules:/nakama/data/modules:ro
     environment:
-      NAKAMA_DATABASE_ADDRESS: "nakama:${POSTGRES_PASSWORD:-nakama}@postgres:5432/nakama?sslmode=disable"
-      NAKAMA_SOCKET_SERVER_KEY: ${NAKAMA_SOCKET_SERVER_KEY:-defaultkey}
-      NAKAMA_HTTP_KEY: ${NAKAMA_HTTP_KEY:-changeme}
+      NAKAMA_DATABASE_ADDRESS: "nakama:${POSTGRES_PASSWORD}@postgres:5432/nakama?sslmode=disable"
+      NAKAMA_SOCKET_SERVER_KEY: ${NAKAMA_SOCKET_SERVER_KEY}
+      NAKAMA_HTTP_KEY: ${NAKAMA_HTTP_KEY}
+      NAKAMA_CONSOLE_USERNAME: ${NAKAMA_CONSOLE_USERNAME}
+      NAKAMA_CONSOLE_PASSWORD: ${NAKAMA_CONSOLE_PASSWORD}
+      NAKAMA_CONSOLE_SIGNING_KEY: ${NAKAMA_CONSOLE_SIGNING_KEY}
+      NAKAMA_SESSION_ENCRYPTION_KEY: ${NAKAMA_SESSION_ENCRYPTION_KEY}
+      NAKAMA_SESSION_REFRESH_ENCRYPTION_KEY: ${NAKAMA_SESSION_REFRESH_ENCRYPTION_KEY}
     ports:
       - "7350:7350"
       - "7351:7351"
@@ -35,7 +40,16 @@ services:
       - "-ecx"
       - >
           /nakama/nakama migrate up --database.address "$NAKAMA_DATABASE_ADDRESS" &&
-          exec /nakama/nakama --config /nakama/data/nakama.yml
+          exec /nakama/nakama
+          --config /nakama/data/nakama.yml
+          --database.address "$NAKAMA_DATABASE_ADDRESS"
+          --socket.server_key "$NAKAMA_SOCKET_SERVER_KEY"
+          --runtime.http_key "$NAKAMA_HTTP_KEY"
+          --console.username "$NAKAMA_CONSOLE_USERNAME"
+          --console.password "$NAKAMA_CONSOLE_PASSWORD"
+          --console.signing_key "$NAKAMA_CONSOLE_SIGNING_KEY"
+          --session.encryption_key "$NAKAMA_SESSION_ENCRYPTION_KEY"
+          --session.refresh_encryption_key "$NAKAMA_SESSION_REFRESH_ENCRYPTION_KEY"
 
 volumes:
   postgres_data:

@@ -21,6 +21,11 @@ function createTournament(overrides: Partial<Tournament>): Tournament {
     buyIn: 'Free',
     region: 'Global',
     prizePool: 'Not configured',
+    bots: {
+      autoAdd: false,
+      difficulty: null,
+      count: 0,
+    },
     createdBy: 'Admin',
     createdAt: '2026-03-30T10:30:00.000Z',
     updatedAt: '2026-03-30T11:00:00.000Z',

@@ -1033,6 +1033,138 @@ describe('tournament match result synchronization', () => {
     ).toHaveLength(2);
   });
 
+  it('skips progression and challenge rewards for synthetic tournament bots while keeping human tournament XP', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = createLogger();
+    const nk = createNakama();
+    const dispatcher = createDispatcher();
+    const ctx = { matchId: 'match-bot-tournament' };
+
+    mockedProcessCompletedAuthoritativeTournamentMatch.mockReturnValue({
+      skipped: false,
+      duplicate: false,
+      record: {
+        counted: true,
+        summary: { round: 1 },
+      },
+      updatedRun: {
+        runId: 'run-1',
+        lifecycle: 'open',
+        bracket: null,
+      } as never,
+      participantResolutions: [
+        { userId: 'user-light', state: 'waiting_next_round', finalPlacement: null },
+        { userId: 'tournament-bot:run-1:2', state: 'eliminated', finalPlacement: 2 },
+      ],
+      finalizationResult: null,
+      retryableFailure: false,
+    } as never);
+
+    const initialized = runtime.matchInit(ctx, logger, nk, {
+      playerIds: ['user-light', 'tournament-bot:run-1:2'],
+      modeId: 'standard',
+      rankedMatch: true,
+      botMatch: true,
+      botUserId: 'tournament-bot:run-1:2',
+      botDifficulty: 'hard',
+      botDisplayName: 'Hard Bot 1',
+      tournamentRunId: 'run-1',
+      tournamentId: 'tour-1',
+      tournamentRound: 1,
+      tournamentEntryId: 'round-1-match-1',
+      tournamentMatchWinXp: 180,
+      allowsChallengeRewards: true,
+      winRewardSource: 'pvp_win',
+    });
+
+    const humanWinState = {
+      ...initialized.state,
+      started: true,
+      presences: {
+        'user-light': {
+          'light-session': {
+            userId: 'user-light',
+            sessionId: 'light-session',
+            node: 'node-1',
+          },
+        },
+      },
+      gameState: {
+        ...initialized.state.gameState,
+        phase: 'ended',
+        winner: 'light',
+      },
+    };
+
+    runtime.matchLoop(ctx, logger, nk, dispatcher, 1, humanWinState, []);
+
+    expect(mockedAwardXpForMatchWin).toHaveBeenCalledWith(
+      nk,
+      logger,
+      expect.objectContaining({
+        userId: 'user-light',
+        awardedXp: 180,
+      }),
+    );
+    expect(mockedProcessCompletedMatch).toHaveBeenCalledTimes(1);
+    expect(mockedProcessCompletedMatch.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({
+        playerUserId: 'user-light',
+        opponentType: 'hard_bot',
+      }),
+    );
+
+    mockedAwardXpForMatchWin.mockClear();
+    mockedProcessCompletedMatch.mockClear();
+    dispatcher.broadcastMessage.mockClear();
+
+    const initializedBotWin = runtime.matchInit(ctx, logger, nk, {
+      playerIds: ['user-light', 'tournament-bot:run-1:2'],
+      modeId: 'standard',
+      rankedMatch: true,
+      botMatch: true,
+      botUserId: 'tournament-bot:run-1:2',
+      botDifficulty: 'hard',
+      botDisplayName: 'Hard Bot 1',
+      tournamentRunId: 'run-1',
+      tournamentId: 'tour-1',
+      tournamentRound: 1,
+      tournamentEntryId: 'round-1-match-1',
+      tournamentMatchWinXp: 180,
+      allowsChallengeRewards: true,
+      winRewardSource: 'pvp_win',
+    });
+
+    const botWinState = {
+      ...initializedBotWin.state,
+      started: true,
+      presences: {
+        'user-light': {
+          'light-session': {
+            userId: 'user-light',
+            sessionId: 'light-session',
+            node: 'node-1',
+          },
+        },
+      },
+      gameState: {
+        ...initializedBotWin.state.gameState,
+        phase: 'ended',
+        winner: 'dark',
+      },
+    };
+
+    runtime.matchLoop(ctx, logger, nk, dispatcher, 1, botWinState, []);
+
+    expect(mockedAwardXpForMatchWin).not.toHaveBeenCalled();
+    expect(mockedProcessCompletedMatch).toHaveBeenCalledTimes(1);
+    expect(mockedProcessCompletedMatch.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({
+        playerUserId: 'user-light',
+      }),
+    );
+  });
+
   it('processes standard private wins through Elo, reduced XP, and challenge rewards', () => {
     const runtime = globalThis as RuntimeGlobals;
     const logger = createLogger();

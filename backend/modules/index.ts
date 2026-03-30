@@ -3,6 +3,8 @@
   Authoritative Royal Game of Ur match implementation.
 */
 
+import { getBotMove } from "../../logic/bot/bot";
+import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty, type BotDifficulty } from "../../logic/bot/types";
 import { applyMove, createInitialState, getValidMoves, rollDice } from "../../logic/engine";
 import { MatchModeId, getMatchConfig, isMatchModeId } from "../../logic/matchConfigs";
 import { getPathCoord as getVariantPathCoord, getPathLength } from "../../logic/pathVariants";
@@ -130,6 +132,7 @@ import {
   type TournamentMatchContext,
   type TournamentMatchPlayerSummary,
 } from "./tournaments/matchResults";
+import { isTournamentBotUserId } from "../../shared/tournamentBots";
 
 declare namespace nkruntime {
   type Context = any;
@@ -146,6 +149,7 @@ type MatchState = {
   presences: Record<string, Record<string, nkruntime.Presence>>;
   assignments: Record<string, PlayerColor>;
   playerTitles: Record<string, string>;
+  bot: MatchBotState;
   gameState: GameState;
   revision: number;
   started: boolean;
@@ -229,6 +233,7 @@ type MatchTimerResetReason =
   | "player_roll"
   | "player_move"
   | "timeout_autoplay"
+  | "bot_turn_delay"
   | "resynced"
   | "inactive"
   | "timeout_ignored"
@@ -260,6 +265,13 @@ type MatchClassification = {
   experimental: boolean;
 };
 
+type MatchBotState = {
+  userId: string;
+  color: PlayerColor;
+  difficulty: BotDifficulty;
+  displayName: string;
+} | null;
+
 type RuntimeRecord = Record<string, unknown>;
 
 const TICK_RATE = 10;
@@ -267,6 +279,7 @@ const MAX_PLAYERS = 2;
 const ONLINE_TTL_MS = 30_000;
 const ONLINE_TURN_DURATION_MS = 10_000;
 const ONLINE_AFK_FORFEIT_MS = 60_000;
+const BOT_TURN_DELAY_MS = 850;
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 const RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
@@ -845,6 +858,28 @@ const removePresence = (state: MatchState, presence: nkruntime.Presence): void =
 const getUserIdForColor = (state: MatchState, color: PlayerColor): string | null =>
   Object.entries(state.assignments).find(([, assignedColor]) => assignedColor === color)?.[0] ?? null;
 
+const getBotOpponentType = (difficulty: BotDifficulty): OpponentType => {
+  if (difficulty === "medium") {
+    return "medium_bot";
+  }
+
+  if (difficulty === "hard") {
+    return "hard_bot";
+  }
+
+  if (difficulty === "perfect") {
+    return "perfect_bot";
+  }
+
+  return "easy_bot";
+};
+
+const isConfiguredBotUser = (state: MatchState, userId: string | null | undefined): boolean =>
+  Boolean(userId && state.bot?.userId === userId);
+
+const isConfiguredBotColor = (state: MatchState, color: PlayerColor | null | undefined): boolean =>
+  Boolean(color && state.bot?.color === color);
+
 const resolveAssignedPlayerTitle = (nk: nkruntime.Nakama, userId: string): string => {
   try {
     const profile = getUsernameOnboardingProfile(nk, userId);
@@ -877,7 +912,9 @@ const getOtherPlayerColor = (color: PlayerColor): PlayerColor =>
   color === "light" ? "dark" : "light";
 
 const getActiveAssignedUserCount = (state: MatchState): number =>
-  Object.keys(state.assignments).filter((userId) => getUserPresenceTargets(state, userId).length > 0).length;
+  Object.keys(state.assignments).filter(
+    (userId) => isConfiguredBotUser(state, userId) || getUserPresenceTargets(state, userId).length > 0,
+  ).length;
 
 const canStartMatch = (state: MatchState): boolean =>
   Object.keys(state.assignments).length >= MAX_PLAYERS && getActiveAssignedUserCount(state) >= MAX_PLAYERS;
@@ -904,8 +941,12 @@ const resetTurnTimerForCurrentState = (state: MatchState, nowMs: number, reason:
   }
 
   const activePlayerColor = state.gameState.currentTurn;
+  const turnDurationMs = isConfiguredBotColor(state, activePlayerColor)
+    ? BOT_TURN_DELAY_MS
+    : ONLINE_TURN_DURATION_MS;
+  state.timer.turnDurationMs = turnDurationMs;
   state.timer.turnStartedAtMs = nowMs;
-  state.timer.turnDeadlineMs = nowMs + state.timer.turnDurationMs;
+  state.timer.turnDeadlineMs = nowMs + turnDurationMs;
   state.timer.activePlayerColor = activePlayerColor;
   state.timer.activePlayerUserId = getUserIdForColor(state, activePlayerColor);
   state.timer.activePhase = state.gameState.phase;
@@ -947,6 +988,10 @@ const recordTimeoutWindow = (state: MatchState, playerColor: PlayerColor, nowMs:
 };
 
 const getAfkRemainingMs = (state: MatchState, playerColor: PlayerColor, nowMs: number): number => {
+  if (isConfiguredBotColor(state, playerColor)) {
+    return 0;
+  }
+
   const tracker = state.afk[playerColor];
   let effectiveAccumulatedMs = tracker.accumulatedMs;
 
@@ -1180,7 +1225,7 @@ const buildTournamentMatchCompletion = (
 
     return {
       userId,
-      username: getPresenceUsername(presence),
+      username: getPresenceUsername(presence) ?? state.playerTitles[userId] ?? null,
       color,
       didWin: winningColor === color,
       score: winningColor === color ? 1 : 0,
@@ -1542,6 +1587,13 @@ function matchInit(
   const privateCode = typeof params.privateCode === "string" ? normalizePrivateMatchCodeInput(params.privateCode) : "";
   const privateCreatorUserId =
     typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
+  const botUserId = readStringField(params, ["botUserId", "bot_user_id"]);
+  const botDifficultyValue = readStringField(params, ["botDifficulty", "bot_difficulty"]);
+  const botDifficulty =
+    botDifficultyValue && isBotDifficulty(botDifficultyValue) ? botDifficultyValue : DEFAULT_BOT_DIFFICULTY;
+  const botDisplayName =
+    readStringField(params, ["botDisplayName", "bot_display_name"]) ??
+    `${botDifficulty.slice(0, 1).toUpperCase()}${botDifficulty.slice(1)} Bot`;
   const winRewardSource = params.winRewardSource === "private_pvp_win" ? "private_pvp_win" : "pvp_win";
   const allowsChallengeRewards = params.allowsChallengeRewards !== false;
   const tournamentMatchWinXp = resolveConfiguredRewardXp(
@@ -1562,15 +1614,36 @@ function matchInit(
       playerTitles[userId] = resolveAssignedPlayerTitle(nk, userId);
     }
   });
+  const botColor =
+    botUserId && assignments[botUserId]
+      ? assignments[botUserId]
+      : botUserId && playerIds[1] === botUserId
+        ? "dark"
+        : botUserId && playerIds[0] === botUserId
+          ? "light"
+          : null;
+  const bot: MatchBotState =
+    classification.bot && botUserId && botColor
+      ? {
+          userId: botUserId,
+          color: botColor,
+          difficulty: botDifficulty,
+          displayName: botDisplayName,
+        }
+      : null;
+  if (bot) {
+    playerTitles[bot.userId] = bot.displayName;
+  }
 
   const state: MatchState = {
     presences: {},
     assignments,
     playerTitles,
+    bot,
     gameState: createInitialState(getMatchConfig(modeId)),
     revision: 0,
     started: false,
-    opponentType: "human",
+    opponentType: bot ? getBotOpponentType(bot.difficulty) : "human",
     modeId,
     classification,
     privateMatch,
@@ -1627,10 +1700,9 @@ function matchJoinAttempt(
     }
   }
 
-  const activeCount = getActiveUserCount(state);
   const hasExistingAssignment = Boolean(state.assignments[userId]);
 
-  if (activeCount >= MAX_PLAYERS && !hasExistingAssignment) {
+  if (Object.keys(state.assignments).length >= MAX_PLAYERS && !hasExistingAssignment) {
     return { state, accept: false, rejectMessage: "Match is full." };
   }
 
@@ -1981,6 +2053,51 @@ function applyTimedTurnTimeout(
     return;
   }
 
+  if (isConfiguredBotColor(state, activePlayerColor) && state.bot) {
+    if (state.gameState.phase === "rolling") {
+      const rolledValue = rollDice();
+      const validMoves = applyRollOutcome(state, activePlayerColor, rolledValue);
+      if (validMoves.length > 0) {
+        applyValidatedMove(
+          state,
+          activePlayerColor,
+          getBotMove(state.gameState, rolledValue, state.bot.difficulty) ?? validMoves[0],
+        );
+      }
+    } else if (state.gameState.phase === "moving" && state.gameState.rollValue !== null) {
+      const validMoves = getValidMoves(state.gameState, state.gameState.rollValue);
+      if (validMoves.length > 0) {
+        applyValidatedMove(
+          state,
+          activePlayerColor,
+          getBotMove(state.gameState, state.gameState.rollValue, state.bot.difficulty) ?? validMoves[0],
+        );
+      } else {
+        state.gameState = {
+          ...state.gameState,
+          currentTurn: getOtherPlayerColor(activePlayerColor),
+          phase: "rolling",
+          rollValue: null,
+          history: [...state.gameState.history, `${activePlayerColor} had no valid move.`],
+        };
+        completePlayerTurnTelemetry(state, activePlayerColor, { didCapture: false, unusableRoll: true });
+      }
+    }
+
+    if (state.gameState.winner) {
+      syncCompletedMatchEnd(state);
+    } else {
+      state.matchEnd = null;
+    }
+
+    resetTurnTimerForCurrentState(state, nowMs, "bot_turn_delay");
+    state.revision += 1;
+    logger.debug("Applied configured bot turn for %s (revision %d)", activePlayerColor, state.revision);
+    broadcastSnapshot(dispatcher, state, matchId);
+    finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
+    return;
+  }
+
   const accumulatedInactivityMs = recordTimeoutWindow(state, activePlayerColor, nowMs);
   if (accumulatedInactivityMs >= ONLINE_AFK_FORFEIT_MS) {
     forfeitPlayerForInactivity(logger, nk, dispatcher, state, matchId, activePlayerColor);
@@ -2227,6 +2344,10 @@ function awardWinnerProgression(
   }
 
   const [winnerUserId] = winnerEntry;
+  if (isTournamentBotUserId(winnerUserId)) {
+    logger.info("Skipping progression award for synthetic tournament bot winner %s on match %s.", winnerUserId, matchId);
+    return null;
+  }
   const configuredTournamentMatchWinXp =
     state.tournamentContext && typeof state.tournamentMatchWinXp === "number" ? state.tournamentMatchWinXp : null;
 
@@ -2291,6 +2412,10 @@ function processCompletedMatchSummaries(
   }
 
   Object.entries(state.assignments).forEach(([playerUserId, playerColor]) => {
+    if (isTournamentBotUserId(playerUserId)) {
+      return;
+    }
+
     try {
       const summary = buildPlayerMatchSummary(state, matchId, playerUserId, playerColor);
       results[playerUserId] = processCompletedMatch(nk, logger, summary);
@@ -2587,7 +2712,10 @@ function broadcastSnapshot(dispatcher: nkruntime.MatchDispatcher, state: MatchSt
       light: state.afk.light.accumulatedMs,
       dark: state.afk.dark.accumulatedMs,
     },
-    afkRemainingMs: activeTimedPlayerColor ? getAfkRemainingMs(state, activeTimedPlayerColor, nowMs) : null,
+    afkRemainingMs:
+      activeTimedPlayerColor && !isConfiguredBotColor(state, activeTimedPlayerColor)
+        ? getAfkRemainingMs(state, activeTimedPlayerColor, nowMs)
+        : null,
     matchEnd: state.matchEnd,
   };
 

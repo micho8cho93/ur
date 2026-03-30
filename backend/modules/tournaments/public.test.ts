@@ -990,6 +990,227 @@ describe('public tournament rpc flow', () => {
     expect(nk.tournamentRanksDisable).toHaveBeenCalledWith('tour-1');
   });
 
+  it('fills missing lobby seats with bots after timeout, locks the bracket, and blocks late joins', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedOpenRun(nk, {
+      entrants: 1,
+      maxSize: 4,
+      metadata: {
+        gameMode: 'standard',
+        region: 'Global',
+        buyIn: 'Free',
+        autoAddBots: true,
+        botDifficulty: 'hard',
+      },
+    });
+
+    const openedAt = new Date(Date.now() - TOURNAMENT_LOBBY_FILL_COUNTDOWN_MS - 5_000).toISOString();
+    const storedRun = readStoredRunValue(nk);
+
+    writeStoredRunValue(nk, {
+      ...storedRun,
+      updatedAt: openedAt,
+      openedAt,
+      registrations: [
+        {
+          userId: 'user-1',
+          displayName: 'RoyalPlayer',
+          joinedAt: openedAt,
+          seed: 1,
+        },
+      ],
+    });
+
+    nk.storage.set(buildStorageKey('tournament_run_memberships', 'run-1', 'user-1'), {
+      collection: 'tournament_run_memberships',
+      key: 'run-1',
+      userId: 'user-1',
+      value: {
+        runId: 'run-1',
+        tournamentId: 'tour-1',
+        userId: 'user-1',
+        displayName: 'RoyalPlayer',
+        joinedAt: openedAt,
+        updatedAt: openedAt,
+      },
+      version: 'membership-v1',
+    });
+
+    const detailResponse = JSON.parse(
+      rpcGetPublicTournament(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      tournament: {
+        lifecycle: string;
+        isLocked: boolean;
+        bots: { autoAdd: boolean; difficulty: string | null; count: number };
+        participation: { canLaunch: boolean; currentEntryId: string | null };
+      };
+    };
+
+    const updatedRun = readStoredRunValue(nk);
+    const botRegistrations = ((updatedRun.registrations as Array<Record<string, unknown>> | undefined) ?? []).filter(
+      (registration) => typeof registration.userId === 'string' && registration.userId.startsWith('tournament-bot:'),
+    );
+
+    expect(detailResponse.tournament).toEqual(
+      expect.objectContaining({
+        lifecycle: 'open',
+        isLocked: true,
+        bots: {
+          autoAdd: true,
+          difficulty: 'hard',
+          count: 3,
+        },
+        participation: expect.objectContaining({
+          canLaunch: true,
+          currentEntryId: 'round-1-match-1',
+        }),
+      }),
+    );
+    expect(updatedRun.bracket).toEqual(expect.objectContaining({ size: 4 }));
+    expect(botRegistrations).toHaveLength(3);
+    expect(nk.tournamentJoin).toHaveBeenCalledTimes(3);
+    expect(() =>
+      rpcJoinPublicTournament(
+        { userId: 'late-user', username: 'LateArrival' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ).toThrow('This tournament is locked because play has already started.');
+  });
+
+  it('finalizes a timed-out bot-fill lobby when zero humans joined', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedOpenRun(nk, {
+      entrants: 0,
+      maxSize: 4,
+      metadata: {
+        gameMode: 'standard',
+        region: 'Global',
+        buyIn: 'Free',
+        autoAddBots: true,
+        botDifficulty: 'medium',
+      },
+    });
+
+    const openedAt = new Date(Date.now() - TOURNAMENT_LOBBY_FILL_COUNTDOWN_MS - 5_000).toISOString();
+    const storedRun = readStoredRunValue(nk);
+
+    writeStoredRunValue(nk, {
+      ...storedRun,
+      updatedAt: openedAt,
+      openedAt,
+      registrations: [],
+    });
+
+    const response = JSON.parse(
+      rpcListPublicTournaments(
+        { userId: 'user-1' },
+        logger,
+        nk,
+        JSON.stringify({ limit: 10 }),
+      ),
+    ) as {
+      tournaments: Array<{ runId: string }>;
+    };
+
+    const updatedRun = readStoredRunValue(nk);
+
+    expect(response.tournaments).toEqual([]);
+    expect(updatedRun.lifecycle).toBe('finalized');
+    expect(updatedRun.bracket ?? null).toBeNull();
+    expect(nk.tournamentJoin).not.toHaveBeenCalled();
+  });
+
+  it('launches human-vs-bot tournament matches with explicit bot params', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedOpenRun(nk, {
+      entrants: 1,
+      maxSize: 4,
+      metadata: {
+        gameMode: 'standard',
+        region: 'Global',
+        buyIn: 'Free',
+        xpPerMatchWin: 180,
+        xpForTournamentChampion: 420,
+        autoAddBots: true,
+        botDifficulty: 'hard',
+      },
+    });
+
+    const openedAt = new Date(Date.now() - TOURNAMENT_LOBBY_FILL_COUNTDOWN_MS - 5_000).toISOString();
+    const storedRun = readStoredRunValue(nk);
+
+    writeStoredRunValue(nk, {
+      ...storedRun,
+      updatedAt: openedAt,
+      openedAt,
+      registrations: [
+        {
+          userId: 'user-1',
+          displayName: 'RoyalPlayer',
+          joinedAt: openedAt,
+          seed: 1,
+        },
+      ],
+    });
+
+    nk.storage.set(buildStorageKey('tournament_run_memberships', 'run-1', 'user-1'), {
+      collection: 'tournament_run_memberships',
+      key: 'run-1',
+      userId: 'user-1',
+      value: {
+        runId: 'run-1',
+        tournamentId: 'tour-1',
+        userId: 'user-1',
+        displayName: 'RoyalPlayer',
+        joinedAt: openedAt,
+        updatedAt: openedAt,
+      },
+      version: 'membership-v1',
+    });
+
+    const launchResponse = JSON.parse(
+      rpcLaunchTournamentMatch(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      matchId: string;
+      queueStatus: string;
+    };
+
+    expect(launchResponse).toEqual(
+      expect.objectContaining({
+        matchId: 'match-tournament-1',
+        queueStatus: 'active_match',
+      }),
+    );
+    expect(nk.matchCreate).toHaveBeenCalledWith(
+      'authoritative_match',
+      expect.objectContaining({
+        playerIds: ['user-1', 'tournament-bot:run-1:2'],
+        botMatch: true,
+        botDifficulty: 'hard',
+        botUserId: 'tournament-bot:run-1:2',
+        botDisplayName: 'Hard Bot 1',
+        tournamentMatchWinXp: 180,
+        tournamentChampionXp: 420,
+      }),
+    );
+  });
+
   it('auto-finalizes a completed bracket when public tournament status is refreshed', () => {
     const nk = createNakama();
     const logger = createLogger();

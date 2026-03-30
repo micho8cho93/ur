@@ -33,6 +33,11 @@ const tournament: PublicTournamentSummary = {
   region: 'Global',
   buyInLabel: 'Free',
   prizeLabel: 'No prize listed',
+  bots: {
+    autoAdd: false,
+    difficulty: null,
+    count: 0,
+  },
   isLocked: false,
   currentRound: 1,
   membership: {
@@ -78,5 +83,26 @@ describe('TournamentCard', () => {
     });
 
     expect(screen.getByText('02:59')).toBeTruthy();
+  });
+
+  it('shows the bot-fill label when a tournament is configured to add bots on timeout', () => {
+    render(
+      <TournamentCard
+        tournament={{
+          ...tournament,
+          bots: {
+            autoAdd: true,
+            difficulty: 'easy',
+            count: 0,
+          },
+        }}
+        onJoin={jest.fn()}
+        onLaunch={jest.fn()}
+        onViewStandings={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Bot fill enabled · easy')).toBeTruthy();
+    expect(screen.getByText('Bot Fill Starts In')).toBeTruthy();
   });
 });

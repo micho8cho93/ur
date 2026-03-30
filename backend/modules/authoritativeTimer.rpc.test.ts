@@ -252,6 +252,71 @@ describe('authoritative online timer runtime', () => {
     expect(result.state.timer.turnDeadlineMs).toBe(22_001);
   });
 
+  it('starts tournament bot matches with one human presence and plays bot turns on the short bot delay', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const nowSpy = jest.spyOn(Date, 'now');
+    const randomSpy = jest.spyOn(Math, 'random');
+    randomSpy
+      .mockReturnValueOnce(0.9)
+      .mockReturnValueOnce(0.1)
+      .mockReturnValueOnce(0.1)
+      .mockReturnValueOnce(0.1);
+
+    const ctx = { matchId: 'match-bot-1' };
+    const logger = createLogger();
+    const nk = createNakama();
+    const dispatcher = createDispatcher();
+    const initialized = runtime.matchInit(ctx, logger, nk, {
+      playerIds: ['human-user', 'tournament-bot:run-1:2'],
+      modeId: 'standard',
+      rankedMatch: true,
+      botMatch: true,
+      botUserId: 'tournament-bot:run-1:2',
+      botDifficulty: 'hard',
+      botDisplayName: 'Hard Bot 1',
+      tournamentRunId: 'run-1',
+      tournamentId: 'tour-1',
+      tournamentRound: 1,
+      tournamentEntryId: 'round-1-match-1',
+    });
+
+    nowSpy.mockReturnValue(2_000);
+    const joinedState = joinPresence({
+      runtime,
+      ctx,
+      logger,
+      nk,
+      dispatcher,
+      state: initialized.state,
+      presence: createPresence('human-user', 'human-session'),
+    });
+
+    expect(joinedState.started).toBe(true);
+    expect(joinedState.timer.turnDeadlineMs).toBe(12_000);
+    expect(joinedState.playerTitles['tournament-bot:run-1:2']).toBe('Hard Bot 1');
+
+    joinedState.gameState.currentTurn = 'dark';
+    joinedState.gameState.phase = 'rolling';
+    joinedState.timer.turnDurationMs = 850;
+    joinedState.timer.turnStartedAtMs = 2_000;
+    joinedState.timer.turnDeadlineMs = 2_850;
+    joinedState.timer.activePlayerColor = 'dark';
+    joinedState.timer.activePlayerUserId = 'tournament-bot:run-1:2';
+    joinedState.timer.activePhase = 'rolling';
+    dispatcher.broadcastMessage.mockClear();
+
+    nowSpy.mockReturnValue(2_851);
+    const result = runtime.matchLoop(ctx, logger, nk, dispatcher, 1, joinedState, []);
+
+    expect(result.state.afk.dark.accumulatedMs).toBe(0);
+    expect(result.state.gameState.dark.pieces.some((piece: { position: number }) => piece.position === 0)).toBe(true);
+    expect(result.state.gameState.currentTurn).toBe('light');
+    expect(result.state.gameState.phase).toBe('rolling');
+    expect(result.state.timer.turnDurationMs).toBe(10_000);
+    expect(result.state.timer.turnStartedAtMs).toBe(2_851);
+    expect(result.state.timer.turnDeadlineMs).toBe(12_851);
+  });
+
   it('does not reset AFK when a convenience auto-roll is submitted', () => {
     const runtime = globalThis as RuntimeGlobals;
     const nowSpy = jest.spyOn(Date, 'now');

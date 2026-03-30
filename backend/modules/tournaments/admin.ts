@@ -2,6 +2,7 @@ import { listTournamentAuditEntries, runAuditedAdminRpc } from "./audit";
 import { assertAdmin } from "./auth";
 import {
   assertPowerOfTwoTournamentSize,
+  createSingleEliminationBracket,
   getSingleEliminationRoundCount,
   normalizeTournamentBracketState,
   type TournamentBracketParticipant,
@@ -19,6 +20,13 @@ import {
   slugify,
 } from "./definitions";
 import {
+  buildTournamentBotDisplayNames,
+  buildTournamentBotSummary,
+  buildTournamentBotUserId,
+  isTournamentBotUserId,
+  normalizeTournamentBotPolicy,
+} from "../../../shared/tournamentBots";
+import {
   MAX_WRITE_ATTEMPTS,
   RuntimeStorageObject,
   STORAGE_PERMISSION_NONE,
@@ -32,6 +40,7 @@ import {
 } from "../progression";
 import type { RuntimeContext, RuntimeLogger, RuntimeMetadata, RuntimeNakama } from "./types";
 import { getTournamentLobbyDeadlineMs } from "../../../shared/tournamentLobby";
+import { DEFAULT_BOT_DIFFICULTY } from "../../../logic/bot/types";
 
 type SortOrder = "asc" | "desc";
 type Operator = "best" | "set" | "incr";
@@ -82,7 +91,11 @@ export type TournamentStandingsSnapshot = {
   nextCursor: string | null;
 };
 
-type TournamentRunListItem = TournamentRunRecord & {
+type TournamentRunResponse = TournamentRunRecord & {
+  bots: ReturnType<typeof buildTournamentBotSummary>;
+};
+
+type TournamentRunListResponseItem = TournamentRunResponse & {
   nakamaTournament: Record<string, unknown> | null;
 };
 
@@ -478,6 +491,115 @@ const getRunCapacity = (
   nakamaTournament: Record<string, unknown> | null,
 ): number => Math.max(0, Math.floor(readNumberField(nakamaTournament, ["maxSize", "max_size"]) ?? run.maxSize));
 
+const getRunBotUserIds = (run: TournamentRunRecord): string[] => {
+  const userIds = new Set<string>();
+
+  run.registrations.forEach((registration) => {
+    if (isTournamentBotUserId(registration.userId)) {
+      userIds.add(registration.userId);
+    }
+  });
+
+  run.bracket?.participants.forEach((participant) => {
+    if (isTournamentBotUserId(participant.userId)) {
+      userIds.add(participant.userId);
+    }
+  });
+
+  run.bracket?.entries.forEach((entry) => {
+    if (isTournamentBotUserId(entry.playerAUserId)) {
+      userIds.add(entry.playerAUserId);
+    }
+    if (isTournamentBotUserId(entry.playerBUserId)) {
+      userIds.add(entry.playerBUserId);
+    }
+  });
+
+  return Array.from(userIds);
+};
+
+const buildRunBotSummary = (run: TournamentRunRecord) =>
+  buildTournamentBotSummary(run.metadata, getRunBotUserIds(run));
+
+const buildRunResponseMetadata = (value: unknown): RuntimeMetadata => {
+  const baseMetadata = readMetadataField(value, ["metadata"]);
+  const explicitAutoAddBots = readBooleanField(value, ["autoAddBots", "auto_add_bots"]);
+  const explicitBotDifficulty = readStringField(value, ["botDifficulty", "bot_difficulty"]);
+  const normalizedPolicy = normalizeTournamentBotPolicy({
+    ...baseMetadata,
+    ...(explicitAutoAddBots !== null ? { autoAddBots: explicitAutoAddBots } : {}),
+    ...(explicitBotDifficulty !== null ? { botDifficulty: explicitBotDifficulty } : {}),
+  });
+
+  return {
+    ...baseMetadata,
+    autoAddBots: normalizedPolicy.autoAdd,
+    botDifficulty:
+      normalizedPolicy.autoAdd
+        ? normalizedPolicy.difficulty ?? DEFAULT_BOT_DIFFICULTY
+        : null,
+  };
+};
+
+const buildTournamentRunResponse = (run: TournamentRunRecord): TournamentRunResponse => ({
+  ...run,
+  bots: buildRunBotSummary(run),
+});
+
+const buildTournamentBotRegistrations = (
+  runId: string,
+  difficulty: string,
+  startingSeed: number,
+  count: number,
+  joinedAt: string,
+): TournamentRunRegistration[] => {
+  const registrations = Array.from({ length: count }, (_, index) => {
+    const seed = startingSeed + index;
+    return {
+      userId: buildTournamentBotUserId(runId, seed),
+      displayName: "",
+      joinedAt,
+      seed,
+    };
+  });
+  const displayNames = buildTournamentBotDisplayNames(
+    registrations.map((registration) => registration.userId),
+    difficulty === "easy" || difficulty === "medium" || difficulty === "hard" || difficulty === "perfect"
+      ? difficulty
+      : DEFAULT_BOT_DIFFICULTY,
+  );
+
+  return registrations.map((registration) => ({
+    ...registration,
+    displayName: displayNames[registration.userId] ?? registration.userId,
+  }));
+};
+
+const joinTournamentBots = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  tournamentId: string,
+  registrations: TournamentRunRegistration[],
+): void => {
+  registrations.forEach((registration) => {
+    try {
+      nk.tournamentJoin(tournamentId, registration.userId, registration.displayName);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      if (/already|joined|duplicate|exists|member/i.test(message)) {
+        return;
+      }
+
+      logger.warn(
+        "Unable to join tournament bot %s into %s: %s",
+        registration.userId,
+        tournamentId,
+        message,
+      );
+    }
+  });
+};
+
 const isRunAwaitingLobbyFill = (
   run: TournamentRunRecord,
   nakamaTournament: Record<string, unknown> | null,
@@ -523,6 +645,80 @@ export const maybeAutoFinalizeRunForLobbyTimeout = (
 
   if (!hasRunLobbyFillCountdownExpired(run, resolvedTournament, Date.now())) {
     return run;
+  }
+
+  const botPolicy = normalizeTournamentBotPolicy(run.metadata);
+  const humanRegistrations = run.registrations.filter((registration) => !isTournamentBotUserId(registration.userId));
+  const capacity = getRunCapacity(run, resolvedTournament);
+  const missingSeats = Math.max(0, capacity - run.registrations.length);
+
+  if (botPolicy.autoAdd && humanRegistrations.length > 0 && missingSeats > 0) {
+    try {
+      const filledAt = new Date().toISOString();
+      const botRegistrations = buildTournamentBotRegistrations(
+        run.runId,
+        botPolicy.difficulty ?? DEFAULT_BOT_DIFFICULTY,
+        run.registrations.length + 1,
+        missingSeats,
+        filledAt,
+      );
+      const updatedRun = updateRunWithRetry(nk, logger, run.runId, (current) => {
+        if (current.bracket || current.lifecycle !== "open") {
+          return current;
+        }
+
+        const currentHumanRegistrations = current.registrations.filter(
+          (registration) => !isTournamentBotUserId(registration.userId),
+        );
+        if (currentHumanRegistrations.length === 0) {
+          return current;
+        }
+
+        const currentCapacity = getRunCapacity(current, resolvedTournament);
+        const currentMissingSeats = Math.max(0, currentCapacity - current.registrations.length);
+        if (currentMissingSeats <= 0) {
+          return current;
+        }
+
+        const currentBotRegistrations = buildTournamentBotRegistrations(
+          current.runId,
+          botPolicy.difficulty ?? DEFAULT_BOT_DIFFICULTY,
+          current.registrations.length + 1,
+          currentMissingSeats,
+          filledAt,
+        );
+        const nextRegistrations = current.registrations.concat(currentBotRegistrations);
+
+        return {
+          ...current,
+          updatedAt: filledAt,
+          registrations: nextRegistrations,
+          bracket: createSingleEliminationBracket(nextRegistrations, filledAt),
+        };
+      });
+
+      if (updatedRun.bracket) {
+        joinTournamentBots(
+          nk,
+          logger,
+          updatedRun.tournamentId,
+          updatedRun.registrations.filter((registration) => isTournamentBotUserId(registration.userId)),
+        );
+        logger.info(
+          "Filled %d tournament bot seats for run %s after the lobby fill countdown expired.",
+          botRegistrations.length,
+          updatedRun.runId,
+        );
+        return updatedRun;
+      }
+    } catch (error) {
+      logger.warn(
+        "Unable to fill tournament run %s with bots after the lobby fill countdown expired: %s",
+        run.runId,
+        getErrorMessage(error),
+      );
+      return readRunOrThrow(nk, run.runId);
+    }
   }
 
   try {
@@ -802,15 +998,16 @@ const buildAdminBracketEntryMatchContextByMatchId = (
 const buildAdminTournamentRunResponse = (
   nk: RuntimeNakama,
   run: TournamentRunRecord,
-) => {
+) : TournamentRunResponse => {
+  const responseRun = buildTournamentRunResponse(run);
   if (!run.bracket) {
-    return run;
+    return responseRun;
   }
 
   const matchContextByMatchId = buildAdminBracketEntryMatchContextByMatchId(nk, run);
 
   return {
-    ...run,
+    ...responseRun,
     bracket: {
       ...run.bracket,
       participants: run.bracket.participants.map((participant) => ({ ...participant })),
@@ -1407,7 +1604,9 @@ export const finalizeTournamentRun = (
   const championUserId = resolveChampionUserId(effectiveSnapshot) ?? run.bracket?.winnerUserId ?? null;
   let championRewardResult: (XpRewardResult & { source: "tournament_champion" }) | null = null;
 
-  if (championUserId) {
+  if (championUserId && isTournamentBotUserId(championUserId)) {
+    logger.info("Skipping tournament champion XP for synthetic bot %s on run %s.", championUserId, run.runId);
+  } else if (championUserId) {
     const rewardSettings = resolveTournamentXpRewardSettings(run.metadata);
 
     if (rewardSettings.xpForTournamentChampion <= 0) {
@@ -1461,9 +1660,13 @@ export const sortRuns = (runs: TournamentRunRecord[]): TournamentRunRecord[] =>
     return left.runId.localeCompare(right.runId);
   });
 
-const buildRunResponse = (run: TournamentRunRecord, nakamaTournament: Record<string, unknown> | null) => ({
+const buildRunResponse = (
+  nk: RuntimeNakama,
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+) => ({
   ok: true,
-  run,
+  run: buildAdminTournamentRunResponse(nk, run),
   nakamaTournament,
 });
 
@@ -1562,8 +1765,8 @@ export const rpcAdminListTournaments = (
         _nk,
         limitedRuns.map((run) => run.tournamentId),
       );
-      const items: TournamentRunListItem[] = limitedRuns.map((run) => ({
-        ...run,
+      const items: TournamentRunListResponseItem[] = limitedRuns.map((run) => ({
+        ...buildAdminTournamentRunResponse(_nk, run),
         nakamaTournament: tournamentsById[run.tournamentId] ?? null,
       }));
 
@@ -1669,7 +1872,7 @@ export const rpcAdminCreateTournamentRun = (
           sortOrder: normalizeSortOrder(readStringField(parsed, ["sortOrder", "sort_order"])),
           operator: normalizeOperator(readStringField(parsed, ["operator"])),
           resetSchedule: readStringField(parsed, ["resetSchedule", "reset_schedule"]) ?? "",
-          metadata: readMetadataField(parsed, ["metadata"]),
+          metadata: buildRunResponseMetadata(parsed),
           startTime,
           endTime,
           duration,
@@ -1712,7 +1915,7 @@ export const rpcAdminCreateTournamentRun = (
             }, getStorageObjectVersion(indexState.object)),
           ]);
 
-          return JSON.stringify(buildRunResponse(run, null));
+          return JSON.stringify(buildRunResponse(_nk, run, null));
         } catch (error) {
           if (attempt === MAX_WRITE_ATTEMPTS) {
             throw error;
@@ -1797,7 +2000,7 @@ export const rpcAdminOpenTournament = (
         };
       });
 
-      return JSON.stringify(buildRunResponse(run, getNakamaTournamentById(_nk, run.tournamentId)));
+      return JSON.stringify(buildRunResponse(_nk, run, getNakamaTournamentById(_nk, run.tournamentId)));
     },
     {
       action: RPC_ADMIN_OPEN_TOURNAMENT,
@@ -1896,7 +2099,7 @@ export const rpcAdminCloseTournament = (
         };
       });
 
-      return JSON.stringify(buildRunResponse(run, getNakamaTournamentById(_nk, run.tournamentId)));
+      return JSON.stringify(buildRunResponse(_nk, run, getNakamaTournamentById(_nk, run.tournamentId)));
     },
     {
       action: RPC_ADMIN_CLOSE_TOURNAMENT,

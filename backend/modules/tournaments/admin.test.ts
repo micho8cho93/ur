@@ -241,6 +241,69 @@ describe("admin tournament run creation", () => {
     });
   });
 
+  it("normalizes create-time bot fill metadata and exposes the bot policy on the response", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk, "admin-1");
+
+    const response = JSON.parse(
+      rpcAdminCreateTournamentRun(
+        {
+          userId: "admin-1",
+          username: "Operator",
+        },
+        logger,
+        nk,
+        JSON.stringify({
+          runId: "bot-fill-open",
+          title: "Bot Fill Open",
+          description: "Backfills missing seats with bots",
+          autoAddBots: true,
+          metadata: {
+            gameMode: "standard",
+            region: "Global",
+            buyIn: "Free",
+          },
+          startTime: 1_774_572_800,
+          maxSize: 8,
+          joinRequired: true,
+          enableRanks: true,
+        }),
+      ),
+    ) as {
+      run: {
+        metadata: Record<string, unknown>;
+        bots: {
+          autoAdd: boolean;
+          difficulty: string | null;
+          count: number;
+        };
+      };
+    };
+
+    expect(response.run).toEqual(
+      expect.objectContaining({
+        bots: {
+          autoAdd: true,
+          difficulty: "easy",
+          count: 0,
+        },
+        metadata: expect.objectContaining({
+          autoAddBots: true,
+          botDifficulty: "easy",
+        }),
+      }),
+    );
+    expect(nk.storage.get(buildStorageKey(RUNS_COLLECTION, "bot-fill-open"))?.value).toEqual(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          autoAddBots: true,
+          botDifficulty: "easy",
+        }),
+      }),
+    );
+  });
+
   it("lists and reads global run records when Nakama returns the nil UUID as userId", () => {
     const nk = createNakama();
     const logger = createLogger();

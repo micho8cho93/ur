@@ -20,6 +20,7 @@ import {
   AUTO_TOURNAMENT_DURATION_SECONDS,
   getSingleEliminationRoundCount,
 } from '../tournamentSizing'
+import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty, type BotDifficulty } from '../types/bot'
 import { ApiError, callRpc } from './client'
 import {
   asRecord,
@@ -40,6 +41,7 @@ const RPC_ADMIN_EXPORT_TOURNAMENT = 'rpc_admin_export_tournament'
 
 const DEFAULT_TOURNAMENT_MATCH_WIN_XP = 100
 const DEFAULT_TOURNAMENT_CHAMPION_XP = 250
+const TOURNAMENT_BOT_USER_ID_PREFIX = 'tournament-bot:'
 
 async function wait(ms: number) {
   await new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -91,6 +93,28 @@ function readStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
     : []
+}
+
+function isTournamentBotUserId(value: string | null | undefined): value is string {
+  return typeof value === 'string' && value.startsWith(TOURNAMENT_BOT_USER_ID_PREFIX)
+}
+
+function normalizeTournamentBots(value: unknown): Tournament['bots'] {
+  const record = asRecord(value)
+  const autoAdd = record?.autoAdd === true
+  const difficultyValue = readStringField(record, ['difficulty'])
+  const difficulty: BotDifficulty | null =
+    difficultyValue && isBotDifficulty(difficultyValue)
+      ? difficultyValue
+      : autoAdd
+        ? DEFAULT_BOT_DIFFICULTY
+        : null
+
+  return {
+    autoAdd,
+    difficulty,
+    count: Math.max(0, Math.floor(readNumberField(record, ['count']) ?? 0)),
+  }
 }
 
 function normalizeTournamentRegistration(value: unknown): TournamentRegistration | null {
@@ -246,6 +270,21 @@ function normalizeTournament(runValue: unknown, nakamaTournamentValue: unknown):
   const run = asRecord(runValue) ?? {}
   const nakamaTournament = asRecord(nakamaTournamentValue) ?? {}
   const metadata = asRecord(run.metadata) ?? {}
+  const fallbackBotCount = new Set<string>()
+
+  readArrayField(run, ['registrations']).forEach((entry) => {
+    const userId = readStringField(entry, ['userId', 'user_id'])
+    if (isTournamentBotUserId(userId)) {
+      fallbackBotCount.add(userId)
+    }
+  })
+
+  readArrayField(asRecord(run.bracket), ['participants']).forEach((entry) => {
+    const userId = readStringField(entry, ['userId', 'user_id'])
+    if (isTournamentBotUserId(userId)) {
+      fallbackBotCount.add(userId)
+    }
+  })
 
   const id = readStringField(run, ['runId', 'run_id']) ?? readStringField(run, ['id']) ?? 'unknown-run'
   const tournamentId =
@@ -296,6 +335,22 @@ function normalizeTournament(runValue: unknown, nakamaTournamentValue: unknown):
     buyIn: readStringField(metadata, ['buyIn', 'buy_in']) ?? 'Free',
     region: readStringField(metadata, ['region']) ?? 'Global',
     prizePool: formatPrizePool(metadata),
+    bots:
+      run.bots !== undefined
+        ? normalizeTournamentBots(run.bots)
+        : {
+            autoAdd: readBooleanField(metadata, ['autoAddBots', 'auto_add_bots']) === true,
+            difficulty: (() => {
+              const autoAdd = readBooleanField(metadata, ['autoAddBots', 'auto_add_bots']) === true
+              const difficultyValue = readStringField(metadata, ['botDifficulty', 'bot_difficulty'])
+              if (difficultyValue && isBotDifficulty(difficultyValue)) {
+                return difficultyValue
+              }
+
+              return autoAdd ? DEFAULT_BOT_DIFFICULTY : null
+            })(),
+            count: fallbackBotCount.size,
+          },
     createdBy: readStringField(run, ['createdByLabel', 'created_by_label']) ?? 'Unknown operator',
     createdAt,
     updatedAt,
@@ -459,6 +514,11 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
       buyIn: 'Free',
       region: 'Global',
       prizePool: 'Not configured',
+      bots: {
+        autoAdd: input.autoAddBots,
+        difficulty: input.autoAddBots ? input.botDifficulty ?? DEFAULT_BOT_DIFFICULTY : null,
+        count: 0,
+      },
       createdBy: 'admin@urgame.live',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -473,6 +533,8 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
         gameMode: input.gameMode,
         xpPerMatchWin: input.xpPerMatchWin,
         xpForTournamentChampion: input.xpForTournamentChampion,
+        autoAddBots: input.autoAddBots,
+        botDifficulty: input.autoAddBots ? input.botDifficulty ?? DEFAULT_BOT_DIFFICULTY : null,
       },
       registrations: [],
       bracket: null,
@@ -500,6 +562,8 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
         gameMode: input.gameMode,
         xpPerMatchWin: input.xpPerMatchWin,
         xpForTournamentChampion: input.xpForTournamentChampion,
+        autoAddBots: input.autoAddBots,
+        botDifficulty: input.autoAddBots ? input.botDifficulty ?? DEFAULT_BOT_DIFFICULTY : null,
       },
       startTime,
       maxSize: input.entrants,

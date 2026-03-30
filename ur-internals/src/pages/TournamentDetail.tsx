@@ -17,6 +17,7 @@ import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
 import { StatCard } from '../components/StatCard'
 import { StatusBadge } from '../components/StatusBadge'
+import { formatTournamentBotSummary } from '../tournamentBots'
 import { getTournamentStructureLabel } from '../tournamentStructure'
 import type { AuditLogEntry } from '../types/audit'
 import type {
@@ -880,6 +881,11 @@ export function TournamentDetailPage() {
             label="Field"
             value={`${liveSummary.entrants}/${liveSummary.capacity}`}
             hint={`${fieldFillPercent}% registered`}
+          />
+          <MetaStripItem
+            label="Bots"
+            value={formatTournamentBotSummary(tournament)}
+            hint={tournament.bots.count > 0 ? 'Inserted bot seats are already present in this run.' : 'Stored bot fill policy for this tournament.'}
           />
           <MetaStripItem
             label="Start"

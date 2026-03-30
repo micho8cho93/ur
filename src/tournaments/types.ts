@@ -1,3 +1,5 @@
+import type { BotDifficulty } from '@/logic/bot/types';
+
 export type TournamentMembershipState = {
   isJoined: boolean;
   joinedAt: string | null;
@@ -29,6 +31,11 @@ export type PublicTournamentSummary = {
   region: string;
   buyInLabel: string;
   prizeLabel: string;
+  bots: {
+    autoAdd: boolean;
+    difficulty: BotDifficulty | null;
+    count: number;
+  };
   isLocked: boolean;
   currentRound: number | null;
   membership: TournamentMembershipState;

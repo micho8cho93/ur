@@ -14,6 +14,7 @@ import {
   getSingleEliminationRoundCount,
   TOURNAMENT_SIZE_OPTIONS,
 } from '../tournamentSizing'
+import { BOT_DIFFICULTIES, DEFAULT_BOT_DIFFICULTY, type BotDifficulty } from '../types/bot'
 
 type FormState = {
   runId: string
@@ -21,6 +22,8 @@ type FormState = {
   gameMode: string
   entrants: string
   startAt: string
+  autoAddBots: boolean
+  botDifficulty: BotDifficulty
   joinRequired: boolean
   enableRanks: boolean
   xpPerMatchWin: string
@@ -34,6 +37,8 @@ const initialState: FormState = {
   gameMode: 'standard',
   entrants: '16',
   startAt: '',
+  autoAddBots: false,
+  botDifficulty: DEFAULT_BOT_DIFFICULTY,
   joinRequired: true,
   enableRanks: true,
   xpPerMatchWin: '100',
@@ -112,6 +117,8 @@ export function CreateTournamentPage() {
         gameMode: form.gameMode,
         entrants,
         startAt: new Date(form.startAt).toISOString(),
+        autoAddBots: form.autoAddBots,
+        botDifficulty: form.autoAddBots ? form.botDifficulty : null,
         joinRequired: form.joinRequired,
         enableRanks: form.enableRanks,
         xpPerMatchWin: Math.floor(xpPerMatchWin),
@@ -136,6 +143,7 @@ export function CreateTournamentPage() {
   const structureLabel =
     TOURNAMENT_STRUCTURE_OPTIONS.find((option) => option.value === form.gameMode)?.label ??
     form.gameMode
+  const botSummary = form.autoAddBots ? `Bot fill enabled · ${form.botDifficulty}` : 'Bots off'
 
   return (
     <>
@@ -301,7 +309,44 @@ export function CreateTournamentPage() {
             title="Join & rank behavior"
             subtitle="Retain the existing tournament participation and ranking controls."
           >
-            <div className="field field--checkboxes">
+            <div className="form-grid">
+              <div className="field field--full field--checkboxes">
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={form.autoAddBots}
+                    onChange={(event) => updateField('autoAddBots', event)}
+                  />
+                  <span>
+                    <strong>Fill missing seats with bots at deadline</strong>
+                    <small>
+                      Keeps the current 3-minute lobby deadline. If seats remain open, bots fill them unless no humans joined.
+                    </small>
+                  </span>
+                </label>
+              </div>
+
+              <div className="field">
+                <label htmlFor="botDifficulty">Bot difficulty</label>
+                <select
+                  id="botDifficulty"
+                  name="botDifficulty"
+                  value={form.botDifficulty}
+                  disabled={!form.autoAddBots}
+                  onChange={(event) => updateField('botDifficulty', event)}
+                >
+                  {BOT_DIFFICULTIES.map((difficulty) => (
+                    <option key={difficulty} value={difficulty}>
+                      {difficulty}
+                    </option>
+                  ))}
+                </select>
+                <span className="field__hint">
+                  Bot-enabled runs default to easy and keep this difficulty for all inserted seats.
+                </span>
+              </div>
+
+              <div className="field field--full field--checkboxes">
               <label className="checkbox">
                 <input
                   type="checkbox"
@@ -325,6 +370,7 @@ export function CreateTournamentPage() {
                   <small>Keep ranking snapshots and standings visible across the internals workflow.</small>
                 </span>
               </label>
+              </div>
             </div>
           </SectionPanel>
 
@@ -367,6 +413,7 @@ export function CreateTournamentPage() {
                 value={awardsXp ? 'XP enabled' : 'No XP rewards'}
                 hint={`${form.xpPerMatchWin} per win / ${form.xpForTournamentChampion} champion`}
               />
+              <MetaStripItem label="Bot fill" value={botSummary} hint="Policy applies only if the lobby misses its deadline." />
             </MetaStrip>
           </SectionPanel>
 
@@ -381,7 +428,7 @@ export function CreateTournamentPage() {
               </li>
               <li className="list__item">
                 <strong>Finalize automatically</strong>
-                <span className="muted">Public elimination runs finalize after the deciding match resolves.</span>
+                <span className="muted">Runs still finalize after the deciding match, and empty bot-fill lobbies still close instead of becoming bot-only tournaments.</span>
               </li>
               <li className="list__item">
                 <strong>Bracket sizing</strong>

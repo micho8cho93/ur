@@ -1,5 +1,7 @@
 import type { MatchModeId } from "../../../logic/matchConfigs";
+import { isMatchModeId } from "../../../logic/matchConfigs";
 import type { PlayerColor } from "../../../logic/types";
+import { buildTournamentBotDisplayNames, isTournamentBotUserId, normalizeTournamentBotPolicy } from "../../../shared/tournamentBots";
 import {
   MAX_WRITE_ATTEMPTS,
   RuntimeStorageObject,
@@ -254,7 +256,10 @@ const buildInvalidReason = (
     return "Private matches do not count toward tournaments.";
   }
 
-  if (completion.classification.bot) {
+  if (
+    completion.classification.bot &&
+    !completion.players.some((player) => isTournamentBotUserId(player.userId))
+  ) {
     return "Bot matches do not count toward tournaments.";
   }
 
@@ -294,10 +299,22 @@ const resolveUsernames = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
   players: TournamentMatchPlayerSummary[],
+  run: TournamentRunRecord | null,
 ): Record<string, string> => {
   const usernames: Record<string, string> = {};
+  const tournamentBotDisplayNames = run
+    ? buildTournamentBotDisplayNames(
+        players.map((player) => player.userId),
+        normalizeTournamentBotPolicy(run.metadata).difficulty,
+      )
+    : {};
 
   players.forEach((player) => {
+    if (tournamentBotDisplayNames[player.userId]) {
+      usernames[player.userId] = tournamentBotDisplayNames[player.userId];
+      return;
+    }
+
     const trimmedUsername = player.username?.trim();
     if (trimmedUsername) {
       usernames[player.userId] = trimmedUsername;
@@ -519,6 +536,139 @@ const readTournamentEntrantCount = (value: unknown): number => {
   return typeof entrants === "number" && Number.isFinite(entrants) ? Math.max(0, Math.floor(entrants)) : 0;
 };
 
+const resolveTournamentRunModeId = (run: TournamentRunRecord): MatchModeId => {
+  const modeId = readStringField(run.metadata, ["gameMode", "game_mode"]);
+  return isMatchModeId(modeId) ? modeId : "standard";
+};
+
+const buildBotOnlyTournamentCompletion = (
+  run: TournamentRunRecord,
+  entryId: string,
+): AuthoritativeTournamentMatchCompletion | null => {
+  if (!run.bracket) {
+    return null;
+  }
+
+  const entry = run.bracket.entries.find((candidate) => candidate.entryId === entryId) ?? null;
+  if (
+    !entry ||
+    entry.status !== "ready" ||
+    entry.matchId ||
+    !isTournamentBotUserId(entry.playerAUserId) ||
+    !isTournamentBotUserId(entry.playerBUserId)
+  ) {
+    return null;
+  }
+
+  const participantA = getTournamentBracketParticipant(run.bracket, entry.playerAUserId);
+  const participantB = getTournamentBracketParticipant(run.bracket, entry.playerBUserId);
+  const botDisplayNames = buildTournamentBotDisplayNames(
+    [entry.playerAUserId, entry.playerBUserId],
+    normalizeTournamentBotPolicy(run.metadata).difficulty,
+  );
+  const winnerUserId =
+    participantA && participantB
+      ? participantA.seed <= participantB.seed
+        ? participantA.userId
+        : participantB.userId
+      : entry.playerAUserId;
+  const loserUserId = winnerUserId === entry.playerAUserId ? entry.playerBUserId : entry.playerAUserId;
+  const winningColor: PlayerColor = winnerUserId === entry.playerAUserId ? "light" : "dark";
+  const completedAt = new Date().toISOString();
+
+  return {
+    matchId: `tournament-bot-match:${run.runId}:${entry.entryId}`,
+    modeId: resolveTournamentRunModeId(run),
+    context: {
+      runId: run.runId,
+      tournamentId: run.tournamentId,
+      round: entry.round,
+      entryId: entry.entryId,
+      eliminationRisk: true,
+    },
+    completedAt,
+    totalMoves: 1,
+    revision: 1,
+    winningColor,
+    winnerUserId,
+    loserUserId,
+    classification: {
+      ranked: false,
+      casual: false,
+      private: false,
+      bot: true,
+      experimental: false,
+    },
+    players: [
+      {
+        userId: entry.playerAUserId,
+        username: botDisplayNames[entry.playerAUserId] ?? entry.playerAUserId,
+        color: "light",
+        didWin: winnerUserId === entry.playerAUserId,
+        score: winnerUserId === entry.playerAUserId ? 1 : 0,
+        finishedCount: winnerUserId === entry.playerAUserId ? 7 : 4,
+        capturesMade: 0,
+        capturesSuffered: 0,
+        playerMoveCount: winnerUserId === entry.playerAUserId ? 1 : 0,
+      },
+      {
+        userId: entry.playerBUserId,
+        username: botDisplayNames[entry.playerBUserId] ?? entry.playerBUserId,
+        color: "dark",
+        didWin: winnerUserId === entry.playerBUserId,
+        score: winnerUserId === entry.playerBUserId ? 1 : 0,
+        finishedCount: winnerUserId === entry.playerBUserId ? 7 : 4,
+        capturesMade: 0,
+        capturesSuffered: 0,
+        playerMoveCount: winnerUserId === entry.playerBUserId ? 1 : 0,
+      },
+    ],
+  };
+};
+
+const processPendingBotOnlyTournamentMatches = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  runId: string,
+): TournamentRunRecord | null => {
+  let currentRun = readTournamentRunState(nk, runId).run;
+  const maxIterations = Math.max(1, currentRun?.bracket?.entries.length ?? 1);
+
+  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+    if (!currentRun?.bracket || currentRun.lifecycle !== "open" || currentRun.bracket.finalizedAt) {
+      break;
+    }
+
+    const readyBotOnlyEntry = currentRun.bracket.entries.find(
+      (entry) =>
+        entry.status === "ready" &&
+        !entry.matchId &&
+        isTournamentBotUserId(entry.playerAUserId) &&
+        isTournamentBotUserId(entry.playerBUserId),
+    );
+    if (!readyBotOnlyEntry) {
+      break;
+    }
+
+    const completion = buildBotOnlyTournamentCompletion(currentRun, readyBotOnlyEntry.entryId);
+    if (!completion) {
+      break;
+    }
+
+    const result = processCompletedAuthoritativeTournamentMatch(nk, logger, completion);
+    currentRun =
+      result.finalizationResult?.run ??
+      result.updatedRun ??
+      readTournamentRunState(nk, runId).run;
+
+    if (result.retryableFailure) {
+      break;
+    }
+  }
+
+  return currentRun;
+};
+
 const updateTournamentRunBracket = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
@@ -559,10 +709,14 @@ export const maybeAutoFinalizeTournamentRunById = (
   runId: string,
 ): FinalizeTournamentRunResult | null => {
   const runState = readTournamentRunState(nk, runId);
-  const run = runState.run;
+  let run = runState.run;
 
   if (!run || run.lifecycle === "finalized") {
     return null;
+  }
+
+  if (run.bracket && !run.bracket.finalizedAt) {
+    run = processPendingBotOnlyTournamentMatches(nk, logger, runId) ?? run;
   }
 
   if (run.bracket?.finalizedAt) {
@@ -799,7 +953,7 @@ export const processCompletedAuthoritativeTournamentMatch = (
 
   if (!invalidReason && runState.run) {
     try {
-      const usernames = resolveUsernames(nk, logger, completion.players);
+      const usernames = resolveUsernames(nk, logger, completion.players, runState.run);
       ensureTournamentJoined(nk, logger, runState.run, completion.players, usernames);
       tournamentRecordWrites = submitTournamentScores(nk, runState.run, completion, usernames);
     } catch (error) {

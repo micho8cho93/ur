@@ -528,6 +528,288 @@ var applyMove = (state, move) => {
   return newState;
 };
 
+// logic/bot/types.ts
+var BOT_DIFFICULTIES = ["easy", "medium", "hard", "perfect"];
+var DEFAULT_BOT_DIFFICULTY = "easy";
+var isBotDifficulty = (value) => BOT_DIFFICULTIES.includes(value);
+
+// logic/bot/bot.ts
+var ROLL_OUTCOMES = [
+  { roll: 0, probability: 1 / 16 },
+  { roll: 1, probability: 4 / 16 },
+  { roll: 2, probability: 6 / 16 },
+  { roll: 3, probability: 4 / 16 },
+  { roll: 4, probability: 1 / 16 }
+];
+var EPSILON = 1e-6;
+var otherColor = (color) => color === "light" ? "dark" : "light";
+var clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+var stripHistory = (state) => state.history.length === 0 ? state : __spreadProps(__spreadValues({}, state), { history: [] });
+var sortPositions = (player) => player.pieces.map((piece) => piece.position).sort((left, right) => left - right).join(",");
+var buildStateKey = (state, depth, rootColor) => {
+  var _a;
+  return [
+    rootColor,
+    depth,
+    state.currentTurn,
+    state.phase,
+    (_a = state.rollValue) != null ? _a : "n",
+    state.matchConfig.modeId,
+    sortPositions(state.light),
+    sortPositions(state.dark)
+  ].join("|");
+};
+var getPieceProgress = (position, pathLength) => {
+  if (position === -1) {
+    return 0;
+  }
+  if (position >= pathLength) {
+    return pathLength + 2;
+  }
+  return position + 1;
+};
+var getProgressScore = (player, pathLength) => player.pieces.reduce((total, piece) => total + getPieceProgress(piece.position, pathLength), 0);
+var countReservePieces = (player) => player.pieces.filter((piece) => piece.position === -1 && !piece.isFinished).length;
+var getStatePathVariant = (state) => state.matchConfig.pathVariant;
+var getPieceCoord = (state, color, position) => getPathCoord(getStatePathVariant(state), color, position);
+var countRosetteOccupancyForState = (state, player) => player.pieces.reduce((count, piece) => {
+  const coord = getPieceCoord(state, player.color, piece.position);
+  if (!coord) {
+    return count;
+  }
+  return isRosette(coord.row, coord.col) ? count + 1 : count;
+}, 0);
+var canReachCoordOnNextRoll = (state, attackerColor, row, col) => {
+  const attacker = state[attackerColor];
+  const pathLength = getPathLength(state.matchConfig.pathVariant);
+  return attacker.pieces.some((piece) => {
+    if (piece.isFinished) {
+      return false;
+    }
+    for (let roll = 1; roll <= 4; roll += 1) {
+      const targetIndex = piece.position + roll;
+      if (targetIndex < 0 || targetIndex >= pathLength) {
+        continue;
+      }
+      const coord = getPieceCoord(state, attackerColor, targetIndex);
+      if (coord && coord.row === row && coord.col === col) {
+        return true;
+      }
+    }
+    return false;
+  });
+};
+var countThreatenedPieces = (state, defenderColor) => {
+  const attackerColor = otherColor(defenderColor);
+  const defender = state[defenderColor];
+  return defender.pieces.reduce((count, piece) => {
+    const coord = getPieceCoord(state, defenderColor, piece.position);
+    if (!isContestedWarTile(state.matchConfig, coord)) {
+      return count;
+    }
+    return canReachCoordOnNextRoll(state, attackerColor, coord.row, coord.col) ? count + 1 : count;
+  }, 0);
+};
+var countCaptureThreats = (state, attackerColor) => {
+  const defenderColor = otherColor(attackerColor);
+  const defender = state[defenderColor];
+  return defender.pieces.reduce((count, piece) => {
+    const coord = getPieceCoord(state, defenderColor, piece.position);
+    if (!isContestedWarTile(state.matchConfig, coord)) {
+      return count;
+    }
+    return canReachCoordOnNextRoll(state, attackerColor, coord.row, coord.col) ? count + 1 : count;
+  }, 0);
+};
+var evaluateHeuristic = (state, rootColor) => {
+  if (state.winner === rootColor) {
+    return 1;
+  }
+  const opponentColor = otherColor(rootColor);
+  if (state.winner === opponentColor) {
+    return 0;
+  }
+  const root = state[rootColor];
+  const opponent = state[opponentColor];
+  const pathLength = getPathLength(state.matchConfig.pathVariant);
+  const finishedDiff = root.finishedCount - opponent.finishedCount;
+  const progressDiff = getProgressScore(root, pathLength) - getProgressScore(opponent, pathLength);
+  const reserveDiff = countReservePieces(opponent) - countReservePieces(root);
+  const rosetteDiff = countRosetteOccupancyForState(state, root) - countRosetteOccupancyForState(state, opponent);
+  const threatDiff = countCaptureThreats(state, rootColor) - countCaptureThreats(state, opponentColor);
+  const safetyDiff = countThreatenedPieces(state, opponentColor) - countThreatenedPieces(state, rootColor);
+  const tempoBonus = state.currentTurn === rootColor ? 5 : -5;
+  const score = finishedDiff * 150 + progressDiff * 6 + reserveDiff * 18 + rosetteDiff * 16 + threatDiff * 14 + safetyDiff * 18 + tempoBonus;
+  return clamp(1 / (1 + Math.exp(-score / 100)), 0, 1);
+};
+var doesMoveCapture = (state, move) => {
+  const mover = state.currentTurn;
+  const opponent = state[otherColor(mover)];
+  const coord = getPieceCoord(state, mover, move.toIndex);
+  if (!coord) {
+    return false;
+  }
+  return opponent.pieces.some((piece) => {
+    const pieceCoord = getPieceCoord(state, opponent.color, piece.position);
+    return Boolean(pieceCoord && pieceCoord.row === coord.row && pieceCoord.col === coord.col);
+  });
+};
+var isMoveUnsafe = (state, moverColor, move) => {
+  const coord = getPieceCoord(state, moverColor, move.toIndex);
+  if (!isContestedWarTile(state.matchConfig, coord)) {
+    return false;
+  }
+  return canReachCoordOnNextRoll(state, otherColor(moverColor), coord.row, coord.col);
+};
+var scoreImmediateMove = (state, move, rootColor) => {
+  const moverColor = state.currentTurn;
+  const coord = getPieceCoord(state, moverColor, move.toIndex);
+  const landsOnRosette = Boolean(coord && isRosette(coord.row, coord.col));
+  const captures = doesMoveCapture(state, move);
+  const nextState = stripHistory(applyMove(state, move));
+  const pathLength = getPathLength(state.matchConfig.pathVariant);
+  let score = evaluateHeuristic(nextState, rootColor) * 100;
+  if (move.toIndex >= pathLength) {
+    score += 120;
+  }
+  if (captures) {
+    score += 90;
+  }
+  if (landsOnRosette) {
+    score += 55;
+  }
+  if (move.fromIndex === -1) {
+    score += 16;
+  }
+  score += Math.max(move.toIndex, 0) * 3.5;
+  if (isMoveUnsafe(nextState, moverColor, move)) {
+    score -= 46;
+  }
+  return score;
+};
+var simulateRollState = (state, roll) => {
+  const rollingState = __spreadProps(__spreadValues({}, state), {
+    phase: "moving",
+    rollValue: roll
+  });
+  const validMoves = getValidMoves(rollingState, roll);
+  if (validMoves.length > 0) {
+    return stripHistory(rollingState);
+  }
+  return stripHistory(__spreadProps(__spreadValues({}, rollingState), {
+    currentTurn: otherColor(rollingState.currentTurn),
+    phase: "rolling",
+    rollValue: null,
+    history: [...state.history, `${state.currentTurn} rolled ${roll} but had no moves.`]
+  }));
+};
+var evaluateSearch = (state, depth, context) => {
+  if (state.winner) {
+    return state.winner === context.rootColor ? 1 : 0;
+  }
+  if (depth <= 0) {
+    return evaluateHeuristic(state, context.rootColor);
+  }
+  const cacheKey = buildStateKey(state, depth, context.rootColor);
+  const cached = context.cache.get(cacheKey);
+  if (cached !== void 0) {
+    return cached;
+  }
+  let value = 0;
+  if (state.phase === "moving" && state.rollValue !== null) {
+    const validMoves = getValidMoves(state, state.rollValue);
+    if (validMoves.length === 0) {
+      value = evaluateSearch(
+        stripHistory(__spreadProps(__spreadValues({}, state), {
+          currentTurn: otherColor(state.currentTurn),
+          phase: "rolling",
+          rollValue: null
+        })),
+        depth,
+        context
+      );
+    } else {
+      const maximize = state.currentTurn === context.rootColor;
+      const orderedMoves = [...validMoves].sort((left, right) => {
+        const delta = scoreImmediateMove(state, right, context.rootColor) - scoreImmediateMove(state, left, context.rootColor);
+        return maximize ? delta : -delta;
+      });
+      value = maximize ? -Infinity : Infinity;
+      for (const move of orderedMoves) {
+        const childValue = evaluateSearch(stripHistory(applyMove(state, move)), depth, context);
+        value = maximize ? Math.max(value, childValue) : Math.min(value, childValue);
+      }
+    }
+  } else {
+    value = ROLL_OUTCOMES.reduce((total, outcome) => {
+      const nextState = simulateRollState(state, outcome.roll);
+      return total + outcome.probability * evaluateSearch(nextState, depth - 1, context);
+    }, 0);
+  }
+  context.cache.set(cacheKey, value);
+  return value;
+};
+var chooseRandomMove = (moves) => moves[Math.floor(Math.random() * moves.length)];
+var pickMediumMove = (state, moves) => {
+  var _a, _b;
+  const rootColor = state.currentTurn;
+  const rankedMoves = moves.map((move) => ({ move, score: scoreImmediateMove(state, move, rootColor) })).sort((left, right) => right.score - left.score);
+  const bestScore = (_b = (_a = rankedMoves[0]) == null ? void 0 : _a.score) != null ? _b : 0;
+  const shortlist = rankedMoves.filter((entry) => bestScore - entry.score <= 10);
+  return chooseRandomMove(shortlist.map((entry) => entry.move));
+};
+var getSearchDepth = (difficulty, state) => {
+  const remainingPieces = state.matchConfig.pieceCountPerSide * 2 - (state.light.finishedCount + state.dark.finishedCount);
+  if (difficulty === "hard") {
+    if (remainingPieces <= 4) return 4;
+    if (remainingPieces <= 8) return 3;
+    return 2;
+  }
+  if (remainingPieces <= 4) return 6;
+  if (remainingPieces <= 8) return 5;
+  return 4;
+};
+var pickSearchMove = (state, moves, difficulty) => {
+  const rootColor = state.currentTurn;
+  const context = {
+    rootColor,
+    cache: /* @__PURE__ */ new Map()
+  };
+  const depth = getSearchDepth(difficulty, state);
+  let bestMove = moves[0];
+  let bestScore = -Infinity;
+  let bestImmediateScore = -Infinity;
+  const orderedMoves = [...moves].sort(
+    (left, right) => scoreImmediateMove(state, right, rootColor) - scoreImmediateMove(state, left, rootColor)
+  );
+  for (const move of orderedMoves) {
+    const immediateScore = scoreImmediateMove(state, move, rootColor);
+    const nextState = stripHistory(applyMove(state, move));
+    const searchScore = evaluateSearch(nextState, depth, context);
+    if (searchScore > bestScore + EPSILON || Math.abs(searchScore - bestScore) <= EPSILON && immediateScore > bestImmediateScore) {
+      bestMove = move;
+      bestScore = searchScore;
+      bestImmediateScore = immediateScore;
+    }
+  }
+  return bestMove;
+};
+var getBotMove = (state, roll, difficulty = DEFAULT_BOT_DIFFICULTY) => {
+  const searchState = stripHistory(state);
+  const moves = getValidMoves(searchState, roll);
+  if (moves.length === 0) return null;
+  switch (difficulty) {
+    case "medium":
+      return pickMediumMove(searchState, moves);
+    case "hard":
+    case "perfect":
+      return pickSearchMove(searchState, moves, difficulty);
+    case "easy":
+    default:
+      return chooseRandomMove(moves);
+  }
+};
+
 // backend/modules/progression.ts
 var PROGRESSION_COLLECTION = "progression";
 var PROGRESSION_PROFILE_KEY = "profile";
@@ -4022,8 +4304,6 @@ var updateTournamentWithRetry = (nk, logger, tournamentId, updater) => {
 var ADMIN_COLLECTION = "admins";
 var ADMIN_ROLE_KEY = "role";
 var RPC_ADMIN_WHOAMI = "rpc_admin_whoami";
-var TEST_ADMIN_USERNAME = "admin";
-var TEST_ADMIN_ROLE = "admin";
 var ADMIN_ROLE_RANK = {
   viewer: 1,
   operator: 2,
@@ -4085,9 +4365,8 @@ var hasRequiredRole = (actualRole, requiredRole) => {
   return ADMIN_ROLE_RANK[actualRole] >= ADMIN_ROLE_RANK[requiredRole];
 };
 var assertAdmin = (ctx, requiredRole, nk) => {
-  var _a;
   const userId = getContextUserId(ctx);
-  const actualRole = (_a = fetchAdminRole(nk, userId)) != null ? _a : maybeBootstrapTestAdminRole(nk, userId);
+  const actualRole = fetchAdminRole(nk, userId);
   if (!hasRequiredRole(actualRole, requiredRole)) {
     throw new Error(`Unauthorized: ${requiredRole} role required.`);
   }
@@ -4125,23 +4404,6 @@ var resolveAdminProfile = (nk, userId) => {
       email: null
     };
   }
-};
-var maybeBootstrapTestAdminRole = (nk, userId) => {
-  const profile = resolveAdminProfile(nk, userId);
-  if (profile.username !== TEST_ADMIN_USERNAME) {
-    return null;
-  }
-  nk.storageWrite([
-    {
-      collection: ADMIN_COLLECTION,
-      key: ADMIN_ROLE_KEY,
-      userId,
-      value: { role: TEST_ADMIN_ROLE },
-      permissionRead: STORAGE_PERMISSION_NONE,
-      permissionWrite: STORAGE_PERMISSION_NONE
-    }
-  ]);
-  return TEST_ADMIN_ROLE;
 };
 var rpcAdminWhoAmI = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
@@ -4827,6 +5089,87 @@ var completeTournamentBracketMatch = (bracket, params) => {
 };
 var hasTournamentBracketStarted = (bracket) => Boolean(bracket == null ? void 0 : bracket.startedAt);
 
+// shared/tournamentBots.ts
+var TOURNAMENT_BOT_USER_ID_PREFIX = "tournament-bot:";
+var asRecord3 = (value) => typeof value === "object" && value !== null ? value : null;
+var readBooleanField4 = (value, keys) => {
+  const record = asRecord3(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    if (typeof record[key] === "boolean") {
+      return record[key];
+    }
+  }
+  return null;
+};
+var readStringField8 = (value, keys) => {
+  const record = asRecord3(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  return null;
+};
+var parseBotSlot = (userId) => {
+  if (!isTournamentBotUserId(userId)) {
+    return null;
+  }
+  const parts = userId.split(":");
+  const parsed = Number(parts[parts.length - 1]);
+  return Number.isFinite(parsed) ? Math.max(1, Math.floor(parsed)) : null;
+};
+var isTournamentBotUserId = (value) => typeof value === "string" && value.startsWith(TOURNAMENT_BOT_USER_ID_PREFIX);
+var buildTournamentBotUserId = (runId, slot) => `${TOURNAMENT_BOT_USER_ID_PREFIX}${runId}:${Math.max(1, Math.floor(slot))}`;
+var formatBotDifficultyLabel = (difficulty) => `${difficulty.slice(0, 1).toUpperCase()}${difficulty.slice(1)}`;
+var buildTournamentBotDisplayName = (difficulty, ordinal) => `${formatBotDifficultyLabel(difficulty)} Bot ${Math.max(1, Math.floor(ordinal))}`;
+var normalizeTournamentBotPolicy = (metadata) => {
+  var _a;
+  const autoAdd = (_a = readBooleanField4(metadata, ["autoAddBots", "auto_add_bots"])) != null ? _a : false;
+  const requestedDifficulty = readStringField8(metadata, ["botDifficulty", "bot_difficulty"]);
+  const difficulty = requestedDifficulty && isBotDifficulty(requestedDifficulty) ? requestedDifficulty : null;
+  if (!autoAdd) {
+    return {
+      autoAdd: false,
+      difficulty: null
+    };
+  }
+  return {
+    autoAdd: true,
+    difficulty: difficulty != null ? difficulty : DEFAULT_BOT_DIFFICULTY
+  };
+};
+var buildTournamentBotDisplayNames = (userIds, difficulty) => {
+  const resolvedDifficulty = difficulty != null ? difficulty : DEFAULT_BOT_DIFFICULTY;
+  const uniqueIds = Array.from(new Set(userIds.filter(isTournamentBotUserId)));
+  uniqueIds.sort((left, right) => {
+    var _a, _b;
+    const leftSlot = (_a = parseBotSlot(left)) != null ? _a : Number.MAX_SAFE_INTEGER;
+    const rightSlot = (_b = parseBotSlot(right)) != null ? _b : Number.MAX_SAFE_INTEGER;
+    if (leftSlot !== rightSlot) {
+      return leftSlot - rightSlot;
+    }
+    return left.localeCompare(right);
+  });
+  return uniqueIds.reduce((accumulator, userId, index) => {
+    accumulator[userId] = buildTournamentBotDisplayName(resolvedDifficulty, index + 1);
+    return accumulator;
+  }, {});
+};
+var countTournamentBotEntrants = (userIds) => Object.keys(buildTournamentBotDisplayNames(userIds, null)).length;
+var buildTournamentBotSummary = (metadata, userIds) => {
+  const policy = normalizeTournamentBotPolicy(metadata);
+  return __spreadProps(__spreadValues({}, policy), {
+    count: countTournamentBotEntrants(userIds)
+  });
+};
+
 // shared/tournamentLobby.ts
 var TOURNAMENT_LOBBY_FILL_COUNTDOWN_SECONDS = 180;
 var TOURNAMENT_LOBBY_FILL_COUNTDOWN_MS = TOURNAMENT_LOBBY_FILL_COUNTDOWN_SECONDS * 1e3;
@@ -4873,7 +5216,7 @@ var MAX_RUN_LIST_LIMIT = 100;
 var SYSTEM_USER_ID3 = "00000000-0000-0000-0000-000000000000";
 var TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION = "tournament_run_memberships";
 var TOURNAMENT_MATCH_RESULTS_COLLECTION = "tournament_match_results";
-var readBooleanField4 = (value, keys) => {
+var readBooleanField5 = (value, keys) => {
   const record = asRecord(value);
   if (!record) {
     return null;
@@ -4996,7 +5339,7 @@ var normalizeRunRecord = (value, fallbackId) => {
     title,
     description: (_d = readStringField6(record, ["description"])) != null ? _d : "",
     category: clampInteger(readNumberField4(record, ["category"]), DEFAULT_CATEGORY, 0, 127),
-    authoritative: (_e = readBooleanField4(record, ["authoritative"])) != null ? _e : true,
+    authoritative: (_e = readBooleanField5(record, ["authoritative"])) != null ? _e : true,
     sortOrder: normalizeSortOrder((_f = readStringField6(record, ["sortOrder", "sort_order"])) != null ? _f : DEFAULT_SORT_ORDER),
     operator: normalizeOperator((_g = readStringField6(record, ["operator"])) != null ? _g : DEFAULT_OPERATOR),
     resetSchedule: (_h = readStringField6(record, ["resetSchedule", "reset_schedule"])) != null ? _h : "",
@@ -5011,8 +5354,8 @@ var normalizeRunRecord = (value, fallbackId) => {
       1,
       1e6
     ),
-    joinRequired: (_i = readBooleanField4(record, ["joinRequired", "join_required"])) != null ? _i : true,
-    enableRanks: (_j = readBooleanField4(record, ["enableRanks", "enable_ranks"])) != null ? _j : true,
+    joinRequired: (_i = readBooleanField5(record, ["joinRequired", "join_required"])) != null ? _i : true,
+    enableRanks: (_j = readBooleanField5(record, ["enableRanks", "enable_ranks"])) != null ? _j : true,
     lifecycle: normalizeRunLifecycle((_k = readStringField6(record, ["lifecycle"])) != null ? _k : "draft"),
     createdAt,
     updatedAt,
@@ -5173,6 +5516,83 @@ var getRunCapacity = (run, nakamaTournament) => {
   var _a;
   return Math.max(0, Math.floor((_a = readNumberField4(nakamaTournament, ["maxSize", "max_size"])) != null ? _a : run.maxSize));
 };
+var getRunBotUserIds = (run) => {
+  var _a, _b;
+  const userIds = /* @__PURE__ */ new Set();
+  run.registrations.forEach((registration) => {
+    if (isTournamentBotUserId(registration.userId)) {
+      userIds.add(registration.userId);
+    }
+  });
+  (_a = run.bracket) == null ? void 0 : _a.participants.forEach((participant) => {
+    if (isTournamentBotUserId(participant.userId)) {
+      userIds.add(participant.userId);
+    }
+  });
+  (_b = run.bracket) == null ? void 0 : _b.entries.forEach((entry) => {
+    if (isTournamentBotUserId(entry.playerAUserId)) {
+      userIds.add(entry.playerAUserId);
+    }
+    if (isTournamentBotUserId(entry.playerBUserId)) {
+      userIds.add(entry.playerBUserId);
+    }
+  });
+  return Array.from(userIds);
+};
+var buildRunBotSummary = (run) => buildTournamentBotSummary(run.metadata, getRunBotUserIds(run));
+var buildRunResponseMetadata = (value) => {
+  var _a;
+  const baseMetadata = readMetadataField(value, ["metadata"]);
+  const explicitAutoAddBots = readBooleanField5(value, ["autoAddBots", "auto_add_bots"]);
+  const explicitBotDifficulty = readStringField6(value, ["botDifficulty", "bot_difficulty"]);
+  const normalizedPolicy = normalizeTournamentBotPolicy(__spreadValues(__spreadValues(__spreadValues({}, baseMetadata), explicitAutoAddBots !== null ? { autoAddBots: explicitAutoAddBots } : {}), explicitBotDifficulty !== null ? { botDifficulty: explicitBotDifficulty } : {}));
+  return __spreadProps(__spreadValues({}, baseMetadata), {
+    autoAddBots: normalizedPolicy.autoAdd,
+    botDifficulty: normalizedPolicy.autoAdd ? (_a = normalizedPolicy.difficulty) != null ? _a : DEFAULT_BOT_DIFFICULTY : null
+  });
+};
+var buildTournamentRunResponse = (run) => __spreadProps(__spreadValues({}, run), {
+  bots: buildRunBotSummary(run)
+});
+var buildTournamentBotRegistrations = (runId, difficulty, startingSeed, count, joinedAt) => {
+  const registrations = Array.from({ length: count }, (_, index) => {
+    const seed = startingSeed + index;
+    return {
+      userId: buildTournamentBotUserId(runId, seed),
+      displayName: "",
+      joinedAt,
+      seed
+    };
+  });
+  const displayNames = buildTournamentBotDisplayNames(
+    registrations.map((registration) => registration.userId),
+    difficulty === "easy" || difficulty === "medium" || difficulty === "hard" || difficulty === "perfect" ? difficulty : DEFAULT_BOT_DIFFICULTY
+  );
+  return registrations.map((registration) => {
+    var _a;
+    return __spreadProps(__spreadValues({}, registration), {
+      displayName: (_a = displayNames[registration.userId]) != null ? _a : registration.userId
+    });
+  });
+};
+var joinTournamentBots = (nk, logger, tournamentId, registrations) => {
+  registrations.forEach((registration) => {
+    try {
+      nk.tournamentJoin(tournamentId, registration.userId, registration.displayName);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      if (/already|joined|duplicate|exists|member/i.test(message)) {
+        return;
+      }
+      logger.warn(
+        "Unable to join tournament bot %s into %s: %s",
+        registration.userId,
+        tournamentId,
+        message
+      );
+    }
+  });
+};
 var isRunAwaitingLobbyFill = (run, nakamaTournament) => {
   var _a;
   if (run.lifecycle !== "open" || Boolean(run.finalizedAt) || Boolean((_a = run.bracket) == null ? void 0 : _a.finalizedAt) || Boolean(run.bracket)) {
@@ -5192,9 +5612,77 @@ var hasRunLobbyFillCountdownExpired = (run, nakamaTournament, nowMs = Date.now()
   return deadlineMs !== null && deadlineMs <= nowMs;
 };
 var maybeAutoFinalizeRunForLobbyTimeout = (logger, nk, run, nakamaTournament) => {
+  var _a;
   const resolvedTournament = nakamaTournament === void 0 ? getNakamaTournamentById(nk, run.tournamentId) : nakamaTournament;
   if (!hasRunLobbyFillCountdownExpired(run, resolvedTournament, Date.now())) {
     return run;
+  }
+  const botPolicy = normalizeTournamentBotPolicy(run.metadata);
+  const humanRegistrations = run.registrations.filter((registration) => !isTournamentBotUserId(registration.userId));
+  const capacity = getRunCapacity(run, resolvedTournament);
+  const missingSeats = Math.max(0, capacity - run.registrations.length);
+  if (botPolicy.autoAdd && humanRegistrations.length > 0 && missingSeats > 0) {
+    try {
+      const filledAt = (/* @__PURE__ */ new Date()).toISOString();
+      const botRegistrations = buildTournamentBotRegistrations(
+        run.runId,
+        (_a = botPolicy.difficulty) != null ? _a : DEFAULT_BOT_DIFFICULTY,
+        run.registrations.length + 1,
+        missingSeats,
+        filledAt
+      );
+      const updatedRun = updateRunWithRetry(nk, logger, run.runId, (current) => {
+        var _a2;
+        if (current.bracket || current.lifecycle !== "open") {
+          return current;
+        }
+        const currentHumanRegistrations = current.registrations.filter(
+          (registration) => !isTournamentBotUserId(registration.userId)
+        );
+        if (currentHumanRegistrations.length === 0) {
+          return current;
+        }
+        const currentCapacity = getRunCapacity(current, resolvedTournament);
+        const currentMissingSeats = Math.max(0, currentCapacity - current.registrations.length);
+        if (currentMissingSeats <= 0) {
+          return current;
+        }
+        const currentBotRegistrations = buildTournamentBotRegistrations(
+          current.runId,
+          (_a2 = botPolicy.difficulty) != null ? _a2 : DEFAULT_BOT_DIFFICULTY,
+          current.registrations.length + 1,
+          currentMissingSeats,
+          filledAt
+        );
+        const nextRegistrations = current.registrations.concat(currentBotRegistrations);
+        return __spreadProps(__spreadValues({}, current), {
+          updatedAt: filledAt,
+          registrations: nextRegistrations,
+          bracket: createSingleEliminationBracket(nextRegistrations, filledAt)
+        });
+      });
+      if (updatedRun.bracket) {
+        joinTournamentBots(
+          nk,
+          logger,
+          updatedRun.tournamentId,
+          updatedRun.registrations.filter((registration) => isTournamentBotUserId(registration.userId))
+        );
+        logger.info(
+          "Filled %d tournament bot seats for run %s after the lobby fill countdown expired.",
+          botRegistrations.length,
+          updatedRun.runId
+        );
+        return updatedRun;
+      }
+    } catch (error) {
+      logger.warn(
+        "Unable to fill tournament run %s with bots after the lobby fill countdown expired: %s",
+        run.runId,
+        getErrorMessage(error)
+      );
+      return readRunOrThrow(nk, run.runId);
+    }
   }
   try {
     const result = finalizeTournamentRun(logger, nk, run.runId, {});
@@ -5269,7 +5757,7 @@ var normalizeStoredTournamentMatchSummary = (value, options) => {
   var _a;
   const record = asRecord(value);
   const requireCounted = (options == null ? void 0 : options.requireCounted) !== false;
-  if (!record || requireCounted && readBooleanField4(record, ["counted"]) !== true) {
+  if (!record || requireCounted && readBooleanField5(record, ["counted"]) !== true) {
     return null;
   }
   const summary = asRecord(record.summary);
@@ -5288,7 +5776,7 @@ var normalizeStoredTournamentMatchSummary = (value, options) => {
     return {
       userId,
       username: readStringField6(player, ["username"]),
-      didWin: readBooleanField4(player, ["didWin"]) === true,
+      didWin: readBooleanField5(player, ["didWin"]) === true,
       score: Math.max(0, Math.floor((_a2 = readNumberField4(player, ["score"])) != null ? _a2 : 0)),
       finishedCount: Math.max(
         0,
@@ -5377,11 +5865,12 @@ var buildAdminBracketEntryMatchContextByMatchId = (nk, run) => {
   );
 };
 var buildAdminTournamentRunResponse = (nk, run) => {
+  const responseRun = buildTournamentRunResponse(run);
   if (!run.bracket) {
-    return run;
+    return responseRun;
   }
   const matchContextByMatchId = buildAdminBracketEntryMatchContextByMatchId(nk, run);
-  return __spreadProps(__spreadValues({}, run), {
+  return __spreadProps(__spreadValues({}, responseRun), {
     bracket: __spreadProps(__spreadValues({}, run.bracket), {
       participants: run.bracket.participants.map((participant) => __spreadValues({}, participant)),
       entries: run.bracket.entries.map((entry) => {
@@ -5832,7 +6321,9 @@ var finalizeTournamentRun = (logger, nk, runId, options = {}) => {
   const effectiveSnapshot = (_b = run.finalSnapshot) != null ? _b : finalSnapshot;
   const championUserId = (_e = (_d = resolveChampionUserId(effectiveSnapshot)) != null ? _d : (_c = run.bracket) == null ? void 0 : _c.winnerUserId) != null ? _e : null;
   let championRewardResult = null;
-  if (championUserId) {
+  if (championUserId && isTournamentBotUserId(championUserId)) {
+    logger.info("Skipping tournament champion XP for synthetic bot %s on run %s.", championUserId, run.runId);
+  } else if (championUserId) {
     const rewardSettings = resolveTournamentXpRewardSettings(run.metadata);
     if (rewardSettings.xpForTournamentChampion <= 0) {
       logger.info("Skipping tournament champion XP for %s because the configured reward is zero.", run.runId);
@@ -5879,9 +6370,9 @@ var sortRuns = (runs) => runs.slice().sort((left, right) => {
   }
   return left.runId.localeCompare(right.runId);
 });
-var buildRunResponse = (run, nakamaTournament) => ({
+var buildRunResponse = (nk, run, nakamaTournament) => ({
   ok: true,
-  run,
+  run: buildAdminTournamentRunResponse(nk, run),
   nakamaTournament
 });
 var maybeAutoFinalizeAdminRun = (logger, nk, run) => {
@@ -5959,7 +6450,7 @@ var rpcAdminListTournaments = (ctx, logger, nk, payload) => {
       );
       const items = limitedRuns.map((run) => {
         var _a;
-        return __spreadProps(__spreadValues({}, run), {
+        return __spreadProps(__spreadValues({}, buildAdminTournamentRunResponse(_nk, run)), {
           nakamaTournament: (_a = tournamentsById[run.tournamentId]) != null ? _a : null
         });
       });
@@ -6045,18 +6536,18 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
           title,
           description: (_a = readStringField6(parsed, ["description"])) != null ? _a : "",
           category: clampInteger(readNumberField4(parsed, ["category"]), DEFAULT_CATEGORY, 0, 127),
-          authoritative: (_b = readBooleanField4(parsed, ["authoritative"])) != null ? _b : true,
+          authoritative: (_b = readBooleanField5(parsed, ["authoritative"])) != null ? _b : true,
           sortOrder: normalizeSortOrder(readStringField6(parsed, ["sortOrder", "sort_order"])),
           operator: normalizeOperator(readStringField6(parsed, ["operator"])),
           resetSchedule: (_c = readStringField6(parsed, ["resetSchedule", "reset_schedule"])) != null ? _c : "",
-          metadata: readMetadataField(parsed, ["metadata"]),
+          metadata: buildRunResponseMetadata(parsed),
           startTime,
           endTime,
           duration,
           maxSize,
           maxNumScore,
-          joinRequired: (_d = readBooleanField4(parsed, ["joinRequired", "join_required"])) != null ? _d : true,
-          enableRanks: (_e = readBooleanField4(parsed, ["enableRanks", "enable_ranks"])) != null ? _e : true,
+          joinRequired: (_d = readBooleanField5(parsed, ["joinRequired", "join_required"])) != null ? _d : true,
+          enableRanks: (_e = readBooleanField5(parsed, ["enableRanks", "enable_ranks"])) != null ? _e : true,
           lifecycle: "draft",
           createdAt,
           updatedAt: createdAt,
@@ -6090,7 +6581,7 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
               permissionWrite: STORAGE_PERMISSION_NONE
             }, getStorageObjectVersion(indexState.object))
           ]);
-          return JSON.stringify(buildRunResponse(run, null));
+          return JSON.stringify(buildRunResponse(_nk, run, null));
         } catch (error) {
           if (attempt === MAX_WRITE_ATTEMPTS) {
             throw error;
@@ -6160,7 +6651,7 @@ var rpcAdminOpenTournament = (ctx, logger, nk, payload) => {
           closedAt: null
         });
       });
-      return JSON.stringify(buildRunResponse(run, getNakamaTournamentById(_nk, run.tournamentId)));
+      return JSON.stringify(buildRunResponse(_nk, run, getNakamaTournamentById(_nk, run.tournamentId)));
     },
     {
       action: RPC_ADMIN_OPEN_TOURNAMENT
@@ -6237,7 +6728,7 @@ var rpcAdminCloseTournament = (ctx, logger, nk, payload) => {
           closedAt: (_a = current.closedAt) != null ? _a : updatedAt
         });
       });
-      return JSON.stringify(buildRunResponse(run, getNakamaTournamentById(_nk, run.tournamentId)));
+      return JSON.stringify(buildRunResponse(_nk, run, getNakamaTournamentById(_nk, run.tournamentId)));
     },
     {
       action: RPC_ADMIN_CLOSE_TOURNAMENT
@@ -6442,7 +6933,7 @@ var buildInvalidReason = (completion, run) => {
   if (completion.classification.private) {
     return "Private matches do not count toward tournaments.";
   }
-  if (completion.classification.bot) {
+  if (completion.classification.bot && !completion.players.some((player) => isTournamentBotUserId(player.userId))) {
     return "Bot matches do not count toward tournaments.";
   }
   if (completion.classification.casual) {
@@ -6469,10 +6960,18 @@ var normalizeUsersArray = (value) => Array.isArray(value) ? value.map((entry) =>
   var _a;
   return (_a = asRecord(entry)) != null ? _a : {};
 }).filter((entry) => Object.keys(entry).length > 0) : [];
-var resolveUsernames = (nk, logger, players) => {
+var resolveUsernames = (nk, logger, players, run) => {
   const usernames = {};
+  const tournamentBotDisplayNames = run ? buildTournamentBotDisplayNames(
+    players.map((player) => player.userId),
+    normalizeTournamentBotPolicy(run.metadata).difficulty
+  ) : {};
   players.forEach((player) => {
     var _a;
+    if (tournamentBotDisplayNames[player.userId]) {
+      usernames[player.userId] = tournamentBotDisplayNames[player.userId];
+      return;
+    }
     const trimmedUsername = (_a = player.username) == null ? void 0 : _a.trim();
     if (trimmedUsername) {
       usernames[player.userId] = trimmedUsername;
@@ -6649,6 +7148,104 @@ var readTournamentEntrantCount = (value) => {
   const entrants = readNumberField4(value, ["size", "maxSize", "max_size"]);
   return typeof entrants === "number" && Number.isFinite(entrants) ? Math.max(0, Math.floor(entrants)) : 0;
 };
+var resolveTournamentRunModeId = (run) => {
+  const modeId = readStringField6(run.metadata, ["gameMode", "game_mode"]);
+  return isMatchModeId(modeId) ? modeId : "standard";
+};
+var buildBotOnlyTournamentCompletion = (run, entryId) => {
+  var _a, _b, _c;
+  if (!run.bracket) {
+    return null;
+  }
+  const entry = (_a = run.bracket.entries.find((candidate) => candidate.entryId === entryId)) != null ? _a : null;
+  if (!entry || entry.status !== "ready" || entry.matchId || !isTournamentBotUserId(entry.playerAUserId) || !isTournamentBotUserId(entry.playerBUserId)) {
+    return null;
+  }
+  const participantA = getTournamentBracketParticipant(run.bracket, entry.playerAUserId);
+  const participantB = getTournamentBracketParticipant(run.bracket, entry.playerBUserId);
+  const botDisplayNames = buildTournamentBotDisplayNames(
+    [entry.playerAUserId, entry.playerBUserId],
+    normalizeTournamentBotPolicy(run.metadata).difficulty
+  );
+  const winnerUserId = participantA && participantB ? participantA.seed <= participantB.seed ? participantA.userId : participantB.userId : entry.playerAUserId;
+  const loserUserId = winnerUserId === entry.playerAUserId ? entry.playerBUserId : entry.playerAUserId;
+  const winningColor = winnerUserId === entry.playerAUserId ? "light" : "dark";
+  const completedAt = (/* @__PURE__ */ new Date()).toISOString();
+  return {
+    matchId: `tournament-bot-match:${run.runId}:${entry.entryId}`,
+    modeId: resolveTournamentRunModeId(run),
+    context: {
+      runId: run.runId,
+      tournamentId: run.tournamentId,
+      round: entry.round,
+      entryId: entry.entryId,
+      eliminationRisk: true
+    },
+    completedAt,
+    totalMoves: 1,
+    revision: 1,
+    winningColor,
+    winnerUserId,
+    loserUserId,
+    classification: {
+      ranked: false,
+      casual: false,
+      private: false,
+      bot: true,
+      experimental: false
+    },
+    players: [
+      {
+        userId: entry.playerAUserId,
+        username: (_b = botDisplayNames[entry.playerAUserId]) != null ? _b : entry.playerAUserId,
+        color: "light",
+        didWin: winnerUserId === entry.playerAUserId,
+        score: winnerUserId === entry.playerAUserId ? 1 : 0,
+        finishedCount: winnerUserId === entry.playerAUserId ? 7 : 4,
+        capturesMade: 0,
+        capturesSuffered: 0,
+        playerMoveCount: winnerUserId === entry.playerAUserId ? 1 : 0
+      },
+      {
+        userId: entry.playerBUserId,
+        username: (_c = botDisplayNames[entry.playerBUserId]) != null ? _c : entry.playerBUserId,
+        color: "dark",
+        didWin: winnerUserId === entry.playerBUserId,
+        score: winnerUserId === entry.playerBUserId ? 1 : 0,
+        finishedCount: winnerUserId === entry.playerBUserId ? 7 : 4,
+        capturesMade: 0,
+        capturesSuffered: 0,
+        playerMoveCount: winnerUserId === entry.playerBUserId ? 1 : 0
+      }
+    ]
+  };
+};
+var processPendingBotOnlyTournamentMatches = (nk, logger, runId) => {
+  var _a, _b, _c, _d, _e;
+  let currentRun = readTournamentRunState(nk, runId).run;
+  const maxIterations = Math.max(1, (_b = (_a = currentRun == null ? void 0 : currentRun.bracket) == null ? void 0 : _a.entries.length) != null ? _b : 1);
+  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+    if (!(currentRun == null ? void 0 : currentRun.bracket) || currentRun.lifecycle !== "open" || currentRun.bracket.finalizedAt) {
+      break;
+    }
+    const readyBotOnlyEntry = currentRun.bracket.entries.find(
+      (entry) => entry.status === "ready" && !entry.matchId && isTournamentBotUserId(entry.playerAUserId) && isTournamentBotUserId(entry.playerBUserId)
+    );
+    if (!readyBotOnlyEntry) {
+      break;
+    }
+    const completion = buildBotOnlyTournamentCompletion(currentRun, readyBotOnlyEntry.entryId);
+    if (!completion) {
+      break;
+    }
+    const result = processCompletedAuthoritativeTournamentMatch(nk, logger, completion);
+    currentRun = (_e = (_d = (_c = result.finalizationResult) == null ? void 0 : _c.run) != null ? _d : result.updatedRun) != null ? _e : readTournamentRunState(nk, runId).run;
+    if (result.retryableFailure) {
+      break;
+    }
+  }
+  return currentRun;
+};
 var updateTournamentRunBracket = (nk, logger, completion) => {
   if (!completion.context || !completion.winnerUserId || !completion.loserUserId) {
     return null;
@@ -6672,13 +7269,16 @@ var updateTournamentRunBracket = (nk, logger, completion) => {
   });
 };
 var maybeAutoFinalizeTournamentRunById = (nk, logger, runId) => {
-  var _a, _b;
+  var _a, _b, _c;
   const runState = readTournamentRunState(nk, runId);
-  const run = runState.run;
+  let run = runState.run;
   if (!run || run.lifecycle === "finalized") {
     return null;
   }
-  if ((_a = run.bracket) == null ? void 0 : _a.finalizedAt) {
+  if (run.bracket && !run.bracket.finalizedAt) {
+    run = (_a = processPendingBotOnlyTournamentMatches(nk, logger, runId)) != null ? _a : run;
+  }
+  if ((_b = run.bracket) == null ? void 0 : _b.finalizedAt) {
     try {
       const result = finalizeTournamentRun(logger, nk, run.runId, {});
       logger.info(
@@ -6697,7 +7297,7 @@ var maybeAutoFinalizeTournamentRunById = (nk, logger, runId) => {
   }
   const countedMatchCount = Math.max(
     0,
-    Math.floor((_b = readNumberField4(run.metadata, ["countedMatchCount", "validMatchCount"])) != null ? _b : 0)
+    Math.floor((_c = readNumberField4(run.metadata, ["countedMatchCount", "validMatchCount"])) != null ? _c : 0)
   );
   const entrantCount = readTournamentEntrantCount(getNakamaTournamentById(nk, run.tournamentId));
   if (entrantCount < 2 || countedMatchCount < entrantCount - 1) {
@@ -6855,7 +7455,7 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
   let errorMessage = null;
   if (!invalidReason && runState.run) {
     try {
-      const usernames = resolveUsernames(nk, logger, completion.players);
+      const usernames = resolveUsernames(nk, logger, completion.players, runState.run);
       ensureTournamentJoined(nk, logger, runState.run, completion.players, usernames);
       tournamentRecordWrites = submitTournamentScores(nk, runState.run, completion, usernames);
     } catch (error) {
@@ -7753,6 +8353,29 @@ var readMetadata = (run) => {
   var _a;
   return (_a = asRecord(run.metadata)) != null ? _a : {};
 };
+var getRunBotUserIds2 = (run) => {
+  var _a, _b;
+  const userIds = /* @__PURE__ */ new Set();
+  run.registrations.forEach((registration) => {
+    if (isTournamentBotUserId(registration.userId)) {
+      userIds.add(registration.userId);
+    }
+  });
+  (_a = run.bracket) == null ? void 0 : _a.participants.forEach((participant) => {
+    if (isTournamentBotUserId(participant.userId)) {
+      userIds.add(participant.userId);
+    }
+  });
+  (_b = run.bracket) == null ? void 0 : _b.entries.forEach((entry) => {
+    if (isTournamentBotUserId(entry.playerAUserId)) {
+      userIds.add(entry.playerAUserId);
+    }
+    if (isTournamentBotUserId(entry.playerBUserId)) {
+      userIds.add(entry.playerBUserId);
+    }
+  });
+  return Array.from(userIds);
+};
 var formatPrizeLabel = (metadata) => {
   var _a;
   const explicitPrize = readStringField6(metadata, ["prizePool", "prize_pool", "prizeLabel", "prize_label"]);
@@ -8087,6 +8710,7 @@ var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
     region: (_e = readStringField6(metadata, ["region"])) != null ? _e : "Global",
     buyInLabel: (_f = readStringField6(metadata, ["buyIn", "buy_in"])) != null ? _f : "Free",
     prizeLabel: formatPrizeLabel(metadata),
+    bots: buildTournamentBotSummary(run.metadata, getRunBotUserIds2(run)),
     isLocked: hasTournamentBracketStarted(run.bracket),
     currentRound: (_g = participation.currentRound) != null ? _g : getTournamentBracketCurrentRound(run.bracket),
     membership: buildMembershipState(resolvedMembership),
@@ -8329,7 +8953,7 @@ var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
   });
 };
 var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
-  var _a, _b, _c, _d, _e, _f, _g;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i;
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
   const parsed = parseJsonPayload(payload);
@@ -8452,12 +9076,15 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
   const metadata = readMetadata(run);
   const modeId = (_c = readStringField6(metadata, ["gameMode", "game_mode"])) != null ? _c : "standard";
   const rewardSettings = resolveTournamentXpRewardSettings(metadata);
-  const matchId = nk.matchCreate("authoritative_match", {
+  const botPolicy = normalizeTournamentBotPolicy(run.metadata);
+  const botUserId = isTournamentBotUserId(entry.playerAUserId) && entry.playerAUserId !== userId ? entry.playerAUserId : isTournamentBotUserId(entry.playerBUserId) && entry.playerBUserId !== userId ? entry.playerBUserId : null;
+  const botDisplayName = botUserId ? (_d = buildTournamentBotDisplayNames([botUserId], botPolicy.difficulty)[botUserId]) != null ? _d : botUserId : null;
+  const matchId = nk.matchCreate("authoritative_match", __spreadValues({
     playerIds: [entry.playerAUserId, entry.playerBUserId].filter((candidate) => Boolean(candidate)),
     modeId,
     rankedMatch: true,
     casualMatch: false,
-    botMatch: false,
+    botMatch: Boolean(botUserId),
     privateMatch: false,
     winRewardSource: "pvp_win",
     allowsChallengeRewards: true,
@@ -8468,7 +9095,11 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
     tournamentMatchWinXp: rewardSettings.xpPerMatchWin,
     tournamentChampionXp: rewardSettings.xpForTournamentChampion,
     tournamentEliminationRisk: true
-  });
+  }, botUserId ? {
+    botDifficulty: (_e = botPolicy.difficulty) != null ? _e : DEFAULT_BOT_DIFFICULTY,
+    botUserId,
+    botDisplayName
+  } : {}));
   const launchedAt = (/* @__PURE__ */ new Date()).toISOString();
   run = updateRunWithRetry(nk, logger, run.runId, (current) => {
     if (!current.bracket) {
@@ -8485,7 +9116,7 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
   });
   const activeParticipant = run.bracket ? getTournamentBracketParticipant(run.bracket, userId) : null;
   const activeEntry = (activeParticipant == null ? void 0 : activeParticipant.currentEntryId) && run.bracket ? getTournamentBracketEntry(run.bracket, activeParticipant.currentEntryId) : null;
-  const resolvedMatchId = (_e = (_d = activeParticipant == null ? void 0 : activeParticipant.activeMatchId) != null ? _d : activeEntry == null ? void 0 : activeEntry.matchId) != null ? _e : matchId;
+  const resolvedMatchId = (_g = (_f = activeParticipant == null ? void 0 : activeParticipant.activeMatchId) != null ? _f : activeEntry == null ? void 0 : activeEntry.matchId) != null ? _g : matchId;
   appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.match_launch.created", {
     matchId: resolvedMatchId,
     entryId: entry.entryId,
@@ -8495,8 +9126,8 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
   return buildTournamentLaunchResponse({
     run,
     matchId: resolvedMatchId,
-    tournamentRound: (_f = activeEntry == null ? void 0 : activeEntry.round) != null ? _f : entry.round,
-    tournamentEntryId: (_g = activeEntry == null ? void 0 : activeEntry.entryId) != null ? _g : entry.entryId,
+    tournamentRound: (_h = activeEntry == null ? void 0 : activeEntry.round) != null ? _h : entry.round,
+    tournamentEntryId: (_i = activeEntry == null ? void 0 : activeEntry.entryId) != null ? _i : entry.entryId,
     playerState: "in_match",
     nextRoundReady: true,
     queueStatus: "active_match",
@@ -8510,6 +9141,7 @@ var MAX_PLAYERS = 2;
 var ONLINE_TTL_MS = 3e4;
 var ONLINE_TURN_DURATION_MS = 1e4;
 var ONLINE_AFK_FORFEIT_MS = 6e4;
+var BOT_TURN_DELAY_MS = 850;
 var SYSTEM_USER_ID4 = "00000000-0000-0000-0000-000000000000";
 var RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 var RPC_GET_PROGRESSION_NAME = RPC_GET_PROGRESSION;
@@ -8530,9 +9162,9 @@ var PRIVATE_MATCH_CODE_COLLECTION = "private_match_codes";
 var PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS = 12;
 var PRIVATE_MATCH_CODE_WRITE_ATTEMPTS = 4;
 var onlinePresenceByUser = /* @__PURE__ */ new Map();
-var asRecord3 = (value) => typeof value === "object" && value !== null ? value : null;
-var readStringField8 = (value, keys) => {
-  const record = asRecord3(value);
+var asRecord4 = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField9 = (value, keys) => {
+  const record = asRecord4(value);
   if (!record) {
     return null;
   }
@@ -8545,7 +9177,7 @@ var readStringField8 = (value, keys) => {
   return null;
 };
 var readNumberField5 = (value, keys) => {
-  const record = asRecord3(value);
+  const record = asRecord4(value);
   if (!record) {
     return null;
   }
@@ -8575,7 +9207,7 @@ var decodeMessageData = (data, nk) => {
   if (typeof data === "string") {
     return data;
   }
-  const binaryToString = (_a = asRecord3(nk)) == null ? void 0 : _a.binaryToString;
+  const binaryToString = (_a = asRecord4(nk)) == null ? void 0 : _a.binaryToString;
   if (typeof binaryToString === "function") {
     try {
       return String(binaryToString(data));
@@ -8593,9 +9225,9 @@ var decodeMessageData = (data, nk) => {
   }
   return String(data != null ? data : "");
 };
-var getPresenceUserId = (presence) => readStringField8(presence, ["userId", "user_id"]);
-var getPresenceSessionId = (presence) => readStringField8(presence, ["sessionId", "session_id"]);
-var getSenderUserId = (sender) => readStringField8(sender, ["userId", "user_id"]);
+var getPresenceUserId = (presence) => readStringField9(presence, ["userId", "user_id"]);
+var getPresenceSessionId = (presence) => readStringField9(presence, ["sessionId", "session_id"]);
+var getSenderUserId = (sender) => readStringField9(sender, ["userId", "user_id"]);
 var getPresenceKey = (presence) => {
   const sessionId = getPresenceSessionId(presence);
   if (sessionId) {
@@ -8606,10 +9238,10 @@ var getPresenceKey = (presence) => {
 };
 var getMatchId = (ctx) => {
   var _a;
-  return (_a = readStringField8(ctx, ["matchId", "match_id"])) != null ? _a : "";
+  return (_a = readStringField9(ctx, ["matchId", "match_id"])) != null ? _a : "";
 };
 var getMessageOpCode = (message) => readNumberField5(message, ["opCode", "op_code"]);
-var getContextUserId2 = (ctx) => readStringField8(ctx, ["userId", "user_id"]);
+var getContextUserId2 = (ctx) => readStringField9(ctx, ["userId", "user_id"]);
 var resolveMatchModeId = (value) => isMatchModeId(value) ? value : "standard";
 var resolveConfiguredRewardXp = (value) => {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -8793,21 +9425,21 @@ var parseRpcPayload = (payload) => {
     return {};
   }
   const data = JSON.parse(payload);
-  return (_a = asRecord3(data)) != null ? _a : {};
+  return (_a = asRecord4(data)) != null ? _a : {};
 };
 var normalizePrivateMatchCodeRecord = (value) => {
   var _a;
-  const record = asRecord3(value);
+  const record = asRecord4(value);
   if (!record) {
     return null;
   }
-  const code = normalizePrivateMatchCodeInput((_a = readStringField8(record, ["code"])) != null ? _a : "");
-  const matchId = readStringField8(record, ["matchId", "match_id"]);
+  const code = normalizePrivateMatchCodeInput((_a = readStringField9(record, ["code"])) != null ? _a : "");
+  const matchId = readStringField9(record, ["matchId", "match_id"]);
   const modeId = record.modeId;
-  const creatorUserId = readStringField8(record, ["creatorUserId", "creator_user_id"]);
-  const joinedUserId = readStringField8(record, ["joinedUserId", "joined_user_id"]);
-  const createdAt = readStringField8(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField8(record, ["updatedAt", "updated_at"]);
+  const creatorUserId = readStringField9(record, ["creatorUserId", "creator_user_id"]);
+  const joinedUserId = readStringField9(record, ["joinedUserId", "joined_user_id"]);
+  const createdAt = readStringField9(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField9(record, ["updatedAt", "updated_at"]);
   if (!isPrivateMatchCode(code) || !matchId || !isMatchModeId(modeId) || !creatorUserId || !createdAt || !updatedAt) {
     return null;
   }
@@ -8967,6 +9599,26 @@ var getUserIdForColor = (state, color) => {
   var _a, _b;
   return (_b = (_a = Object.entries(state.assignments).find(([, assignedColor]) => assignedColor === color)) == null ? void 0 : _a[0]) != null ? _b : null;
 };
+var getBotOpponentType = (difficulty) => {
+  if (difficulty === "medium") {
+    return "medium_bot";
+  }
+  if (difficulty === "hard") {
+    return "hard_bot";
+  }
+  if (difficulty === "perfect") {
+    return "perfect_bot";
+  }
+  return "easy_bot";
+};
+var isConfiguredBotUser = (state, userId) => {
+  var _a;
+  return Boolean(userId && ((_a = state.bot) == null ? void 0 : _a.userId) === userId);
+};
+var isConfiguredBotColor = (state, color) => {
+  var _a;
+  return Boolean(color && ((_a = state.bot) == null ? void 0 : _a.color) === color);
+};
 var resolveAssignedPlayerTitle = (nk, userId) => {
   try {
     const profile = getUsernameOnboardingProfile(nk, userId);
@@ -8989,7 +9641,9 @@ var buildSnapshotPlayer = (state, color) => {
   };
 };
 var getOtherPlayerColor = (color) => color === "light" ? "dark" : "light";
-var getActiveAssignedUserCount = (state) => Object.keys(state.assignments).filter((userId) => getUserPresenceTargets(state, userId).length > 0).length;
+var getActiveAssignedUserCount = (state) => Object.keys(state.assignments).filter(
+  (userId) => isConfiguredBotUser(state, userId) || getUserPresenceTargets(state, userId).length > 0
+).length;
 var canStartMatch = (state) => Object.keys(state.assignments).length >= MAX_PLAYERS && getActiveAssignedUserCount(state) >= MAX_PLAYERS;
 var canRunAuthoritativeTurnTimer = (state) => state.started && !state.gameState.winner && state.gameState.phase !== "ended" && Boolean(getUserIdForColor(state, state.gameState.currentTurn));
 var clearTurnTimer = (state, reason = null) => {
@@ -9006,8 +9660,10 @@ var resetTurnTimerForCurrentState = (state, nowMs, reason) => {
     return;
   }
   const activePlayerColor = state.gameState.currentTurn;
+  const turnDurationMs = isConfiguredBotColor(state, activePlayerColor) ? BOT_TURN_DELAY_MS : ONLINE_TURN_DURATION_MS;
+  state.timer.turnDurationMs = turnDurationMs;
   state.timer.turnStartedAtMs = nowMs;
-  state.timer.turnDeadlineMs = nowMs + state.timer.turnDurationMs;
+  state.timer.turnDeadlineMs = nowMs + turnDurationMs;
   state.timer.activePlayerColor = activePlayerColor;
   state.timer.activePlayerUserId = getUserIdForColor(state, activePlayerColor);
   state.timer.activePhase = state.gameState.phase;
@@ -9039,6 +9695,9 @@ var recordTimeoutWindow = (state, playerColor, nowMs) => {
   return tracker.accumulatedMs;
 };
 var getAfkRemainingMs = (state, playerColor, nowMs) => {
+  if (isConfiguredBotColor(state, playerColor)) {
+    return 0;
+  }
   const tracker = state.afk[playerColor];
   let effectiveAccumulatedMs = tracker.accumulatedMs;
   if (state.timer.activePlayerColor === playerColor && state.timer.turnStartedAtMs !== null && state.timer.turnDeadlineMs !== null && state.gameState.phase !== "ended" && !state.gameState.winner) {
@@ -9185,7 +9844,7 @@ var buildPlayerMatchSummary = (state, matchId, playerUserId, playerColor) => {
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   };
 };
-var getPresenceUsername = (presence) => readStringField8(presence, ["username", "displayName", "display_name", "name"]);
+var getPresenceUsername = (presence) => readStringField9(presence, ["username", "displayName", "display_name", "name"]);
 var buildTournamentMatchCompletion = (state, matchId) => {
   var _a, _b, _c, _d;
   if (!state.tournamentContext) {
@@ -9194,11 +9853,12 @@ var buildTournamentMatchCompletion = (state, matchId) => {
   const completedAt = (/* @__PURE__ */ new Date()).toISOString();
   const winningColor = state.gameState.winner;
   const players = Object.entries(state.assignments).map(([userId, color]) => {
+    var _a2, _b2;
     const presence = getPrimaryUserPresence(state, userId);
     const playerTelemetry = state.telemetry.players[color];
     return {
       userId,
-      username: getPresenceUsername(presence),
+      username: (_b2 = (_a2 = getPresenceUsername(presence)) != null ? _a2 : state.playerTitles[userId]) != null ? _b2 : null,
       color,
       didWin: winningColor === color,
       score: winningColor === color ? 1 : 0,
@@ -9453,12 +10113,17 @@ function matchmakerMatched(_ctx, logger, nk, matched) {
   });
 }
 function matchInit(_ctx, _logger, nk, params) {
+  var _a;
   const playerIds = Array.isArray(params.playerIds) ? params.playerIds : [];
   const modeId = resolveMatchModeId(params.modeId);
   const classification = buildMatchClassification(params, modeId);
   const privateMatch = classification.private;
   const privateCode = typeof params.privateCode === "string" ? normalizePrivateMatchCodeInput(params.privateCode) : "";
   const privateCreatorUserId = typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
+  const botUserId = readStringField9(params, ["botUserId", "bot_user_id"]);
+  const botDifficultyValue = readStringField9(params, ["botDifficulty", "bot_difficulty"]);
+  const botDifficulty = botDifficultyValue && isBotDifficulty(botDifficultyValue) ? botDifficultyValue : DEFAULT_BOT_DIFFICULTY;
+  const botDisplayName = (_a = readStringField9(params, ["botDisplayName", "bot_display_name"])) != null ? _a : `${botDifficulty.slice(0, 1).toUpperCase()}${botDifficulty.slice(1)} Bot`;
   const winRewardSource = params.winRewardSource === "private_pvp_win" ? "private_pvp_win" : "pvp_win";
   const allowsChallengeRewards = params.allowsChallengeRewards !== false;
   const tournamentMatchWinXp = resolveConfiguredRewardXp(
@@ -9477,14 +10142,25 @@ function matchInit(_ctx, _logger, nk, params) {
       playerTitles[userId] = resolveAssignedPlayerTitle(nk, userId);
     }
   });
+  const botColor = botUserId && assignments[botUserId] ? assignments[botUserId] : botUserId && playerIds[1] === botUserId ? "dark" : botUserId && playerIds[0] === botUserId ? "light" : null;
+  const bot = classification.bot && botUserId && botColor ? {
+    userId: botUserId,
+    color: botColor,
+    difficulty: botDifficulty,
+    displayName: botDisplayName
+  } : null;
+  if (bot) {
+    playerTitles[bot.userId] = bot.displayName;
+  }
   const state = {
     presences: {},
     assignments,
     playerTitles,
+    bot,
     gameState: createInitialState(getMatchConfig(modeId)),
     revision: 0,
     started: false,
-    opponentType: "human",
+    opponentType: bot ? getBotOpponentType(bot.difficulty) : "human",
     modeId,
     classification,
     privateMatch,
@@ -9527,9 +10203,8 @@ function matchJoinAttempt(_ctx, logger, nk, _dispatcher, _tick, state, presence)
       return { state, accept: false, rejectMessage: "Enter the private game code before joining this table." };
     }
   }
-  const activeCount = getActiveUserCount(state);
   const hasExistingAssignment = Boolean(state.assignments[userId]);
-  if (activeCount >= MAX_PLAYERS && !hasExistingAssignment) {
+  if (Object.keys(state.assignments).length >= MAX_PLAYERS && !hasExistingAssignment) {
     return { state, accept: false, rejectMessage: "Match is full." };
   }
   upsertPresence(state, presence);
@@ -9763,10 +10438,51 @@ function forfeitPlayerForInactivity(logger, nk, dispatcher, state, matchId, forf
   finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
 }
 function applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, nowMs) {
-  var _a;
+  var _a, _b, _c;
   const activePlayerColor = (_a = state.timer.activePlayerColor) != null ? _a : state.gameState.currentTurn;
   if (!activePlayerColor || state.gameState.winner || state.gameState.phase === "ended") {
     clearTurnTimer(state, "timeout_ignored");
+    return;
+  }
+  if (isConfiguredBotColor(state, activePlayerColor) && state.bot) {
+    if (state.gameState.phase === "rolling") {
+      const rolledValue = rollDice();
+      const validMoves = applyRollOutcome(state, activePlayerColor, rolledValue);
+      if (validMoves.length > 0) {
+        applyValidatedMove(
+          state,
+          activePlayerColor,
+          (_b = getBotMove(state.gameState, rolledValue, state.bot.difficulty)) != null ? _b : validMoves[0]
+        );
+      }
+    } else if (state.gameState.phase === "moving" && state.gameState.rollValue !== null) {
+      const validMoves = getValidMoves(state.gameState, state.gameState.rollValue);
+      if (validMoves.length > 0) {
+        applyValidatedMove(
+          state,
+          activePlayerColor,
+          (_c = getBotMove(state.gameState, state.gameState.rollValue, state.bot.difficulty)) != null ? _c : validMoves[0]
+        );
+      } else {
+        state.gameState = __spreadProps(__spreadValues({}, state.gameState), {
+          currentTurn: getOtherPlayerColor(activePlayerColor),
+          phase: "rolling",
+          rollValue: null,
+          history: [...state.gameState.history, `${activePlayerColor} had no valid move.`]
+        });
+        completePlayerTurnTelemetry(state, activePlayerColor, { didCapture: false, unusableRoll: true });
+      }
+    }
+    if (state.gameState.winner) {
+      syncCompletedMatchEnd(state);
+    } else {
+      state.matchEnd = null;
+    }
+    resetTurnTimerForCurrentState(state, nowMs, "bot_turn_delay");
+    state.revision += 1;
+    logger.debug("Applied configured bot turn for %s (revision %d)", activePlayerColor, state.revision);
+    broadcastSnapshot(dispatcher, state, matchId);
+    finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
     return;
   }
   const accumulatedInactivityMs = recordTimeoutWindow(state, activePlayerColor, nowMs);
@@ -9953,6 +10669,10 @@ function awardWinnerProgression(logger, nk, dispatcher, state, matchId) {
     return null;
   }
   const [winnerUserId] = winnerEntry;
+  if (isTournamentBotUserId(winnerUserId)) {
+    logger.info("Skipping progression award for synthetic tournament bot winner %s on match %s.", winnerUserId, matchId);
+    return null;
+  }
   const configuredTournamentMatchWinXp = state.tournamentContext && typeof state.tournamentMatchWinXp === "number" ? state.tournamentMatchWinXp : null;
   if (configuredTournamentMatchWinXp !== null && configuredTournamentMatchWinXp <= 0) {
     return null;
@@ -10002,6 +10722,9 @@ function processCompletedMatchSummaries(logger, nk, state, matchId) {
     return results;
   }
   Object.entries(state.assignments).forEach(([playerUserId, playerColor]) => {
+    if (isTournamentBotUserId(playerUserId)) {
+      return;
+    }
     try {
       const summary = buildPlayerMatchSummary(state, matchId, playerUserId, playerColor);
       results[playerUserId] = processCompletedMatch(nk, logger, summary);
@@ -10211,7 +10934,7 @@ function broadcastSnapshot(dispatcher, state, matchId) {
       light: state.afk.light.accumulatedMs,
       dark: state.afk.dark.accumulatedMs
     },
-    afkRemainingMs: activeTimedPlayerColor ? getAfkRemainingMs(state, activeTimedPlayerColor, nowMs) : null,
+    afkRemainingMs: activeTimedPlayerColor && !isConfiguredBotColor(state, activeTimedPlayerColor) ? getAfkRemainingMs(state, activeTimedPlayerColor, nowMs) : null,
     matchEnd: state.matchEnd
   };
   dispatcher.broadcastMessage(MatchOpCode.STATE_SNAPSHOT, encodePayload(payload));

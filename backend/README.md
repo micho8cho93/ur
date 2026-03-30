@@ -24,6 +24,11 @@ Expected values:
 - `POSTGRES_PASSWORD`
 - `NAKAMA_SOCKET_SERVER_KEY`
 - `NAKAMA_HTTP_KEY`
+- `NAKAMA_CONSOLE_USERNAME`
+- `NAKAMA_CONSOLE_PASSWORD`
+- `NAKAMA_CONSOLE_SIGNING_KEY`
+- `NAKAMA_SESSION_ENCRYPTION_KEY`
+- `NAKAMA_SESSION_REFRESH_ENCRYPTION_KEY`
 
 ## Build + Run
 
@@ -54,6 +59,8 @@ Use the dedicated production stack in `/Users/Michel/Desktop/ur/backend/deploy`.
 - Env template: `/Users/Michel/Desktop/ur/backend/deploy/env.production.example`
 
 This keeps raw Nakama ports off the public internet and serves Nakama at `https://nakama.<your-domain>` for HTTPS/WSS browser clients.
+
+The Nakama console username, password, console signing key, and session encryption keys are injected at runtime from env vars. Do not commit real values into `nakama.yml`.
 
 ## Authoritative multiplayer contract
 

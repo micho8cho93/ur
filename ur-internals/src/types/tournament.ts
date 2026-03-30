@@ -1,3 +1,5 @@
+import type { BotDifficulty } from './bot'
+
 export type TournamentStatus = 'Draft' | 'Open' | 'Closed' | 'Finalized'
 export type TournamentOperator = 'best' | 'set' | 'incr'
 export type TournamentLiveAlertLevel = 'info' | 'warning' | 'critical' | 'success'
@@ -85,6 +87,11 @@ export interface Tournament {
   buyIn: string
   region: string
   prizePool: string
+  bots: {
+    autoAdd: boolean
+    difficulty: BotDifficulty | null
+    count: number
+  }
   createdBy: string
   createdAt: string
   updatedAt: string
@@ -264,6 +271,8 @@ export interface CreateTournamentInput {
   gameMode: string
   entrants: number
   startAt: string
+  autoAddBots: boolean
+  botDifficulty: BotDifficulty | null
   joinRequired: boolean
   enableRanks: boolean
   xpPerMatchWin: number
