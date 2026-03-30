@@ -3,7 +3,6 @@ import {
   MAX_STANDINGS_LIMIT,
   TournamentRunRecord,
   clampInteger,
-  finalizeTournamentRun,
   getNakamaTournamentById,
   getNakamaTournamentsById,
   readRunIndexState,
@@ -31,6 +30,7 @@ import {
   readStringField,
   requireAuthenticatedUserId,
 } from "./definitions";
+import { maybeAutoFinalizeTournamentRunById } from "./matchResults";
 import type { RuntimeContext, RuntimeLogger, RuntimeNakama } from "./types";
 import { requireCompletedUsernameOnboarding } from "../usernameOnboarding";
 import {
@@ -193,6 +193,77 @@ const buildFinalizedParticipationOverride = (
   return null;
 };
 
+const readStandingsRecordRank = (record: Record<string, unknown> | null): number | null => {
+  const rank = readNumberField(record, ["rank"]);
+  return typeof rank === "number" && Number.isFinite(rank) ? Math.max(1, Math.floor(rank)) : null;
+};
+
+const readStandingsRecordOwnerId = (record: Record<string, unknown> | null): string | null =>
+  readStringField(record, ["ownerId", "owner_id"]);
+
+const readStandingsRecordMetadata = (record: Record<string, unknown> | null): Record<string, unknown> =>
+  asRecord(record?.metadata) ?? {};
+
+const normalizeSnapshotResult = (value: string | null): "win" | "loss" | null =>
+  value === "win" || value === "loss" ? value : null;
+
+const buildStoredFinalizedParticipationOverride = (
+  run: TournamentRunRecord,
+  userId: string,
+  participant: {
+    currentRound: number | null;
+    currentEntryId: string | null;
+    finalPlacement: number | null;
+    lastResult: "win" | "loss" | null;
+  } | null,
+): PublicParticipationState | null => {
+  const terminalLifecycle =
+    run.lifecycle === "closed" || run.lifecycle === "finalized" || run.finalizedAt != null;
+  const snapshotRecord =
+    run.finalSnapshot?.records
+      .map((entry) => asRecord(entry))
+      .find((entry) => readStandingsRecordOwnerId(entry) === userId) ?? null;
+
+  if (!terminalLifecycle && !snapshotRecord) {
+    return null;
+  }
+
+  const finalPlacement = readStandingsRecordRank(snapshotRecord) ?? participant?.finalPlacement ?? null;
+  const metadata = readStandingsRecordMetadata(snapshotRecord);
+  const snapshotState = readStringField(metadata, ["state"]);
+  const state =
+    snapshotState === "champion" || snapshotState === "runner_up" || snapshotState === "eliminated"
+      ? snapshotState
+      : finalPlacement === 1
+        ? "champion"
+        : finalPlacement === 2
+          ? "runner_up"
+          : typeof finalPlacement === "number"
+            ? "eliminated"
+            : null;
+
+  if (!state) {
+    return null;
+  }
+
+  const snapshotLastResult = normalizeSnapshotResult(readStringField(metadata, ["result"]));
+
+  return {
+    state,
+    currentRound: participant?.currentRound ?? readNumberField(metadata, ["round"]),
+    currentEntryId:
+      participant?.currentEntryId ??
+      readStringField(metadata, ["entryId", "entry_id"]),
+    activeMatchId: null,
+    finalPlacement,
+    lastResult:
+      snapshotLastResult ??
+      participant?.lastResult ??
+      (state === "champion" ? "win" : state === "runner_up" ? "loss" : null),
+    canLaunch: false,
+  };
+};
+
 const resolveMembershipForRun = (
   run: TournamentRunRecord,
   membership: TournamentRunMembershipRecord | null,
@@ -287,7 +358,12 @@ const isPublicRunActive = (
   nakamaTournament: Record<string, unknown> | null,
   nowMs = Date.now(),
 ): boolean => {
-  if (run.lifecycle !== "open" || !nakamaTournament) {
+  if (
+    run.lifecycle !== "open" ||
+    run.finalizedAt != null ||
+    run.bracket?.finalizedAt != null ||
+    !nakamaTournament
+  ) {
     return false;
   }
 
@@ -342,7 +418,15 @@ const assertPublicRunReadable = (
     return;
   }
 
-  if (membership && (run.lifecycle === "closed" || run.lifecycle === "finalized")) {
+  if (
+    membership &&
+    (
+      run.lifecycle === "closed" ||
+      run.lifecycle === "finalized" ||
+      run.finalizedAt != null ||
+      run.bracket?.finalizedAt != null
+    )
+  ) {
     return;
   }
 
@@ -455,6 +539,11 @@ const buildPublicParticipationState = (
   }
 
   if (!run.bracket) {
+    const storedFinalizedParticipation = buildStoredFinalizedParticipationOverride(run, membership.userId, null);
+    if (storedFinalizedParticipation) {
+      return storedFinalizedParticipation;
+    }
+
     return {
       state: "lobby",
       currentRound: 1,
@@ -468,6 +557,11 @@ const buildPublicParticipationState = (
 
   const participant = getTournamentBracketParticipant(run.bracket, membership.userId);
   if (!participant) {
+    const storedFinalizedParticipation = buildStoredFinalizedParticipationOverride(run, membership.userId, null);
+    if (storedFinalizedParticipation) {
+      return storedFinalizedParticipation;
+    }
+
     return {
       state: null,
       currentRound: getTournamentBracketCurrentRound(run.bracket),
@@ -482,6 +576,11 @@ const buildPublicParticipationState = (
   const finalizedParticipation = buildFinalizedParticipationOverride(run, participant);
   if (finalizedParticipation) {
     return finalizedParticipation;
+  }
+
+  const storedFinalizedParticipation = buildStoredFinalizedParticipationOverride(run, membership.userId, participant);
+  if (storedFinalizedParticipation) {
+    return storedFinalizedParticipation;
   }
 
   return {
@@ -628,12 +727,12 @@ const maybeFinalizeCompletedPublicRun = (
   nk: RuntimeNakama,
   run: TournamentRunRecord,
 ): TournamentRunRecord => {
-  if (run.lifecycle === "finalized" || !run.bracket?.finalizedAt) {
+  if (run.lifecycle === "finalized") {
     return run;
   }
 
   try {
-    return finalizeTournamentRun(logger, nk, run.runId, {}).run;
+    return maybeAutoFinalizeTournamentRunById(nk, logger, run.runId)?.run ?? run;
   } catch (error) {
     logger.warn(
       "Unable to auto-finalize public tournament run %s while serving player status: %s",
@@ -714,10 +813,10 @@ export const rpcGetPublicTournament = (
 
   let run = readRunOrThrow(nk, runId);
   run = maybeStartBracketForRun(nk, logger, run);
+  run = maybeFinalizeCompletedPublicRun(logger, nk, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   assertPublicRunReadable(run, nakamaTournament, membership);
-  run = maybeFinalizeCompletedPublicRun(logger, nk, run);
 
   return JSON.stringify({
     ok: true,
@@ -873,8 +972,33 @@ export const rpcLaunchTournamentMatch = (
 
   run = ensureRunRegistration(nk, logger, run, membership);
   run = maybeStartBracketForRun(nk, logger, run);
+  run = maybeFinalizeCompletedPublicRun(logger, nk, run);
 
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
+  const participation = buildPublicParticipationState(run, membership);
+  const isTerminalRun =
+    run.lifecycle === "closed" ||
+    run.lifecycle === "finalized" ||
+    run.finalizedAt != null ||
+    run.bracket?.finalizedAt != null;
+
+  if (participation.state === "eliminated") {
+    throw new Error("Your tournament run has ended.");
+  }
+
+  if (participation.state === "champion" || participation.state === "runner_up" || isTerminalRun) {
+    return buildTournamentLaunchResponse({
+      run,
+      matchId: null,
+      tournamentRound: participation.currentRound,
+      tournamentEntryId: participation.currentEntryId,
+      playerState: participation.state ?? "finalized",
+      nextRoundReady: false,
+      queueStatus: "finalized",
+      statusMessage: "Tournament complete.",
+    });
+  }
+
   assertPublicRunVisible(run, nakamaTournament);
 
   if (!run.bracket) {

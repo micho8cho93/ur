@@ -213,4 +213,39 @@ describe('tournament presentation helpers', () => {
       ),
     ).toBe(false);
   });
+
+  it('does not render resume actions for finalized runs with stale active match state', () => {
+    const finalizedTournament: PublicTournamentSummary = {
+      ...baseTournament,
+      lifecycle: 'finalized',
+      membership: {
+        isJoined: true,
+        joinedAt: '2026-03-27T11:55:00.000Z',
+      },
+      participation: {
+        state: 'in_match',
+        currentRound: 1,
+        currentEntryId: 'round-1-match-1',
+        activeMatchId: 'match-123',
+        finalPlacement: null,
+        lastResult: null,
+        canLaunch: true,
+      },
+    };
+
+    expect(getTournamentCardPrimaryState(finalizedTournament)).toEqual({
+      label: 'Tournament Complete',
+      disabled: true,
+      intent: 'none',
+      loading: false,
+      waitReason: null,
+    });
+    expect(getTournamentDetailPrimaryState(finalizedTournament)).toEqual({
+      label: 'Tournament Complete',
+      disabled: true,
+      intent: 'none',
+      loading: false,
+      waitReason: null,
+    });
+  });
 });

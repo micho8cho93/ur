@@ -141,6 +141,26 @@ export const buildTournamentPrizeSummary = (tournament: Pick<PublicTournamentSum
   `${tournament.buyInLabel} • ${tournament.prizeLabel}`;
 
 const getJoinedTournamentPrimaryState = (tournament: PublicTournamentSummary, now = Date.now()): TournamentPrimaryState => {
+  if (tournament.lifecycle === 'closed' || tournament.lifecycle === 'finalized') {
+    if (tournament.participation.state === 'eliminated') {
+      return {
+        label: 'Eliminated',
+        disabled: true,
+        intent: 'none',
+        loading: false,
+        waitReason: null,
+      };
+    }
+
+    return {
+      label: 'Tournament Complete',
+      disabled: true,
+      intent: 'none',
+      loading: false,
+      waitReason: null,
+    };
+  }
+
   if (tournament.participation.state === 'in_match' && tournament.participation.activeMatchId) {
     return {
       label: 'Resume Tournament Match',

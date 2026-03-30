@@ -997,6 +997,137 @@ describe('public tournament rpc flow', () => {
     expect(nk.tournamentRanksDisable).toHaveBeenCalledWith('tour-1');
   });
 
+  it('blocks stale final-match resumes once standings prove the tournament is complete', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedOpenRun(nk, {
+      entrants: 0,
+      maxSize: 2,
+    });
+
+    rpcJoinPublicTournament(
+      { userId: 'user-1', username: 'RoyalPlayer' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcJoinPublicTournament(
+      { userId: 'user-2', username: 'TempleGuest' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcLaunchTournamentMatch(
+      { userId: 'user-1', username: 'RoyalPlayer' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+
+    const storedRun = readStoredRunValue(nk);
+    writeStoredRunValue(nk, {
+      ...storedRun,
+      updatedAt: '2026-03-27T10:05:00.000Z',
+      metadata: {
+        ...(typeof storedRun.metadata === 'object' && storedRun.metadata !== null ? storedRun.metadata : {}),
+        countedMatchCount: 1,
+        countedResultIds: ['run-1:match-tournament-1'],
+        lastProcessedMatchId: 'match-tournament-1',
+        lastProcessedResultId: 'run-1:match-tournament-1',
+        lastProcessedWasCounted: true,
+        lastWinnerUserId: 'user-1',
+      },
+    });
+    nk.tournamentRecordsList.mockReturnValue({
+      records: [
+        {
+          rank: 1,
+          owner_id: 'user-1',
+          username: 'RoyalPlayer',
+          score: 1,
+          metadata: {
+            result: 'win',
+            round: 1,
+            matchId: 'match-tournament-1',
+          },
+        },
+        {
+          rank: 2,
+          owner_id: 'user-2',
+          username: 'TempleGuest',
+          score: 0,
+          metadata: {
+            result: 'loss',
+            round: 1,
+            matchId: 'match-tournament-1',
+          },
+        },
+      ],
+      owner_records: [],
+      rank_count: 2,
+    });
+
+    const resumeResponse = JSON.parse(
+      rpcLaunchTournamentMatch(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      matchId: string | null;
+      queueStatus: string;
+      statusMessage: string;
+      playerState: string;
+    };
+
+    const detailResponse = JSON.parse(
+      rpcGetPublicTournament(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      tournament: {
+        lifecycle: string;
+        participation: { state: string | null; finalPlacement: number | null; activeMatchId: string | null };
+      };
+    };
+
+    const listResponse = JSON.parse(
+      rpcListPublicTournaments(
+        { userId: 'user-1' },
+        logger,
+        nk,
+        JSON.stringify({ limit: 10 }),
+      ),
+    ) as {
+      tournaments: Array<{ runId: string }>;
+    };
+
+    const updatedRun = readStoredRunValue(nk);
+
+    expect(resumeResponse).toEqual(
+      expect.objectContaining({
+        matchId: null,
+        queueStatus: 'finalized',
+        statusMessage: 'Tournament complete.',
+        playerState: 'champion',
+      }),
+    );
+    expect(detailResponse.tournament.lifecycle).toBe('finalized');
+    expect(detailResponse.tournament.participation).toEqual(
+      expect.objectContaining({
+        state: 'champion',
+        finalPlacement: 1,
+        activeMatchId: null,
+      }),
+    );
+    expect(listResponse.tournaments).toEqual([]);
+    expect(updatedRun.lifecycle).toBe('finalized');
+  });
+
   it('returns champion and runner-up participation from finalized bracket data even when participant state is stale', () => {
     const nk = createNakama();
     const logger = createLogger();
