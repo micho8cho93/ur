@@ -6,7 +6,7 @@ import type { EloRatingProfileRpcResponse } from '@/shared/elo';
 import type { ProgressionSnapshot } from '@/shared/progression';
 import type { PublicTournamentDetail } from '@/src/tournaments/types';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 const STONE_SLAB_BACKGROUND = require('../../assets/images/ur_bg.png');
 
@@ -193,6 +193,10 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
   errorMessage,
   onRefresh,
 }) => {
+  const { width, height } = useWindowDimensions();
+  const isCompactViewport = width < 760 || height < 760;
+  const isVeryShortViewport = height < 680;
+  const isWideViewport = width >= 1180;
   const [cardIndex, setCardIndex] = useState(0);
   const [shuffleSeed, setShuffleSeed] = useState(0);
   const cards = useMemo(
@@ -269,15 +273,29 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
       <View pointerEvents="none" style={styles.backdropFrame} />
 
       <ScrollView
+        testID="tournament-start-waiting-room-scroll"
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isCompactViewport && styles.scrollContentCompact,
+          isWideViewport && styles.scrollContentWide,
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.heroPanel}>
+        <View
+          style={[
+            styles.heroPanel,
+            isCompactViewport && styles.heroPanelCompact,
+            isVeryShortViewport && styles.heroPanelVeryShort,
+            isWideViewport && styles.heroPanelWide,
+          ]}
+        >
           <Text style={styles.eyebrow}>Tournament Waiting Room</Text>
-          <Text style={styles.title}>{tournament.name}</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.title, isCompactViewport && styles.titleCompact, isWideViewport && styles.titleWide]}>
+            {tournament.name}
+          </Text>
+          <Text style={[styles.subtitle, isCompactViewport && styles.subtitleCompact]}>
             Your seat is confirmed. Stay here while the royal court fills the bracket and opens the first round.
           </Text>
 
@@ -296,19 +314,32 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
           </View>
 
           <View style={styles.statusPanel}>
-            <Text style={styles.statusTitle}>{statusCopy.title}</Text>
-            <Text style={styles.statusBody}>{statusCopy.body}</Text>
-            {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+            <Text style={[styles.statusTitle, isCompactViewport && styles.statusTitleCompact]}>{statusCopy.title}</Text>
+            <Text style={[styles.statusBody, isCompactViewport && styles.helperTextCompact]}>{statusCopy.body}</Text>
+            {errorMessage ? <Text style={[styles.errorText, isCompactViewport && styles.helperTextCompact]}>{errorMessage}</Text> : null}
           </View>
 
-          <View style={styles.cardDeckWrap}>
+          <View
+            style={[
+              styles.cardDeckWrap,
+              isCompactViewport && styles.cardDeckWrapCompact,
+              isWideViewport && styles.cardDeckWrapWide,
+            ]}
+          >
             <View style={styles.cardShadow} />
             <View style={[styles.cardGhost, styles.cardGhostRear]} />
             <View style={[styles.cardGhost, styles.cardGhostFront]} />
-            <View style={[styles.card, { borderColor: `${activeCard.accent}66` }]}>
+            <View
+              style={[
+                styles.card,
+                isCompactViewport && styles.cardCompact,
+                isWideViewport && styles.cardWide,
+                { borderColor: `${activeCard.accent}66` },
+              ]}
+            >
               <Text style={[styles.cardEyebrow, { color: activeCard.accent }]}>{activeCard.eyebrow}</Text>
-              <Text style={styles.cardTitle}>{activeCard.title}</Text>
-              <Text style={styles.cardBody}>{activeCard.body}</Text>
+              <Text style={[styles.cardTitle, isCompactViewport && styles.cardTitleCompact]}>{activeCard.title}</Text>
+              <Text style={[styles.cardBody, isCompactViewport && styles.cardBodyCompact]}>{activeCard.body}</Text>
             </View>
           </View>
 
@@ -324,7 +355,9 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
             ))}
           </View>
 
-          <Text style={styles.rotationNote}>The archive reshuffles every 15 seconds while the lobby is waiting.</Text>
+          <Text style={[styles.rotationNote, isCompactViewport && styles.helperTextCompact]}>
+            The archive reshuffles every 15 seconds while the lobby is waiting.
+          </Text>
 
           <View style={styles.actionRow}>
             <Button
@@ -383,6 +416,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.xl,
   },
+  scrollContentCompact: {
+    justifyContent: 'flex-start',
+  },
+  scrollContentWide: {
+    paddingHorizontal: urTheme.spacing.xl,
+  },
   heroPanel: {
     width: '100%',
     maxWidth: 980,
@@ -403,6 +442,17 @@ const styles = StyleSheet.create({
       elevation: 12,
     }),
   },
+  heroPanelCompact: {
+    gap: urTheme.spacing.sm,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.lg,
+  },
+  heroPanelVeryShort: {
+    paddingVertical: urTheme.spacing.md,
+  },
+  heroPanelWide: {
+    maxWidth: 1040,
+  },
   eyebrow: {
     ...urTypography.label,
     color: '#D5E9FF',
@@ -416,12 +466,24 @@ const styles = StyleSheet.create({
     lineHeight: 42,
     textAlign: 'center',
   },
+  titleCompact: {
+    fontSize: 30,
+    lineHeight: 36,
+  },
+  titleWide: {
+    fontSize: 40,
+    lineHeight: 46,
+  },
   subtitle: {
     color: 'rgba(239, 226, 202, 0.84)',
     fontSize: 15,
     lineHeight: 22,
     textAlign: 'center',
     maxWidth: 700,
+  },
+  subtitleCompact: {
+    fontSize: 14,
+    lineHeight: 20,
   },
   pillRow: {
     flexDirection: 'row',
@@ -468,11 +530,19 @@ const styles = StyleSheet.create({
     lineHeight: 27,
     textAlign: 'center',
   },
+  statusTitleCompact: {
+    fontSize: 18,
+    lineHeight: 24,
+  },
   statusBody: {
     color: 'rgba(215, 231, 251, 0.84)',
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
+  },
+  helperTextCompact: {
+    fontSize: 12,
+    lineHeight: 17,
   },
   errorText: {
     color: '#F6AAA2',
@@ -487,6 +557,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: urTheme.spacing.xs,
+  },
+  cardDeckWrapCompact: {
+    minHeight: 260,
+  },
+  cardDeckWrapWide: {
+    minHeight: 348,
   },
   cardShadow: {
     position: 'absolute',
@@ -532,6 +608,15 @@ const styles = StyleSheet.create({
       elevation: 11,
     }),
   },
+  cardCompact: {
+    minHeight: 224,
+    borderRadius: 24,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.md,
+  },
+  cardWide: {
+    maxWidth: 560,
+  },
   cardEyebrow: {
     ...urTypography.label,
     fontSize: 11,
@@ -544,10 +629,18 @@ const styles = StyleSheet.create({
     lineHeight: 35,
     marginBottom: urTheme.spacing.sm,
   },
+  cardTitleCompact: {
+    fontSize: 26,
+    lineHeight: 31,
+  },
   cardBody: {
     color: 'rgba(240, 229, 209, 0.86)',
     fontSize: 15,
     lineHeight: 23,
+  },
+  cardBodyCompact: {
+    fontSize: 14,
+    lineHeight: 21,
   },
   cardIndicatorRow: {
     flexDirection: 'row',

@@ -30,6 +30,7 @@ export type MatchOpCodeValue = (typeof MatchOpCode)[keyof typeof MatchOpCode];
 
 export type RollRequestPayload = {
   type: "roll_request";
+  autoTriggered?: boolean;
 };
 
 export type MoveRequestPayload = {
@@ -183,7 +184,9 @@ const isMoveAction = (value: unknown): value is MoveAction => {
 };
 
 export const isRollRequestPayload = (value: unknown): value is RollRequestPayload =>
-  isRecord(value) && value.type === "roll_request";
+  isRecord(value) &&
+  value.type === "roll_request" &&
+  isOptional(value.autoTriggered, (candidate): candidate is boolean => typeof candidate === "boolean");
 
 export const isMoveRequestPayload = (value: unknown): value is MoveRequestPayload =>
   isRecord(value) && value.type === "move_request" && isMoveAction(value.move);

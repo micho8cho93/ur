@@ -200,6 +200,7 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
   const { width, height } = useWindowDimensions();
   const isCompactViewport = width < 760 || height < 760;
   const isVeryShortViewport = height < 680;
+  const isWideViewport = width >= 1180;
   const showExitActions = phase === 'eliminated' || phase === 'finalized';
   const [cardIndex, setCardIndex] = useState(0);
   const [shuffleSeed, setShuffleSeed] = useState(0);
@@ -290,7 +291,11 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
       <ScrollView
         testID="tournament-waiting-room-scroll"
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isCompactViewport && styles.scrollContentCompact,
+          isWideViewport && styles.scrollContentWide,
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -299,12 +304,15 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
             styles.heroPanel,
             isCompactViewport && styles.heroPanelCompact,
             isVeryShortViewport && styles.heroPanelVeryShort,
+            isWideViewport && styles.heroPanelWide,
           ]}
         >
           <Text style={styles.eyebrow}>
             {showExitActions ? (isChampion ? 'Tournament Won' : 'Tournament Complete') : 'Tournament Waiting Room'}
           </Text>
-          <Text style={[styles.title, isCompactViewport && styles.titleCompact]}>{tournamentName}</Text>
+          <Text style={[styles.title, isCompactViewport && styles.titleCompact, isWideViewport && styles.titleWide]}>
+            {tournamentName}
+          </Text>
           <Text style={[styles.subtitle, isCompactViewport && styles.subtitleCompact]}>{subtitle}</Text>
 
           <View style={styles.pillRow}>
@@ -350,11 +358,24 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
             ) : null}
           </View>
 
-          <View style={[styles.cardDeckWrap, isCompactViewport && styles.cardDeckWrapCompact]}>
+          <View
+            style={[
+              styles.cardDeckWrap,
+              isCompactViewport && styles.cardDeckWrapCompact,
+              isWideViewport && styles.cardDeckWrapWide,
+            ]}
+          >
             <View style={styles.cardShadow} />
             <View style={[styles.cardGhost, styles.cardGhostRear]} />
             <View style={[styles.cardGhost, styles.cardGhostFront]} />
-            <View style={[styles.card, isCompactViewport && styles.cardCompact, { borderColor: `${activeCard.accent}66` }]}>
+            <View
+              style={[
+                styles.card,
+                isCompactViewport && styles.cardCompact,
+                isWideViewport && styles.cardWide,
+                { borderColor: `${activeCard.accent}66` },
+              ]}
+            >
               <Text style={[styles.cardEyebrow, { color: activeCard.accent }]}>{activeCard.eyebrow}</Text>
               <Text style={[styles.cardTitle, isCompactViewport && styles.cardTitleCompact]}>{activeCard.title}</Text>
               <Text style={[styles.cardBody, isCompactViewport && styles.cardBodyCompact]}>{activeCard.body}</Text>
@@ -424,6 +445,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.xl,
   },
+  scrollContentCompact: {
+    justifyContent: 'flex-start',
+  },
+  scrollContentWide: {
+    paddingHorizontal: urTheme.spacing.xl,
+  },
   heroPanel: {
     width: '100%',
     maxWidth: 980,
@@ -452,6 +479,9 @@ const styles = StyleSheet.create({
   heroPanelVeryShort: {
     paddingVertical: urTheme.spacing.md,
   },
+  heroPanelWide: {
+    maxWidth: 1040,
+  },
   eyebrow: {
     ...urTypography.label,
     color: '#D5E9FF',
@@ -468,6 +498,10 @@ const styles = StyleSheet.create({
   titleCompact: {
     fontSize: 30,
     lineHeight: 36,
+  },
+  titleWide: {
+    fontSize: 40,
+    lineHeight: 46,
   },
   subtitle: {
     color: 'rgba(239, 226, 202, 0.84)',
@@ -562,6 +596,9 @@ const styles = StyleSheet.create({
   cardDeckWrapCompact: {
     minHeight: 260,
   },
+  cardDeckWrapWide: {
+    minHeight: 348,
+  },
   cardShadow: {
     position: 'absolute',
     bottom: 22,
@@ -613,6 +650,9 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     paddingHorizontal: urTheme.spacing.lg,
     paddingVertical: urTheme.spacing.lg,
+  },
+  cardWide: {
+    maxWidth: 560,
   },
   cardEyebrow: {
     ...urTypography.label,

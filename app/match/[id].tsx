@@ -77,7 +77,9 @@ import {
 } from '@/src/match/playerTitles';
 import { useGameStore } from '@/store/useGameStore';
 import {
+  resolveMobileReserveRailTopOffset,
   resolveMobileWebBoardTrayAlignmentCorrection,
+  resolveMobileWebHeaderLift,
   resolveMatchStageReserveTrayScale,
   resolveMatchStageSideColumnWidth,
   resolveMatchStageTabletPortraitTuning,
@@ -1523,7 +1525,7 @@ export function GameRoom() {
     }
   }, [clearTutorialProgressTimers, tutorialCoachPhase, tutorialLessonIndex]);
 
-  const triggerLocalRoll = React.useCallback(() => {
+  const triggerLocalRoll = React.useCallback((options?: { autoTriggered?: boolean }) => {
     if (showRulesIntroModal || !introsComplete || !canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
       return;
     }
@@ -1546,7 +1548,7 @@ export function GameRoom() {
     }
 
     void gameAudio.play('roll');
-    roll();
+    roll(options);
   }, [
     canRoll,
     clearRollTimer,
@@ -2657,7 +2659,7 @@ export function GameRoom() {
 
     autoRollTimerRef.current = setTimeout(() => {
       autoRollTimerRef.current = null;
-      triggerLocalRoll();
+      triggerLocalRoll({ autoTriggered: true });
     }, AUTO_ROLL_DELAY_MS);
 
     return () => {
@@ -3023,10 +3025,12 @@ export function GameRoom() {
       return;
     }
 
-    const sendRoll = async () => {
+    const sendRoll = async (options?: { autoTriggered?: boolean }) => {
       const socket = socketRef.current;
       if (!socket) return;
-      const payload: RollRequestPayload = { type: 'roll_request' };
+      const payload: RollRequestPayload = options?.autoTriggered
+        ? { type: 'roll_request', autoTriggered: true }
+        : { type: 'roll_request' };
       console.info('[Nakama][send]', {
         eventType: payload.type,
         matchId,
@@ -3602,7 +3606,11 @@ export function GameRoom() {
   const mobileWebBoardLift = useMobileSideReserveRails
     ? Math.max(urTheme.spacing.sm, Math.round(viewportHeight * tabletPortraitTuning.boardLiftViewportRatio))
     : 0;
-  const mobileHeaderLift = mobileWebBoardLift;
+  const mobileHeaderLift = resolveMobileWebHeaderLift({
+    boardLift: mobileWebBoardLift,
+    isMobileLayout,
+    isMobileWebLayout,
+  });
   const mobileChromeToScoreGap = isMobileLayout
     ? Math.max(4, Math.round(viewportHeight * 0.005))
     : 0;
@@ -3649,9 +3657,12 @@ export function GameRoom() {
   const mobileDiceDockWidth = useMobileSideReserveRails
     ? mobileWebRollButtonArtSize
     : Math.min(Math.max(Math.round(stageContentWidth * 0.46), 176), 248);
-  const mobileReserveRailTopOffset = useMobileSideReserveRails
-    ? Math.max(6, Math.round(mobileReserveColumnWidth * 0.14))
-    : 0;
+  const mobileReserveRailTopOffset = resolveMobileReserveRailTopOffset({
+    isMobileWebLayout,
+    isOnlineMatch: !isOffline,
+    reserveColumnWidth: mobileReserveColumnWidth,
+    useMobileSideReserveRails,
+  });
   const mobileWebUnderBoardDiceFrame = useMemo(() => {
     if (!useMobileSideReserveRails || !boardTargetFrame) {
       return null;

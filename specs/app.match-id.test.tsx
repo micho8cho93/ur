@@ -1097,6 +1097,7 @@ describe('GameRoom match dice stage', () => {
     });
 
     expect(mockRoll).toHaveBeenCalledTimes(1);
+    expect(mockRoll).toHaveBeenCalledWith({ autoTriggered: true });
   });
 
   it('releases the live roll animation when a no-move turn snaps back to rolling', async () => {
@@ -1818,7 +1819,7 @@ describe('GameRoom match dice stage', () => {
             light: 0,
             dark: 0,
           },
-          afkRemainingMs: 90_000,
+          afkRemainingMs: 60_000,
           matchEnd: null,
         }),
       });
@@ -1854,7 +1855,7 @@ describe('GameRoom match dice stage', () => {
             light: 0,
             dark: 0,
           },
-          afkRemainingMs: 90_000,
+          afkRemainingMs: 60_000,
           matchEnd: null,
         }),
       });
@@ -1957,7 +1958,7 @@ describe('GameRoom match dice stage', () => {
             light: 0,
             dark: 0,
           },
-          afkRemainingMs: 90_000,
+          afkRemainingMs: 60_000,
           matchEnd: null,
         }),
       });
@@ -1993,7 +1994,7 @@ describe('GameRoom match dice stage', () => {
             light: 0,
             dark: 0,
           },
-          afkRemainingMs: 90_000,
+          afkRemainingMs: 60_000,
           matchEnd: null,
         }),
       });
@@ -2083,7 +2084,9 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    const sendRoll = mockSetRollCommandSender.mock.calls.at(-1)?.[0] as (() => Promise<void>) | undefined;
+    const sendRoll = mockSetRollCommandSender.mock.calls.at(-1)?.[0] as
+      | ((options?: { autoTriggered?: boolean }) => Promise<void>)
+      | undefined;
     expect(typeof sendRoll).toBe('function');
 
     mockSocketSendMatchState.mockRejectedValueOnce(new Error('Socket connection has not been established yet.'));
@@ -2105,6 +2108,46 @@ describe('GameRoom match dice stage', () => {
     expect(mockSocketJoinMatch).toHaveBeenCalledTimes(2);
 
     consoleErrorSpy.mockRestore();
+  });
+
+  it('tags online convenience auto-roll requests so they do not count as AFK activity', async () => {
+    mockSearchParams.id = 'online-auto-roll-afk';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-auto-roll-afk',
+    });
+    mockStoreState.matchId = 'online-auto-roll-afk';
+    mockStoreState.userId = 'self-user';
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const sendRoll = mockSetRollCommandSender.mock.calls.at(-1)?.[0] as
+      | ((options?: { autoTriggered?: boolean }) => Promise<void>)
+      | undefined;
+    expect(typeof sendRoll).toBe('function');
+
+    await act(async () => {
+      await sendRoll?.({ autoTriggered: true });
+    });
+
+    expect(mockSocketSendMatchState).toHaveBeenCalledWith(
+      'online-auto-roll-afk',
+      1,
+      JSON.stringify({
+        type: 'roll_request',
+        autoTriggered: true,
+      }),
+    );
   });
 
   it('passes authoritative online timer props to the HUD from server snapshots', async () => {
@@ -2155,7 +2198,7 @@ describe('GameRoom match dice stage', () => {
             light: 0,
             dark: 0,
           },
-          afkRemainingMs: 90_000,
+          afkRemainingMs: 60_000,
           matchEnd: null,
         }),
       });

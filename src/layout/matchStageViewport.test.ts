@@ -1,4 +1,6 @@
 import {
+  resolveMobileReserveRailTopOffset,
+  resolveMobileWebHeaderLift,
   resolveMobileWebBoardTrayAlignmentCorrection,
   resolveMatchStageReserveTrayScale,
   resolveMatchStageSideColumnWidth,
@@ -130,6 +132,52 @@ describe('resolveMatchStageTabletPortraitTuning', () => {
       rollButtonWidthRatio: 0.235,
       trayScale: 1.08,
     });
+  });
+});
+
+describe('resolveMobileWebHeaderLift', () => {
+  it('keeps non-web mobile layouts aligned to the board lift', () => {
+    expect(
+      resolveMobileWebHeaderLift({
+        boardLift: 18,
+        isMobileLayout: true,
+        isMobileWebLayout: false,
+      }),
+    ).toBe(18);
+  });
+
+  it('reduces the mobile web header lift so top chrome stays visible', () => {
+    expect(
+      resolveMobileWebHeaderLift({
+        boardLift: 18,
+        isMobileLayout: true,
+        isMobileWebLayout: true,
+      }),
+    ).toBe(10);
+  });
+});
+
+describe('resolveMobileReserveRailTopOffset', () => {
+  it('keeps the default tray top offset outside the online mobile web path', () => {
+    expect(
+      resolveMobileReserveRailTopOffset({
+        isMobileWebLayout: false,
+        isOnlineMatch: true,
+        reserveColumnWidth: 56,
+        useMobileSideReserveRails: true,
+      }),
+    ).toBe(8);
+  });
+
+  it('adds extra tray drop for online mobile web layouts', () => {
+    expect(
+      resolveMobileReserveRailTopOffset({
+        isMobileWebLayout: true,
+        isOnlineMatch: true,
+        reserveColumnWidth: 56,
+        useMobileSideReserveRails: true,
+      }),
+    ).toBe(16);
   });
 });
 

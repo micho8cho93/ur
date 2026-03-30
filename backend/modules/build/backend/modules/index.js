@@ -3615,13 +3615,14 @@ var MatchOpCode = {
   TOURNAMENT_REWARD_SUMMARY: 104
 };
 var isRecord = (value) => typeof value === "object" && value !== null;
+var isOptional = (value, guard) => typeof value === "undefined" || guard(value);
 var isMoveAction = (value) => {
   if (!isRecord(value)) {
     return false;
   }
   return typeof value.pieceId === "string" && typeof value.fromIndex === "number" && Number.isInteger(value.fromIndex) && typeof value.toIndex === "number" && Number.isInteger(value.toIndex);
 };
-var isRollRequestPayload = (value) => isRecord(value) && value.type === "roll_request";
+var isRollRequestPayload = (value) => isRecord(value) && value.type === "roll_request" && isOptional(value.autoTriggered, (candidate) => typeof candidate === "boolean");
 var isMoveRequestPayload = (value) => isRecord(value) && value.type === "move_request" && isMoveAction(value.move);
 var encodePayload = (payload) => JSON.stringify(payload);
 var decodePayload = (raw) => {
@@ -8508,7 +8509,7 @@ var TICK_RATE = 10;
 var MAX_PLAYERS = 2;
 var ONLINE_TTL_MS = 3e4;
 var ONLINE_TURN_DURATION_MS = 1e4;
-var ONLINE_AFK_FORFEIT_MS = 9e4;
+var ONLINE_AFK_FORFEIT_MS = 6e4;
 var SYSTEM_USER_ID4 = "00000000-0000-0000-0000-000000000000";
 var RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 var RPC_GET_PROGRESSION_NAME = RPC_GET_PROGRESSION;
@@ -9803,7 +9804,7 @@ function applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, nowMs) {
   broadcastSnapshot(dispatcher, state, matchId);
   finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
 }
-function applyRollRequest(logger, dispatcher, state, userId, playerColor, _payload, matchId) {
+function applyRollRequest(logger, dispatcher, state, userId, playerColor, payload, matchId) {
   if (state.gameState.winner) {
     sendError(dispatcher, state, userId, "INVALID_PHASE", "The match has already ended.");
     return;
@@ -9821,7 +9822,9 @@ function applyRollRequest(logger, dispatcher, state, userId, playerColor, _paylo
     return;
   }
   const nowMs = Date.now();
-  resetAfkOnMeaningfulAction(state, playerColor, nowMs);
+  if (payload.autoTriggered !== true) {
+    resetAfkOnMeaningfulAction(state, playerColor, nowMs);
+  }
   applyRollOutcome(state, playerColor, rollDice());
   state.matchEnd = null;
   resetTurnTimerForCurrentState(state, nowMs, "player_roll");

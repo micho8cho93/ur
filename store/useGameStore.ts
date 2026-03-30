@@ -11,7 +11,11 @@ import { MatchPresenceEvent, Session } from '@heroiclabs/nakama-js';
 
 type OnlineMode = 'offline' | 'nakama';
 
-type RollCommandSender = (() => void | Promise<void>) | null;
+type RollCommandOptions = {
+  autoTriggered?: boolean;
+};
+
+type RollCommandSender = ((options?: RollCommandOptions) => void | Promise<void>) | null;
 type MoveCommandSender = ((move: MoveAction) => void | Promise<void>) | null;
 
 interface GameStore {
@@ -74,7 +78,7 @@ interface GameStore {
   setSocketState: (status: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error') => void;
   setRollCommandSender: (sender: RollCommandSender) => void;
   setMoveCommandSender: (sender: MoveCommandSender) => void;
-  roll: () => void;
+  roll: (options?: RollCommandOptions) => void;
   makeMove: (move: MoveAction) => void;
   reset: () => void;
 }
@@ -285,7 +289,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
 
-  roll: () => {
+  roll: (options) => {
     const { gameState, onlineMode, rollCommandSender, playerColor } = get();
     if (gameState.phase !== 'rolling') return;
 
@@ -294,7 +298,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         return;
       }
       if (rollCommandSender) {
-        void rollCommandSender();
+        void rollCommandSender(options);
       }
       return;
     }

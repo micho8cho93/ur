@@ -43,6 +43,50 @@ export interface MatchStageTopAlignedFrame {
   y: number;
 }
 
+export const resolveMobileWebHeaderLift = ({
+  boardLift,
+  isMobileLayout,
+  isMobileWebLayout,
+}: {
+  boardLift: number;
+  isMobileLayout: boolean;
+  isMobileWebLayout: boolean;
+}): number => {
+  if (!isMobileLayout) {
+    return 0;
+  }
+
+  if (!isMobileWebLayout) {
+    return boardLift;
+  }
+
+  return Math.max(0, boardLift - Math.max(8, Math.round(boardLift * 0.45)));
+};
+
+export const resolveMobileReserveRailTopOffset = ({
+  isMobileWebLayout,
+  isOnlineMatch,
+  reserveColumnWidth,
+  useMobileSideReserveRails,
+}: {
+  isMobileWebLayout: boolean;
+  isOnlineMatch: boolean;
+  reserveColumnWidth: number;
+  useMobileSideReserveRails: boolean;
+}): number => {
+  if (!useMobileSideReserveRails) {
+    return 0;
+  }
+
+  const baseOffset = Math.max(6, Math.round(reserveColumnWidth * 0.14));
+
+  if (!isMobileWebLayout || !isOnlineMatch) {
+    return baseOffset;
+  }
+
+  return baseOffset + Math.max(8, Math.round(reserveColumnWidth * 0.12));
+};
+
 export const resolveMatchStageViewportMode = ({
   width,
   height,

@@ -266,7 +266,7 @@ const TICK_RATE = 10;
 const MAX_PLAYERS = 2;
 const ONLINE_TTL_MS = 30_000;
 const ONLINE_TURN_DURATION_MS = 10_000;
-const ONLINE_AFK_FORFEIT_MS = 90_000;
+const ONLINE_AFK_FORFEIT_MS = 60_000;
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 const RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
@@ -2027,7 +2027,7 @@ function applyRollRequest(
   state: MatchState,
   userId: string,
   playerColor: PlayerColor,
-  _payload: RollRequestPayload,
+  payload: RollRequestPayload,
   matchId: string
 ): void {
   if (state.gameState.winner) {
@@ -2051,7 +2051,9 @@ function applyRollRequest(
   }
 
   const nowMs = Date.now();
-  resetAfkOnMeaningfulAction(state, playerColor, nowMs);
+  if (payload.autoTriggered !== true) {
+    resetAfkOnMeaningfulAction(state, playerColor, nowMs);
+  }
   applyRollOutcome(state, playerColor, rollDice());
   state.matchEnd = null;
   resetTurnTimerForCurrentState(state, nowMs, "player_roll");

@@ -139,6 +139,7 @@ describe('Lobby private game join input', () => {
     expect(view.getByText('Spring Open')).toBeTruthy();
     expect(view.getAllByText('Find Opponent').length).toBeGreaterThan(0);
     expect(view.getByText('Create Private Game')).toBeTruthy();
+    expect(view.getByText('Capture')).toBeTruthy();
     expect(view.getByText('Enter Private Game Code')).toBeTruthy();
   });
 

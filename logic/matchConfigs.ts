@@ -189,6 +189,11 @@ export const PRIVATE_MATCH_OPTIONS: readonly PrivateMatchOption[] = [
     description: 'Standard private match rules.',
   },
   {
+    modeId: 'gameMode_capture',
+    label: 'Capture',
+    description: 'Seven pieces where captures grant extra rolls.',
+  },
+  {
     modeId: 'gameMode_full_path',
     label: 'Extended Play',
     description: 'Seven pieces with the extended-path rules.',

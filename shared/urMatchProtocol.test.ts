@@ -1,5 +1,5 @@
 import { createInitialState } from '../logic/engine';
-import { isMatchEndPayload, isStateSnapshotPayload } from './urMatchProtocol';
+import { isMatchEndPayload, isRollRequestPayload, isStateSnapshotPayload } from './urMatchProtocol';
 
 describe('urMatchProtocol', () => {
   it('accepts authoritative online snapshot fields when they are well-formed', () => {
@@ -105,6 +105,22 @@ describe('urMatchProtocol', () => {
         winnerUserId: 'winner',
         loserUserId: 'loser',
         forfeitingUserId: 'loser',
+      }),
+    ).toBe(false);
+  });
+
+  it('accepts auto-trigger metadata on roll requests only when it is boolean', () => {
+    expect(
+      isRollRequestPayload({
+        type: 'roll_request',
+        autoTriggered: true,
+      }),
+    ).toBe(true);
+
+    expect(
+      isRollRequestPayload({
+        type: 'roll_request',
+        autoTriggered: 'yes',
       }),
     ).toBe(false);
   });

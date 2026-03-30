@@ -242,7 +242,7 @@ describe('useGameStore', () => {
         activeTimedPlayerColor: 'light',
         activeTimedPhase: 'moving',
         afkAccumulatedMs: { light: 0, dark: 25_000 },
-        afkRemainingMs: 90_000,
+        afkRemainingMs: 60_000,
         matchEnd: {
           reason: 'completed',
           winnerUserId: 'light-user',
@@ -271,7 +271,7 @@ describe('useGameStore', () => {
       dark: { userId: 'dark-user', title: 'Guest' },
     });
     expect(state.authoritativeAfkAccumulatedMs).toEqual({ light: 0, dark: 25_000 });
-    expect(state.authoritativeAfkRemainingMs).toBe(90_000);
+    expect(state.authoritativeAfkRemainingMs).toBe(60_000);
     expect(state.authoritativeMatchEnd).toEqual({
       reason: 'completed',
       winnerUserId: 'light-user',
@@ -367,6 +367,22 @@ describe('useGameStore', () => {
     useGameStore.getState().roll();
 
     expect(sender).toHaveBeenCalledTimes(1);
+    expect(sender).toHaveBeenCalledWith(undefined);
+  });
+
+  it('in nakama mode, roll() passes through auto-trigger metadata when provided', () => {
+    const sender = jest.fn();
+    useGameStore.setState({
+      onlineMode: 'nakama',
+      playerColor: 'light',
+      gameState: makeState({ currentTurn: 'light', phase: 'rolling' }),
+      rollCommandSender: sender,
+    });
+
+    useGameStore.getState().roll({ autoTriggered: true });
+
+    expect(sender).toHaveBeenCalledTimes(1);
+    expect(sender).toHaveBeenCalledWith({ autoTriggered: true });
   });
 
   it('in nakama mode, makeMove() does nothing when it is not the local player turn', () => {

@@ -252,6 +252,33 @@ describe('authoritative online timer runtime', () => {
     expect(result.state.timer.turnDeadlineMs).toBe(22_001);
   });
 
+  it('does not reset AFK when a convenience auto-roll is submitted', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const nowSpy = jest.spyOn(Date, 'now');
+    const randomSpy = jest.spyOn(Math, 'random');
+    randomSpy
+      .mockReturnValueOnce(0.9)
+      .mockReturnValueOnce(0.1)
+      .mockReturnValueOnce(0.1)
+      .mockReturnValueOnce(0.1);
+
+    const { ctx, logger, nk, dispatcher, state } = initializeStartedMatch(runtime, nowSpy);
+    nowSpy.mockReturnValue(2_500);
+    dispatcher.broadcastMessage.mockClear();
+    state.afk.light.accumulatedMs = 20_000;
+
+    const result = runtime.matchLoop(ctx, logger, nk, dispatcher, 1, state, [
+      {
+        sender: createPresence('light-user', 'light-session'),
+        opCode: 1,
+        data: JSON.stringify({ type: 'roll_request', autoTriggered: true }),
+      },
+    ]);
+
+    expect(result.state.revision).toBe(1);
+    expect(result.state.afk.light.accumulatedMs).toBe(20_000);
+  });
+
   it('moving-phase timeout auto-moves the first valid move', () => {
     const runtime = globalThis as RuntimeGlobals;
     const nowSpy = jest.spyOn(Date, 'now');
@@ -425,7 +452,7 @@ describe('authoritative online timer runtime', () => {
     expect(result.state.timer.turnDeadlineMs).toBe(22_001);
   });
 
-  it('forfeits the player that reaches 90 seconds of accumulated inactivity', () => {
+  it('forfeits the player that reaches 60 seconds of accumulated inactivity', () => {
     const runtime = globalThis as RuntimeGlobals;
     const nowSpy = jest.spyOn(Date, 'now');
     const { ctx, logger, nk, dispatcher, state } = initializeStartedMatch(runtime, nowSpy);
@@ -435,7 +462,7 @@ describe('authoritative online timer runtime', () => {
     mockedProcessRankedMatchResult.mockClear();
     mockedAwardXpForMatchWin.mockClear();
 
-    state.afk.light.accumulatedMs = 80_000;
+    state.afk.light.accumulatedMs = 50_000;
 
     const result = runtime.matchLoop(ctx, logger, nk, dispatcher, 1, state, []);
 
