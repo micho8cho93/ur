@@ -9,6 +9,11 @@ import { AmbientBackgroundEffects } from '@/components/game/AmbientBackgroundEff
 import { BoardDropIntro } from '@/components/game/BoardDropIntro';
 import { Dice, DiceStageVisual } from '@/components/game/Dice';
 import { EdgeScore } from '@/components/game/EdgeScore';
+import { EmojiReactionMenu, type EmojiReactionMenuOption } from '@/components/game/EmojiReactionMenu';
+import {
+  FloatingEmojiReactions,
+  type FloatingEmojiReactionItem,
+} from '@/components/game/FloatingEmojiReactions';
 import { GameStageHUD } from '@/components/game/GameStageHUD';
 import { computeBoardGapControlLayout } from '@/components/game/matchDiceStageLayout';
 import { MatchDiceRollStage } from '@/components/game/MatchDiceRollStage';
@@ -103,12 +108,17 @@ import type { CompletedBotMatchRewardMode } from '@/shared/challenges';
 import { isEloRatingChangeNotificationPayload } from '@/shared/elo';
 import { isProgressionAwardNotificationPayload } from '@/shared/progression';
 import {
+  EmojiReactionBroadcastPayload,
+  EmojiReactionKey,
+  EmojiReactionRequestPayload,
   MatchOpCode,
+  MAX_EMOJI_REACTIONS_PER_MATCH,
   MoveRequestPayload,
   RollRequestPayload,
   TournamentMatchRewardSummaryPayload,
   decodePayload,
   encodePayload,
+  isEmojiReactionBroadcastPayload,
   isServerErrorPayload,
   isStateSnapshotPayload,
   isTournamentMatchRewardSummaryPayload,
@@ -119,7 +129,19 @@ import { Asset } from 'expo-asset';
 import { useFonts } from 'expo-font';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef } from 'react';
-import { BackHandler, Image, Platform, Pressable, Share, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import {
+  BackHandler,
+  Image,
+  Platform,
+  Pressable,
+  Share,
+  StyleProp,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle,
+  useWindowDimensions,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const UR_BG_IMAGE = require('../../assets/images/ur_bg.png');
@@ -371,6 +393,22 @@ const MATCH_MOMENT_CUES: Record<MatchMomentCueKind, Omit<MatchMomentIndicatorCue
   },
 };
 
+const EMOJI_REACTION_OPTIONS: readonly EmojiReactionMenuOption[] = [
+  { key: 'laughing', emoji: '😂', label: 'laughing' },
+  { key: 'cool', emoji: '😎', label: 'cool' },
+  { key: 'fire', emoji: '🔥', label: 'fire' },
+  { key: 'omg', emoji: '😱', label: 'omg' },
+  { key: 'skeleton', emoji: '💀', label: 'skeleton' },
+] as const;
+
+const EMOJI_BY_KEY: Record<EmojiReactionKey, string> = EMOJI_REACTION_OPTIONS.reduce(
+  (entries, option) => ({
+    ...entries,
+    [option.key]: option.emoji,
+  }),
+  {} as Record<EmojiReactionKey, string>,
+);
+
 interface BoardTargetFrame {
   x: number;
   y: number;
@@ -382,6 +420,8 @@ interface HeldRollDisplay {
   value: number;
   label: string | null;
 }
+
+type QueuedFloatingReaction = FloatingEmojiReactionItem;
 
 const isMoveMatch = (left: MoveAction, right: MoveAction) =>
   left.pieceId === right.pieceId && left.fromIndex === right.fromIndex && left.toIndex === right.toIndex;
@@ -748,6 +788,8 @@ export function GameRoom() {
   const hasOpponentJoined =
     !isOffline &&
     (joinedPlayerCount >= 2 || gameState.winner !== null || hasTournamentBotOpponent);
+  const isOnlineHumanMatch = !isOffline && !hasTournamentBotOpponent;
+  const shouldShowEmojiControls = isOnlineHumanMatch && hasOpponentJoined;
   const requiresOpponentPresence = isPrivateMatch || (isTournamentMatch && !hasTournamentBotOpponent);
   const isOpponentReadyToPlay = !requiresOpponentPresence || hasOpponentJoined;
   const isOnlineInteractionReady = isOffline || socketState === 'connected';
@@ -826,10 +868,13 @@ export function GameRoom() {
   const [showAudioSettings, setShowAudioSettings] = React.useState(false);
   const [showTopMenu, setShowTopMenu] = React.useState(false);
   const [showMatchStatusInfo, setShowMatchStatusInfo] = React.useState(false);
+  const [showEmojiReactionMenu, setShowEmojiReactionMenu] = React.useState(false);
+  const [emojiReactionsRemaining, setEmojiReactionsRemaining] = React.useState(MAX_EMOJI_REACTIONS_PER_MATCH);
   const [showRulesIntroModal, setShowRulesIntroModal] = React.useState(Boolean(rulesIntro));
   const [matchChallengeSummary, setMatchChallengeSummary] = React.useState<MatchChallengeRewardSummary | null>(null);
   const [matchRewardsErrorMessage, setMatchRewardsErrorMessage] = React.useState<string | null>(null);
   const [isRefreshingMatchRewards, setIsRefreshingMatchRewards] = React.useState(false);
+  const [floatingReactions, setFloatingReactions] = React.useState<QueuedFloatingReaction[]>([]);
   const [rollingVisual, setRollingVisual] = React.useState(false);
   const [rollButtonLatchPhase, setRollButtonLatchPhase] = React.useState<RollButtonLatchPhase>('idle');
   const [heldRollDisplay, setHeldRollDisplay] = React.useState<HeldRollDisplay | null>(null);
@@ -924,6 +969,7 @@ export function GameRoom() {
   } | null>(null);
   const suppressMatchCuesUntilInteractionRef = useRef(false);
   const hasShownOpeningCueRef = useRef<string | null>(null);
+  const floatingReactionIdRef = useRef(0);
   const previousStateRef = useRef<{ matchId: string | null; state: GameState; historyCount: number }>({
     matchId: matchId ?? null,
     state: gameState,
@@ -939,6 +985,85 @@ export function GameRoom() {
   const previousJoinedPlayerCountRef = useRef(0);
   const activeRouteMatchIdRef = useRef<string | null>(matchId ?? null);
   activeRouteMatchIdRef.current = matchId ?? null;
+
+  const appendFloatingReaction = React.useCallback(
+    (payload: EmojiReactionBroadcastPayload) => {
+      const emoji = EMOJI_BY_KEY[payload.emoji];
+      const spawnOffsetX = (Math.random() - 0.5) * 56;
+      const driftX = (Math.random() - 0.5) * 48;
+      const baseLeft = payload.senderColor === 'light' ? viewportWidth * 0.28 : viewportWidth * 0.68;
+      const useCompactBottomLane = viewportWidth < 760;
+      const left = Math.max(18, Math.min(viewportWidth - 66, baseLeft + spawnOffsetX));
+      const bottom = Math.max(92, Math.round(viewportHeight * (useCompactBottomLane ? 0.17 : 0.14)));
+
+      floatingReactionIdRef.current += 1;
+      setFloatingReactions((current) => [
+        ...current,
+        {
+          id: `${payload.createdAtMs}:${floatingReactionIdRef.current}`,
+          emoji,
+          senderColor: payload.senderColor,
+          left,
+          bottom,
+          driftX,
+        },
+      ]);
+    },
+    [viewportHeight, viewportWidth],
+  );
+
+  const removeFloatingReaction = React.useCallback((id: string) => {
+    setFloatingReactions((current) => current.filter((reaction) => reaction.id !== id));
+  }, []);
+
+  const handleToggleEmojiReactionMenu = React.useCallback(() => {
+    if (emojiReactionsRemaining <= 0 || !shouldShowEmojiControls || !isOnlineInteractionReady) {
+      return;
+    }
+
+    setShowEmojiReactionMenu((current) => !current);
+  }, [emojiReactionsRemaining, isOnlineInteractionReady, shouldShowEmojiControls]);
+
+  const sendEmojiReaction = React.useCallback(
+    async (emoji: EmojiReactionKey) => {
+      setShowEmojiReactionMenu(false);
+
+      if (!matchId || !shouldShowEmojiControls || emojiReactionsRemaining <= 0) {
+        return;
+      }
+
+      const socket = socketRef.current;
+      if (!socket) {
+        return;
+      }
+
+      const payload: EmojiReactionRequestPayload = {
+        type: 'emoji_reaction',
+        emoji,
+      };
+
+      console.info('[Nakama][send]', {
+        eventType: payload.type,
+        matchId,
+        revision: serverRevision,
+        payload,
+      });
+
+      try {
+        await socket.sendMatchState(matchId, MatchOpCode.EMOJI_REACTION, encodePayload(payload));
+      } catch (error) {
+        suppressReconnectRef.current = isUnauthorizedNakamaError(error);
+        console.error('[Nakama][send_failed]', {
+          error,
+          eventType: payload.type,
+          matchId,
+          revision: serverRevision,
+        });
+        socket.ondisconnect({} as Event);
+      }
+    },
+    [emojiReactionsRemaining, matchId, serverRevision, shouldShowEmojiControls],
+  );
 
   const tutorialLesson =
     tutorialLessonIndex < PLAYTHROUGH_TUTORIAL_LESSONS.length
@@ -1006,6 +1131,18 @@ export function GameRoom() {
       })
       : null;
   const displayedTutorialObjectiveBanner = tutorialObjectiveBanner ?? tutorialPinnedObjectiveBanner;
+  useEffect(() => {
+    setEmojiReactionsRemaining(MAX_EMOJI_REACTIONS_PER_MATCH);
+    setShowEmojiReactionMenu(false);
+    setFloatingReactions([]);
+  }, [matchId]);
+
+  useEffect(() => {
+    if (!shouldShowEmojiControls) {
+      setShowEmojiReactionMenu(false);
+    }
+  }, [shouldShowEmojiControls]);
+
   useEffect(() => {
     if (tutorialObjectiveBanner) {
       setTutorialPinnedObjectiveBanner((current) =>
@@ -1529,6 +1666,7 @@ export function GameRoom() {
       clearRollTimer,
       clearHeldRollResult,
       diceAnimationEnabled,
+      effectiveHistoryCount,
       gameState,
       introsComplete,
       rollButtonLatchPhase,
@@ -1540,7 +1678,6 @@ export function GameRoom() {
       scheduleTutorialProgress,
       showRulesIntroModal,
       tutorialCoachPhase,
-      tutorialForcedNoMove,
       tutorialPendingStep,
     ],
   );
@@ -2843,6 +2980,25 @@ export function GameRoom() {
         return;
       }
 
+      if (matchData.op_code === MatchOpCode.REACTION_BROADCAST) {
+        if (!isEmojiReactionBroadcastPayload(payload)) {
+          return;
+        }
+
+        console.info('[Nakama][reaction_broadcast]', {
+          emoji: payload.emoji,
+          senderUserId: payload.senderUserId,
+          senderColor: payload.senderColor,
+          remainingForSender: payload.remainingForSender,
+          createdAtMs: payload.createdAtMs,
+        });
+        appendFloatingReaction(payload);
+        if (payload.senderUserId === authenticatedUserId) {
+          setEmojiReactionsRemaining(payload.remainingForSender);
+        }
+        return;
+      }
+
       if (matchData.op_code === MatchOpCode.SERVER_ERROR) {
         if (isServerErrorPayload(payload)) {
           console.warn('[Nakama][server_error]', {
@@ -2850,6 +3006,10 @@ export function GameRoom() {
             message: payload.message,
             revision: payload.revision ?? null,
           });
+          if (/reaction limit reached/i.test(payload.message)) {
+            setEmojiReactionsRemaining(0);
+            setShowEmojiReactionMenu(false);
+          }
         }
         return;
       }
@@ -3042,6 +3202,7 @@ export function GameRoom() {
     };
   }, [
     applyServerSnapshot,
+    appendFloatingReaction,
     challengeDefinitions,
     isOffline,
     matchId,
@@ -3065,6 +3226,7 @@ export function GameRoom() {
     setHasEnteredTournamentWaitingRoom,
     updateMatchPresences,
     authenticatedUserId,
+    setEmojiReactionsRemaining,
   ]);
   useEffect(() => {
     if (!matchId) return;
@@ -4126,6 +4288,7 @@ export function GameRoom() {
     boardArtInsetTop,
     boardTargetFrame,
     displayedRollValue,
+    displayedRollLabel,
     lightTrayFrame,
     showMobileRollResult,
     useMobileSideReserveRails,
@@ -4258,6 +4421,29 @@ export function GameRoom() {
     />
   );
 
+  const emojiControlsDisabled =
+    emojiReactionsRemaining <= 0 || !shouldShowEmojiControls || !isOnlineInteractionReady;
+  const renderEmojiReactionControl = (style?: StyleProp<ViewStyle>, compact = compactSupportUi) => {
+    if (!shouldShowEmojiControls) {
+      return null;
+    }
+
+    return (
+      <EmojiReactionMenu
+        compact={compact}
+        disabled={emojiControlsDisabled}
+        menuVisible={showEmojiReactionMenu}
+        onSelect={(emoji) => {
+          void sendEmojiReaction(emoji);
+        }}
+        onToggle={handleToggleEmojiReactionMenu}
+        options={EMOJI_REACTION_OPTIONS}
+        remainingCount={emojiReactionsRemaining}
+        style={style}
+      />
+    );
+  };
+
   return (
     <View
       style={[
@@ -4305,6 +4491,10 @@ export function GameRoom() {
             style={styles.ambientLayer}
           />
         ) : null}
+
+      {floatingReactions.length > 0 ? (
+        <FloatingEmojiReactions onComplete={removeFloatingReaction} reactions={floatingReactions} />
+      ) : null}
 
       {introsComplete && isMatchStageExternal && diceAnimationEnabled ? (
         <MatchDiceRollStage
@@ -4356,7 +4546,7 @@ export function GameRoom() {
           ]}
         >
           <View style={styles.mobileDiceRow}>
-            <View style={styles.mobileDiceWrap}>
+            <View style={[styles.mobileDiceWrap, styles.rollActionStack]}>
               <Dice
                 animationDurationMs={diceAnimationDurationMs}
                 value={displayedRollValue}
@@ -4374,6 +4564,7 @@ export function GameRoom() {
                 visualPlacement={detachedDiceVisualPlacement}
                 artSize={mobileWebRollButtonArtSize}
               />
+              {renderEmojiReactionControl(styles.diceReactionControl, true)}
             </View>
           </View>
         </View>
@@ -4483,7 +4674,7 @@ export function GameRoom() {
       ) : null}
       {showMobileBoardGapDice && mobileSideControlLayout && mobileBoardGapControlMetrics ? (
         <View
-          pointerEvents={showMobileWebBoardGapRollResult ? 'none' : 'auto'}
+          pointerEvents="box-none"
           style={[
             styles.mobileBoardGapOverlay,
             {
@@ -4494,51 +4685,54 @@ export function GameRoom() {
             },
           ]}
         >
-          {showMobileWebBoardGapRollResult ? (
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.mobileBoardGapRollResultValue,
-                {
-                  fontFamily: rollResultFontFamily,
-                  fontSize:
-                    displayedRollLabel !== null
-                      ? Math.max(16, Math.min(24, Math.round(mobileSideControlLayout.rollFrame.width * 0.34)))
-                      : Math.max(
-                          24,
-                          Math.min(42, Math.round(mobileSideControlLayout.rollFrame.width * 0.72)),
-                        ),
-                  lineHeight:
-                    displayedRollLabel !== null
-                      ? Math.max(20, Math.min(28, Math.round(mobileSideControlLayout.rollFrame.width * 0.42)))
-                      : Math.max(
-                          26,
-                          Math.min(46, Math.round(mobileSideControlLayout.rollFrame.width * 0.8)),
-                        ),
-                },
-              ]}
-            >
-              {displayedRollText}
-            </Text>
-          ) : (
-            <Dice
-              animationDurationMs={diceAnimationDurationMs}
-              value={displayedRollValue}
-              resultLabel={displayedRollLabel}
-              rolling={rollingVisual}
-              onRoll={handleRoll}
-              onResultShown={handleRollResultShown}
-              canRoll={introsComplete && canRoll}
-              pressedIn={introsComplete ? isRollButtonPressedIn : false}
-              mode="stage"
-              compact
-              showNumericResult={false}
-              showStatusCopy={false}
-              showVisual={false}
-              visualPlacement="external"
-              artSize={mobileBoardGapControlMetrics.rollArtSize}
-            />
-          )}
+          <View style={styles.rollActionStack}>
+            {showMobileWebBoardGapRollResult ? (
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.mobileBoardGapRollResultValue,
+                  {
+                    fontFamily: rollResultFontFamily,
+                    fontSize:
+                      displayedRollLabel !== null
+                        ? Math.max(16, Math.min(24, Math.round(mobileSideControlLayout.rollFrame.width * 0.34)))
+                        : Math.max(
+                            24,
+                            Math.min(42, Math.round(mobileSideControlLayout.rollFrame.width * 0.72)),
+                          ),
+                    lineHeight:
+                      displayedRollLabel !== null
+                        ? Math.max(20, Math.min(28, Math.round(mobileSideControlLayout.rollFrame.width * 0.42)))
+                        : Math.max(
+                            26,
+                            Math.min(46, Math.round(mobileSideControlLayout.rollFrame.width * 0.8)),
+                          ),
+                  },
+                ]}
+              >
+                {displayedRollText}
+              </Text>
+            ) : (
+              <Dice
+                animationDurationMs={diceAnimationDurationMs}
+                value={displayedRollValue}
+                resultLabel={displayedRollLabel}
+                rolling={rollingVisual}
+                onRoll={handleRoll}
+                onResultShown={handleRollResultShown}
+                canRoll={introsComplete && canRoll}
+                pressedIn={introsComplete ? isRollButtonPressedIn : false}
+                mode="stage"
+                compact
+                showNumericResult={false}
+                showStatusCopy={false}
+                showVisual={false}
+                visualPlacement="external"
+                artSize={mobileBoardGapControlMetrics.rollArtSize}
+              />
+            )}
+            {renderEmojiReactionControl(styles.diceReactionControl, true)}
+          </View>
         </View>
       ) : null}
 
@@ -4952,7 +5146,7 @@ export function GameRoom() {
                 />
                 {showWebSideDiceVisual ? (
                   <View style={[styles.webUnderTrayControl, { minHeight: webRollButtonSize }]}>
-                    <View style={styles.webUnderTrayButtonWrap}>
+                    <View style={[styles.webUnderTrayButtonWrap, styles.rollActionStack]}>
                       <Dice
                         animationDurationMs={diceAnimationDurationMs}
                         value={displayedRollValue}
@@ -4970,24 +5164,28 @@ export function GameRoom() {
                         visualPlacement={detachedDiceVisualPlacement}
                         artSize={webRollButtonSize}
                       />
+                      {renderEmojiReactionControl(styles.diceReactionControl)}
                     </View>
                   </View>
                 ) : (
-                  <Dice
-                    animationDurationMs={diceAnimationDurationMs}
-                    value={displayedRollValue}
-                    resultLabel={displayedRollLabel}
-                    rolling={rollingVisual}
-                    onRoll={handleRoll}
-                    onResultShown={handleRollResultShown}
-                    canRoll={introsComplete && canRoll}
-                    pressedIn={introsComplete ? isRollButtonPressedIn : false}
-                    mode="stage"
-                    compact={compactSupportUi}
-                    showStatusCopy={introsComplete}
-                    showVisual={showPersistentDiceVisual}
-                    visualPlacement={detachedDiceVisualPlacement}
-                  />
+                  <View style={styles.rollActionStack}>
+                    <Dice
+                      animationDurationMs={diceAnimationDurationMs}
+                      value={displayedRollValue}
+                      resultLabel={displayedRollLabel}
+                      rolling={rollingVisual}
+                      onRoll={handleRoll}
+                      onResultShown={handleRollResultShown}
+                      canRoll={introsComplete && canRoll}
+                      pressedIn={introsComplete ? isRollButtonPressedIn : false}
+                      mode="stage"
+                      compact={compactSupportUi}
+                      showStatusCopy={introsComplete}
+                      showVisual={showPersistentDiceVisual}
+                      visualPlacement={detachedDiceVisualPlacement}
+                    />
+                    {renderEmojiReactionControl(styles.diceReactionControl)}
+                  </View>
                 )}
               </View>
             </View>
@@ -5085,7 +5283,7 @@ export function GameRoom() {
               {useMobileSideReserveRails && !showMobileWebUnderBoardDiceOverlay && !showMobileBoardGapDice ? (
                 <View style={[styles.mobileBottomDiceDock, styles.mobileBottomDiceDockUnderBoard]}>
                   <View style={styles.mobileDiceRow}>
-                    <View style={[styles.mobileDiceWrap, { width: mobileDiceDockWidth }]}>
+                    <View style={[styles.mobileDiceWrap, styles.rollActionStack, { width: mobileDiceDockWidth }]}>
                       <Dice
                         animationDurationMs={diceAnimationDurationMs}
                         value={displayedRollValue}
@@ -5103,6 +5301,7 @@ export function GameRoom() {
                         visualPlacement={detachedDiceVisualPlacement}
                         artSize={mobileWebRollButtonArtSize}
                       />
+                      {renderEmojiReactionControl(styles.diceReactionControl, true)}
                     </View>
                   </View>
                 </View>
@@ -5178,7 +5377,7 @@ export function GameRoom() {
                   ]}
                 >
                   <View style={styles.mobileDiceRow}>
-                    <View style={[styles.mobileDiceWrap, { width: mobileDiceDockWidth }]}>
+                    <View style={[styles.mobileDiceWrap, styles.rollActionStack, { width: mobileDiceDockWidth }]}>
                       <Dice
                         animationDurationMs={diceAnimationDurationMs}
                         value={displayedRollValue}
@@ -5195,6 +5394,7 @@ export function GameRoom() {
                         showVisual={showPersistentDiceVisual && !showMobileWebDetachedDiceVisual}
                         visualPlacement={detachedDiceVisualPlacement}
                       />
+                      {renderEmojiReactionControl(styles.diceReactionControl, true)}
                     </View>
                   </View>
                 </View>
@@ -5771,6 +5971,14 @@ const styles = StyleSheet.create({
   },
   mobileBottomDiceDockUnderBoard: {
     marginTop: urTheme.spacing.xs,
+  },
+  rollActionStack: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: urTheme.spacing.xs,
+  },
+  diceReactionControl: {
+    zIndex: 1,
   },
   mobileDiceRow: {
     width: '100%',

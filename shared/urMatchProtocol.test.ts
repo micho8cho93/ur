@@ -1,5 +1,11 @@
 import { createInitialState } from '../logic/engine';
-import { isMatchEndPayload, isRollRequestPayload, isStateSnapshotPayload } from './urMatchProtocol';
+import {
+  isEmojiReactionBroadcastPayload,
+  isEmojiReactionRequestPayload,
+  isMatchEndPayload,
+  isRollRequestPayload,
+  isStateSnapshotPayload,
+} from './urMatchProtocol';
 
 describe('urMatchProtocol', () => {
   it('accepts authoritative online snapshot fields when they are well-formed', () => {
@@ -142,6 +148,46 @@ describe('urMatchProtocol', () => {
       isRollRequestPayload({
         type: 'roll_request',
         autoTriggered: 'yes',
+      }),
+    ).toBe(false);
+  });
+
+  it('accepts valid emoji reaction payloads and broadcasts', () => {
+    expect(
+      isEmojiReactionRequestPayload({
+        type: 'emoji_reaction',
+        emoji: 'fire',
+      }),
+    ).toBe(true);
+
+    expect(
+      isEmojiReactionBroadcastPayload({
+        type: 'reaction_broadcast',
+        emoji: 'laughing',
+        senderUserId: 'light-user',
+        senderColor: 'light',
+        remainingForSender: 4,
+        createdAtMs: 1_234,
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects malformed emoji reaction payloads and broadcasts', () => {
+    expect(
+      isEmojiReactionRequestPayload({
+        type: 'emoji_reaction',
+        emoji: 'party',
+      }),
+    ).toBe(false);
+
+    expect(
+      isEmojiReactionBroadcastPayload({
+        type: 'reaction_broadcast',
+        emoji: 'fire',
+        senderUserId: 'light-user',
+        senderColor: 'blue',
+        remainingForSender: -1,
+        createdAtMs: 'now',
       }),
     ).toBe(false);
   });

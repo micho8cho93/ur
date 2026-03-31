@@ -19,14 +19,18 @@ import {
 export const MatchOpCode = {
   ROLL_REQUEST: 1,
   MOVE_REQUEST: 2,
+  EMOJI_REACTION: 3,
   STATE_SNAPSHOT: 100,
   SERVER_ERROR: 101,
   PROGRESSION_AWARD: 102,
   ELO_RATING_UPDATE: 103,
   TOURNAMENT_REWARD_SUMMARY: 104,
+  REACTION_BROADCAST: 105,
 } as const;
 
 export type MatchOpCodeValue = (typeof MatchOpCode)[keyof typeof MatchOpCode];
+export const EMOJI_REACTION_KEYS = ["laughing", "cool", "fire", "omg", "skeleton"] as const;
+export const MAX_EMOJI_REACTIONS_PER_MATCH = 5;
 
 export type RollRequestPayload = {
   type: "roll_request";
@@ -38,7 +42,17 @@ export type MoveRequestPayload = {
   move: MoveAction;
 };
 
-export type ClientMatchPayload = RollRequestPayload | MoveRequestPayload;
+export type EmojiReactionKey = (typeof EMOJI_REACTION_KEYS)[number];
+
+export type EmojiReactionRequestPayload = {
+  type: "emoji_reaction";
+  emoji: EmojiReactionKey;
+};
+
+export type ClientMatchPayload =
+  | RollRequestPayload
+  | MoveRequestPayload
+  | EmojiReactionRequestPayload;
 
 export type MatchEndReason = "completed" | "forfeit_inactivity";
 
@@ -93,6 +107,15 @@ export type ServerErrorPayload = {
   revision?: number;
 };
 
+export type EmojiReactionBroadcastPayload = {
+  type: "reaction_broadcast";
+  emoji: EmojiReactionKey;
+  senderUserId: string;
+  senderColor: PlayerColor;
+  remainingForSender: number;
+  createdAtMs: number;
+};
+
 export type TournamentMatchRewardSummaryOutcome =
   | "advancing"
   | "eliminated"
@@ -125,6 +148,7 @@ export type TournamentMatchRewardSummaryPayload = {
 export type ServerMatchPayload =
   | StateSnapshotPayload
   | ServerErrorPayload
+  | EmojiReactionBroadcastPayload
   | TournamentMatchRewardSummaryPayload;
 export type MatchProgressionPayload = ProgressionAwardNotificationPayload;
 export type MatchEloRatingPayload = EloRatingChangeNotificationPayload;
@@ -138,6 +162,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isPlayerColor = (value: unknown): value is PlayerColor =>
   value === "light" || value === "dark";
+
+export const isEmojiReactionKey = (value: unknown): value is EmojiReactionKey =>
+  typeof value === "string" &&
+  (EMOJI_REACTION_KEYS as readonly string[]).includes(value);
 
 const isGamePhase = (value: unknown): value is GameState["phase"] =>
   value === "rolling" || value === "moving" || value === "ended";
@@ -195,8 +223,15 @@ export const isRollRequestPayload = (value: unknown): value is RollRequestPayloa
 export const isMoveRequestPayload = (value: unknown): value is MoveRequestPayload =>
   isRecord(value) && value.type === "move_request" && isMoveAction(value.move);
 
+export const isEmojiReactionRequestPayload = (
+  value: unknown,
+): value is EmojiReactionRequestPayload =>
+  isRecord(value) && value.type === "emoji_reaction" && isEmojiReactionKey(value.emoji);
+
 export const isClientMatchPayload = (value: unknown): value is ClientMatchPayload =>
-  isRollRequestPayload(value) || isMoveRequestPayload(value);
+  isRollRequestPayload(value) ||
+  isMoveRequestPayload(value) ||
+  isEmojiReactionRequestPayload(value);
 
 export const isStateSnapshotPayload = (value: unknown): value is StateSnapshotPayload =>
   isRecord(value) &&
@@ -232,6 +267,17 @@ export const isServerErrorPayload = (value: unknown): value is ServerErrorPayloa
   value.type === "server_error" &&
   typeof value.code === "string" &&
   typeof value.message === "string";
+
+export const isEmojiReactionBroadcastPayload = (
+  value: unknown,
+): value is EmojiReactionBroadcastPayload =>
+  isRecord(value) &&
+  value.type === "reaction_broadcast" &&
+  isEmojiReactionKey(value.emoji) &&
+  typeof value.senderUserId === "string" &&
+  isPlayerColor(value.senderColor) &&
+  isNonNegativeInteger(value.remainingForSender) &&
+  isFiniteNumber(value.createdAtMs);
 
 const isTournamentMatchRewardSummaryOutcome = (
   value: unknown,
@@ -269,6 +315,7 @@ export const isTournamentMatchRewardSummaryPayload = (
 export const isServerMatchPayload = (value: unknown): value is ServerMatchPayload =>
   isStateSnapshotPayload(value) ||
   isServerErrorPayload(value) ||
+  isEmojiReactionBroadcastPayload(value) ||
   isTournamentMatchRewardSummaryPayload(value);
 
 export const isExtendedServerMatchPayload = (value: unknown): value is ExtendedServerMatchPayload =>

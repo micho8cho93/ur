@@ -46,8 +46,11 @@ import {
   type ProcessCompletedMatchResult,
 } from "./challenges";
 import {
+  EmojiReactionBroadcastPayload,
+  EmojiReactionRequestPayload,
   MatchEndPayload,
   MatchOpCode,
+  MAX_EMOJI_REACTIONS_PER_MATCH,
   MoveRequestPayload,
   RollRequestPayload,
   ServerErrorCode,
@@ -55,6 +58,7 @@ import {
   TournamentMatchRewardSummaryPayload,
   decodePayload,
   encodePayload,
+  isEmojiReactionRequestPayload,
   isMoveRequestPayload,
   isRollRequestPayload,
 } from "../../shared/urMatchProtocol";
@@ -70,9 +74,8 @@ import {
   hasPlayerExitedStartingArea,
   isContestedLanding,
   isOneSuccessfulMoveFromVictory,
-  type UserChallengeProgressRpcResponse,
 } from "../../shared/challenges";
-import type { ProgressionAwardResponse, ProgressionSnapshot, XpSource } from "../../shared/progression";
+import type { ProgressionAwardResponse, XpSource } from "../../shared/progression";
 import {
   generatePrivateMatchCode,
   isPrivateMatchCode,
@@ -164,6 +167,7 @@ type MatchState = {
   allowsChallengeRewards: boolean;
   tournamentContext: TournamentMatchContext | null;
   tournamentMatchWinXp: number | null;
+  reactionCounts: Record<string, number>;
   telemetry: MatchTelemetry;
   timer: MatchTimerState;
   afk: Record<PlayerColor, PlayerAfkState>;
@@ -505,6 +509,12 @@ const createMatchTimerState = (): MatchTimerState => ({
   resetReason: null,
 });
 
+const createReactionCounts = (assignments: Record<string, PlayerColor>): Record<string, number> =>
+  Object.keys(assignments).reduce<Record<string, number>>((counts, userId) => {
+    counts[userId] = 0;
+    return counts;
+  }, {});
+
 const detectCaptureOnMove = (state: GameState, move: MoveRequestPayload["move"]): boolean => {
   const moverColor = state.currentTurn;
   const opponentColor: PlayerColor = moverColor === "light" ? "dark" : "light";
@@ -820,6 +830,9 @@ const getUserPresenceTargets = (state: MatchState, userId: string): nkruntime.Pr
 const getPrimaryUserPresence = (state: MatchState, userId: string): nkruntime.Presence | null =>
   getUserPresenceTargets(state, userId)[0] ?? null;
 
+const getAssignedPlayerTargets = (state: MatchState): nkruntime.Presence[] =>
+  Object.keys(state.assignments).flatMap((userId) => getUserPresenceTargets(state, userId));
+
 const getActiveUserCount = (state: MatchState): number =>
   Object.keys(state.presences).length;
 
@@ -919,6 +932,11 @@ const getActiveAssignedUserCount = (state: MatchState): number =>
 
 const canStartMatch = (state: MatchState): boolean =>
   Object.keys(state.assignments).length >= MAX_PLAYERS && getActiveAssignedUserCount(state) >= MAX_PLAYERS;
+
+const canUseMatchEmojiReactions = (state: MatchState): boolean =>
+  !state.classification.bot &&
+  state.opponentType === "human" &&
+  Object.keys(state.assignments).length >= MAX_PLAYERS;
 
 const canRunAuthoritativeTurnTimer = (state: MatchState): boolean =>
   state.started &&
@@ -1655,6 +1673,7 @@ function matchInit(
     allowsChallengeRewards,
     tournamentContext: resolveTournamentMatchContextFromParams(params),
     tournamentMatchWinXp,
+    reactionCounts: createReactionCounts(assignments),
     telemetry: createMatchTelemetry(),
     timer: createMatchTimerState(),
     afk: {
@@ -1863,6 +1882,16 @@ function matchLoop(
         return;
       }
 
+      if (opCode === MatchOpCode.EMOJI_REACTION) {
+        if (!isEmojiReactionRequestPayload(decodedPayload)) {
+          sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Emoji reaction payload is invalid.");
+          return;
+        }
+
+        applyEmojiReactionRequest(dispatcher, state, senderUserId, senderColor, decodedPayload);
+        return;
+      }
+
       sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", `Unsupported opcode ${opCode}.`);
     } catch (error) {
       logMatchLoopError(logger, matchId, state, "message_processing", error);
@@ -1946,17 +1975,22 @@ function matchSignal(
 
 function ensureAssignment(state: MatchState, userId: string): void {
   if (state.assignments[userId]) {
+    if (typeof state.reactionCounts[userId] !== "number") {
+      state.reactionCounts[userId] = 0;
+    }
     return;
   }
 
   const assignedColors = Object.values(state.assignments);
   if (!assignedColors.includes("light")) {
     state.assignments[userId] = "light";
+    state.reactionCounts[userId] = 0;
     return;
   }
 
   if (!assignedColors.includes("dark")) {
     state.assignments[userId] = "dark";
+    state.reactionCounts[userId] = 0;
   }
 }
 
@@ -2232,6 +2266,60 @@ function applyMoveRequest(
   logger.debug("Applied move for %s (revision %d)", userId, state.revision);
   broadcastSnapshot(dispatcher, state, matchId);
   finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
+}
+
+function applyEmojiReactionRequest(
+  dispatcher: nkruntime.MatchDispatcher,
+  state: MatchState,
+  userId: string,
+  playerColor: PlayerColor,
+  payload: EmojiReactionRequestPayload,
+): void {
+  if (!canUseMatchEmojiReactions(state)) {
+    sendError(
+      dispatcher,
+      state,
+      userId,
+      "INVALID_PAYLOAD",
+      "Emoji reactions are only available in online human matches.",
+    );
+    return;
+  }
+
+  const currentCount = state.reactionCounts[userId] ?? 0;
+  if (currentCount >= MAX_EMOJI_REACTIONS_PER_MATCH) {
+    sendError(
+      dispatcher,
+      state,
+      userId,
+      "INVALID_PAYLOAD",
+      "Reaction limit reached for this match.",
+    );
+    return;
+  }
+
+  const nextCount = currentCount + 1;
+  state.reactionCounts[userId] = nextCount;
+
+  const targets = getAssignedPlayerTargets(state);
+  if (targets.length === 0) {
+    return;
+  }
+
+  const broadcastPayload: EmojiReactionBroadcastPayload = {
+    type: "reaction_broadcast",
+    emoji: payload.emoji,
+    senderUserId: userId,
+    senderColor: playerColor,
+    remainingForSender: Math.max(0, MAX_EMOJI_REACTIONS_PER_MATCH - nextCount),
+    createdAtMs: Date.now(),
+  };
+
+  dispatcher.broadcastMessage(
+    MatchOpCode.REACTION_BROADCAST,
+    encodePayload(broadcastPayload),
+    targets,
+  );
 }
 
 function processCompletedMatchRatings(
