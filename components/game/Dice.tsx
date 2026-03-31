@@ -276,9 +276,9 @@ export const Dice: React.FC<DiceProps> = ({
 
   const sunkShellStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: sunkDepth.value * 16 },
-      { scaleX: 1 - sunkDepth.value * 0.04 },
-      { scaleY: 1 - sunkDepth.value * 0.05 },
+      { translateY: sunkDepth.value * 12 },
+      { scaleX: 1 - sunkDepth.value * 0.03 },
+      { scaleY: 1 - sunkDepth.value * 0.04 },
     ],
   }));
 

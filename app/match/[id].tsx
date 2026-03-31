@@ -6054,7 +6054,7 @@ const styles = StyleSheet.create({
   },
   diceReactionControl: {
     zIndex: 1,
-    marginTop: 2,
+    marginTop: urTheme.spacing.xs,
   },
   mobileDiceRow: {
     width: '100%',

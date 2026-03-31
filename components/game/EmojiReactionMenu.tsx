@@ -193,23 +193,9 @@ const styles = StyleSheet.create({
   },
   triggerImageFrameRaised: {
     transform: [{ translateY: 0 }],
-    ...boxShadow({
-      color: '#120904',
-      opacity: 0.26,
-      offset: { width: 0, height: 6 },
-      blurRadius: 10,
-      elevation: 7,
-    }),
   },
   triggerImageFrameSunken: {
     transform: [{ translateY: 3 }, { scale: 0.985 }],
-    ...boxShadow({
-      color: '#120904',
-      opacity: 0.12,
-      offset: { width: 0, height: 1 },
-      blurRadius: 3,
-      elevation: 2,
-    }),
   },
   triggerImage: {
     maxWidth: '100%',
