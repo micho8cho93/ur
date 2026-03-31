@@ -410,7 +410,7 @@ export const evaluateChallengeCompletion = (
     case CHALLENGE_IDS.MOMENTUM_SHIFT:
       return summary.momentumShiftAchieved === true;
     case CHALLENGE_IDS.SOLO_MASTER:
-      return didWinModeWithPieceCount(summary, 1);
+      return summary.didWin && summary.modeId === "gameMode_1_piece";
     case CHALLENGE_IDS.MINIMALIST:
       return didWinModeWithPieceCount(summary, 3);
     case CHALLENGE_IDS.HALF_STRATEGY:
@@ -418,7 +418,11 @@ export const evaluateChallengeCompletion = (
     case CHALLENGE_IDS.FULL_COMMANDER:
       return didWinModeWithPieceCount(summary, 7);
     case CHALLENGE_IDS.SPEED_RUNNER:
-      return didWinModeWithPieceCount(summary, 1) && playerTurnCount < CHALLENGE_THRESHOLDS.SPEED_RUNNER_MAX_PLAYER_TURNS;
+      return (
+        summary.didWin &&
+        summary.modeId === "gameMode_1_piece" &&
+        playerTurnCount < CHALLENGE_THRESHOLDS.SPEED_RUNNER_MAX_PLAYER_TURNS
+      );
     case CHALLENGE_IDS.DAILY_GRINDER:
       return stats.dailyGameCount >= CHALLENGE_THRESHOLDS.DAILY_GRINDER_REQUIRED_GAMES;
     case CHALLENGE_IDS.WINNING_STREAK_I:

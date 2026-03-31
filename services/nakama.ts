@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Client, Session, Socket } from "@heroiclabs/nakama-js";
 
 import { getNakamaConfig } from "../config/nakama";
+import { loadStoredUser } from "@/src/auth/sessionStorage";
 
 const SESSION_STORAGE_KEY = "nakama.session";
 const DEVICE_ID_STORAGE_KEY = "nakama.deviceId";
@@ -105,6 +106,10 @@ export class NakamaService {
       return existing;
     }
 
+    if (!(await this.canFallbackToDeviceAuth())) {
+      throw new Error("Your Google multiplayer session expired. Please sign in again.");
+    }
+
     return this.authenticateStoredDevice(username);
   }
 
@@ -115,7 +120,8 @@ export class NakamaService {
       username?: string;
     },
   ): Promise<Session | null> {
-    const allowDeviceAuthFallback = options?.allowDeviceAuthFallback ?? true;
+    const allowDeviceAuthFallback =
+      (options?.allowDeviceAuthFallback ?? true) && (await this.canFallbackToDeviceAuth());
 
     if (this.session && failedSession && this.session.token !== failedSession.token) {
       if (!this.session.isexpired(Date.now() / 1000)) {
@@ -301,6 +307,11 @@ export class NakamaService {
       refreshToken: session.refresh_token,
     };
     await AsyncStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(stored));
+  }
+
+  private async canFallbackToDeviceAuth(): Promise<boolean> {
+    const storedUser = await loadStoredUser();
+    return storedUser?.provider !== "google";
   }
 }
 

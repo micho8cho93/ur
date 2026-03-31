@@ -5,6 +5,8 @@ import { NakamaService } from './nakama';
 
 const mockSessionRefresh = jest.fn();
 const mockCreateSocket = jest.fn();
+const mockAuthenticateDevice = jest.fn();
+const mockLoadStoredUser = jest.fn();
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(),
@@ -22,8 +24,13 @@ jest.mock('../config/nakama', () => ({
   }),
 }));
 
+jest.mock('@/src/auth/sessionStorage', () => ({
+  loadStoredUser: (...args: unknown[]) => mockLoadStoredUser(...args),
+}));
+
 jest.mock('@heroiclabs/nakama-js', () => ({
   Client: jest.fn().mockImplementation(() => ({
+    authenticateDevice: (...args: unknown[]) => mockAuthenticateDevice(...args),
     createSocket: (...args: unknown[]) => mockCreateSocket(...args),
     sessionRefresh: (...args: unknown[]) => mockSessionRefresh(...args),
   })),
@@ -49,6 +56,7 @@ const createDeferred = <T,>() => {
 describe('NakamaService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockLoadStoredUser.mockResolvedValue(null);
     mockCreateSocket.mockReturnValue({
       connect: jest.fn(),
       disconnect: jest.fn(),
@@ -158,5 +166,40 @@ describe('NakamaService', () => {
     expect(mockedSessionRestore).toHaveBeenCalledWith('stored-token', 'stored-refresh');
     expect(mockedAsyncStorage.removeItem).toHaveBeenCalledWith('nakama.session');
     expect(service.getSession()).toBeNull();
+  });
+
+  it('does not fall back to device auth for a stored Google account', async () => {
+    const service = new NakamaService();
+
+    mockedAsyncStorage.getItem.mockResolvedValue(null);
+    mockLoadStoredUser.mockResolvedValue({
+      id: 'google-user',
+      username: 'RoyalMichel',
+      email: 'royal@example.com',
+      avatarUrl: null,
+      provider: 'google',
+      createdAt: '2026-03-29T12:00:00.000Z',
+    });
+
+    await expect(service.ensureAuthenticatedDevice()).rejects.toThrow(
+      'Your Google multiplayer session expired. Please sign in again.',
+    );
+    expect(mockAuthenticateDevice).not.toHaveBeenCalled();
+  });
+
+  it('prevents unauthorized recovery from silently downgrading a Google account to device auth', async () => {
+    const service = new NakamaService();
+
+    mockLoadStoredUser.mockResolvedValue({
+      id: 'google-user',
+      username: 'RoyalMichel',
+      email: 'royal@example.com',
+      avatarUrl: null,
+      provider: 'google',
+      createdAt: '2026-03-29T12:00:00.000Z',
+    });
+
+    await expect(service.recoverSessionAfterUnauthorized(null)).resolves.toBeNull();
+    expect(mockAuthenticateDevice).not.toHaveBeenCalled();
   });
 });

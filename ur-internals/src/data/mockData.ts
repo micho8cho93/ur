@@ -50,7 +50,7 @@ export const mockTournaments: Tournament[] = [
     name: 'Guild Clash April',
     description: 'Team-based invitational for top guilds from the monthly ladder.',
     status: 'Draft',
-    gameMode: 'gameMode_5_pieces',
+    gameMode: 'gameMode_capture',
     entrants: 0,
     maxEntrants: 32,
     roundCount: 5,
@@ -75,7 +75,7 @@ export const mockTournaments: Tournament[] = [
     xpPerMatchWin: 125,
     xpForTournamentChampion: 400,
     metadata: {
-      gameMode: 'gameMode_5_pieces',
+      gameMode: 'gameMode_capture',
       region: 'EU / NA',
       prizePool: '$500',
     },

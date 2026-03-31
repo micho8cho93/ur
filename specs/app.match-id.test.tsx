@@ -999,7 +999,7 @@ describe('GameRoom match dice stage', () => {
     expect(mockSlotDiceScene).not.toHaveBeenCalled();
   });
 
-  it('shows a rules intro modal for Capture mode and dismisses it with Close', async () => {
+  it('shows a rules intro modal for Capture and dismisses it with Close', async () => {
     jest.useFakeTimers();
     mockSearchParams.modeId = 'gameMode_capture';
     mockStoreState.gameState = {
@@ -1013,18 +1013,39 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Capture Mode')).toBeTruthy();
-    expect(screen.getByText(/shared middle rosette is no longer safe/i)).toBeTruthy();
+    expect(screen.getAllByText('Capture').length).toBeGreaterThan(0);
+    expect(screen.getByText(/each side plays with 5 pieces/i)).toBeTruthy();
     fireEvent.press(screen.getByText('Close'));
-    expect(screen.queryByText('Capture Mode')).toBeNull();
+    expect(screen.queryByText(/each side plays with 5 pieces/i)).toBeNull();
   });
 
-  it('shows a rules intro modal for Extended Path', async () => {
+  it.each([
+    {
+      modeId: 'gameMode_1_piece',
+      title: 'Pure Luck',
+      snippet: /captures are disabled everywhere/i,
+    },
+    {
+      modeId: 'gameMode_3_pieces',
+      title: 'Race',
+      snippet: /first to bear off all 3 pieces wins/i,
+    },
+    {
+      modeId: 'gameMode_finkel_rules',
+      title: 'Finkel Rules',
+      snippet: /shared middle rosette stays protected/i,
+    },
+    {
+      modeId: 'gameMode_full_path',
+      title: 'Extended Path',
+      snippet: /path is longer before bearing off/i,
+    },
+  ] as const)('shows a rules intro modal for $title', async ({ modeId, title, snippet }) => {
     jest.useFakeTimers();
-    mockSearchParams.modeId = 'gameMode_full_path';
+    mockSearchParams.modeId = modeId;
     mockStoreState.gameState = {
       ...baseGameState,
-      matchConfig: getMatchConfig('gameMode_full_path'),
+      matchConfig: getMatchConfig(modeId),
     };
 
     render(<GameRoom />);
@@ -1033,8 +1054,8 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getAllByText('Extended Path').length).toBeGreaterThan(0);
-    expect(screen.getByText(/longer path before bearing off/i)).toBeTruthy();
+    expect(screen.getAllByText(title).length).toBeGreaterThan(0);
+    expect(screen.getByText(snippet)).toBeTruthy();
   });
 
   it('keeps the embedded dice visual mounted while an offline bot roll resolves on Android', async () => {
@@ -4113,6 +4134,82 @@ describe('GameRoom match dice stage', () => {
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
     expect(screen.queryByTestId('mock-modal')).toBeNull();
     expect(screen.queryByText('Recording your victory in the standings...')).toBeNull();
+  });
+
+  it('does not open a stale result modal when the store winner belongs to a different match than the route', async () => {
+    mockSearchParams.id = 'tournament-final-active';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentRound = '2';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockStoreState.matchId = 'tournament-semifinal-stale';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = null;
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId('mock-modal')).toBeNull();
+    expect(screen.queryByText('Defeat')).toBeNull();
+    expect(screen.queryByText('Tournament Complete')).toBeNull();
+  });
+
+  it.each([
+    {
+      label: 'an eight-player quarterfinal-to-semifinal transition',
+      routeMatchId: 'tournament-eight-player-semifinal',
+      staleMatchId: 'tournament-eight-player-quarterfinal',
+      nextRound: '2',
+    },
+    {
+      label: 'a sixteen-player round-of-16-to-quarterfinal transition',
+      routeMatchId: 'tournament-sixteen-player-quarterfinal',
+      staleMatchId: 'tournament-sixteen-player-round-one',
+      nextRound: '2',
+    },
+  ])('does not open a stale result modal after %s', async ({ routeMatchId, staleMatchId, nextRound }) => {
+    mockSearchParams.id = routeMatchId;
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentRound = nextRound;
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockStoreState.matchId = staleMatchId;
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = null;
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId('mock-modal')).toBeNull();
+    expect(screen.queryByText('Victory')).toBeNull();
+    expect(screen.queryByText('Defeat')).toBeNull();
+    expect(screen.queryByText('Tournament Complete')).toBeNull();
   });
 
   it('keeps the waiting room visible when the boundary launch is still retrying', async () => {

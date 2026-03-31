@@ -937,6 +937,8 @@ export function GameRoom() {
     phase: typeof gameState.phase;
   } | null>(null);
   const previousJoinedPlayerCountRef = useRef(0);
+  const activeRouteMatchIdRef = useRef<string | null>(matchId ?? null);
+  activeRouteMatchIdRef.current = matchId ?? null;
 
   const tutorialLesson =
     tutorialLessonIndex < PLAYTHROUGH_TUTORIAL_LESSONS.length
@@ -1925,10 +1927,10 @@ export function GameRoom() {
     tutorialPendingActionStep,
   ]);
   useEffect(() => {
-    if (gameState.winner) {
+    if (gameState.winner && storedMatchId === matchId) {
       setShowWinModal(true);
     }
-  }, [gameState.winner]);
+  }, [gameState.winner, matchId, storedMatchId]);
 
   useEffect(() => {
     if (previousRenderedMatchIdRef.current === (matchId ?? null)) {
@@ -2801,7 +2803,7 @@ export function GameRoom() {
     let isMounted = true;
 
     const handleMatchData = (matchData: MatchData) => {
-      if (matchData.match_id !== matchId) return;
+      if (matchData.match_id !== matchId || matchData.match_id !== activeRouteMatchIdRef.current) return;
 
       let rawData = '';
       if (typeof matchData.data === 'string') {
@@ -2933,7 +2935,7 @@ export function GameRoom() {
     };
 
     const handleMatchPresence = (matchPresence: MatchPresenceEvent) => {
-      if (matchPresence.match_id !== matchId) return;
+      if (matchPresence.match_id !== matchId || matchPresence.match_id !== activeRouteMatchIdRef.current) return;
       updateMatchPresences(matchPresence);
     };
 
@@ -2952,7 +2954,12 @@ export function GameRoom() {
     };
 
     const scheduleReconnect = () => {
-      if (!isMounted || suppressReconnectRef.current || reconnectTimerRef.current) {
+      if (
+        !isMounted ||
+        suppressReconnectRef.current ||
+        reconnectTimerRef.current ||
+        activeRouteMatchIdRef.current !== matchId
+      ) {
         return;
       }
       reconnectTimerRef.current = setTimeout(() => {
@@ -2966,6 +2973,9 @@ export function GameRoom() {
       socket.onmatchdata = handleMatchData;
       socket.onmatchpresence = handleMatchPresence;
       socket.ondisconnect = () => {
+        if (activeRouteMatchIdRef.current !== matchId) {
+          return;
+        }
         socketRef.current = null;
         nakamaService.disconnectSocket(false);
         setSocketState('disconnected');

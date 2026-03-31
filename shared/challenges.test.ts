@@ -199,7 +199,7 @@ describe("challenge helpers", () => {
         capturesMade: 0,
         capturesSuffered: 0,
         contestedTilesLandedCount: 0,
-        pieceCountPerSide: 1,
+        pieceCountPerSide: 3,
         modeId: "gameMode_1_piece",
         playerTurnCount: 8,
         maxActivePiecesOnBoard: 1,

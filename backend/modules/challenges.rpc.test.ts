@@ -136,7 +136,7 @@ describe('rpcSubmitCompletedBotMatch', () => {
         summary: createSummary({
           matchId: 'local-2',
           borneOffCount: 1,
-          pieceCountPerSide: 1,
+          pieceCountPerSide: 3,
           modeId: 'gameMode_1_piece',
         }),
         modeId: 'gameMode_1_piece',

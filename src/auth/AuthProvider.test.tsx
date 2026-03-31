@@ -77,16 +77,30 @@ jest.mock('@/store/useGameStore', () => ({
 }));
 
 function AuthHarness() {
-  const { user, isLoading, loginAsGuest, loginWithGoogle, logout } = useAuth();
+  const {
+    user,
+    isLoading,
+    isUsernameOnboardingRequired,
+    usernameOnboardingError,
+    refreshUsernameOnboardingStatus,
+    loginAsGuest,
+    loginWithGoogle,
+    logout,
+  } = useAuth();
 
   return (
     <View>
       <Text testID="auth-state">{isLoading ? 'loading' : user?.username ?? 'none'}</Text>
+      <Text testID="onboarding-required">{String(isUsernameOnboardingRequired)}</Text>
+      <Text testID="onboarding-error">{usernameOnboardingError ?? 'none'}</Text>
       <TouchableOpacity onPress={() => void loginAsGuest()}>
         <Text>guest-login</Text>
       </TouchableOpacity>
       <TouchableOpacity onPress={() => void loginWithGoogle()}>
         <Text>google-login</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => void refreshUsernameOnboardingStatus()}>
+        <Text>refresh-onboarding</Text>
       </TouchableOpacity>
       <TouchableOpacity onPress={() => void logout()}>
         <Text>logout</Text>
@@ -326,6 +340,46 @@ describe('AuthProvider', () => {
       expect(mockNakamaClearSession).toHaveBeenCalledTimes(1);
       expect(mockReset).toHaveBeenCalledTimes(1);
       expect(view.getByTestId('auth-state').props.children).toBe('none');
+    });
+  });
+
+  it('keeps completed Google onboarding cached when a later refresh fails', async () => {
+    mockLoadSession.mockResolvedValue({
+      user: {
+        id: 'google-1',
+        username: 'RoyalMichel',
+        email: 'royal@example.com',
+        avatarUrl: null,
+        provider: 'google',
+        createdAt: '2026-03-29T12:00:00.000Z',
+      },
+      nakamaSessionToken: 'google-token',
+      nakamaRefreshToken: 'google-refresh',
+    });
+    mockGetUsernameOnboardingStatus
+      .mockResolvedValueOnce({
+        onboardingComplete: true,
+        currentUsername: 'RoyalMichel',
+        suggestedUsername: null,
+      })
+      .mockRejectedValueOnce(new Error('Network error'));
+
+    const view = render(
+      <AuthProvider>
+        <AuthHarness />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(view.getByTestId('auth-state').props.children).toBe('RoyalMichel');
+      expect(view.getByTestId('onboarding-required').props.children).toBe('false');
+    });
+
+    fireEvent.press(view.getByText('refresh-onboarding'));
+
+    await waitFor(() => {
+      expect(view.getByTestId('onboarding-error').props.children).toBe('Network error');
+      expect(view.getByTestId('onboarding-required').props.children).toBe('false');
     });
   });
 });

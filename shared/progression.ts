@@ -42,15 +42,15 @@ export const XP_SOURCE_CONFIG = {
   },
   practice_1_piece_win: {
     amount: 10,
-    description: "Authenticated 1-piece practice win reward.",
+    description: "Authenticated Pure Luck practice win reward.",
   },
   practice_3_pieces_win: {
     amount: 20,
-    description: "Authenticated 3-piece practice win reward.",
+    description: "Authenticated Race practice win reward.",
   },
   practice_5_pieces_win: {
     amount: 30,
-    description: "Authenticated 5-piece practice win reward.",
+    description: "Authenticated legacy 5-piece practice win reward.",
   },
   practice_finkel_rules_win: {
     amount: 40,
@@ -58,7 +58,7 @@ export const XP_SOURCE_CONFIG = {
   },
   practice_capture_win: {
     amount: 50,
-    description: "Authenticated Capture practice win reward.",
+    description: "Authenticated 5-piece Capture practice win reward.",
   },
   practice_extended_path_win: {
     amount: 60,

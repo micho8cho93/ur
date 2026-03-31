@@ -47,10 +47,12 @@ const PROGRESSION_COLLECTION = "progression";
 const PROGRESSION_PROFILE_KEY = "profile";
 const XP_REWARD_LEDGER_COLLECTION = "xp_reward_ledger";
 const TOURNAMENT_VARIANTS = [
-  { modeId: "gameMode_1_piece", pieceCountPerSide: 1, label: "1-piece" },
-  { modeId: "gameMode_3_pieces", pieceCountPerSide: 3, label: "3-piece" },
-  { modeId: "gameMode_5_pieces", pieceCountPerSide: 5, label: "5-piece" },
-  { modeId: "standard", pieceCountPerSide: 7, label: "7-piece" },
+  { modeId: "gameMode_1_piece", pieceCountPerSide: 3, label: "Pure Luck" },
+  { modeId: "gameMode_3_pieces", pieceCountPerSide: 3, label: "Race" },
+  { modeId: "gameMode_finkel_rules", pieceCountPerSide: 7, label: "Finkel Rules" },
+  { modeId: "gameMode_capture", pieceCountPerSide: 5, label: "Capture" },
+  { modeId: "gameMode_full_path", pieceCountPerSide: 7, label: "Extended Path" },
+  { modeId: "standard", pieceCountPerSide: 7, label: "Quick Play" },
 ] as const;
 
 const createNakama = () => {

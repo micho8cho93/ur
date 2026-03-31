@@ -1,10 +1,9 @@
-export type TournamentStructureId =
-  | 'standard'
-  | 'gameMode_1_piece'
-  | 'gameMode_3_pieces'
-  | 'gameMode_5_pieces'
-  | 'gameMode_capture'
-  | 'gameMode_full_path'
+import {
+  MATCH_MODE_SELECTION_OPTIONS,
+  type MatchModeId,
+} from '../../logic/matchConfigs'
+
+export type TournamentStructureId = MatchModeId
 
 export type TournamentStructureOption = {
   value: TournamentStructureId
@@ -12,38 +11,12 @@ export type TournamentStructureOption = {
   description: string
 }
 
-export const TOURNAMENT_STRUCTURE_OPTIONS: readonly TournamentStructureOption[] = [
-  {
-    value: 'gameMode_1_piece',
-    label: '1 Piece',
-    description: 'One piece per side for the fastest tournament games.',
-  },
-  {
-    value: 'gameMode_3_pieces',
-    label: '3 Pieces',
-    description: 'Three pieces per side for short tournament rounds.',
-  },
-  {
-    value: 'gameMode_5_pieces',
-    label: '5 Pieces',
-    description: 'Five pieces per side for a medium-length format.',
-  },
-  {
-    value: 'standard',
-    label: '7 Pieces',
-    description: 'Standard Royal Game of Ur rules with seven pieces.',
-  },
-  {
-    value: 'gameMode_capture',
-    label: 'Capture',
-    description: 'Seven pieces with capturable shared rosettes and extra rolls after captures.',
-  },
-  {
-    value: 'gameMode_full_path',
-    label: 'Extended Path',
-    description: 'Seven pieces using the extended-path board rules.',
-  },
-] as const
+export const TOURNAMENT_STRUCTURE_OPTIONS: readonly TournamentStructureOption[] =
+  MATCH_MODE_SELECTION_OPTIONS.map((option) => ({
+    value: option.modeId,
+    label: option.label,
+    description: option.description,
+  }))
 
 export function getTournamentStructureLabel(value: string | null | undefined) {
   const match = TOURNAMENT_STRUCTURE_OPTIONS.find((option) => option.value === value)
@@ -51,10 +24,10 @@ export function getTournamentStructureLabel(value: string | null | undefined) {
     return match.label
   }
 
-  return value?.trim() || '7 Pieces'
+  return value?.trim() || 'Quick Play'
 }
 
 export function getTournamentStructureDescription(value: string | null | undefined) {
   const match = TOURNAMENT_STRUCTURE_OPTIONS.find((option) => option.value === value)
-  return match?.description ?? 'Standard Royal Game of Ur rules.'
+  return match?.description ?? 'Classic seven-piece rules.'
 }

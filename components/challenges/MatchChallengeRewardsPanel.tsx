@@ -20,6 +20,11 @@ export const MatchChallengeRewardsPanel: React.FC<MatchChallengeRewardsPanelProp
   const [isExpanded, setIsExpanded] = useState(false);
   const completedCount = summary?.newlyCompletedChallenges.length ?? 0;
   const completedLabel = `${completedCount} completed ${completedCount === 1 ? 'challenge' : 'challenges'}`;
+  const summarySignature = summary
+    ? `${summary.xpAwardedTotal}:${summary.newlyCompletedChallenges
+        .map((challenge) => `${challenge.challengeId}:${challenge.rewardXp}:${challenge.completedAt}`)
+        .join('|')}`
+    : 'empty';
 
   useEffect(() => {
     if (!summary || summary.newlyCompletedChallenges.length === 0) {
@@ -50,7 +55,7 @@ export const MatchChallengeRewardsPanel: React.FC<MatchChallengeRewardsPanelProp
 
   useEffect(() => {
     setIsExpanded(false);
-  }, [summary]);
+  }, [summarySignature]);
 
   return (
     <View style={styles.panel}>

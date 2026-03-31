@@ -188,6 +188,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   applyServerSnapshot: (snapshot) => {
     set((current) => {
+      if (current.matchId && snapshot.matchId !== current.matchId) {
+        return {};
+      }
+
       if (snapshot.revision < current.serverRevision) {
         return {};
       }

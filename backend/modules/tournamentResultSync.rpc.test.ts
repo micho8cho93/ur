@@ -107,10 +107,12 @@ const mockedProcessCompletedAuthoritativeTournamentMatch =
 const mockedMaybeAutoFinalizeTournamentRunById =
   maybeAutoFinalizeTournamentRunById as jest.MockedFunction<typeof maybeAutoFinalizeTournamentRunById>;
 const TOURNAMENT_VARIANTS = [
-  { modeId: 'gameMode_1_piece', label: '1-piece' },
-  { modeId: 'gameMode_3_pieces', label: '3-piece' },
-  { modeId: 'gameMode_5_pieces', label: '5-piece' },
-  { modeId: 'standard', label: '7-piece' },
+  { modeId: 'gameMode_1_piece', label: 'Pure Luck' },
+  { modeId: 'gameMode_3_pieces', label: 'Race' },
+  { modeId: 'gameMode_finkel_rules', label: 'Finkel Rules' },
+  { modeId: 'gameMode_capture', label: 'Capture' },
+  { modeId: 'gameMode_full_path', label: 'Extended Path' },
+  { modeId: 'standard', label: 'Quick Play' },
 ] as const;
 
 const createLogger = () => ({

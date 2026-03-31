@@ -3,7 +3,7 @@ import { GameState, PlayerColor, Piece, Player, MoveAction } from './types';
 import { isRosette, isWarZone } from './constants';
 import { DEFAULT_MATCH_CONFIG, type MatchConfig } from './matchConfigs';
 import { getPathCoord, getPathLength } from './pathVariants';
-import { isProtectedFromCapture, shouldGrantExtraTurn } from './rules';
+import { isContestedWarTile, isProtectedFromCapture, shouldGrantExtraTurn } from './rules';
 
 export const INITIAL_PIECE_COUNT = DEFAULT_MATCH_CONFIG.pieceCountPerSide;
 
@@ -117,7 +117,7 @@ export const applyMove = (state: GameState, move: MoveAction): GameState => {
             return opCoord.row === targetCoord.row && opCoord.col === targetCoord.col;
         });
 
-        if (opponentPiece) {
+        if (opponentPiece && isContestedWarTile(newState.matchConfig, targetCoord)) {
             opponentPiece.position = -1;
             player.capturedCount++;
             didCapture = true;

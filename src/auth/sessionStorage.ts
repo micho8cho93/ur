@@ -105,6 +105,11 @@ export const loadSession = async (): Promise<LoadedSession | null> => {
   }
 };
 
+export const loadStoredUser = async (): Promise<User | null> => {
+  const session = await loadSession();
+  return session?.user ?? null;
+};
+
 export const clearSession = async (): Promise<void> => {
   await removeStoredSession();
 };

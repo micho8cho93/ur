@@ -1,7 +1,7 @@
 import type { PathVariant } from './pathVariants';
 import { getXpAwardAmount, type BotMatchXpSource } from '../shared/progression';
 
-export type RulesVariant = 'standard' | 'capture';
+export type RulesVariant = 'standard' | 'capture' | 'no-capture';
 export type MatchOpponentType = 'bot';
 export type MatchModeId =
   | 'standard'
@@ -26,14 +26,17 @@ export type MatchConfig = {
   pathVariant: PathVariant;
   pieceCountPerSide: number;
   rulesVariant: RulesVariant;
+  rulesIntro?: MatchRulesIntro | null;
   selectionSubtitle?: string;
 };
 
-export type PrivateMatchOption = {
+export type MatchModeOption = {
   modeId: MatchModeId;
   label: string;
   description: string;
 };
+
+export type PrivateMatchOption = MatchModeOption;
 
 export type MatchRulesIntro = {
   title: string;
@@ -54,151 +57,182 @@ const STANDARD_MATCH_CONFIG: MatchConfig = {
   opponentType: 'bot',
   pathVariant: 'default',
   isPracticeMode: false,
+  selectionSubtitle: 'Classic seven-piece rules.',
+  rulesIntro: null,
+};
+
+const PURE_LUCK_MATCH_CONFIG: MatchConfig = {
+  modeId: 'gameMode_1_piece',
+  displayName: 'Pure Luck',
+  pieceCountPerSide: 3,
+  rulesVariant: 'no-capture',
+  allowsXp: true,
+  allowsOnline: false,
+  allowsChallenges: true,
+  allowsCoins: false,
+  allowsRankedStats: false,
+  offlineWinRewardSource: 'practice_1_piece_win',
+  opponentType: 'bot',
+  pathVariant: 'default',
+  isPracticeMode: true,
+  selectionSubtitle: 'Three pieces per side with captures disabled everywhere.',
+  rulesIntro: {
+    title: 'Pure Luck',
+    message:
+      'This variant keeps the race short and removes every takedown:\n\n• Each side plays with 3 pieces.\n• Captures are disabled everywhere, including the shared lane.\n• Rosettes still grant extra rolls, so momentum matters more than disruption.',
+  },
+};
+
+const RACE_MATCH_CONFIG: MatchConfig = {
+  modeId: 'gameMode_3_pieces',
+  displayName: 'Race',
+  pieceCountPerSide: 3,
+  rulesVariant: 'standard',
+  allowsXp: true,
+  allowsOnline: false,
+  allowsChallenges: true,
+  allowsCoins: false,
+  allowsRankedStats: false,
+  offlineWinRewardSource: 'practice_3_pieces_win',
+  opponentType: 'bot',
+  pathVariant: 'default',
+  isPracticeMode: true,
+  selectionSubtitle: 'Three pieces per side with the standard capture rules.',
+  rulesIntro: {
+    title: 'Race',
+    message:
+      'This variant trims the match down without changing the usual rules:\n\n• Each side plays with 3 pieces.\n• Standard captures are still allowed, but the shared middle rosette remains protected.\n• First to bear off all 3 pieces wins.',
+  },
+};
+
+const LEGACY_FIVE_PIECE_MATCH_CONFIG: MatchConfig = {
+  modeId: 'gameMode_5_pieces',
+  displayName: '5 Pieces',
+  pieceCountPerSide: 5,
+  rulesVariant: 'standard',
+  allowsXp: true,
+  allowsOnline: false,
+  allowsChallenges: true,
+  allowsCoins: false,
+  allowsRankedStats: false,
+  offlineWinRewardSource: 'practice_5_pieces_win',
+  opponentType: 'bot',
+  pathVariant: 'default',
+  isPracticeMode: true,
+  selectionSubtitle: 'Legacy five-piece practice rules.',
+  rulesIntro: {
+    title: '5 Pieces',
+    message:
+      'This legacy variant keeps the standard rules with a reduced pool:\n\n• Each side plays with 5 pieces.\n• Standard captures are still allowed, but the shared middle rosette remains protected.\n• First to bear off all 5 pieces wins.',
+  },
+};
+
+const FINKEL_RULES_MATCH_CONFIG: MatchConfig = {
+  modeId: 'gameMode_finkel_rules',
+  displayName: 'Finkel Rules',
+  pieceCountPerSide: 7,
+  rulesVariant: 'standard',
+  allowsXp: true,
+  allowsOnline: false,
+  allowsChallenges: true,
+  allowsCoins: false,
+  allowsRankedStats: false,
+  offlineWinRewardSource: 'practice_finkel_rules_win',
+  opponentType: 'bot',
+  pathVariant: 'default',
+  isPracticeMode: true,
+  selectionSubtitle: 'Seven pieces per side using the classic protected-rosette rules.',
+  rulesIntro: {
+    title: 'Finkel Rules',
+    message:
+      'This variant keeps the classic full-length duel:\n\n• Each side plays with 7 pieces.\n• Standard captures are allowed, except the shared middle rosette stays protected.\n• Rosettes still grant extra rolls, rewarding precise tempo play.',
+  },
+};
+
+const CAPTURE_MATCH_CONFIG: MatchConfig = {
+  modeId: 'gameMode_capture',
+  displayName: 'Capture',
+  pieceCountPerSide: 5,
+  rulesVariant: 'capture',
+  allowsXp: true,
+  allowsOnline: false,
+  allowsChallenges: true,
+  allowsCoins: false,
+  allowsRankedStats: false,
+  offlineWinRewardSource: 'practice_capture_win',
+  opponentType: 'bot',
+  pathVariant: 'default',
+  isPracticeMode: true,
+  selectionSubtitle: 'Five pieces per side where captures can chain extra rolls.',
+  rulesIntro: {
+    title: 'Capture',
+    message:
+      'This variant is shorter and sharper than standard play:\n\n• Each side plays with 5 pieces.\n• The shared middle rosette is no longer safe, so pieces there can be captured.\n• Any capture gives you an extra roll, which can chain attacks together.',
+  },
+};
+
+const EXTENDED_PATH_MATCH_CONFIG: MatchConfig = {
+  modeId: 'gameMode_full_path',
+  displayName: 'Extended Path',
+  pieceCountPerSide: 7,
+  rulesVariant: 'standard',
+  allowsXp: true,
+  allowsOnline: false,
+  allowsChallenges: true,
+  allowsCoins: false,
+  allowsRankedStats: false,
+  offlineWinRewardSource: 'practice_extended_path_win',
+  opponentType: 'bot',
+  pathVariant: 'full-path',
+  isPracticeMode: true,
+  selectionSubtitle: 'Seven pieces each using the longer extended-path route.',
+  rulesIntro: {
+    title: 'Extended Path',
+    message:
+      'This variant keeps the usual rules but changes the route:\n\n• Each side still plays with 7 pieces.\n• The path is longer before bearing off, stretching races and recovery windows.\n• Standard captures are allowed, while the shared middle rosette remains protected.',
+  },
 };
 
 const GAME_MODE_MATCH_CONFIGS: readonly MatchConfig[] = [
-  {
-    modeId: 'gameMode_1_piece',
-    displayName: '1 Piece',
-    pieceCountPerSide: 1,
-    rulesVariant: 'standard',
-    allowsXp: true,
-    allowsOnline: false,
-    allowsChallenges: true,
-    allowsCoins: false,
-    allowsRankedStats: false,
-    offlineWinRewardSource: 'practice_1_piece_win',
-    opponentType: 'bot',
-    pathVariant: 'default',
-    isPracticeMode: true,
-    selectionSubtitle: 'Bot match with 1 piece each',
-  },
-  {
-    modeId: 'gameMode_3_pieces',
-    displayName: '3 Pieces',
-    pieceCountPerSide: 3,
-    rulesVariant: 'standard',
-    allowsXp: true,
-    allowsOnline: false,
-    allowsChallenges: true,
-    allowsCoins: false,
-    allowsRankedStats: false,
-    offlineWinRewardSource: 'practice_3_pieces_win',
-    opponentType: 'bot',
-    pathVariant: 'default',
-    isPracticeMode: true,
-    selectionSubtitle: 'Bot match with 3 pieces each',
-  },
-  {
-    modeId: 'gameMode_5_pieces',
-    displayName: '5 Pieces',
-    pieceCountPerSide: 5,
-    rulesVariant: 'standard',
-    allowsXp: true,
-    allowsOnline: false,
-    allowsChallenges: true,
-    allowsCoins: false,
-    allowsRankedStats: false,
-    offlineWinRewardSource: 'practice_5_pieces_win',
-    opponentType: 'bot',
-    pathVariant: 'default',
-    isPracticeMode: true,
-    selectionSubtitle: 'Bot match with 5 pieces each',
-  },
-  {
-    modeId: 'gameMode_finkel_rules',
-    displayName: 'Finkel Rules',
-    pieceCountPerSide: 7,
-    rulesVariant: 'standard',
-    allowsXp: true,
-    allowsOnline: false,
-    allowsChallenges: true,
-    allowsCoins: false,
-    allowsRankedStats: false,
-    offlineWinRewardSource: 'practice_finkel_rules_win',
-    opponentType: 'bot',
-    pathVariant: 'default',
-    isPracticeMode: true,
-    selectionSubtitle: 'Bot match with 7 pieces each using the regular rules',
-  },
-  {
-    modeId: 'gameMode_capture',
-    displayName: 'Capture',
-    pieceCountPerSide: 7,
-    rulesVariant: 'capture',
-    allowsXp: true,
-    allowsOnline: false,
-    allowsChallenges: true,
-    allowsCoins: false,
-    allowsRankedStats: false,
-    offlineWinRewardSource: 'practice_capture_win',
-    opponentType: 'bot',
-    pathVariant: 'default',
-    isPracticeMode: true,
-    selectionSubtitle: 'Bot match with 7 pieces where captures grant extra rolls',
-  },
-  {
-    modeId: 'gameMode_full_path',
-    displayName: 'Extended Path',
-    pieceCountPerSide: 7,
-    rulesVariant: 'standard',
-    allowsXp: true,
-    allowsOnline: false,
-    allowsChallenges: true,
-    allowsCoins: false,
-    allowsRankedStats: false,
-    offlineWinRewardSource: 'practice_extended_path_win',
-    opponentType: 'bot',
-    pathVariant: 'full-path',
-    isPracticeMode: true,
-    selectionSubtitle: 'Bot match with 7 pieces each using the extended-path rules',
-  },
+  PURE_LUCK_MATCH_CONFIG,
+  RACE_MATCH_CONFIG,
+  FINKEL_RULES_MATCH_CONFIG,
+  CAPTURE_MATCH_CONFIG,
+  EXTENDED_PATH_MATCH_CONFIG,
 ] as const;
 
 export const MATCH_CONFIGS: Readonly<Record<MatchModeId, MatchConfig>> = {
   standard: STANDARD_MATCH_CONFIG,
-  gameMode_1_piece: GAME_MODE_MATCH_CONFIGS[0],
-  gameMode_3_pieces: GAME_MODE_MATCH_CONFIGS[1],
-  gameMode_5_pieces: GAME_MODE_MATCH_CONFIGS[2],
-  gameMode_finkel_rules: GAME_MODE_MATCH_CONFIGS[3],
-  gameMode_capture: GAME_MODE_MATCH_CONFIGS[4],
-  gameMode_full_path: GAME_MODE_MATCH_CONFIGS[5],
+  gameMode_1_piece: PURE_LUCK_MATCH_CONFIG,
+  gameMode_3_pieces: RACE_MATCH_CONFIG,
+  gameMode_5_pieces: LEGACY_FIVE_PIECE_MATCH_CONFIG,
+  gameMode_finkel_rules: FINKEL_RULES_MATCH_CONFIG,
+  gameMode_capture: CAPTURE_MATCH_CONFIG,
+  gameMode_full_path: EXTENDED_PATH_MATCH_CONFIG,
 };
 
 export const DEFAULT_MATCH_CONFIG = STANDARD_MATCH_CONFIG;
 export const GAME_MODE_CONFIGS = GAME_MODE_MATCH_CONFIGS;
-export const PRIVATE_MATCH_OPTIONS: readonly PrivateMatchOption[] = [
-  {
-    modeId: 'gameMode_1_piece',
-    label: '1 Piece',
-    description: 'One piece per side for a fast duel.',
-  },
-  {
-    modeId: 'gameMode_3_pieces',
-    label: '3 Pieces',
-    description: 'Three pieces per side for a brisk match.',
-  },
-  {
-    modeId: 'gameMode_5_pieces',
-    label: '5 Pieces',
-    description: 'Five pieces per side for a shorter board battle.',
-  },
-  {
-    modeId: 'standard',
-    label: '7 Pieces',
-    description: 'Standard private match rules.',
-  },
-  {
-    modeId: 'gameMode_capture',
-    label: 'Capture',
-    description: 'Seven pieces where captures grant extra rolls.',
-  },
-  {
-    modeId: 'gameMode_full_path',
-    label: 'Extended Play',
-    description: 'Seven pieces with the extended-path rules.',
-  },
+const MATCH_MODE_SELECTION_IDS: readonly MatchModeId[] = [
+  'standard',
+  'gameMode_1_piece',
+  'gameMode_3_pieces',
+  'gameMode_finkel_rules',
+  'gameMode_capture',
+  'gameMode_full_path',
 ] as const;
+
+export const MATCH_MODE_SELECTION_OPTIONS: ReadonlyArray<MatchModeOption> = MATCH_MODE_SELECTION_IDS.map((modeId) => {
+  const config = MATCH_CONFIGS[modeId];
+
+  return {
+    modeId,
+    label: config.displayName,
+    description: config.selectionSubtitle ?? config.displayName,
+  };
+});
+
+export const PRIVATE_MATCH_OPTIONS: ReadonlyArray<PrivateMatchOption> = MATCH_MODE_SELECTION_OPTIONS;
 export const getPracticeModeRewardLabel = (config: MatchConfig): string =>
   `Practice Mode Win Reward: +${getXpAwardAmount(config.offlineWinRewardSource)} XP`;
 
@@ -209,7 +243,7 @@ export const isMatchModeId = (value: unknown): value is MatchModeId =>
   typeof value === 'string' && value in MATCH_CONFIGS;
 
 export const isGameModeId = (value: unknown): value is Exclude<MatchModeId, 'standard'> =>
-  typeof value === 'string' && GAME_MODE_MATCH_CONFIGS.some((config) => config.modeId === value);
+  typeof value === 'string' && value !== 'standard' && Boolean(MATCH_CONFIGS[value as MatchModeId]?.isPracticeMode);
 
 export const getMatchConfig = (modeId?: string | null): MatchConfig =>
   (modeId && isMatchModeId(modeId) ? MATCH_CONFIGS[modeId] : DEFAULT_MATCH_CONFIG);
@@ -223,21 +257,5 @@ export const getPrivateMatchOption = (modeId: MatchModeId): PrivateMatchOption =
 
 export const getPrivateMatchLabel = (modeId: MatchModeId): string => getPrivateMatchOption(modeId).label;
 
-export const getMatchRulesIntro = (modeId: MatchModeId): MatchRulesIntro | null => {
-  switch (modeId) {
-    case 'gameMode_capture':
-      return {
-        title: 'Capture Mode',
-        message:
-          'This variant changes two rules:\n\n• The shared middle rosette is no longer safe, so pieces there can be captured.\n• Any capture gives you an extra roll, which can chain attacks together.',
-      };
-    case 'gameMode_full_path':
-      return {
-        title: 'Extended Path',
-        message:
-          'This variant keeps the usual rules but changes the route:\n\n• Each side follows a longer path before bearing off.\n• The added path length makes races and recovery windows last longer than a normal game.',
-      };
-    default:
-      return null;
-  }
-};
+export const getMatchRulesIntro = (modeId: MatchModeId): MatchRulesIntro | null =>
+  MATCH_CONFIGS[modeId].rulesIntro ?? null;

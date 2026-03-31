@@ -402,7 +402,7 @@ export const CHALLENGE_DEFINITIONS: readonly ChallengeDefinition[] = [
   {
     id: CHALLENGE_IDS.SOLO_MASTER,
     name: "Solo Master",
-    description: "Win a 1-piece mode game.",
+    description: "Win a Pure Luck game.",
     type: "mode",
     category: "mode",
     rewardXp: 80,
@@ -411,7 +411,7 @@ export const CHALLENGE_DEFINITIONS: readonly ChallengeDefinition[] = [
   {
     id: CHALLENGE_IDS.SPEED_RUNNER,
     name: "Speed Runner",
-    description: "Win a 1-piece mode game in under 10 turns.",
+    description: "Win a Pure Luck game in under 10 turns.",
     type: "mode",
     category: "mode",
     rewardXp: 200,

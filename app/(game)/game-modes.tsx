@@ -15,8 +15,8 @@ const homeWideBackground = require('../../assets/images/home_bg.png');
 const homeMobileBackground = require('../../assets/images/home_bg_mobile.png');
 
 const MODE_ICONS: Record<Exclude<MatchModeId, 'standard'>, keyof typeof MaterialIcons.glyphMap> = {
-  gameMode_1_piece: 'looks-one',
-  gameMode_3_pieces: 'filter-3',
+  gameMode_1_piece: 'casino',
+  gameMode_3_pieces: 'flag',
   gameMode_5_pieces: 'filter-5',
   gameMode_finkel_rules: 'filter-7',
   gameMode_capture: 'flash-on',

@@ -139,4 +139,15 @@ describe('engine getValidMoves', () => {
       toIndex: 7,
     });
   });
+
+  it('does not allow captures anywhere in Pure Luck', () => {
+    const state = createInitialState(getMatchConfig('gameMode_1_piece'));
+    state.currentTurn = 'light';
+    setOnlyActivePiece(state, 'light', 0, 4);
+    setOnlyActivePiece(state, 'dark', 0, 5);
+
+    const moves = getValidMoves(state, 1);
+
+    expect(moves).toEqual([]);
+  });
 });

@@ -221,18 +221,19 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         return null;
       }
 
-      setUsernameOnboardingStatus(null);
+      const cachedStatusForUser =
+        activeOnboardingUserIdRef.current === user.id ? usernameOnboardingStatus : null;
       setUsernameOnboardingError(
         error instanceof Error ? error.message : 'Unable to load username onboarding right now.',
       );
-      syncPresenceForSession(nakamaService.getSession(), user, null);
-      return null;
+      syncPresenceForSession(nakamaService.getSession(), user, cachedStatusForUser);
+      return cachedStatusForUser;
     } finally {
       if (onboardingRequestIdRef.current === requestId) {
         setIsUsernameOnboardingLoading(false);
       }
     }
-  }, [persistUserSession, resetUsernameOnboardingState, syncPresenceForSession, user]);
+  }, [persistUserSession, resetUsernameOnboardingState, syncPresenceForSession, user, usernameOnboardingStatus]);
 
   useEffect(() => {
     if (isLoading) {
@@ -380,7 +381,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const isUsernameOnboardingRequired =
     user?.provider === 'google' &&
     !isUsernameOnboardingBusy &&
-    !usernameOnboardingStatus?.onboardingComplete;
+    usernameOnboardingStatus?.onboardingComplete === false;
 
   const value = useMemo(
     () => ({

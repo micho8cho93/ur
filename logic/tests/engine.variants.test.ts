@@ -3,7 +3,16 @@ import { applyMove, createInitialState, getValidMoves } from '@/logic/engine';
 import { getPathLength } from '@/logic/pathVariants';
 
 describe('engine variants', () => {
-  it('creates reduced-piece matches from the centralized mode config', () => {
+  it('configures Pure Luck as a three-piece no-capture variant', () => {
+    const pureLuckState = createInitialState(getMatchConfig('gameMode_1_piece'));
+
+    expect(pureLuckState.matchConfig.modeId).toBe('gameMode_1_piece');
+    expect(pureLuckState.matchConfig.rulesVariant).toBe('no-capture');
+    expect(pureLuckState.light.pieces).toHaveLength(3);
+    expect(pureLuckState.dark.pieces).toHaveLength(3);
+  });
+
+  it('creates Race matches with three pieces per side', () => {
     const threePieceState = createInitialState(getMatchConfig('gameMode_3_pieces'));
 
     expect(threePieceState.matchConfig.modeId).toBe('gameMode_3_pieces');
@@ -52,7 +61,7 @@ describe('engine variants', () => {
     expect(state.matchConfig.modeId).toBe('gameMode_capture');
     expect(state.matchConfig.rulesVariant).toBe('capture');
     expect(state.matchConfig.pathVariant).toBe('default');
-    expect(state.light.pieces).toHaveLength(7);
-    expect(state.dark.pieces).toHaveLength(7);
+    expect(state.light.pieces).toHaveLength(5);
+    expect(state.dark.pieces).toHaveLength(5);
   });
 });

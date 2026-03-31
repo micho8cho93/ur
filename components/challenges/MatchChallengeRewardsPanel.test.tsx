@@ -86,6 +86,19 @@ describe('MatchChallengeRewardsPanel', () => {
     expect(screen.queryByText('Medium Mastery')).toBeNull();
   });
 
+  it('stays expanded when the same summary content rerenders with a new object identity', () => {
+    const view = render(<MatchChallengeRewardsPanel summary={buildSummary()} />);
+
+    fireEvent.press(screen.getByText('Show 2 completed challenges'));
+    expect(screen.getByText('Hide completed challenges')).toBeTruthy();
+
+    view.rerender(<MatchChallengeRewardsPanel summary={buildSummary()} />);
+
+    expect(screen.getByText('Hide completed challenges')).toBeTruthy();
+    expect(screen.getByText('First Victory')).toBeTruthy();
+    expect(screen.getByText('Bot Tactician')).toBeTruthy();
+  });
+
   it('returns to the empty state when rewards clear after the list was expanded', () => {
     const view = render(<MatchChallengeRewardsPanel summary={buildSummary()} />);
 

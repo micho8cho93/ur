@@ -31,10 +31,12 @@ type StorageWriteRequest = {
 };
 
 const TOURNAMENT_VARIANTS = [
-  { gameMode: 'gameMode_1_piece', label: '1-piece' },
-  { gameMode: 'gameMode_3_pieces', label: '3-piece' },
-  { gameMode: 'gameMode_5_pieces', label: '5-piece' },
-  { gameMode: 'standard', label: '7-piece' },
+  { gameMode: 'gameMode_1_piece', label: 'Pure Luck' },
+  { gameMode: 'gameMode_3_pieces', label: 'Race' },
+  { gameMode: 'gameMode_finkel_rules', label: 'Finkel Rules' },
+  { gameMode: 'gameMode_capture', label: 'Capture' },
+  { gameMode: 'gameMode_full_path', label: 'Extended Path' },
+  { gameMode: 'standard', label: 'Quick Play' },
 ] as const;
 
 const buildStorageKey = (collection: string, key: string, userId = ''): string =>

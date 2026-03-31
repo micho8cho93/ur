@@ -206,7 +206,7 @@ describe('useGameStore', () => {
     expect(useGameStore.getState().validMoves).toEqual([]);
   });
 
-  it('applyServerSnapshot() ignores stale revisions and accepts newer ones with authoritative timer metadata', () => {
+  it('applyServerSnapshot() ignores stale revisions and accepts newer ones for the active match with authoritative timer metadata', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-03-27T12:00:00.000Z'));
     useGameStore.setState({ serverRevision: 3, matchId: 'keep-match' });
     const staleState = makeState({ phase: 'moving', rollValue: 1 });
@@ -231,7 +231,7 @@ describe('useGameStore', () => {
     const newerState = makeState({ phase: 'moving', rollValue: 1 });
     useGameStore.getState().applyServerSnapshot(
       makeSnapshot({
-        matchId: 'new-match',
+        matchId: 'keep-match',
         revision: 4,
         gameState: newerState,
         historyCount: 42,
@@ -257,7 +257,7 @@ describe('useGameStore', () => {
 
     const state = useGameStore.getState();
     expect(state.serverRevision).toBe(4);
-    expect(state.matchId).toBe('new-match');
+    expect(state.matchId).toBe('keep-match');
     expect(state.gameState).toEqual(newerState);
     expect(state.validMoves.length).toBeGreaterThan(0);
     expect(state.authoritativeServerTimeMs).toBe(2_000);
@@ -283,6 +283,41 @@ describe('useGameStore', () => {
       message: null,
     });
     expect(state.authoritativeSnapshotReceivedAtMs).toBe(new Date('2026-03-27T12:00:00.000Z').getTime());
+  });
+
+  it('applyServerSnapshot() ignores newer snapshots that belong to a different active match', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-27T12:00:00.000Z'));
+    useGameStore.setState({
+      matchId: 'active-match',
+      serverRevision: 0,
+      gameState: engine.createInitialState(),
+    });
+
+    const staleForeignState = makeState({
+      phase: 'ended',
+      winner: 'dark',
+    });
+
+    useGameStore.getState().applyServerSnapshot(
+      makeSnapshot({
+        matchId: 'previous-match',
+        revision: 99,
+        gameState: staleForeignState,
+        matchEnd: {
+          reason: 'completed',
+          winnerUserId: 'dark-user',
+          loserUserId: 'light-user',
+          forfeitingUserId: null,
+          message: null,
+        },
+      }),
+    );
+
+    const state = useGameStore.getState();
+    expect(state.matchId).toBe('active-match');
+    expect(state.serverRevision).toBe(0);
+    expect(state.gameState).toEqual(engine.createInitialState());
+    expect(state.authoritativeMatchEnd).toBeNull();
   });
 
   it('offline roll() during rolling phase sets rollValue, moves to moving phase, and computes validMoves', () => {
