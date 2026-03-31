@@ -3760,7 +3760,7 @@ export function GameRoom() {
     )
     : 0;
   const mobileWebBoardTrayAlignmentBaseLift = isMobileWebLayout && useMobileSideReserveRails
-    ? Math.max(8, Math.round(mobileReserveColumnWidth * 0.16))
+    ? Math.max(8, Math.round(mobileReserveColumnWidth))
     : 0;
   const mobileWebBoardTrayAlignmentLift =
     mobileWebBoardTrayAlignmentBaseLift + mobileBoardTrayAlignmentCorrection;
