@@ -3945,6 +3945,8 @@ export function GameRoom() {
     reserveColumnWidth: mobileReserveColumnWidth,
     useMobileSideReserveRails,
   });
+  const mobileReserveRailAlignedTopOffset =
+    mobileReserveRailTopOffset + mobileWebBoardTrayAlignmentLift;
   const mobileWebUnderBoardDiceFrame = useMemo(() => {
     if (!useMobileSideReserveRails || !boardTargetFrame) {
       return null;
@@ -5020,23 +5022,46 @@ export function GameRoom() {
               />
             </View>
             {isMobileLayout && isTurnTimerEnabled ? (
-              <View pointerEvents="none" style={styles.scoreTimerSlot}>
-                <GameStageHUD
-                  isMyTurn={isMyTurn}
-                  canRoll={canRoll}
-                  phase={gameState.phase}
-                  compact
-                  layout="inline"
-                  timerDurationMs={resolvedTurnTimerDurationMs}
-                  timerRemainingMs={resolvedTurnTimerRemainingMs}
-                  timerIsRunning={isVisualTurnTimerRunning}
-                  timerKey={resolvedTurnTimerKey}
-                  timerWarningThreshold={VISUAL_TURN_TIMER_WARNING_THRESHOLD}
-                  timerSize={30}
-                />
+              <View
+                pointerEvents={showMobileWebStatusInfoButton ? 'box-none' : 'none'}
+                style={styles.scoreTimerSlot}
+              >
+                <View style={styles.scoreTimerCluster}>
+                  <GameStageHUD
+                    isMyTurn={isMyTurn}
+                    canRoll={canRoll}
+                    phase={gameState.phase}
+                    compact
+                    layout="inline"
+                    timerDurationMs={resolvedTurnTimerDurationMs}
+                    timerRemainingMs={resolvedTurnTimerRemainingMs}
+                    timerIsRunning={isVisualTurnTimerRunning}
+                    timerKey={resolvedTurnTimerKey}
+                    timerWarningThreshold={VISUAL_TURN_TIMER_WARNING_THRESHOLD}
+                    timerSize={30}
+                  />
+                  {showMobileWebStatusInfoButton ? (
+                    <Pressable
+                      testID="mobile-match-status-button"
+                      accessibilityRole="button"
+                      accessibilityLabel="Show match status"
+                      onPress={() => {
+                        resumeAnnouncementCuesFromInteraction();
+                        setShowTopMenu(false);
+                        setShowMatchStatusInfo((current) => !current);
+                      }}
+                      style={({ pressed }) => [
+                        styles.scoreInfoButton,
+                        pressed && styles.scoreInfoButtonPressed,
+                      ]}
+                    >
+                      <MaterialIcons name="info-outline" size={15} color={urTheme.colors.ivory} />
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
             ) : null}
-            {showMobileWebStatusInfoButton ? (
+            {showMobileWebStatusInfoButton && !(isMobileLayout && isTurnTimerEnabled) ? (
               <Pressable
                 testID="mobile-match-status-button"
                 accessibilityRole="button"
@@ -5282,7 +5307,7 @@ export function GameRoom() {
                   <View
                     style={[
                       styles.mobileReserveSideColumn,
-                      { width: mobileReserveColumnWidth, paddingTop: mobileReserveRailTopOffset },
+                      { width: mobileReserveColumnWidth, paddingTop: mobileReserveRailAlignedTopOffset },
                     ]}
                   >
                     <PieceRail
@@ -5303,13 +5328,7 @@ export function GameRoom() {
                 ) : null}
 
                 <View
-                  style={[
-                    styles.boardCenterColumn,
-                    mobileWebBoardTrayAlignmentLift > 0 && {
-                      marginTop: -mobileWebBoardTrayAlignmentLift,
-                      marginBottom: mobileWebBoardTrayAlignmentLift,
-                    },
-                  ]}
+                  style={styles.boardCenterColumn}
                 >
                   <View
                     style={[styles.boardViewport]}
@@ -5332,7 +5351,7 @@ export function GameRoom() {
                   <View
                     style={[
                       styles.mobileReserveSideColumn,
-                      { width: mobileReserveColumnWidth, paddingTop: mobileReserveRailTopOffset },
+                      { width: mobileReserveColumnWidth, paddingTop: mobileReserveRailAlignedTopOffset },
                     ]}
                   >
                     <PieceRail
@@ -5971,6 +5990,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  scoreTimerCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: urTheme.spacing.xs,
   },
   boardClusterWide: {
     width: '100%',
