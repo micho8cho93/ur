@@ -155,6 +155,7 @@ const MATCH_PRESENTATION_ASSETS = [
   require('../../assets/dice/dice_marked.png'),
   require('../../assets/dice/dice_unmarked.png'),
   require('../../assets/buttons/roll_button.png'),
+  require('../../assets/buttons/emoji_reaction_trigger.png'),
 ];
 
 const MATCH_AMBIENT_EFFECTS = {
@@ -870,6 +871,7 @@ export function GameRoom() {
   const [showMatchStatusInfo, setShowMatchStatusInfo] = React.useState(false);
   const [showEmojiReactionMenu, setShowEmojiReactionMenu] = React.useState(false);
   const [emojiReactionsRemaining, setEmojiReactionsRemaining] = React.useState(MAX_EMOJI_REACTIONS_PER_MATCH);
+  const [emojiReactionTriggerWidth, setEmojiReactionTriggerWidth] = React.useState<number | null>(null);
   const [showRulesIntroModal, setShowRulesIntroModal] = React.useState(Boolean(rulesIntro));
   const [matchChallengeSummary, setMatchChallengeSummary] = React.useState<MatchChallengeRewardSummary | null>(null);
   const [matchRewardsErrorMessage, setMatchRewardsErrorMessage] = React.useState<string | null>(null);
@@ -1014,6 +1016,10 @@ export function GameRoom() {
 
   const removeFloatingReaction = React.useCallback((id: string) => {
     setFloatingReactions((current) => current.filter((reaction) => reaction.id !== id));
+  }, []);
+
+  const handleRollButtonMeasuredWidth = React.useCallback((nextWidth: number) => {
+    setEmojiReactionTriggerWidth((current) => (current === nextWidth ? current : nextWidth));
   }, []);
 
   const handleToggleEmojiReactionMenu = React.useCallback(() => {
@@ -4423,7 +4429,11 @@ export function GameRoom() {
 
   const emojiControlsDisabled =
     emojiReactionsRemaining <= 0 || !shouldShowEmojiControls || !isOnlineInteractionReady;
-  const renderEmojiReactionControl = (style?: StyleProp<ViewStyle>, compact = compactSupportUi) => {
+  const renderEmojiReactionControl = (
+    style?: StyleProp<ViewStyle>,
+    compact = compactSupportUi,
+    buttonWidth = emojiReactionTriggerWidth ?? undefined,
+  ) => {
     if (!shouldShowEmojiControls) {
       return null;
     }
@@ -4439,6 +4449,7 @@ export function GameRoom() {
         onToggle={handleToggleEmojiReactionMenu}
         options={EMOJI_REACTION_OPTIONS}
         remainingCount={emojiReactionsRemaining}
+        buttonWidth={buttonWidth}
         style={style}
       />
     );
@@ -4563,8 +4574,9 @@ export function GameRoom() {
                 showVisual={false}
                 visualPlacement={detachedDiceVisualPlacement}
                 artSize={mobileWebRollButtonArtSize}
+                onMeasuredWidth={handleRollButtonMeasuredWidth}
               />
-              {renderEmojiReactionControl(styles.diceReactionControl, true)}
+              {renderEmojiReactionControl(styles.diceReactionControl, true, mobileWebRollButtonArtSize)}
             </View>
           </View>
         </View>
@@ -4729,9 +4741,10 @@ export function GameRoom() {
                 showVisual={false}
                 visualPlacement="external"
                 artSize={mobileBoardGapControlMetrics.rollArtSize}
+                onMeasuredWidth={handleRollButtonMeasuredWidth}
               />
             )}
-            {renderEmojiReactionControl(styles.diceReactionControl, true)}
+            {renderEmojiReactionControl(styles.diceReactionControl, true, mobileBoardGapControlMetrics.rollArtSize)}
           </View>
         </View>
       ) : null}
@@ -5163,8 +5176,9 @@ export function GameRoom() {
                         showVisual={false}
                         visualPlacement={detachedDiceVisualPlacement}
                         artSize={webRollButtonSize}
+                        onMeasuredWidth={handleRollButtonMeasuredWidth}
                       />
-                      {renderEmojiReactionControl(styles.diceReactionControl)}
+                      {renderEmojiReactionControl(styles.diceReactionControl, compactSupportUi, webRollButtonSize)}
                     </View>
                   </View>
                 ) : (
@@ -5183,6 +5197,7 @@ export function GameRoom() {
                       showStatusCopy={introsComplete}
                       showVisual={showPersistentDiceVisual}
                       visualPlacement={detachedDiceVisualPlacement}
+                      onMeasuredWidth={handleRollButtonMeasuredWidth}
                     />
                     {renderEmojiReactionControl(styles.diceReactionControl)}
                   </View>
@@ -5300,8 +5315,9 @@ export function GameRoom() {
                         showVisual={showPersistentDiceVisual && !showMobileWebDetachedDiceVisual}
                         visualPlacement={detachedDiceVisualPlacement}
                         artSize={mobileWebRollButtonArtSize}
+                        onMeasuredWidth={handleRollButtonMeasuredWidth}
                       />
-                      {renderEmojiReactionControl(styles.diceReactionControl, true)}
+                      {renderEmojiReactionControl(styles.diceReactionControl, true, mobileWebRollButtonArtSize)}
                     </View>
                   </View>
                 </View>
@@ -5393,6 +5409,7 @@ export function GameRoom() {
                         showStatusCopy={introsComplete}
                         showVisual={showPersistentDiceVisual && !showMobileWebDetachedDiceVisual}
                         visualPlacement={detachedDiceVisualPlacement}
+                        onMeasuredWidth={handleRollButtonMeasuredWidth}
                       />
                       {renderEmojiReactionControl(styles.diceReactionControl, true)}
                     </View>
@@ -5979,6 +5996,7 @@ const styles = StyleSheet.create({
   },
   diceReactionControl: {
     zIndex: 1,
+    marginTop: 2,
   },
   mobileDiceRow: {
     width: '100%',

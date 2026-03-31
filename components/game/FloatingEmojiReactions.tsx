@@ -2,9 +2,9 @@ import { boxShadow, textShadow } from '@/constants/styleEffects';
 import { urTheme } from '@/constants/urTheme';
 import type { PlayerColor } from '@/logic/types';
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
-const FLOAT_DURATION_MS = 2_000;
+const FLOAT_DURATION_MS = 2_500;
 
 export interface FloatingEmojiReactionItem {
   id: string;
@@ -23,9 +23,11 @@ interface FloatingEmojiReactionsProps {
 function FloatingEmojiReactionBubble({
   onComplete,
   reaction,
+  travelDistance,
 }: {
   onComplete: (id: string) => void;
   reaction: FloatingEmojiReactionItem;
+  travelDistance: number;
 }) {
   const progress = useRef(new Animated.Value(0)).current;
 
@@ -54,7 +56,7 @@ function FloatingEmojiReactionBubble({
   });
   const translateY = progress.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -220],
+    outputRange: [0, -travelDistance],
   });
   const translateX = progress.interpolate({
     inputRange: [0, 1],
@@ -98,14 +100,31 @@ export function FloatingEmojiReactions({
   onComplete,
   reactions,
 }: FloatingEmojiReactionsProps) {
+  const { height: windowHeight } = useWindowDimensions();
+  const [overlayHeight, setOverlayHeight] = React.useState(0);
+
   if (reactions.length === 0) {
     return null;
   }
 
+  const travelDistance = Math.round((overlayHeight || windowHeight) * 0.8);
+
   return (
-    <View pointerEvents="none" style={styles.overlay}>
+    <View
+      pointerEvents="none"
+      style={styles.overlay}
+      onLayout={(event) => {
+        const nextHeight = Math.round(event.nativeEvent.layout.height);
+        setOverlayHeight((current) => (current === nextHeight ? current : nextHeight));
+      }}
+    >
       {reactions.map((reaction) => (
-        <FloatingEmojiReactionBubble key={reaction.id} onComplete={onComplete} reaction={reaction} />
+        <FloatingEmojiReactionBubble
+          key={reaction.id}
+          onComplete={onComplete}
+          reaction={reaction}
+          travelDistance={travelDistance}
+        />
       ))}
     </View>
   );

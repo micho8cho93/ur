@@ -2,7 +2,18 @@ import { SlotDiceScene } from '@/components/game/SlotDiceScene';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures } from '@/constants/urTheme';
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, Platform, StyleProp, StyleSheet, Text, TouchableOpacity, View, ViewStyle, useWindowDimensions } from 'react-native';
+import {
+  Image,
+  LayoutChangeEvent,
+  Platform,
+  StyleProp,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  ViewStyle,
+  useWindowDimensions,
+} from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -37,6 +48,7 @@ interface DiceProps {
   showVisual?: boolean;
   visualPlacement?: 'embedded' | 'external';
   artSize?: number;
+  onMeasuredWidth?: (width: number) => void;
 }
 
 interface DiceStageVisualProps {
@@ -186,6 +198,7 @@ export const Dice: React.FC<DiceProps> = ({
   showVisual = true,
   visualPlacement = 'embedded',
   artSize,
+  onMeasuredWidth,
 }) => {
   const { width } = useWindowDimensions();
   const isMobileWidth = width < 760;
@@ -412,6 +425,15 @@ export const Dice: React.FC<DiceProps> = ({
           ? 'Tap to roll'
           : 'Wait turn';
   const isRollDisabled = !canRoll || rolling || pressedIn;
+  const handleLayout = React.useCallback(
+    (event: LayoutChangeEvent) => {
+      const nextWidth = Math.round(event.nativeEvent.layout.width);
+      if (nextWidth > 0) {
+        onMeasuredWidth?.(nextWidth);
+      }
+    },
+    [onMeasuredWidth],
+  );
 
   const renderDiceVisual = (sceneStyle?: StyleProp<ViewStyle>) => (
     <View pointerEvents="none" testID="dice-roll-scene-host" style={[styles.rollSceneViewport, sceneStyle]}>
@@ -432,6 +454,7 @@ export const Dice: React.FC<DiceProps> = ({
         onPress={onRoll}
         disabled={isRollDisabled}
         activeOpacity={0.9}
+        onLayout={handleLayout}
         testID="dice-roll-button"
         style={[styles.touchable, isMobileCompactStage && styles.mobileStageTouchable, styles.artStageTouchable]}
       >
@@ -494,6 +517,7 @@ export const Dice: React.FC<DiceProps> = ({
       onPress={onRoll}
       disabled={isRollDisabled}
       activeOpacity={0.9}
+      onLayout={handleLayout}
       testID="dice-roll-button"
       style={[styles.touchable, isStage && styles.stageTouchable, isMobileCompactStage && styles.mobileStageTouchable]}
     >

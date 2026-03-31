@@ -2,7 +2,7 @@ import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
 import type { EmojiReactionKey } from '@/shared/urMatchProtocol';
 import React from 'react';
-import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { Image, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 export type EmojiReactionMenuOption = {
   key: EmojiReactionKey;
@@ -11,6 +11,7 @@ export type EmojiReactionMenuOption = {
 };
 
 interface EmojiReactionMenuProps {
+  buttonWidth?: number;
   compact?: boolean;
   disabled?: boolean;
   menuVisible: boolean;
@@ -21,7 +22,13 @@ interface EmojiReactionMenuProps {
   style?: StyleProp<ViewStyle>;
 }
 
+const emojiReactionTriggerImage = require('../../assets/buttons/emoji_reaction_trigger.png');
+const EMOJI_TRIGGER_ASPECT_RATIO = 520 / 236;
+const DEFAULT_TRIGGER_WIDTH = 112;
+const DEFAULT_TRIGGER_WIDTH_COMPACT = 94;
+
 export function EmojiReactionMenu({
+  buttonWidth,
   compact = false,
   disabled = false,
   menuVisible,
@@ -31,6 +38,13 @@ export function EmojiReactionMenu({
   remainingCount,
   style,
 }: EmojiReactionMenuProps) {
+  const resolvedTriggerWidth = Math.max(
+    1,
+    Math.round(buttonWidth ?? (compact ? DEFAULT_TRIGGER_WIDTH_COMPACT : DEFAULT_TRIGGER_WIDTH)),
+  );
+  const resolvedTriggerHeight = Math.max(1, Math.round(resolvedTriggerWidth / EMOJI_TRIGGER_ASPECT_RATIO));
+  const triggerRadius = Math.round(resolvedTriggerHeight / 2);
+
   return (
     <View style={[styles.wrap, style]}>
       {menuVisible ? (
@@ -56,18 +70,55 @@ export function EmojiReactionMenu({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Send emoji. ${remainingCount} left.`}
+        accessibilityState={{ disabled, expanded: menuVisible }}
         disabled={disabled}
         onPress={onToggle}
-        style={({ pressed }) => [
+        style={[
           styles.triggerButton,
           compact && styles.triggerButtonCompact,
           disabled && styles.triggerButtonDisabled,
-          pressed && !disabled && styles.triggerButtonPressed,
+          { width: resolvedTriggerWidth },
         ]}
       >
-        <Text style={[styles.triggerButtonText, compact && styles.triggerButtonTextCompact]}>
-          {`Send Emoji (${remainingCount} left)`}
-        </Text>
+        {({ pressed }) => {
+          const showSunkenState = !disabled && (menuVisible || pressed);
+
+          return (
+            <>
+              <View
+                style={[
+                  styles.triggerImageFrame,
+                  showSunkenState ? styles.triggerImageFrameSunken : styles.triggerImageFrameRaised,
+                  { borderRadius: triggerRadius },
+                ]}
+              >
+                <Image
+                  accessibilityIgnoresInvertColors
+                  resizeMode="cover"
+                  source={emojiReactionTriggerImage}
+                  style={[
+                    styles.triggerImage,
+                    {
+                      width: resolvedTriggerWidth,
+                      height: resolvedTriggerHeight,
+                    },
+                  ]}
+                />
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.triggerImageOverlay,
+                    showSunkenState && styles.triggerImageOverlaySunken,
+                    disabled && styles.triggerImageOverlayDisabled,
+                  ]}
+                />
+              </View>
+              <Text style={[styles.triggerButtonText, compact && styles.triggerButtonTextCompact]}>
+                {`${remainingCount} left`}
+              </Text>
+            </>
+          );
+        }}
       </Pressable>
     </View>
   );
@@ -127,41 +178,60 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   triggerButton: {
-    minHeight: 34,
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: 7,
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 1.2,
-    borderColor: 'rgba(244, 205, 123, 0.72)',
-    backgroundColor: 'rgba(20, 14, 10, 0.92)',
     alignItems: 'center',
     justifyContent: 'center',
-    ...boxShadow({
-      color: '#000',
-      opacity: 0.2,
-      offset: { width: 0, height: 4 },
-      blurRadius: 8,
-      elevation: 5,
-    }),
+    gap: 4,
   },
   triggerButtonCompact: {
-    minHeight: 30,
-    paddingHorizontal: urTheme.spacing.sm,
-    paddingVertical: 6,
+    gap: 3,
   },
   triggerButtonDisabled: {
     opacity: 0.52,
   },
-  triggerButtonPressed: {
-    opacity: 0.82,
+  triggerImageFrame: {
+    overflow: 'hidden',
+  },
+  triggerImageFrameRaised: {
+    transform: [{ translateY: 0 }],
+    ...boxShadow({
+      color: '#120904',
+      opacity: 0.26,
+      offset: { width: 0, height: 6 },
+      blurRadius: 10,
+      elevation: 7,
+    }),
+  },
+  triggerImageFrameSunken: {
+    transform: [{ translateY: 3 }, { scale: 0.985 }],
+    ...boxShadow({
+      color: '#120904',
+      opacity: 0.12,
+      offset: { width: 0, height: 1 },
+      blurRadius: 3,
+      elevation: 2,
+    }),
+  },
+  triggerImage: {
+    maxWidth: '100%',
+  },
+  triggerImageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.01)',
+  },
+  triggerImageOverlaySunken: {
+    backgroundColor: 'rgba(10, 7, 5, 0.16)',
+  },
+  triggerImageOverlayDisabled: {
+    backgroundColor: 'rgba(8, 6, 4, 0.28)',
   },
   triggerButtonText: {
     ...urTypography.label,
-    color: urTheme.colors.ivory,
-    fontSize: 11,
+    color: 'rgba(250, 237, 214, 0.92)',
+    fontSize: 10,
+    letterSpacing: 0.4,
     textAlign: 'center',
   },
   triggerButtonTextCompact: {
-    fontSize: 10,
+    fontSize: 9,
   },
 });
