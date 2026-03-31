@@ -141,4 +141,19 @@ describe('Dice', () => {
 
     expect(onResultShown).toHaveBeenCalledTimes(1);
   });
+
+  it('shows a custom settled result label when provided', () => {
+    render(
+      <Dice
+        value={2}
+        resultLabel="No Move"
+        rolling={false}
+        onRoll={jest.fn()}
+        canRoll={false}
+        mode="panel"
+      />,
+    );
+
+    expect(screen.getByText('Result: No Move')).toBeTruthy();
+  });
 });

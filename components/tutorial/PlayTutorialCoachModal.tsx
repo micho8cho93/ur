@@ -27,36 +27,56 @@ export const PlayTutorialCoachModal: React.FC<PlayTutorialCoachModalProps> = ({
     280,
     Math.min(height - (isMobileWeb ? 20 : 32), Math.round(height * (isMobileWeb ? 0.9 : 0.84))),
   );
+  const overlayContent = (
+    <View style={[styles.backdrop, isMobileWeb && styles.backdropMobileWeb]}>
+      <View style={[styles.sheet, isMobileWeb && styles.sheetMobileWeb, { maxHeight: resolvedMaxHeight }]}>
+        <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
+        <Image source={urTextures.border} resizeMode="repeat" style={styles.borderTexture} />
+        <View style={styles.sheetGlow} />
+        <View style={styles.border} />
+
+        <ScrollView
+          style={styles.contentScroll}
+          contentContainerStyle={styles.contentScrollContent}
+          alwaysBounceVertical={false}
+          bounces={false}
+          showsVerticalScrollIndicator={false}
+        >
+          {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.body}>{body}</Text>
+        </ScrollView>
+
+        <Button title={actionLabel} onPress={onContinue} />
+      </View>
+    </View>
+  );
+
+  if (!visible) {
+    return null;
+  }
+
+  if (Platform.OS === 'web') {
+    return (
+      <View pointerEvents="box-none" style={styles.webOverlay}>
+        {overlayContent}
+      </View>
+    );
+  }
 
   return (
-    <RNModal transparent visible={visible} animationType="fade">
-      <View style={[styles.backdrop, isMobileWeb && styles.backdropMobileWeb]}>
-        <View style={[styles.sheet, isMobileWeb && styles.sheetMobileWeb, { maxHeight: resolvedMaxHeight }]}>
-          <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
-          <Image source={urTextures.border} resizeMode="repeat" style={styles.borderTexture} />
-          <View style={styles.sheetGlow} />
-          <View style={styles.border} />
-
-          <ScrollView
-            style={styles.contentScroll}
-            contentContainerStyle={styles.contentScrollContent}
-            alwaysBounceVertical={false}
-            bounces={false}
-            showsVerticalScrollIndicator={false}
-          >
-            {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-            <Text style={styles.title}>{title}</Text>
-            <Text style={styles.body}>{body}</Text>
-          </ScrollView>
-
-          <Button title={actionLabel} onPress={onContinue} />
-        </View>
-      </View>
+    <RNModal transparent visible animationType="fade">
+      {overlayContent}
     </RNModal>
   );
 };
 
 const styles = StyleSheet.create({
+  webOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 120,
+    elevation: 40,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(4, 7, 12, 0.72)',

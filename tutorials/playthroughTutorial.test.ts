@@ -38,8 +38,9 @@ const replayScriptManually = (): ReplayFrame[] => {
         rollValue: step.value,
       };
       const validMoves = getValidMoves(rolledState, step.value);
+      const noMoves = step.forceNoMoves === true || validMoves.length === 0;
 
-      if (validMoves.length === 0) {
+      if (noMoves) {
         state = {
           ...rolledState,
           currentTurn: rolledState.currentTurn === 'light' ? 'dark' : 'light',
@@ -225,6 +226,38 @@ describe('playthrough tutorial continuous script', () => {
     expect(lightRollValues.some((roll, index) => roll === 0 && lightRollValues[index + 1] === 0)).toBe(false);
   });
 
+  it('teaches zero rolls and blocked non-zero rolls with scripted result modals', () => {
+    const zeroRollStep = PLAYTHROUGH_TUTORIAL_SCRIPT.find(
+      (step) => step.kind === 'ROLL' && step.id === 'roll-light-pass-before-capture-setup',
+    );
+    const blockedRollStep = PLAYTHROUGH_TUTORIAL_SCRIPT.find(
+      (step) => step.kind === 'ROLL' && step.id === 'roll-light-home-rosette-no-move',
+    );
+    const homeRosetteMoveIndex = PLAYTHROUGH_TUTORIAL_SCRIPT.findIndex(
+      (step) => step.kind === 'MOVE' && step.id === 'move-light-home-rosette',
+    );
+    const blockedRollIndex = PLAYTHROUGH_TUTORIAL_SCRIPT.findIndex(
+      (step) => step.kind === 'ROLL' && step.id === 'roll-light-home-rosette-no-move',
+    );
+
+    expect(zeroRollStep).toMatchObject({
+      value: 0,
+      expectNoMoves: true,
+      resultModal: {
+        title: 'Zeros Can Be Rolled',
+      },
+    });
+    expect(blockedRollStep).toMatchObject({
+      value: 2,
+      expectNoMoves: true,
+      forceNoMoves: true,
+      resultModal: {
+        title: 'No Move',
+      },
+    });
+    expect(blockedRollIndex).toBe(homeRosetteMoveIndex + 1);
+  });
+
   it('exports opening and completion modal copy for the guided flow', () => {
     expect(PLAYTHROUGH_TUTORIAL_OPENING_MODAL).toMatchObject({
       title: 'Roll, move, and race to score',
@@ -266,6 +299,16 @@ describe('playthrough tutorial continuous script', () => {
         hasMoves: false,
       }),
     ).toBe('Dark rolled a zero, so the turn comes back to you.');
+
+    expect(
+      getPlaythroughTutorialInstruction({
+        stepId: 'roll-light-home-rosette-no-move',
+        turn: 'light',
+        phase: 'moving',
+        rollValue: 2,
+        hasMoves: false,
+      }),
+    ).toBe('No move matches that roll, so your turn passes.');
   });
 
   it('derives the exported frame timeline only by applying the next scripted step', () => {

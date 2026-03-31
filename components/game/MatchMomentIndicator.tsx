@@ -10,6 +10,7 @@ export interface MatchMomentIndicatorCue {
   border: string;
   glow: string;
   background: string;
+  compact?: boolean;
   durationMs?: number;
 }
 
@@ -99,22 +100,25 @@ export function MatchMomentIndicator({ cue, fontFamily, supplementaryText, onHid
   }
 
   const resolvedFontFamily = fontFamily ?? urTypography.title.fontFamily;
+  const isCompactCue = cue.compact === true;
 
   return (
     <View pointerEvents="none" style={styles.overlay}>
       <Animated.View
         style={[
           styles.shell,
+          isCompactCue && styles.shellCompact,
           {
             opacity,
             transform: [{ translateY }, { scale }],
           },
         ]}
       >
-        <View style={[styles.glow, { backgroundColor: cue.glow }]} />
+        <View style={[styles.glow, isCompactCue && styles.glowCompact, { backgroundColor: cue.glow }]} />
         <View
           style={[
             styles.plaque,
+            isCompactCue && styles.plaqueCompact,
             {
               borderColor: cue.border,
               backgroundColor: cue.background,
@@ -132,10 +136,16 @@ export function MatchMomentIndicator({ cue, fontFamily, supplementaryText, onHid
           <Image source={urTextures.rosette} resizeMode="repeat" style={styles.rosetteTexture} />
           <View style={[styles.innerBorder, { borderColor: cue.border }]} />
 
-          <View style={styles.ruleRow}>
-            <View style={[styles.rule, { backgroundColor: cue.border }]} />
-            <View style={[styles.ruleGem, { borderColor: cue.border, backgroundColor: cue.glow }]} />
-            <View style={[styles.rule, { backgroundColor: cue.border }]} />
+          <View style={[styles.ruleRow, isCompactCue && styles.ruleRowCompact]}>
+            <View style={[styles.rule, isCompactCue && styles.ruleCompact, { backgroundColor: cue.border }]} />
+            <View
+              style={[
+                styles.ruleGem,
+                isCompactCue && styles.ruleGemCompact,
+                { borderColor: cue.border, backgroundColor: cue.glow },
+              ]}
+            />
+            <View style={[styles.rule, isCompactCue && styles.ruleCompact, { backgroundColor: cue.border }]} />
           </View>
 
           <Text
@@ -144,6 +154,7 @@ export function MatchMomentIndicator({ cue, fontFamily, supplementaryText, onHid
             numberOfLines={2}
             style={[
               styles.message,
+              isCompactCue && styles.messageCompact,
               {
                 color: urTheme.colors.ivory,
                 fontFamily: resolvedFontFamily,
@@ -159,10 +170,16 @@ export function MatchMomentIndicator({ cue, fontFamily, supplementaryText, onHid
             {cue.message}
           </Text>
 
-          <View style={styles.ruleRow}>
-            <View style={[styles.rule, { backgroundColor: cue.border }]} />
-            <View style={[styles.ruleGem, { borderColor: cue.border, backgroundColor: cue.glow }]} />
-            <View style={[styles.rule, { backgroundColor: cue.border }]} />
+          <View style={[styles.ruleRow, isCompactCue && styles.ruleRowCompact]}>
+            <View style={[styles.rule, isCompactCue && styles.ruleCompact, { backgroundColor: cue.border }]} />
+            <View
+              style={[
+                styles.ruleGem,
+                isCompactCue && styles.ruleGemCompact,
+                { borderColor: cue.border, backgroundColor: cue.glow },
+              ]}
+            />
+            <View style={[styles.rule, isCompactCue && styles.ruleCompact, { backgroundColor: cue.border }]} />
           </View>
         </View>
         {supplementaryText ? (
@@ -201,12 +218,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  shellCompact: {
+    maxWidth: 260,
+  },
   glow: {
     position: 'absolute',
     width: '88%',
     height: 132,
     borderRadius: 999,
     opacity: 0.82,
+  },
+  glowCompact: {
+    width: '74%',
+    height: 76,
+    opacity: 0.68,
   },
   plaque: {
     width: '100%',
@@ -218,6 +243,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: urTheme.spacing.sm,
+  },
+  plaqueCompact: {
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1.2,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.sm,
+    gap: urTheme.spacing.xs,
   },
   texture: {
     ...StyleSheet.absoluteFillObject,
@@ -240,10 +272,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: urTheme.spacing.sm,
   },
+  ruleRowCompact: {
+    gap: urTheme.spacing.xs,
+  },
   rule: {
     flex: 1,
     height: 1.5,
     opacity: 0.78,
+  },
+  ruleCompact: {
+    height: 1,
+    opacity: 0.62,
   },
   ruleGem: {
     width: 14,
@@ -252,6 +291,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.1,
     opacity: 0.92,
   },
+  ruleGemCompact: {
+    width: 8,
+    height: 8,
+    borderWidth: 0.9,
+    opacity: 0.76,
+  },
   message: {
     ...urTypography.title,
     width: '100%',
@@ -259,6 +304,11 @@ const styles = StyleSheet.create({
     lineHeight: 40,
     letterSpacing: 1.3,
     textAlign: 'center',
+  },
+  messageCompact: {
+    fontSize: 20,
+    lineHeight: 24,
+    letterSpacing: 0.5,
   },
   supplementaryRow: {
     width: '100%',

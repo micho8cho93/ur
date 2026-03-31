@@ -10,6 +10,14 @@ export interface TutorialLessonContent {
   strategyTip: string;
 }
 
+export interface TutorialResultModalContent {
+  eyebrow?: string;
+  title: string;
+  body: string;
+  actionLabel?: string;
+  delayMs?: number;
+}
+
 interface TutorialStepBase {
   id: string;
   note?: string;
@@ -21,6 +29,8 @@ export interface TutorialRollStep extends TutorialStepBase {
   player: PlayerColor;
   value: TutorialRollValue;
   expectNoMoves?: boolean;
+  forceNoMoves?: boolean;
+  resultModal?: TutorialResultModalContent;
 }
 
 export interface TutorialMoveStep extends TutorialStepBase {

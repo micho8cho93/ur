@@ -43,7 +43,7 @@ const applyRollValue = (
   rolledState.phase = 'moving';
 
   const validMoves = getValidMoves(rolledState, step.value);
-  const noMoves = validMoves.length === 0;
+  const noMoves = step.forceNoMoves === true || validMoves.length === 0;
 
   if (typeof step.expectNoMoves === 'boolean') {
     assertStep(noMoves === step.expectNoMoves, step, index, `expectNoMoves=${step.expectNoMoves} mismatch`);

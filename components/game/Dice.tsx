@@ -24,6 +24,7 @@ const ROLL_BUTTON_ART = require('../../assets/buttons/roll_button.png');
 interface DiceProps {
   animationDurationMs?: number;
   value: number | null;
+  resultLabel?: string | null;
   rolling: boolean;
   onRoll: () => void;
   canRoll: boolean;
@@ -172,6 +173,7 @@ export const DiceStageVisual: React.FC<DiceStageVisualProps> = ({
 export const Dice: React.FC<DiceProps> = ({
   animationDurationMs = DEFAULT_DICE_ROLL_DURATION_MS,
   value,
+  resultLabel = null,
   rolling,
   onRoll,
   canRoll,
@@ -203,6 +205,8 @@ export const Dice: React.FC<DiceProps> = ({
     canRoll,
     showVisual: shouldRenderEmbeddedVisual,
   });
+  const settledResultText = resolvedValue !== null ? String(resolvedValue) : null;
+  const displayedResultText = resultLabel ?? settledResultText;
 
   useEffect(() => {
     if (canRoll && !rolling) {
@@ -353,7 +357,11 @@ export const Dice: React.FC<DiceProps> = ({
     ],
   }));
 
-  const title = isSceneRolling ? 'Casting...' : resolvedValue !== null ? `Result: ${resolvedValue}` : 'Cast The Dice';
+  const title = isSceneRolling
+    ? 'Casting...'
+    : displayedResultText !== null
+      ? `Result: ${displayedResultText}`
+      : 'Cast The Dice';
   const subtitle = isSceneRolling
     ? 'The astragali are in motion'
     : hasSettledResult
@@ -395,6 +403,7 @@ export const Dice: React.FC<DiceProps> = ({
   const mobileDiceScale = isIOS ? MOBILE_DICE_SCALE * 1.08 : MOBILE_DICE_SCALE;
   const sceneSize = sceneBaseSize * (isStage ? STAGE_ROLL_SCENE_SCALE : 1) * (isMobileWidth ? mobileDiceScale : 1);
   const compactStageTitle = isSceneRolling ? 'Casting...' : hasSettledResult ? 'Roll Result' : 'Cast Dice';
+  const compactStageDisplayTitle = resultLabel !== null && hasSettledResult ? resultLabel : compactStageTitle;
   const compactStageSubtitle = isSceneRolling
     ? 'Rolling'
     : hasSettledResult
@@ -530,7 +539,7 @@ export const Dice: React.FC<DiceProps> = ({
                       Roll
                     </Text>
                     <Text style={[styles.compactStageResultValue, isMobileCompactStage && styles.mobileCompactStageResultValue]}>
-                      {resolvedValue}
+                      {displayedResultText}
                     </Text>
                   </View>
                 ) : showStatusCopy && showNumericResult ? (
@@ -543,7 +552,7 @@ export const Dice: React.FC<DiceProps> = ({
                       isMobileCompactStage && styles.mobileCompactStageTitle,
                     ]}
                   >
-                    {compactStageTitle}
+                    {compactStageDisplayTitle}
                   </Text>
                 ) : null}
                 {showStatusCopy ? (

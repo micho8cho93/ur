@@ -84,13 +84,16 @@ const mockSlotDiceScene = jest.fn(() => {
 const mockDice = jest.fn(({
   canRoll,
   onRoll,
+  resultLabel,
 }: {
   canRoll?: boolean;
   onRoll?: () => void;
+  resultLabel?: string | null;
 }) => {
   const { Pressable, Text, View } = require('react-native');
   return (
     <View testID="dice-roll-scene-host">
+      {resultLabel ? <Text testID="mock-dice-result-label">{resultLabel}</Text> : null}
       <Pressable testID="dice-roll-button" disabled={!canRoll} onPress={onRoll}>
         <Text>{canRoll ? 'rollable' : 'locked'}</Text>
       </Pressable>
@@ -1226,6 +1229,44 @@ describe('GameRoom match dice stage', () => {
     );
   });
 
+  it('shows No Move in the roll display for blocked non-zero rolls', async () => {
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    mockStoreState.gameState = {
+      ...baseGameState,
+      currentTurn: 'dark',
+      phase: 'rolling',
+      rollValue: null,
+      history: ['light rolled 3 but had no moves.'],
+    };
+    mockStoreState.serverRevision = 1;
+
+    await act(async () => {
+      view.rerender(<GameRoom />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const latestCueProps = mockMatchMomentIndicator.mock.calls.at(-1)?.[0] as
+      | { cue?: { message?: string } | null }
+      | undefined;
+
+    expect(latestCueProps?.cue?.message).not.toBe('No Move');
+    expect(screen.getByTestId('mock-dice-result-label')).toBeTruthy();
+    expect(screen.getByText('No Move')).toBeTruthy();
+  });
+
   it('shows only settings in the in-game top menu', async () => {
     render(<GameRoom />);
 
@@ -1403,6 +1444,229 @@ describe('GameRoom match dice stage', () => {
     expect(mockStoreState.gameState.light.pieces[0].position).toBe(4);
     expect(screen.getByText('The middle row is where both sides can fight over the same squares, so captures become possible there.')).toBeTruthy();
     expect(mockRoll).not.toHaveBeenCalled();
+  });
+
+  it('shows the zero-roll tutorial modal after the scripted zero', async () => {
+    mockSearchParams.tutorial = 'playthrough';
+    mockSearchParams.botDifficulty = 'easy';
+
+    const view = render(<GameRoom />);
+
+    const flushTutorialRender = async () => {
+      view.rerender(<GameRoom />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    };
+
+    const continueCoach = async () => {
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('mock-play-tutorial-coach-continue'));
+      });
+      await flushTutorialRender();
+    };
+
+    const rollOnce = async () => {
+      const latestDiceProps = [...mockDice.mock.calls]
+        .map(([props]) => props)
+        .reverse()
+        .find((props) => typeof props?.onRoll === 'function') as {
+        onRoll?: () => void;
+      };
+
+      await act(async () => {
+        latestDiceProps.onRoll?.();
+      });
+      await flushTutorialRender();
+    };
+
+    const moveOnce = async () => {
+      const latestBoardProps = mockBoard.mock.calls.at(-1)?.[0] as {
+        onMakeMoveOverride?: (move: MoveAction) => void;
+      };
+
+      await act(async () => {
+        latestBoardProps.onMakeMoveOverride?.(mockStoreState.validMoves[0]);
+      });
+      await flushTutorialRender();
+    };
+
+    const advanceAndFlush = async (delayMs: number) => {
+      await act(async () => {
+        jest.advanceTimersByTime(delayMs);
+      });
+      await flushTutorialRender();
+    };
+
+    const advanceDarkRollAndMove = async () => {
+      await advanceAndFlush(1_800);
+      await advanceAndFlush(2_500);
+    };
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+    await flushTutorialRender();
+
+    await continueCoach();
+    await rollOnce();
+    await moveOnce();
+    await continueCoach();
+
+    await advanceDarkRollAndMove();
+    await rollOnce();
+    await advanceAndFlush(2_000);
+    await moveOnce();
+    await continueCoach();
+
+    await rollOnce();
+    await moveOnce();
+    await continueCoach();
+
+    await advanceDarkRollAndMove();
+    await rollOnce();
+    await moveOnce();
+    await advanceDarkRollAndMove();
+
+    await rollOnce();
+    await advanceAndFlush(1_800);
+
+    expect(screen.getByText('Zeros Can Be Rolled')).toBeTruthy();
+    expect(screen.getByText(/In Ur, a roll of 0 is valid/i)).toBeTruthy();
+  });
+
+  it('shows the blocked-roll tutorial modal after the last rosette no-move', async () => {
+    mockSearchParams.tutorial = 'playthrough';
+    mockSearchParams.botDifficulty = 'easy';
+
+    const view = render(<GameRoom />);
+
+    const flushTutorialRender = async () => {
+      view.rerender(<GameRoom />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    };
+
+    const continueCoach = async () => {
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('mock-play-tutorial-coach-continue'));
+      });
+      await flushTutorialRender();
+    };
+
+    const rollOnce = async () => {
+      const latestDiceProps = [...mockDice.mock.calls]
+        .map(([props]) => props)
+        .reverse()
+        .find((props) => typeof props?.onRoll === 'function') as {
+        onRoll?: () => void;
+      };
+
+      await act(async () => {
+        latestDiceProps.onRoll?.();
+      });
+      await flushTutorialRender();
+    };
+
+    const moveOnce = async () => {
+      const latestBoardProps = mockBoard.mock.calls.at(-1)?.[0] as {
+        onMakeMoveOverride?: (move: MoveAction) => void;
+      };
+
+      await act(async () => {
+        latestBoardProps.onMakeMoveOverride?.(mockStoreState.validMoves[0]);
+      });
+      await flushTutorialRender();
+    };
+
+    const advanceAndFlush = async (delayMs: number) => {
+      await act(async () => {
+        jest.advanceTimersByTime(delayMs);
+      });
+      await flushTutorialRender();
+    };
+
+    const advanceDarkRollAndMove = async () => {
+      await advanceAndFlush(1_800);
+      await advanceAndFlush(2_500);
+    };
+
+    const advanceDarkNoMove = async () => {
+      await advanceAndFlush(1_800);
+      await advanceAndFlush(1_800);
+    };
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+    await flushTutorialRender();
+
+    await continueCoach();
+
+    await rollOnce();
+    await moveOnce();
+    await continueCoach();
+
+    await advanceDarkRollAndMove();
+    await rollOnce();
+    await advanceAndFlush(2_000);
+    await moveOnce();
+    await continueCoach();
+
+    await rollOnce();
+    await moveOnce();
+    await continueCoach();
+
+    await advanceDarkRollAndMove();
+    await rollOnce();
+    await moveOnce();
+    await advanceDarkRollAndMove();
+
+    await rollOnce();
+    await advanceAndFlush(1_800);
+    expect(screen.getByText('Zeros Can Be Rolled')).toBeTruthy();
+    await continueCoach();
+
+    await advanceDarkRollAndMove();
+    await rollOnce();
+    await moveOnce();
+    expect(screen.getByText('The Shared Rosette Is Safe')).toBeTruthy();
+    await continueCoach();
+
+    await rollOnce();
+    await moveOnce();
+    expect(screen.getByText('Capture In The Shared Row')).toBeTruthy();
+    await continueCoach();
+
+    await advanceDarkNoMove();
+    await rollOnce();
+    await moveOnce();
+    await advanceDarkNoMove();
+
+    await rollOnce();
+    await moveOnce();
+    expect(mockStoreState.gameState.light.pieces[0].position).toBe(13);
+
+    await rollOnce();
+    await advanceAndFlush(1_800);
+    expect(screen.queryByText('When you roll a number but none of your pieces can legally use it, the game shows No Move and your turn ends.')).toBeNull();
+
+    await advanceAndFlush(1_000);
+    expect(screen.getByTestId('mock-play-tutorial-coach')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'When you roll a number but none of your pieces can legally use it, the game shows No Move and your turn ends.',
+      ),
+    ).toBeTruthy();
   });
 
   it('shows Opponent Joined only when a private match becomes ready', async () => {

@@ -1,6 +1,11 @@
 import type { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { buildTutorialFrames } from './tutorialEngine';
-import type { TutorialRollStep, TutorialRollValue, TutorialStep } from './tutorialTypes';
+import type {
+  TutorialResultModalContent,
+  TutorialRollStep,
+  TutorialRollValue,
+  TutorialStep,
+} from './tutorialTypes';
 
 export const PLAYTHROUGH_TUTORIAL_ID = 'playthrough' as const;
 export const PLAYTHROUGH_TUTORIAL_LESSON_COUNT = 6 as const;
@@ -60,13 +65,23 @@ const rollStep = (
   id: string,
   player: PlayerColor,
   value: TutorialRollValue,
-  expectNoMoves?: boolean,
+  options?: boolean | {
+    expectNoMoves?: boolean;
+    forceNoMoves?: boolean;
+    resultModal?: TutorialResultModalContent;
+  },
 ): TutorialRollStep => ({
+  ...(typeof options === 'object' && options?.resultModal ? { resultModal: options.resultModal } : {}),
   id,
   kind: 'ROLL',
   player,
   value,
-  ...(typeof expectNoMoves === 'boolean' ? { expectNoMoves } : {}),
+  ...(typeof options === 'boolean'
+    ? { expectNoMoves: options }
+    : typeof options?.expectNoMoves === 'boolean'
+      ? { expectNoMoves: options.expectNoMoves }
+      : {}),
+  ...(typeof options === 'object' && options?.forceNoMoves ? { forceNoMoves: true } : {}),
 });
 
 const moveStep = (
@@ -104,7 +119,14 @@ export const PLAYTHROUGH_TUTORIAL_SCRIPT: readonly TutorialStep[] = [
   moveStep('move-light-advance-before-rosette', 'light', 'light-0', 4, 6),
   rollStep('roll-dark-advance-capture-runner', 'dark', 4),
   moveStep('move-dark-advance-capture-runner', 'dark', 'dark-1', 1, 5),
-  rollStep('roll-light-pass-before-capture-setup', 'light', 0, true),
+  rollStep('roll-light-pass-before-capture-setup', 'light', 0, {
+    expectNoMoves: true,
+    resultModal: {
+      eyebrow: 'Zeros In Ur',
+      title: 'Zeros Can Be Rolled',
+      body: 'In Ur, a roll of 0 is valid. It means no piece can move this turn, so play passes to the other side.',
+    },
+  }),
   rollStep('roll-dark-set-capture-target', 'dark', 3),
   moveStep('move-dark-set-capture-target', 'dark', 'dark-1', 5, 8),
   rollStep('roll-light-shared-rosette', 'light', 1),
@@ -119,6 +141,17 @@ export const PLAYTHROUGH_TUTORIAL_SCRIPT: readonly TutorialStep[] = [
   rollStep('roll-dark-pass-before-score-setup', 'dark', 0, true),
   rollStep('roll-light-home-rosette', 'light', 2),
   moveStep('move-light-home-rosette', 'light', 'light-0', 11, 13),
+  rollStep('roll-light-home-rosette-no-move', 'light', 2, {
+    expectNoMoves: true,
+    forceNoMoves: true,
+    resultModal: {
+      eyebrow: 'Blocked Roll',
+      title: 'No Move',
+      body: 'When you roll a number but none of your pieces can legally use it, the game shows No Move and your turn ends.',
+      delayMs: 1_000,
+    },
+  }),
+  rollStep('roll-dark-pass-after-home-rosette-no-move', 'dark', 0, true),
 
   rollStep('roll-light-score', 'light', 1),
   moveStep('move-light-score', 'light', 'light-0', 13, 14),
@@ -275,6 +308,8 @@ const PLAYTHROUGH_TUTORIAL_INSTRUCTION_BY_STEP_ID: Record<string, string> = {
   'roll-dark-pass-before-score-setup': 'Dark is rolling now.',
   'roll-light-home-rosette': 'Move onto the home rosette.',
   'move-light-home-rosette': 'Land on the home rosette for one more roll.',
+  'roll-light-home-rosette-no-move': 'Not every rolled number can be used, even from the home rosette.',
+  'roll-dark-pass-after-home-rosette-no-move': 'Dark is rolling now.',
   'roll-light-score': 'Roll a 1, then use SCORE to move off the board.',
   'move-light-score': 'Use SCORE to move your piece off the board and score.',
 };
@@ -286,10 +321,16 @@ export const getPlaythroughTutorialInstruction = ({
   stepId,
   turn,
 }: TutorialInstructionParams): string | null => {
-  if (phase === 'moving' && rollValue === 0 && !hasMoves) {
+  if (phase === 'moving' && rollValue !== null && !hasMoves) {
+    if (rollValue === 0) {
+      return turn === 'light'
+        ? 'You rolled a zero, so your turn passes.'
+        : 'Dark rolled a zero, so the turn comes back to you.';
+    }
+
     return turn === 'light'
-      ? 'You rolled a zero, so your turn passes.'
-      : 'Dark rolled a zero, so the turn comes back to you.';
+      ? 'No move matches that roll, so your turn passes.'
+      : 'Dark rolled a number with no legal move, so the turn comes back to you.';
   }
 
   if (!stepId) {

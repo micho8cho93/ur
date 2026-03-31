@@ -41,43 +41,63 @@ export const Modal: React.FC<ModalProps> = ({
     320,
     Math.min(height - (isMobileWeb ? 20 : 32), Math.round(height * (isMobileWeb ? 0.92 : 0.86))),
   );
+  const overlayContent = (
+    <View style={[styles.backdrop, isMobileWeb && styles.backdropMobileWeb]}>
+      <View testID="shared-modal-sheet" style={[styles.sheet, isMobileWeb && styles.sheetMobileWeb, { maxWidth: resolvedMaxWidth, maxHeight: resolvedMaxHeight }]}>
+        <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
+        <Image source={urTextures.border} resizeMode="repeat" style={styles.borderTexture} />
+        <View style={styles.sheetGlow} />
+        <View style={styles.border} />
+
+        <ScrollView
+          testID="shared-modal-scroll"
+          style={styles.contentScroll}
+          contentContainerStyle={styles.contentScrollContent}
+          alwaysBounceVertical={false}
+          bounces={false}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.contentStack}>
+            <Text style={styles.title}>{title}</Text>
+            {message ? <Text style={styles.message}>{message}</Text> : null}
+            {children}
+          </View>
+        </ScrollView>
+
+        {actionLabel && onAction ? (
+          <View style={styles.buttonWrap}>
+            <Button title={actionLabel} onPress={onAction} loading={actionLoading} />
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+
+  if (!visible) {
+    return null;
+  }
+
+  if (Platform.OS === 'web') {
+    return (
+      <View pointerEvents="box-none" style={styles.webOverlay}>
+        {overlayContent}
+      </View>
+    );
+  }
 
   return (
-    <RNModal transparent visible={visible} animationType="fade" onRequestClose={onAction ?? (() => undefined)}>
-      <View style={[styles.backdrop, isMobileWeb && styles.backdropMobileWeb]}>
-        <View testID="shared-modal-sheet" style={[styles.sheet, isMobileWeb && styles.sheetMobileWeb, { maxWidth: resolvedMaxWidth, maxHeight: resolvedMaxHeight }]}>
-          <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
-          <Image source={urTextures.border} resizeMode="repeat" style={styles.borderTexture} />
-          <View style={styles.sheetGlow} />
-          <View style={styles.border} />
-
-          <ScrollView
-            testID="shared-modal-scroll"
-            style={styles.contentScroll}
-            contentContainerStyle={styles.contentScrollContent}
-            alwaysBounceVertical={false}
-            bounces={false}
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.contentStack}>
-              <Text style={styles.title}>{title}</Text>
-              {message ? <Text style={styles.message}>{message}</Text> : null}
-              {children}
-            </View>
-          </ScrollView>
-
-          {actionLabel && onAction ? (
-            <View style={styles.buttonWrap}>
-              <Button title={actionLabel} onPress={onAction} loading={actionLoading} />
-            </View>
-          ) : null}
-        </View>
-      </View>
+    <RNModal transparent visible animationType="fade" onRequestClose={onAction ?? (() => undefined)}>
+      {overlayContent}
     </RNModal>
   );
 };
 
 const styles = StyleSheet.create({
+  webOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 120,
+    elevation: 40,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(4, 7, 12, 0.72)',

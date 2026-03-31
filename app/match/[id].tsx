@@ -17,7 +17,6 @@ import type { MatchMomentIndicatorCue } from '@/components/game/MatchMomentIndic
 import {
   getNoMoveRollValueFromHistoryEntry,
   ROLL_RESULT_HOLD_MS,
-  shouldHoldRollResult,
 } from '@/components/game/rollResultHold';
 import { MatchResultSummaryContent } from '@/components/match/MatchResultSummaryContent';
 import { PieceRail, PieceRailFrameMeasurement, ReserveSlotMeasurement } from '@/components/game/PieceRail';
@@ -99,6 +98,7 @@ import {
   getPlaythroughTutorialLessonState,
   isPlaythroughTutorialId,
 } from '@/tutorials/playthroughTutorial';
+import type { TutorialResultModalContent } from '@/tutorials/tutorialTypes';
 import type { CompletedBotMatchRewardMode } from '@/shared/challenges';
 import { isEloRatingChangeNotificationPayload } from '@/shared/elo';
 import { isProgressionAwardNotificationPayload } from '@/shared/progression';
@@ -330,6 +330,7 @@ type RollButtonLatchPhase = 'idle' | 'awaitingOutcome' | 'awaitingTurnReset';
 type TutorialCoachPhase =
   | 'idle'
   | 'opening'
+  | 'interlude'
   | 'lesson_play'
   | 'lesson_result'
   | 'completion'
@@ -375,6 +376,11 @@ interface BoardTargetFrame {
   y: number;
   width: number;
   height: number;
+}
+
+interface HeldRollDisplay {
+  value: number;
+  label: string | null;
 }
 
 const isMoveMatch = (left: MoveAction, right: MoveAction) =>
@@ -826,7 +832,7 @@ export function GameRoom() {
   const [isRefreshingMatchRewards, setIsRefreshingMatchRewards] = React.useState(false);
   const [rollingVisual, setRollingVisual] = React.useState(false);
   const [rollButtonLatchPhase, setRollButtonLatchPhase] = React.useState<RollButtonLatchPhase>('idle');
-  const [heldRollResult, setHeldRollResult] = React.useState<number | null>(null);
+  const [heldRollDisplay, setHeldRollDisplay] = React.useState<HeldRollDisplay | null>(null);
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
   const [musicEnabled, setMusicEnabled] = React.useState(true);
   const [musicVolume, setMusicVolume] = React.useState(1);
@@ -872,6 +878,9 @@ export function GameRoom() {
   const [activeMatchCue, setActiveMatchCue] = React.useState<MatchMomentIndicatorCue | null>(null);
   const [mobileScoreRowHeight, setMobileScoreRowHeight] = React.useState(0);
   const [tutorialCoachPhase, setTutorialCoachPhase] = React.useState<TutorialCoachPhase>('idle');
+  const [tutorialCoachInterlude, setTutorialCoachInterlude] = React.useState<TutorialResultModalContent | null>(null);
+  const [tutorialForcedNoMove, setTutorialForcedNoMove] = React.useState(false);
+  const [tutorialPinnedObjectiveBanner, setTutorialPinnedObjectiveBanner] = React.useState<string | null>(null);
   const [tutorialLessonIndex, setTutorialLessonIndex] = React.useState(0);
   const [tutorialScriptStepIndex, setTutorialScriptStepIndex] = React.useState(0);
   const isTournamentRewardSummaryPrimary = Boolean(tournamentRewardSummary) && !tournamentRewardFallbackActive;
@@ -897,7 +906,7 @@ export function GameRoom() {
   } | null>(null);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heldRollResultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingHeldRollResultRef = useRef<number | null>(null);
+  const pendingHeldRollDisplayRef = useRef<HeldRollDisplay | null>(null);
   const autoRollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turnTimeoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -943,11 +952,14 @@ export function GameRoom() {
       : null;
   const tutorialCoachVisible =
     tutorialCoachPhase === 'opening' ||
+    (tutorialCoachPhase === 'interlude' && tutorialCoachInterlude !== null) ||
     tutorialCoachPhase === 'lesson_result' ||
     tutorialCoachPhase === 'completion';
   const tutorialCoachEyebrow =
     tutorialCoachPhase === 'opening'
       ? PLAYTHROUGH_TUTORIAL_OPENING_MODAL.eyebrow
+      : tutorialCoachPhase === 'interlude'
+        ? tutorialCoachInterlude?.eyebrow
       : tutorialCoachPhase === 'lesson_result'
         ? 'What this means'
         : tutorialCoachPhase === 'completion'
@@ -956,6 +968,8 @@ export function GameRoom() {
   const tutorialCoachTitle =
     tutorialCoachPhase === 'opening'
       ? PLAYTHROUGH_TUTORIAL_OPENING_MODAL.title
+      : tutorialCoachPhase === 'interlude'
+        ? tutorialCoachInterlude?.title ?? ''
       : tutorialCoachPhase === 'lesson_result' && tutorialLesson
         ? tutorialLesson.title
         : tutorialCoachPhase === 'completion'
@@ -964,6 +978,8 @@ export function GameRoom() {
   const tutorialCoachBody =
     tutorialCoachPhase === 'opening'
       ? PLAYTHROUGH_TUTORIAL_OPENING_MODAL.body
+      : tutorialCoachPhase === 'interlude'
+        ? tutorialCoachInterlude?.body ?? ''
       : tutorialCoachPhase === 'lesson_result' && tutorialLesson
         ? tutorialLesson.implication
         : tutorialCoachPhase === 'completion'
@@ -972,6 +988,8 @@ export function GameRoom() {
   const tutorialCoachActionLabel =
     tutorialCoachPhase === 'opening'
       ? PLAYTHROUGH_TUTORIAL_OPENING_MODAL.actionLabel
+      : tutorialCoachPhase === 'interlude'
+        ? tutorialCoachInterlude?.actionLabel ?? 'Continue'
       : tutorialCoachPhase === 'completion'
         ? PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL.actionLabel
       : 'Continue';
@@ -982,9 +1000,22 @@ export function GameRoom() {
         turn: gameState.currentTurn,
         phase: gameState.phase,
         rollValue: gameState.rollValue,
-        hasMoves: validMoves.length > 0,
+        hasMoves: tutorialForcedNoMove ? false : validMoves.length > 0,
       })
       : null;
+  const displayedTutorialObjectiveBanner = tutorialObjectiveBanner ?? tutorialPinnedObjectiveBanner;
+  useEffect(() => {
+    if (tutorialObjectiveBanner) {
+      setTutorialPinnedObjectiveBanner((current) =>
+        current === tutorialObjectiveBanner ? current : tutorialObjectiveBanner,
+      );
+      return;
+    }
+
+    if (!isPlaythroughTutorialMatch || tutorialCoachPhase === 'idle' || tutorialCoachPhase === 'freeplay') {
+      setTutorialPinnedObjectiveBanner(null);
+    }
+  }, [isPlaythroughTutorialMatch, tutorialCoachPhase, tutorialObjectiveBanner]);
   const tournamentAdvanceFlow = useTournamentAdvanceFlow({
     enabled: shouldTrackTournamentAdvanceFlow,
     runId: tournamentRunIdParam ?? null,
@@ -1304,17 +1335,19 @@ export function GameRoom() {
 
   const clearHeldRollResult = React.useCallback(() => {
     clearHeldRollResultTimer();
-    pendingHeldRollResultRef.current = null;
-    setHeldRollResult(null);
+    pendingHeldRollDisplayRef.current = null;
+    setHeldRollDisplay(null);
   }, [clearHeldRollResultTimer]);
 
-  const showHeldRollResult = React.useCallback((value: number) => {
+  const showHeldRollResult = React.useCallback((display: HeldRollDisplay) => {
     clearHeldRollResultTimer();
-    pendingHeldRollResultRef.current = null;
-    setHeldRollResult(value);
+    pendingHeldRollDisplayRef.current = null;
+    setHeldRollDisplay(display);
     heldRollResultTimerRef.current = setTimeout(() => {
       heldRollResultTimerRef.current = null;
-      setHeldRollResult((current) => (current === value ? null : current));
+      setHeldRollDisplay((current) =>
+        current && current.value === display.value && current.label === display.label ? null : current,
+      );
     }, ROLL_RESULT_HOLD_MS);
   }, [clearHeldRollResultTimer]);
 
@@ -1348,9 +1381,9 @@ export function GameRoom() {
 
   const handleRollResultShown = React.useCallback(() => {
     clearRollTimer();
-    const pendingHeldRollResult = pendingHeldRollResultRef.current;
-    if (pendingHeldRollResult !== null) {
-      showHeldRollResult(pendingHeldRollResult);
+    const pendingHeldRollDisplay = pendingHeldRollDisplayRef.current;
+    if (pendingHeldRollDisplay !== null) {
+      showHeldRollResult(pendingHeldRollDisplay);
     }
     setRollingVisual(false);
   }, [clearRollTimer, showHeldRollResult]);
@@ -1360,9 +1393,9 @@ export function GameRoom() {
       return;
     }
 
-    const pendingHeldRollResult = pendingHeldRollResultRef.current;
-    if (pendingHeldRollResult !== null) {
-      showHeldRollResult(pendingHeldRollResult);
+    const pendingHeldRollDisplay = pendingHeldRollDisplayRef.current;
+    if (pendingHeldRollDisplay !== null) {
+      showHeldRollResult(pendingHeldRollDisplay);
     }
   }, [rollingVisual, showHeldRollResult]);
 
@@ -1411,6 +1444,9 @@ export function GameRoom() {
       }
 
       clearHeldRollResult();
+      const resultModal = tutorialPendingStep.resultModal ?? null;
+      const forceNoMoves = tutorialPendingStep.forceNoMoves === true;
+      setTutorialForcedNoMove(false);
 
       if (initiatedByLocalPlayer) {
         if (!canRoll || rollButtonLatchPhase !== 'idle') {
@@ -1443,11 +1479,15 @@ export function GameRoom() {
         rollValue: tutorialPendingStep.value,
       };
       const validMoves = getValidMoves(rolledState, tutorialPendingStep.value);
-      const hasNoMoves = validMoves.length === 0;
+      const hasNoMoves = forceNoMoves || validMoves.length === 0;
 
       void gameAudio.play('roll');
       advanceTutorialScriptStep();
       setGameStateFromServer(rolledState);
+
+      if (forceNoMoves) {
+        setTutorialForcedNoMove(true);
+      }
 
       if (!hasNoMoves) {
         return;
@@ -1462,7 +1502,23 @@ export function GameRoom() {
           history: [...rolledState.history, `${tutorialPendingStep.player} rolled ${tutorialPendingStep.value} but had no moves.`],
         };
 
+        setTutorialForcedNoMove(false);
         setGameStateFromServer(skippedState);
+
+        if (!resultModal) {
+          return;
+        }
+
+        setTutorialCoachInterlude(resultModal);
+
+        if ((resultModal.delayMs ?? 0) > 0) {
+          scheduleTutorialProgress(resultModal.delayMs ?? 0, () => {
+            setTutorialCoachPhase('interlude');
+          });
+          return;
+        }
+
+        setTutorialCoachPhase('interlude');
       });
     },
     [
@@ -1476,11 +1532,13 @@ export function GameRoom() {
       rollButtonLatchPhase,
       rollingVisual,
       scheduleRollVisualFallback,
+      setTutorialCoachInterlude,
       serverRevision,
       setGameStateFromServer,
       scheduleTutorialProgress,
       showRulesIntroModal,
       tutorialCoachPhase,
+      tutorialForcedNoMove,
       tutorialPendingStep,
     ],
   );
@@ -1526,6 +1584,12 @@ export function GameRoom() {
 
   const handleContinueTutorialCoach = React.useCallback(() => {
     if (tutorialCoachPhase === 'opening') {
+      setTutorialCoachPhase('lesson_play');
+      return;
+    }
+
+    if (tutorialCoachPhase === 'interlude') {
+      setTutorialCoachInterlude(null);
       setTutorialCoachPhase('lesson_play');
       return;
     }
@@ -1797,6 +1861,7 @@ export function GameRoom() {
     if (
       !isPlaythroughTutorialMatch ||
       tutorialCoachPhase !== 'lesson_play' ||
+      tutorialCoachInterlude !== null ||
       tutorialPendingActionStep?.player !== 'dark' ||
       !introsComplete ||
       showRulesIntroModal ||
@@ -1854,6 +1919,7 @@ export function GameRoom() {
     showRulesIntroModal,
     showTopMenu,
     showWinModal,
+    tutorialCoachInterlude,
     triggerTutorialRoll,
     tutorialCoachPhase,
     tutorialPendingActionStep,
@@ -2386,6 +2452,9 @@ export function GameRoom() {
     previousJoinedPlayerCountRef.current = 0;
     setTutorialLessonIndex(0);
     setTutorialScriptStepIndex(0);
+    setTutorialCoachInterlude(null);
+    setTutorialForcedNoMove(false);
+    setTutorialPinnedObjectiveBanner(null);
     setTutorialCoachPhase('idle');
     setLiveMatchCue(null);
   }, [clearHeldRollResult, clearRollTimer, clearTutorialProgressTimers, matchId, setLiveMatchCue]);
@@ -2681,6 +2750,9 @@ export function GameRoom() {
 
     setTutorialLessonIndex(0);
     setTutorialScriptStepIndex(0);
+    setTutorialCoachInterlude(null);
+    setTutorialForcedNoMove(false);
+    setTutorialPinnedObjectiveBanner(null);
     applyTutorialSnapshot(getPlaythroughTutorialLessonState(0));
     setTutorialCoachPhase('opening');
   }, [applyTutorialSnapshot, isPlaythroughTutorialMatch, matchId]);
@@ -3166,11 +3238,16 @@ export function GameRoom() {
     if (newHistoryEntries.length > 0) {
       for (const entry of newHistoryEntries) {
         const noMoveRollValue = getNoMoveRollValueFromHistoryEntry(entry);
-        if (noMoveRollValue !== null && shouldHoldRollResult(noMoveRollValue)) {
+        if (noMoveRollValue !== null) {
+          const heldDisplay = {
+            value: noMoveRollValue,
+            label: noMoveRollValue > 0 ? 'No Move' : null,
+          } satisfies HeldRollDisplay;
+
           if (rollingVisual) {
-            pendingHeldRollResultRef.current = noMoveRollValue;
+            pendingHeldRollDisplayRef.current = heldDisplay;
           } else {
-            showHeldRollResult(noMoveRollValue);
+            showHeldRollResult(heldDisplay);
           }
         }
 
@@ -3270,7 +3347,7 @@ export function GameRoom() {
     resumeAnnouncementCuesFromInteraction();
 
     if (isScriptedTutorialPhase) {
-      if (tutorialCoachPhase === 'lesson_play') {
+      if (tutorialCoachPhase === 'lesson_play' && tutorialCoachInterlude === null) {
         triggerTutorialRoll(true);
       }
       return;
@@ -3280,6 +3357,7 @@ export function GameRoom() {
   }, [
     isScriptedTutorialPhase,
     resumeAnnouncementCuesFromInteraction,
+    tutorialCoachInterlude,
     triggerLocalRoll,
     triggerTutorialRoll,
     tutorialCoachPhase,
@@ -3928,6 +4006,10 @@ export function GameRoom() {
   const showPersistentDiceVisual = introsComplete && diceAnimationEnabled;
   const showDestinationHighlights = introsComplete && !rollingVisual && gameState.rollValue !== null;
   const displayedValidMoves = useMemo(() => {
+    if (tutorialForcedNoMove) {
+      return [];
+    }
+
     const liveDisplayedMoves = showDestinationHighlights && isOpponentReadyToPlay ? validMoves : [];
 
     if (
@@ -3951,10 +4033,18 @@ export function GameRoom() {
     isScriptedTutorialPhase,
     showDestinationHighlights,
     tutorialCoachPhase,
+    tutorialForcedNoMove,
     tutorialPendingStep,
     validMoves,
   ]);
-  const displayedRollValue = gameState.rollValue ?? heldRollResult;
+  const displayedRollValue = gameState.rollValue ?? heldRollDisplay?.value ?? null;
+  const displayedRollLabel =
+    tutorialForcedNoMove && displayedRollValue !== null && displayedRollValue > 0
+      ? 'No Move'
+      : gameState.rollValue === null
+        ? heldRollDisplay?.label ?? null
+        : null;
+  const displayedRollText = displayedRollLabel ?? (displayedRollValue !== null ? String(displayedRollValue) : null);
   const showMobileRollResult =
     introsComplete &&
     isMobileLayout &&
@@ -3998,7 +4088,10 @@ export function GameRoom() {
       return null;
     }
 
-    const resultWidth = Math.max(44, Math.min(72, Math.round(lightTrayFrame.width * 0.94)));
+    const resultWidth =
+      displayedRollLabel !== null
+        ? Math.max(104, Math.min(148, Math.round(lightTrayFrame.width * 1.36)))
+        : Math.max(44, Math.min(72, Math.round(lightTrayFrame.width * 0.94)));
     const resultHeight = Math.max(36, Math.round(resultWidth * 0.84));
     const gridTop = boardTargetFrame.y + boardTargetFrame.height * boardArtInsetTop;
     const gridHeight = boardTargetFrame.height * (1 - boardArtInsetTop - boardArtInsetBottom);
@@ -4257,6 +4350,7 @@ export function GameRoom() {
               <Dice
                 animationDurationMs={diceAnimationDurationMs}
                 value={displayedRollValue}
+                resultLabel={displayedRollLabel}
                 rolling={rollingVisual}
                 onRoll={handleRoll}
                 onResultShown={handleRollResultShown}
@@ -4315,12 +4409,18 @@ export function GameRoom() {
               styles.mobileWebFloatingRollResultValue,
               {
                 fontFamily: rollResultFontFamily,
-                fontSize: Math.max(28, Math.round(mobileWebTrayRollResultFrame.height * 0.84)),
-                lineHeight: Math.max(30, Math.round(mobileWebTrayRollResultFrame.height * 0.88)),
+                fontSize:
+                  displayedRollLabel !== null
+                    ? Math.max(18, Math.round(mobileWebTrayRollResultFrame.height * 0.5))
+                    : Math.max(28, Math.round(mobileWebTrayRollResultFrame.height * 0.84)),
+                lineHeight:
+                  displayedRollLabel !== null
+                    ? Math.max(22, Math.round(mobileWebTrayRollResultFrame.height * 0.58))
+                    : Math.max(30, Math.round(mobileWebTrayRollResultFrame.height * 0.88)),
               },
             ]}
           >
-            {displayedRollValue}
+            {displayedRollText}
           </Text>
         </View>
       ) : null}
@@ -4391,23 +4491,30 @@ export function GameRoom() {
                 styles.mobileBoardGapRollResultValue,
                 {
                   fontFamily: rollResultFontFamily,
-                  fontSize: Math.max(
-                    24,
-                    Math.min(42, Math.round(mobileSideControlLayout.rollFrame.width * 0.72)),
-                  ),
-                  lineHeight: Math.max(
-                    26,
-                    Math.min(46, Math.round(mobileSideControlLayout.rollFrame.width * 0.8)),
-                  ),
+                  fontSize:
+                    displayedRollLabel !== null
+                      ? Math.max(16, Math.min(24, Math.round(mobileSideControlLayout.rollFrame.width * 0.34)))
+                      : Math.max(
+                          24,
+                          Math.min(42, Math.round(mobileSideControlLayout.rollFrame.width * 0.72)),
+                        ),
+                  lineHeight:
+                    displayedRollLabel !== null
+                      ? Math.max(20, Math.min(28, Math.round(mobileSideControlLayout.rollFrame.width * 0.42)))
+                      : Math.max(
+                          26,
+                          Math.min(46, Math.round(mobileSideControlLayout.rollFrame.width * 0.8)),
+                        ),
                 },
               ]}
             >
-              {displayedRollValue}
+              {displayedRollText}
             </Text>
           ) : (
             <Dice
               animationDurationMs={diceAnimationDurationMs}
               value={displayedRollValue}
+              resultLabel={displayedRollLabel}
               rolling={rollingVisual}
               onRoll={handleRoll}
               onResultShown={handleRollResultShown}
@@ -4608,9 +4715,9 @@ export function GameRoom() {
               </Text>
             </View>
           ) : null}
-          {tutorialObjectiveBanner ? (
+          {displayedTutorialObjectiveBanner ? (
             <View pointerEvents="none" style={styles.tutorialObjectiveBanner}>
-              <Text style={styles.tutorialObjectiveText}>{tutorialObjectiveBanner}</Text>
+              <Text style={styles.tutorialObjectiveText}>{displayedTutorialObjectiveBanner}</Text>
             </View>
           ) : null}
           <View
@@ -4720,13 +4827,16 @@ export function GameRoom() {
                         styles.webRollResultValue,
                         {
                           fontFamily: rollResultFontFamily,
-                          fontSize: webRollResultFontSize,
+                          fontSize:
+                            displayedRollLabel !== null
+                              ? Math.max(22, Math.round(webRollResultFontSize * 0.54))
+                              : webRollResultFontSize,
                           lineHeight: webRollButtonSize,
                         },
                         !showWebRollResult && styles.webRollResultValueMuted,
                       ]}
                     >
-                      {showWebRollResult ? String(displayedRollValue) : ''}
+                      {showWebRollResult ? (displayedRollText ?? '') : ''}
                     </Text>
                   </View>
                 ) : null}
@@ -4836,6 +4946,7 @@ export function GameRoom() {
                       <Dice
                         animationDurationMs={diceAnimationDurationMs}
                         value={displayedRollValue}
+                        resultLabel={displayedRollLabel}
                         rolling={rollingVisual}
                         onRoll={handleRoll}
                         onResultShown={handleRollResultShown}
@@ -4855,6 +4966,7 @@ export function GameRoom() {
                   <Dice
                     animationDurationMs={diceAnimationDurationMs}
                     value={displayedRollValue}
+                    resultLabel={displayedRollLabel}
                     rolling={rollingVisual}
                     onRoll={handleRoll}
                     onResultShown={handleRollResultShown}
@@ -4967,6 +5079,7 @@ export function GameRoom() {
                       <Dice
                         animationDurationMs={diceAnimationDurationMs}
                         value={displayedRollValue}
+                        resultLabel={displayedRollLabel}
                         rolling={rollingVisual}
                         onRoll={handleRoll}
                         onResultShown={handleRollResultShown}
@@ -4990,10 +5103,14 @@ export function GameRoom() {
                       numberOfLines={1}
                       style={[
                         styles.mobileRollResultValue,
-                        { fontFamily: rollResultFontFamily, transform: [{ translateY: mobileRollResultOffset }] },
+                        {
+                          fontFamily: rollResultFontFamily,
+                          transform: [{ translateY: mobileRollResultOffset }],
+                          ...(displayedRollLabel !== null ? { fontSize: 28, lineHeight: 32 } : {}),
+                        },
                       ]}
                     >
-                      {displayedRollValue}
+                      {displayedRollText}
                     </Text>
                   ) : null}
                 </View>
@@ -5055,6 +5172,7 @@ export function GameRoom() {
                       <Dice
                         animationDurationMs={diceAnimationDurationMs}
                         value={displayedRollValue}
+                        resultLabel={displayedRollLabel}
                         rolling={rollingVisual}
                         onRoll={handleRoll}
                         onResultShown={handleRollResultShown}
