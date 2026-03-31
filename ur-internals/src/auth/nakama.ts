@@ -4,6 +4,10 @@ import { clearStoredAdminSession, readStoredAdminSession, writeStoredAdminSessio
 
 let client: Client | null = null
 
+const TEST_ADMIN_USERNAME = 'admin'
+const TEST_ADMIN_PASSWORD = 'password'
+const TEST_ADMIN_CUSTOM_ID = 'ur-internals-admin'
+
 function getClient() {
   if (!client) {
     client = new Client(
@@ -107,19 +111,16 @@ async function normalizeAuthenticationError(error: unknown): Promise<Error> {
 
 export async function authenticateWithUsername(username: string, password: string): Promise<Session> {
   const normalizedUsername = username.trim()
-  const normalizedPassword = password.trim()
 
-  if (normalizedUsername.length === 0 || normalizedPassword.length === 0) {
-    throw new Error('Username or email and password are required.')
+  if (normalizedUsername !== TEST_ADMIN_USERNAME || password !== TEST_ADMIN_PASSWORD) {
+    throw new Error('Invalid username or password.')
   }
 
   try {
-    const isEmailLogin = normalizedUsername.includes('@')
-    const session = await getClient().authenticateEmail(
-      isEmailLogin ? normalizedUsername : '',
-      normalizedPassword,
-      false,
-      isEmailLogin ? undefined : normalizedUsername,
+    const session = await getClient().authenticateCustom(
+      TEST_ADMIN_CUSTOM_ID,
+      true,
+      TEST_ADMIN_USERNAME,
     )
     persistSession(session)
     return session

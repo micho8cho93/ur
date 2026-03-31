@@ -26,21 +26,6 @@ VITE_USE_MOCK_DATA=true
 
 The Vite app also reads `EXPO_PUBLIC_*` Nakama env vars from the parent project directory, so local dashboard runs can share the root repo's Nakama config instead of duplicating it.
 
-## Admin auth
-
-`ur-internals` now uses real Nakama credentials instead of the old hardcoded test login. Each operator needs:
-
-- A Nakama account with email/password auth linked.
-- An admin role storage object in collection `admins`, key `role`, owned by that user's Nakama user ID, with a value like `{"role":"admin"}`.
-
-The easiest bootstrap path is:
-
-1. Create the Nakama account first.
-2. Open the user in the Nakama console Accounts page.
-3. Add or edit the `admins/role` storage object for that user.
-
-Nakama does not provide a built-in forgot-password email flow, so if you need self-service password recovery from the deployed site you will want an external auth provider or a custom reset service in front of Nakama.
-
 ## Routes
 
 - `/` overview dashboard
