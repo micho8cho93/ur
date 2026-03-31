@@ -54,7 +54,7 @@ export type ClientMatchPayload =
   | MoveRequestPayload
   | EmojiReactionRequestPayload;
 
-export type MatchEndReason = "completed" | "forfeit_inactivity";
+export type MatchEndReason = "completed" | "forfeit_inactivity" | "forfeit_disconnect";
 
 export type MatchEndPayload = {
   reason: MatchEndReason;
@@ -88,6 +88,11 @@ export type StateSnapshotPayload = {
   activeTimedPhase?: GameState["phase"] | null;
   afkAccumulatedMs?: Record<PlayerColor, number> | null;
   afkRemainingMs?: number | null;
+  reconnectingPlayer?: string | null;
+  reconnectingPlayerColor?: PlayerColor | null;
+  reconnectGraceDurationMs?: number | null;
+  reconnectDeadlineMs?: number | null;
+  reconnectRemainingMs?: number | null;
   matchEnd?: MatchEndPayload | null;
 };
 
@@ -196,7 +201,7 @@ const isAfkAccumulatedPayload = (value: unknown): value is Record<PlayerColor, n
 
 export const isMatchEndPayload = (value: unknown): value is MatchEndPayload =>
   isRecord(value) &&
-  (value.reason === "completed" || value.reason === "forfeit_inactivity") &&
+  (value.reason === "completed" || value.reason === "forfeit_inactivity" || value.reason === "forfeit_disconnect") &&
   (typeof value.winnerUserId === "string" || value.winnerUserId === null) &&
   (typeof value.loserUserId === "string" || value.loserUserId === null) &&
   (typeof value.forfeitingUserId === "string" || value.forfeitingUserId === null) &&
@@ -260,6 +265,13 @@ export const isStateSnapshotPayload = (value: unknown): value is StateSnapshotPa
     isAfkAccumulatedPayload(value.afkAccumulatedMs) ||
     value.afkAccumulatedMs === null) &&
   isOptional(value.afkRemainingMs, isNullableFiniteNumber) &&
+  isOptional(value.reconnectingPlayer, isNullableString) &&
+  (typeof value.reconnectingPlayerColor === "undefined" ||
+    isPlayerColor(value.reconnectingPlayerColor) ||
+    value.reconnectingPlayerColor === null) &&
+  isOptional(value.reconnectGraceDurationMs, isNullableFiniteNumber) &&
+  isOptional(value.reconnectDeadlineMs, isNullableFiniteNumber) &&
+  isOptional(value.reconnectRemainingMs, isNullableFiniteNumber) &&
   (typeof value.matchEnd === "undefined" || isMatchEndPayload(value.matchEnd) || value.matchEnd === null);
 
 export const isServerErrorPayload = (value: unknown): value is ServerErrorPayload =>

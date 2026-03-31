@@ -171,6 +171,7 @@ type MatchState = {
   telemetry: MatchTelemetry;
   timer: MatchTimerState;
   afk: Record<PlayerColor, PlayerAfkState>;
+  disconnect: Record<PlayerColor, PlayerDisconnectState>;
   matchEnd: MatchEndPayload | null;
   resultRecorded: boolean;
 };
@@ -238,16 +239,20 @@ type MatchTimerResetReason =
   | "player_move"
   | "timeout_autoplay"
   | "bot_turn_delay"
+  | "paused_for_disconnect"
+  | "resumed_after_reconnect"
   | "resynced"
   | "inactive"
   | "timeout_ignored"
   | "forfeit_inactivity"
+  | "forfeit_disconnect"
   | null;
 
 type MatchTimerState = {
   turnDurationMs: number;
   turnStartedAtMs: number | null;
   turnDeadlineMs: number | null;
+  pausedTurnRemainingMs: number | null;
   activePlayerColor: PlayerColor | null;
   activePlayerUserId: string | null;
   activePhase: GameState["phase"] | null;
@@ -259,6 +264,11 @@ type PlayerAfkState = {
   timeoutCount: number;
   lastMeaningfulActionAtMs: number | null;
   lastTimeoutAtMs: number | null;
+};
+
+type PlayerDisconnectState = {
+  disconnectedAtMs: number | null;
+  reconnectDeadlineMs: number | null;
 };
 
 type MatchClassification = {
@@ -283,7 +293,9 @@ const MAX_PLAYERS = 2;
 const MAX_SNAPSHOT_HISTORY_ENTRIES = 12;
 const ONLINE_TTL_MS = 30_000;
 const ONLINE_TURN_DURATION_MS = 10_000;
-const ONLINE_AFK_FORFEIT_MS = 60_000;
+const ONLINE_AFK_FORFEIT_MS = ONLINE_TURN_DURATION_MS * 2;
+const ONLINE_DISCONNECT_GRACE_MS = 15_000;
+const ONLINE_RECONNECT_RESUME_MS = 5_000;
 const BOT_TURN_DELAY_MS = 850;
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -499,10 +511,16 @@ const createPlayerAfkState = (): PlayerAfkState => ({
   lastTimeoutAtMs: null,
 });
 
+const createPlayerDisconnectState = (): PlayerDisconnectState => ({
+  disconnectedAtMs: null,
+  reconnectDeadlineMs: null,
+});
+
 const createMatchTimerState = (): MatchTimerState => ({
   turnDurationMs: ONLINE_TURN_DURATION_MS,
   turnStartedAtMs: null,
   turnDeadlineMs: null,
+  pausedTurnRemainingMs: null,
   activePlayerColor: null,
   activePlayerUserId: null,
   activePhase: null,
@@ -944,28 +962,124 @@ const canRunAuthoritativeTurnTimer = (state: MatchState): boolean =>
   state.gameState.phase !== "ended" &&
   Boolean(getUserIdForColor(state, state.gameState.currentTurn));
 
+const getAssignedHumanUserIdForColor = (state: MatchState, color: PlayerColor): string | null => {
+  const userId = getUserIdForColor(state, color);
+  if (!userId || isConfiguredBotColor(state, color)) {
+    return null;
+  }
+
+  return userId;
+};
+
+const getDisconnectedAssignedColors = (state: MatchState): PlayerColor[] =>
+  (["light", "dark"] as const).filter((color) => {
+    const userId = getAssignedHumanUserIdForColor(state, color);
+    if (!userId) {
+      return false;
+    }
+
+    return (
+      state.disconnect[color].reconnectDeadlineMs !== null &&
+      getUserPresenceTargets(state, userId).length === 0
+    );
+  });
+
+const hasActiveDisconnectGrace = (state: MatchState): boolean =>
+  !state.gameState.winner &&
+  state.gameState.phase !== "ended" &&
+  getDisconnectedAssignedColors(state).length > 0;
+
+const getReconnectGraceState = (
+  state: MatchState,
+  nowMs: number
+): { playerColor: PlayerColor; userId: string; reconnectDeadlineMs: number; reconnectRemainingMs: number } | null => {
+  const candidates = getDisconnectedAssignedColors(state)
+    .map((playerColor) => {
+      const userId = getAssignedHumanUserIdForColor(state, playerColor);
+      const reconnectDeadlineMs = state.disconnect[playerColor].reconnectDeadlineMs;
+      if (!userId || reconnectDeadlineMs === null) {
+        return null;
+      }
+
+      return {
+        playerColor,
+        userId,
+        reconnectDeadlineMs,
+        reconnectRemainingMs: Math.max(0, reconnectDeadlineMs - nowMs),
+      };
+    })
+    .filter((candidate): candidate is {
+      playerColor: PlayerColor;
+      userId: string;
+      reconnectDeadlineMs: number;
+      reconnectRemainingMs: number;
+    } => candidate !== null)
+    .sort((left, right) => left.reconnectDeadlineMs - right.reconnectDeadlineMs);
+
+  return candidates[0] ?? null;
+};
+
+const getExpiredDisconnectedColor = (state: MatchState, nowMs: number): PlayerColor | null => {
+  const expiredColors = getDisconnectedAssignedColors(state).filter((color) => {
+    const reconnectDeadlineMs = state.disconnect[color].reconnectDeadlineMs;
+    return reconnectDeadlineMs !== null && nowMs >= reconnectDeadlineMs;
+  });
+
+  if (expiredColors.length === 0) {
+    return null;
+  }
+
+  return expiredColors.includes(state.gameState.currentTurn) ? state.gameState.currentTurn : expiredColors[0];
+};
+
 const clearTurnTimer = (state: MatchState, reason: MatchTimerResetReason = null): void => {
   state.timer.turnStartedAtMs = null;
   state.timer.turnDeadlineMs = null;
+  state.timer.pausedTurnRemainingMs = null;
   state.timer.activePlayerColor = null;
   state.timer.activePlayerUserId = null;
   state.timer.activePhase = null;
   state.timer.resetReason = reason;
 };
 
-const resetTurnTimerForCurrentState = (state: MatchState, nowMs: number, reason: MatchTimerResetReason): void => {
+const pauseTurnTimerForDisconnect = (state: MatchState, nowMs: number): void => {
+  if (state.timer.turnDeadlineMs !== null) {
+    state.timer.pausedTurnRemainingMs = Math.max(0, state.timer.turnDeadlineMs - nowMs);
+  } else if (state.timer.pausedTurnRemainingMs === null) {
+    state.timer.pausedTurnRemainingMs = ONLINE_RECONNECT_RESUME_MS;
+  }
+
+  state.timer.turnStartedAtMs = null;
+  state.timer.turnDeadlineMs = null;
+  state.timer.activePlayerColor = null;
+  state.timer.activePlayerUserId = null;
+  state.timer.activePhase = null;
+  state.timer.resetReason = "paused_for_disconnect";
+};
+
+const resetTurnTimerForCurrentState = (
+  state: MatchState,
+  nowMs: number,
+  reason: MatchTimerResetReason,
+  overrideTurnDurationMs?: number | null
+): void => {
   if (!canRunAuthoritativeTurnTimer(state)) {
     clearTurnTimer(state, reason);
     return;
   }
 
   const activePlayerColor = state.gameState.currentTurn;
-  const turnDurationMs = isConfiguredBotColor(state, activePlayerColor)
+  const defaultTurnDurationMs = isConfiguredBotColor(state, activePlayerColor)
     ? BOT_TURN_DELAY_MS
     : ONLINE_TURN_DURATION_MS;
+  const turnDurationMs =
+    typeof overrideTurnDurationMs === "number" && Number.isFinite(overrideTurnDurationMs)
+      ? Math.max(0, Math.round(overrideTurnDurationMs))
+      : defaultTurnDurationMs;
   state.timer.turnDurationMs = turnDurationMs;
   state.timer.turnStartedAtMs = nowMs;
   state.timer.turnDeadlineMs = nowMs + turnDurationMs;
+  state.timer.pausedTurnRemainingMs = null;
   state.timer.activePlayerColor = activePlayerColor;
   state.timer.activePlayerUserId = getUserIdForColor(state, activePlayerColor);
   state.timer.activePhase = state.gameState.phase;
@@ -973,6 +1087,11 @@ const resetTurnTimerForCurrentState = (state: MatchState, nowMs: number, reason:
 };
 
 const ensureTurnTimerForCurrentState = (state: MatchState, nowMs: number): void => {
+  if (hasActiveDisconnectGrace(state)) {
+    pauseTurnTimerForDisconnect(state, nowMs);
+    return;
+  }
+
   if (!canRunAuthoritativeTurnTimer(state)) {
     clearTurnTimer(state, "inactive");
     return;
@@ -987,6 +1106,54 @@ const ensureTurnTimerForCurrentState = (state: MatchState, nowMs: number): void 
   }
 
   resetTurnTimerForCurrentState(state, nowMs, "resynced");
+};
+
+const clearDisconnectGraceForColor = (state: MatchState, playerColor: PlayerColor): boolean => {
+  const tracker = state.disconnect[playerColor];
+  const didClear = tracker.disconnectedAtMs !== null || tracker.reconnectDeadlineMs !== null;
+  state.disconnect[playerColor] = createPlayerDisconnectState();
+  return didClear;
+};
+
+const clearDisconnectGraceForUser = (state: MatchState, userId: string): boolean => {
+  const playerColor = state.assignments[userId];
+  if (!playerColor) {
+    return false;
+  }
+
+  return clearDisconnectGraceForColor(state, playerColor);
+};
+
+const startDisconnectGraceForUser = (state: MatchState, userId: string, nowMs: number): boolean => {
+  if (!state.started || state.gameState.winner || state.gameState.phase === "ended") {
+    return false;
+  }
+
+  const playerColor = state.assignments[userId];
+  if (!playerColor || isConfiguredBotColor(state, playerColor)) {
+    return false;
+  }
+
+  if (getUserPresenceTargets(state, userId).length > 0) {
+    return false;
+  }
+
+  state.disconnect[playerColor] = {
+    disconnectedAtMs: nowMs,
+    reconnectDeadlineMs: nowMs + ONLINE_DISCONNECT_GRACE_MS,
+  };
+  pauseTurnTimerForDisconnect(state, nowMs);
+  return true;
+};
+
+const resumeTurnTimerAfterReconnect = (state: MatchState, nowMs: number): void => {
+  const pausedTurnRemainingMs = state.timer.pausedTurnRemainingMs;
+  const resumeTurnDurationMs =
+    pausedTurnRemainingMs === null
+      ? ONLINE_TURN_DURATION_MS
+      : Math.min(ONLINE_TURN_DURATION_MS, Math.max(pausedTurnRemainingMs, ONLINE_RECONNECT_RESUME_MS));
+
+  resetTurnTimerForCurrentState(state, nowMs, "resumed_after_reconnect", resumeTurnDurationMs);
 };
 
 const resetAfkOnMeaningfulAction = (state: MatchState, playerColor: PlayerColor, nowMs: number): void => {
@@ -1049,7 +1216,7 @@ const syncCompletedMatchEnd = (state: MatchState): void => {
     return;
   }
 
-  if (state.matchEnd?.reason === "forfeit_inactivity") {
+  if (state.matchEnd?.reason === "forfeit_inactivity" || state.matchEnd?.reason === "forfeit_disconnect") {
     return;
   }
 
@@ -1680,6 +1847,10 @@ function matchInit(
       light: createPlayerAfkState(),
       dark: createPlayerAfkState(),
     },
+    disconnect: {
+      light: createPlayerDisconnectState(),
+      dark: createPlayerDisconnectState(),
+    },
     matchEnd: null,
     resultRecorded: false,
   };
@@ -1742,6 +1913,9 @@ function matchJoin(
   state: MatchState,
   presences: nkruntime.Presence[]
 ): { state: MatchState } {
+  const nowMs = Date.now();
+  let clearedDisconnectGrace = false;
+
   presences.forEach((presence) => {
     const userId = getPresenceUserId(presence);
     if (!userId) {
@@ -1751,9 +1925,14 @@ function matchJoin(
     upsertPresence(state, presence);
     ensureAssignment(state, userId);
     cacheAssignedPlayerTitle(state, nk, userId);
+    clearedDisconnectGrace = clearDisconnectGraceForUser(state, userId) || clearedDisconnectGrace;
   });
 
-  markMatchStartedIfReady(state, Date.now());
+  if (state.started && clearedDisconnectGrace && !hasActiveDisconnectGrace(state)) {
+    resumeTurnTimerAfterReconnect(state, nowMs);
+  }
+
+  markMatchStartedIfReady(state, nowMs);
   broadcastSnapshot(dispatcher, state, getMatchId(ctx));
 
   return { state };
@@ -1768,6 +1947,9 @@ function matchLeave(
   state: MatchState,
   presences: nkruntime.Presence[]
 ): { state: MatchState } {
+  const nowMs = Date.now();
+  let shouldBroadcastSnapshot = false;
+
   presences.forEach((presence) => {
     const userId = getPresenceUserId(presence);
     if (!userId) {
@@ -1775,7 +1957,12 @@ function matchLeave(
       return;
     }
     removePresence(state, presence);
+    shouldBroadcastSnapshot = startDisconnectGraceForUser(state, userId, nowMs) || shouldBroadcastSnapshot;
   });
+
+  if (shouldBroadcastSnapshot) {
+    broadcastSnapshot(dispatcher, state, getMatchId(ctx));
+  }
 
   if (state.gameState.winner && !state.resultRecorded) {
     try {
@@ -1830,6 +2017,20 @@ function matchLoop(
     return { state };
   }
 
+  try {
+    const expiredDisconnectedColor = getExpiredDisconnectedColor(state, nowMs);
+    if (expiredDisconnectedColor) {
+      forfeitPlayerForDisconnect(logger, nk, dispatcher, state, matchId, expiredDisconnectedColor);
+    }
+  } catch (error) {
+    logMatchLoopError(logger, matchId, state, "disconnect_processing", error);
+    try {
+      broadcastSnapshot(dispatcher, state, matchId);
+    } catch (snapshotError) {
+      logMatchLoopError(logger, matchId, state, "disconnect_recovery_snapshot", snapshotError);
+    }
+  }
+
   messages.forEach((message) => {
     try {
       const senderUserId = getSenderUserId(message.sender);
@@ -1849,6 +2050,24 @@ function matchLoop(
           senderUserId,
           "UNAUTHORIZED_PLAYER",
           "Only assigned players can send match commands."
+        );
+        return;
+      }
+
+      if (
+        hasActiveDisconnectGrace(state) &&
+        !state.gameState.winner &&
+        state.gameState.phase !== "ended"
+      ) {
+        const reconnectState = getReconnectGraceState(state, Date.now());
+        sendError(
+          dispatcher,
+          state,
+          senderUserId,
+          "MATCH_NOT_READY",
+          reconnectState
+            ? `Waiting for ${reconnectState.playerColor} to reconnect.`
+            : "Waiting for the disconnected player to reconnect."
         );
         return;
       }
@@ -2053,6 +2272,8 @@ function forfeitPlayerForInactivity(
 ): void {
   const winnerColor = getOtherPlayerColor(forfeitingColor);
   state.afk[forfeitingColor].accumulatedMs = ONLINE_AFK_FORFEIT_MS;
+  clearDisconnectGraceForColor(state, "light");
+  clearDisconnectGraceForColor(state, "dark");
   state.gameState = {
     ...state.gameState,
     phase: "ended",
@@ -2068,6 +2289,37 @@ function forfeitPlayerForInactivity(
     forfeitingColor,
     matchId,
     state.afk[forfeitingColor].accumulatedMs,
+    state.revision
+  );
+  broadcastSnapshot(dispatcher, state, matchId);
+  finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
+}
+
+function forfeitPlayerForDisconnect(
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  dispatcher: nkruntime.MatchDispatcher,
+  state: MatchState,
+  matchId: string,
+  forfeitingColor: PlayerColor
+): void {
+  const winnerColor = getOtherPlayerColor(forfeitingColor);
+  clearDisconnectGraceForColor(state, "light");
+  clearDisconnectGraceForColor(state, "dark");
+  state.gameState = {
+    ...state.gameState,
+    phase: "ended",
+    rollValue: null,
+    winner: winnerColor,
+    history: [...state.gameState.history, `${forfeitingColor} forfeited after disconnecting.`],
+  };
+  state.matchEnd = buildMatchEndPayload(state, "forfeit_disconnect", winnerColor, forfeitingColor);
+  clearTurnTimer(state, "forfeit_disconnect");
+  state.revision += 1;
+  logger.info(
+    "Forfeited %s for disconnect in match %s after missing reconnect deadline (revision %d)",
+    forfeitingColor,
+    matchId,
     state.revision
   );
   broadcastSnapshot(dispatcher, state, matchId);
@@ -2495,7 +2747,7 @@ function processCompletedMatchSummaries(
     return results;
   }
 
-  if (state.matchEnd?.reason === "forfeit_inactivity") {
+  if (state.matchEnd?.reason === "forfeit_inactivity" || state.matchEnd?.reason === "forfeit_disconnect") {
     logger.info("Skipping challenge completion processing for forfeited match %s.", matchId);
     return results;
   }
@@ -2778,6 +3030,7 @@ function sendError(
 function broadcastSnapshot(dispatcher: nkruntime.MatchDispatcher, state: MatchState, matchId: string): void {
   const nowMs = Date.now();
   const activeTimedPlayerColor = state.timer.activePlayerColor;
+  const reconnectGraceState = getReconnectGraceState(state, nowMs);
   const turnRemainingMs =
     state.timer.turnDeadlineMs === null ? 0 : Math.max(0, state.timer.turnDeadlineMs - nowMs);
   const snapshotGameState =
@@ -2813,6 +3066,11 @@ function broadcastSnapshot(dispatcher: nkruntime.MatchDispatcher, state: MatchSt
       activeTimedPlayerColor && !isConfiguredBotColor(state, activeTimedPlayerColor)
         ? getAfkRemainingMs(state, activeTimedPlayerColor, nowMs)
         : null,
+    reconnectingPlayer: reconnectGraceState?.userId ?? null,
+    reconnectingPlayerColor: reconnectGraceState?.playerColor ?? null,
+    reconnectGraceDurationMs: reconnectGraceState ? ONLINE_DISCONNECT_GRACE_MS : null,
+    reconnectDeadlineMs: reconnectGraceState?.reconnectDeadlineMs ?? null,
+    reconnectRemainingMs: reconnectGraceState?.reconnectRemainingMs ?? null,
     matchEnd: state.matchEnd,
   };
 

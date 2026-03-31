@@ -348,7 +348,7 @@ const deriveServerConfirmedTournamentOutcomeFromSnapshot = (
 ): 'champion' | 'runner_up' | 'eliminated' | null =>
   deriveServerConfirmedTournamentOutcome(snapshot?.tournament);
 
-type MatchMomentCueKind = 'play' | 'rosette' | 'opponentJoined' | 'opponentForfeit';
+type MatchMomentCueKind = 'play' | 'rosette' | 'opponentJoined' | 'opponentReconnecting';
 type RollButtonLatchPhase = 'idle' | 'awaitingOutcome' | 'awaitingTurnReset';
 type TutorialCoachPhase =
   | 'idle'
@@ -384,8 +384,8 @@ const MATCH_MOMENT_CUES: Record<MatchMomentCueKind, Omit<MatchMomentIndicatorCue
     background: 'rgba(20, 32, 37, 0.94)',
     durationMs: 1450,
   },
-  opponentForfeit: {
-    message: 'Opponent Forfeit',
+  opponentReconnecting: {
+    message: 'Opponent Reconnecting',
     accent: urTheme.colors.carnelianBright,
     border: 'rgba(232, 98, 46, 0.86)',
     glow: 'rgba(232, 98, 46, 0.2)',
@@ -626,6 +626,10 @@ export function GameRoom() {
   const authoritativeActiveTimedPhase = useGameStore((state) => state.authoritativeActiveTimedPhase);
   const authoritativeHistoryCount = useGameStore((state) => state.authoritativeHistoryCount) ?? 0;
   const authoritativePlayers = useGameStore((state) => state.authoritativePlayers);
+  const authoritativeReconnectingPlayerColor = useGameStore((state) => state.authoritativeReconnectingPlayerColor);
+  const authoritativeReconnectGraceDurationMs = useGameStore((state) => state.authoritativeReconnectGraceDurationMs);
+  const authoritativeReconnectDeadlineMs = useGameStore((state) => state.authoritativeReconnectDeadlineMs);
+  const authoritativeReconnectRemainingMs = useGameStore((state) => state.authoritativeReconnectRemainingMs);
   const authoritativeMatchEnd = useGameStore((state) => state.authoritativeMatchEnd);
   const authoritativeSnapshotReceivedAtMs = useGameStore((state) => state.authoritativeSnapshotReceivedAtMs);
   const applyServerSnapshot = useGameStore((state) => state.applyServerSnapshot);
@@ -735,9 +739,21 @@ export function GameRoom() {
   }, [tournamentRoundParam]);
   const onlineMatchEnd = isOffline ? null : authoritativeMatchEnd;
   const winModalTitle = didPlayerWin ? 'Victory' : 'Defeat';
+  const isOnlineForfeit =
+    onlineMatchEnd?.reason === 'forfeit_inactivity' || onlineMatchEnd?.reason === 'forfeit_disconnect';
+  const tournamentEliminationMessage =
+    onlineMatchEnd?.reason === 'forfeit_disconnect'
+      ? 'You disconnected and did not return in time, so you were eliminated from the tournament.'
+      : onlineMatchEnd?.reason === 'forfeit_inactivity'
+        ? 'You forfeited due to inactivity and were eliminated from the tournament.'
+        : 'Your tournament run has ended.';
   const winModalMessage = useMemo(() => {
     if (hasAssignedColor && onlineMatchEnd?.reason === 'forfeit_inactivity') {
       return didPlayerWin ? 'Opponent forfeited due to inactivity.' : 'You forfeited due to inactivity.';
+    }
+
+    if (hasAssignedColor && onlineMatchEnd?.reason === 'forfeit_disconnect') {
+      return didPlayerWin ? 'Opponent disconnected and did not return.' : 'You disconnected and did not return in time.';
     }
 
     return didPlayerWin ? 'The royal path is yours.' : 'The opponent seized the final lane.';
@@ -790,19 +806,32 @@ export function GameRoom() {
     !isOffline &&
     (joinedPlayerCount >= 2 || gameState.winner !== null || hasTournamentBotOpponent);
   const isOnlineHumanMatch = !isOffline && !hasTournamentBotOpponent;
+  const hasReconnectGraceActive = !isOffline && authoritativeReconnectingPlayerColor !== null;
+  const isOpponentReconnecting =
+    hasReconnectGraceActive &&
+    hasAssignedColor &&
+    authoritativeReconnectingPlayerColor !== resolvedPlayerColor;
   const shouldShowEmojiControls = isOnlineHumanMatch && hasOpponentJoined;
   const requiresOpponentPresence = isPrivateMatch || (isTournamentMatch && !hasTournamentBotOpponent);
-  const isOpponentReadyToPlay = !requiresOpponentPresence || hasOpponentJoined;
+  const isOpponentReadyToPlay = !hasReconnectGraceActive && (!requiresOpponentPresence || hasOpponentJoined);
   const isOnlineInteractionReady = isOffline || socketState === 'connected';
   const canRoll = isMyTurn && gameState.phase === 'rolling' && isOpponentReadyToPlay && isOnlineInteractionReady;
   const isMatchFinished = gameState.winner !== null || gameState.phase === 'ended';
-  const shouldFreezeForfeitMotion =
-    !isOffline &&
-    onlineMatchEnd?.reason === 'forfeit_inactivity' &&
-    isMatchFinished;
+  const shouldFreezeForfeitMotion = !isOffline && isOnlineForfeit && isMatchFinished;
   const onlineMatchStatusPillText = useMemo(() => {
     if (isOffline) {
       return null;
+    }
+
+    if (hasReconnectGraceActive) {
+      const reconnectStatus = isOpponentReconnecting ? 'Opponent Reconnecting' : 'Player Reconnecting';
+      if (isPrivateMatch) {
+        return `Private Match - ${reconnectStatus}`;
+      }
+      if (isTournamentMatch) {
+        return `${tournamentDisplayName} - ${reconnectStatus}`;
+      }
+      return `Online Match - ${reconnectStatus}`;
     }
 
     if (isPrivateMatch) {
@@ -822,6 +851,8 @@ export function GameRoom() {
     return `Online Match - ${opponentStatus}`;
   }, [
     hasOpponentJoined,
+    hasReconnectGraceActive,
+    isOpponentReconnecting,
     isOffline,
     isPrivateMatch,
     isTournamentMatch,
@@ -1313,26 +1344,20 @@ export function GameRoom() {
         ? `${tournamentAdvanceFlow.statusText} ${tournamentAdvanceFlow.subtleStatusText}`
         : tournamentAdvanceFlow.statusText;
     } else if (tournamentTerminalOutcomeOverride === 'eliminated') {
-      baseMessage = onlineMatchEnd?.reason === 'forfeit_inactivity'
-        ? 'You forfeited due to inactivity and were eliminated from the tournament.'
-        : 'Your tournament run has ended.';
+      baseMessage = tournamentEliminationMessage;
     } else if (tournamentTerminalOutcomeOverride === 'champion') {
       baseMessage = 'You won the tournament and finished as champion.';
     } else if (tournamentTerminalOutcomeOverride === 'runner_up') {
       baseMessage = 'The final is complete. You finished the tournament as runner-up.';
     } else if (isTournamentRewardSummaryPrimary) {
       if (tournamentOutcome === 'eliminated') {
-        baseMessage = onlineMatchEnd?.reason === 'forfeit_inactivity'
-          ? 'You forfeited due to inactivity and were eliminated from the tournament.'
-          : 'Your tournament run has ended.';
+        baseMessage = tournamentEliminationMessage;
       } else if (tournamentOutcome === 'champion') {
         baseMessage = 'You won the tournament and finished as champion.';
       } else if (tournamentOutcome === 'runner_up') {
         baseMessage = 'The final is complete. You finished the tournament as runner-up.';
       } else if (tournamentAdvanceFlow.phase === 'eliminated') {
-        baseMessage = onlineMatchEnd?.reason === 'forfeit_inactivity'
-          ? 'You forfeited due to inactivity and were eliminated from the tournament.'
-          : 'Your tournament run has ended.';
+        baseMessage = tournamentEliminationMessage;
       } else if (tournamentAdvanceFlow.isChampion) {
         baseMessage = 'You won the tournament and finished as champion.';
       } else if (tournamentAdvanceFlow.finalPlacement === 2) {
@@ -1341,9 +1366,7 @@ export function GameRoom() {
         baseMessage = 'The tournament bracket is complete and your final result is locked in.';
       }
     } else if (tournamentAdvanceFlow.phase === 'eliminated') {
-      baseMessage = onlineMatchEnd?.reason === 'forfeit_inactivity'
-        ? 'You forfeited due to inactivity and were eliminated from the tournament.'
-        : 'Your tournament run has ended.';
+      baseMessage = tournamentEliminationMessage;
     } else if (tournamentAdvanceFlow.isChampion) {
       baseMessage = 'You won the tournament and finished as champion.';
     } else if (tournamentAdvanceFlow.finalPlacement === 2) {
@@ -1366,9 +1389,9 @@ export function GameRoom() {
     isTournamentResultModal,
     isValidatingTournamentExit,
     isTournamentRewardSummaryPrimary,
-    onlineMatchEnd?.reason,
     showTournamentFallbackPendingModal,
     showTournamentAdvanceResolutionModal,
+    tournamentEliminationMessage,
     tournamentExitValidationFailed,
     tournamentAdvanceFlow.finalPlacement,
     tournamentAdvanceFlow.isChampion,
@@ -1437,6 +1460,9 @@ export function GameRoom() {
   const onlineTurnTimerDurationMs = !isOffline && authoritativeTurnDeadlineMs !== null
     ? (authoritativeTurnDurationMs ?? 10_000)
     : undefined;
+  const onlineReconnectTimerDurationMs = !isOffline && authoritativeReconnectingPlayerColor !== null
+    ? (authoritativeReconnectGraceDurationMs ?? 15_000)
+    : undefined;
   const onlineTurnTimerRemainingMs = useMemo(() => {
     if (isOffline || onlineTurnTimerDurationMs === undefined) {
       return undefined;
@@ -1458,11 +1484,40 @@ export function GameRoom() {
     onlineTurnTimerDurationMs,
     resolvedAuthoritativeServerTimeMs,
   ]);
-  const resolvedTurnTimerDurationMs = isOffline ? visualTurnTimerDurationMs : onlineTurnTimerDurationMs;
-  const resolvedTurnTimerRemainingMs = isOffline ? undefined : onlineTurnTimerRemainingMs;
+  const onlineReconnectTimerRemainingMs = useMemo(() => {
+    if (isOffline || onlineReconnectTimerDurationMs === undefined) {
+      return undefined;
+    }
+
+    if (resolvedAuthoritativeServerTimeMs !== null && authoritativeReconnectDeadlineMs !== null) {
+      return Math.max(0, authoritativeReconnectDeadlineMs - resolvedAuthoritativeServerTimeMs);
+    }
+
+    if (authoritativeReconnectRemainingMs !== null) {
+      return Math.max(0, authoritativeReconnectRemainingMs);
+    }
+
+    return undefined;
+  }, [
+    authoritativeReconnectDeadlineMs,
+    authoritativeReconnectRemainingMs,
+    isOffline,
+    onlineReconnectTimerDurationMs,
+    resolvedAuthoritativeServerTimeMs,
+  ]);
+  const resolvedOnlineTimerDurationMs = hasReconnectGraceActive
+    ? onlineReconnectTimerDurationMs
+    : onlineTurnTimerDurationMs;
+  const resolvedOnlineTimerRemainingMs = hasReconnectGraceActive
+    ? onlineReconnectTimerRemainingMs
+    : onlineTurnTimerRemainingMs;
+  const resolvedTurnTimerDurationMs = isOffline ? visualTurnTimerDurationMs : resolvedOnlineTimerDurationMs;
+  const resolvedTurnTimerRemainingMs = isOffline ? undefined : resolvedOnlineTimerRemainingMs;
   const resolvedTurnTimerKey = isOffline
     ? turnTimerCycleId
-    : `${serverRevision}:${authoritativeTurnDeadlineMs ?? 'idle'}`;
+    : hasReconnectGraceActive
+      ? `reconnect:${authoritativeReconnectDeadlineMs ?? authoritativeReconnectRemainingMs ?? 'idle'}`
+      : `${serverRevision}:${authoritativeTurnDeadlineMs ?? 'idle'}`;
 
   const clearRollTimer = React.useCallback(() => {
     if (rollTimerRef.current) {
@@ -2723,7 +2778,7 @@ export function GameRoom() {
       isOffline ||
       !introsComplete ||
       isScriptedTutorialPhase ||
-      authoritativeTurnDeadlineMs === null ||
+      (authoritativeTurnDeadlineMs === null && authoritativeReconnectDeadlineMs === null) ||
       authoritativeServerTimeMs === null ||
       authoritativeSnapshotReceivedAtMs === null ||
       gameState.winner !== null ||
@@ -2741,6 +2796,7 @@ export function GameRoom() {
       clearInterval(intervalId);
     };
   }, [
+    authoritativeReconnectDeadlineMs,
     authoritativeServerTimeMs,
     authoritativeSnapshotReceivedAtMs,
     authoritativeTurnDeadlineMs,
@@ -2903,7 +2959,7 @@ export function GameRoom() {
   }, [applyTutorialSnapshot, isPlaythroughTutorialMatch, matchId]);
 
   useEffect(() => {
-    if (!requiresOpponentPresence) {
+    if (!isOnlineHumanMatch) {
       previousJoinedPlayerCountRef.current = joinedPlayerCount;
       return;
     }
@@ -2920,11 +2976,11 @@ export function GameRoom() {
     }
 
     if (previousJoinedPlayerCount >= 2 && joinedPlayerCount < 2) {
-      replaceMatchCue('opponentForfeit');
+      replaceMatchCue('opponentReconnecting');
     }
 
     previousJoinedPlayerCountRef.current = joinedPlayerCount;
-  }, [enqueueMatchCue, gameState.phase, gameState.winner, joinedPlayerCount, replaceMatchCue, requiresOpponentPresence]);
+  }, [enqueueMatchCue, gameState.phase, gameState.winner, isOnlineHumanMatch, joinedPlayerCount, replaceMatchCue]);
 
   const socketRef = useRef<Socket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -4171,16 +4227,18 @@ export function GameRoom() {
   const isTurnTimerEnabled = introsComplete && !isScriptedTutorialPhase && (!isOffline || botTimerEnabled);
   const isVisualTurnTimerRunning =
     isTurnTimerEnabled &&
-    isOpponentReadyToPlay &&
     gameState.phase !== 'ended' &&
     gameState.winner === null &&
     (isOffline
       ? true
-      : authoritativeTurnDeadlineMs !== null &&
-        authoritativeServerTimeMs !== null &&
-        authoritativeSnapshotReceivedAtMs !== null &&
-        authoritativeActiveTimedPlayerColor === gameState.currentTurn &&
-        authoritativeActiveTimedPhase === gameState.phase);
+      : hasReconnectGraceActive
+        ? true
+        : isOpponentReadyToPlay &&
+          authoritativeTurnDeadlineMs !== null &&
+          authoritativeServerTimeMs !== null &&
+          authoritativeSnapshotReceivedAtMs !== null &&
+          authoritativeActiveTimedPlayerColor === gameState.currentTurn &&
+          authoritativeActiveTimedPhase === gameState.phase);
   const showPersistentDiceVisual = introsComplete && diceAnimationEnabled;
   const showDestinationHighlights = introsComplete && !rollingVisual && gameState.rollValue !== null;
   const displayedValidMoves = useMemo(() => {

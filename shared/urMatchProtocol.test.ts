@@ -38,7 +38,12 @@ describe('urMatchProtocol', () => {
           light: 0,
           dark: 20_000,
         },
-        afkRemainingMs: 70_000,
+        afkRemainingMs: 20_000,
+        reconnectingPlayer: 'dark-user',
+        reconnectingPlayerColor: 'dark',
+        reconnectGraceDurationMs: 15_000,
+        reconnectDeadlineMs: 16_000,
+        reconnectRemainingMs: 15_000,
         matchEnd: {
           reason: 'completed',
           winnerUserId: 'light-user',
@@ -134,6 +139,16 @@ describe('urMatchProtocol', () => {
         forfeitingUserId: 'loser',
       }),
     ).toBe(false);
+
+    expect(
+      isMatchEndPayload({
+        reason: 'forfeit_disconnect',
+        winnerUserId: 'winner',
+        loserUserId: 'loser',
+        forfeitingUserId: 'loser',
+        message: 'Disconnected.',
+      }),
+    ).toBe(true);
   });
 
   it('accepts auto-trigger metadata on roll requests only when it is boolean', () => {

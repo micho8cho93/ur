@@ -208,6 +208,11 @@ const mockStoreState = {
   authoritativePlayers: null,
   authoritativeAfkAccumulatedMs: null,
   authoritativeAfkRemainingMs: null,
+  authoritativeReconnectingPlayer: null,
+  authoritativeReconnectingPlayerColor: null,
+  authoritativeReconnectGraceDurationMs: null,
+  authoritativeReconnectDeadlineMs: null,
+  authoritativeReconnectRemainingMs: null,
   authoritativeMatchEnd: null,
   authoritativeSnapshotReceivedAtMs: null,
   lastProgressionAward: null,
@@ -924,6 +929,11 @@ describe('GameRoom match dice stage', () => {
         authoritativePlayers: snapshot.players,
         authoritativeAfkAccumulatedMs: snapshot.afkAccumulatedMs ?? null,
         authoritativeAfkRemainingMs: snapshot.afkRemainingMs ?? null,
+        authoritativeReconnectingPlayer: snapshot.reconnectingPlayer ?? null,
+        authoritativeReconnectingPlayerColor: snapshot.reconnectingPlayerColor ?? null,
+        authoritativeReconnectGraceDurationMs: snapshot.reconnectGraceDurationMs ?? null,
+        authoritativeReconnectDeadlineMs: snapshot.reconnectDeadlineMs ?? null,
+        authoritativeReconnectRemainingMs: snapshot.reconnectRemainingMs ?? null,
         authoritativeMatchEnd: snapshot.matchEnd ?? null,
         authoritativeSnapshotReceivedAtMs: Date.now(),
       });
@@ -949,6 +959,11 @@ describe('GameRoom match dice stage', () => {
     mockStoreState.authoritativePlayers = null;
     mockStoreState.authoritativeAfkAccumulatedMs = null;
     mockStoreState.authoritativeAfkRemainingMs = null;
+    mockStoreState.authoritativeReconnectingPlayer = null;
+    mockStoreState.authoritativeReconnectingPlayerColor = null;
+    mockStoreState.authoritativeReconnectGraceDurationMs = null;
+    mockStoreState.authoritativeReconnectDeadlineMs = null;
+    mockStoreState.authoritativeReconnectRemainingMs = null;
     mockStoreState.authoritativeMatchEnd = null;
     mockStoreState.authoritativeSnapshotReceivedAtMs = null;
     mockAuthState.user = null;
@@ -1977,7 +1992,7 @@ describe('GameRoom match dice stage', () => {
     }
   });
 
-  it('shows Opponent Forfeit when a private opponent leaves mid-match', async () => {
+  it('shows Opponent Reconnecting when a private opponent leaves mid-match', async () => {
     mockSearchParams.id = 'private-2';
     mockSearchParams.offline = '0';
     mockSearchParams.privateMatch = '1';
@@ -2010,7 +2025,7 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    expect(screen.queryByText('Opponent Forfeit')).toBeNull();
+    expect(screen.queryByText('Opponent Reconnecting')).toBeNull();
 
     mockStoreState.matchPresences = ['self-user'];
 
@@ -2019,7 +2034,7 @@ describe('GameRoom match dice stage', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Opponent Forfeit')).toBeTruthy();
+    expect(screen.getByText('Opponent Reconnecting')).toBeTruthy();
     expect(screen.queryByText('Opponent Joined')).toBeNull();
   });
 

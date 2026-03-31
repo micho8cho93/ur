@@ -62,6 +62,15 @@ type RuntimeGlobals = typeof globalThis & {
     state: any,
     presences: Array<Record<string, unknown>>
   ) => { state: any };
+  matchLeave: (
+    ctx: Record<string, unknown>,
+    logger: { info: jest.Mock; warn: jest.Mock; debug: jest.Mock; error: jest.Mock },
+    nk: { storageRead: jest.Mock; storageWrite: jest.Mock },
+    dispatcher: { broadcastMessage: jest.Mock },
+    tick: number,
+    state: any,
+    presences: Array<Record<string, unknown>>
+  ) => { state: any };
   matchLoop: (
     ctx: Record<string, unknown>,
     logger: { info: jest.Mock; warn: jest.Mock; debug: jest.Mock; error: jest.Mock },
@@ -344,6 +353,72 @@ describe('authoritative online timer runtime', () => {
     expect(result.state.afk.light.accumulatedMs).toBe(20_000);
   });
 
+  it('starts reconnect grace and pauses the turn when an assigned player disconnects', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const nowSpy = jest.spyOn(Date, 'now');
+    const { ctx, logger, nk, dispatcher, state } = initializeStartedMatch(runtime, nowSpy);
+
+    nowSpy.mockReturnValue(4_000);
+    dispatcher.broadcastMessage.mockClear();
+    const result = runtime.matchLeave(ctx, logger, nk, dispatcher, 1, state, [
+      createPresence('dark-user', 'dark-session'),
+    ]);
+
+    expect(result.state.disconnect.dark.disconnectedAtMs).toBe(4_000);
+    expect(result.state.disconnect.dark.reconnectDeadlineMs).toBe(19_000);
+    expect(result.state.timer.turnStartedAtMs).toBeNull();
+    expect(result.state.timer.turnDeadlineMs).toBeNull();
+    expect(result.state.timer.pausedTurnRemainingMs).toBe(8_000);
+    expect(decodeLastSnapshot(dispatcher)).toEqual(
+      expect.objectContaining({
+        reconnectingPlayer: 'dark-user',
+        reconnectingPlayerColor: 'dark',
+        reconnectGraceDurationMs: 15_000,
+        reconnectDeadlineMs: 19_000,
+        reconnectRemainingMs: 15_000,
+        turnDeadlineMs: null,
+      }),
+    );
+  });
+
+  it('resumes the paused turn with a reconnect buffer when the disconnected player rejoins', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const nowSpy = jest.spyOn(Date, 'now');
+    const { ctx, logger, nk, dispatcher, state } = initializeStartedMatch(runtime, nowSpy);
+
+    nowSpy.mockReturnValue(11_500);
+    let nextState = runtime.matchLeave(ctx, logger, nk, dispatcher, 1, state, [
+      createPresence('dark-user', 'dark-session'),
+    ]).state;
+
+    nowSpy.mockReturnValue(12_000);
+    dispatcher.broadcastMessage.mockClear();
+    nextState = joinPresence({
+      runtime,
+      ctx,
+      logger,
+      nk,
+      dispatcher,
+      state: nextState,
+      presence: createPresence('dark-user', 'dark-session-2'),
+    });
+
+    expect(nextState.disconnect.dark.reconnectDeadlineMs).toBeNull();
+    expect(nextState.timer.turnStartedAtMs).toBe(12_000);
+    expect(nextState.timer.turnDeadlineMs).toBe(17_000);
+    expect(nextState.timer.turnDurationMs).toBe(5_000);
+    expect(nextState.timer.resetReason).toBe('resumed_after_reconnect');
+    expect(decodeLastSnapshot(dispatcher)).toEqual(
+      expect.objectContaining({
+        reconnectingPlayer: null,
+        reconnectingPlayerColor: null,
+        turnStartedAtMs: 12_000,
+        turnDeadlineMs: 17_000,
+        turnDurationMs: 5_000,
+      }),
+    );
+  });
+
   it('moving-phase timeout auto-moves the first valid move', () => {
     const runtime = globalThis as RuntimeGlobals;
     const nowSpy = jest.spyOn(Date, 'now');
@@ -517,7 +592,7 @@ describe('authoritative online timer runtime', () => {
     expect(result.state.timer.turnDeadlineMs).toBe(22_001);
   });
 
-  it('forfeits the player that reaches 60 seconds of accumulated inactivity', () => {
+  it('forfeits the player that reaches two timed-out turns of accumulated inactivity', () => {
     const runtime = globalThis as RuntimeGlobals;
     const nowSpy = jest.spyOn(Date, 'now');
     const { ctx, logger, nk, dispatcher, state } = initializeStartedMatch(runtime, nowSpy);
@@ -527,7 +602,7 @@ describe('authoritative online timer runtime', () => {
     mockedProcessRankedMatchResult.mockClear();
     mockedAwardXpForMatchWin.mockClear();
 
-    state.afk.light.accumulatedMs = 50_000;
+    state.afk.light.accumulatedMs = 10_000;
 
     const result = runtime.matchLoop(ctx, logger, nk, dispatcher, 1, state, []);
 
@@ -543,6 +618,41 @@ describe('authoritative online timer runtime', () => {
     expect(result.state.resultRecorded).toBe(true);
     expect(result.state.timer.turnStartedAtMs).toBeNull();
     expect(result.state.timer.turnDeadlineMs).toBeNull();
+    expect(mockedProcessCompletedMatch).not.toHaveBeenCalled();
+    expect(mockedProcessRankedMatchResult).toHaveBeenCalledTimes(1);
+    expect(mockedAwardXpForMatchWin).toHaveBeenCalledTimes(1);
+  });
+
+  it('forfeits the disconnected player when reconnect grace expires', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const nowSpy = jest.spyOn(Date, 'now');
+    const { ctx, logger, nk, dispatcher, state } = initializeStartedMatch(runtime, nowSpy);
+
+    nowSpy.mockReturnValue(4_000);
+    let nextState = runtime.matchLeave(ctx, logger, nk, dispatcher, 1, state, [
+      createPresence('dark-user', 'dark-session'),
+    ]).state;
+
+    nowSpy.mockReturnValue(19_001);
+    dispatcher.broadcastMessage.mockClear();
+    mockedProcessCompletedMatch.mockClear();
+    mockedProcessRankedMatchResult.mockClear();
+    mockedAwardXpForMatchWin.mockClear();
+
+    nextState = runtime.matchLoop(ctx, logger, nk, dispatcher, 1, nextState, []).state;
+
+    expect(nextState.gameState.winner).toBe('light');
+    expect(nextState.gameState.phase).toBe('ended');
+    expect(nextState.matchEnd).toEqual({
+      reason: 'forfeit_disconnect',
+      winnerUserId: 'light-user',
+      loserUserId: 'dark-user',
+      forfeitingUserId: 'dark-user',
+      message: null,
+    });
+    expect(nextState.resultRecorded).toBe(true);
+    expect(nextState.timer.turnStartedAtMs).toBeNull();
+    expect(nextState.timer.turnDeadlineMs).toBeNull();
     expect(mockedProcessCompletedMatch).not.toHaveBeenCalled();
     expect(mockedProcessRankedMatchResult).toHaveBeenCalledTimes(1);
     expect(mockedAwardXpForMatchWin).toHaveBeenCalledTimes(1);

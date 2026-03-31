@@ -43,6 +43,11 @@ interface GameStore {
   authoritativeHistoryCount: number;
   authoritativeAfkAccumulatedMs: Record<PlayerColor, number> | null;
   authoritativeAfkRemainingMs: number | null;
+  authoritativeReconnectingPlayer: string | null;
+  authoritativeReconnectingPlayerColor: PlayerColor | null;
+  authoritativeReconnectGraceDurationMs: number | null;
+  authoritativeReconnectDeadlineMs: number | null;
+  authoritativeReconnectRemainingMs: number | null;
   authoritativeMatchEnd: MatchEndPayload | null;
   authoritativeSnapshotReceivedAtMs: number | null;
   lastProgressionAward: ProgressionAwardResponse | null;
@@ -97,6 +102,11 @@ const EMPTY_AUTHORITATIVE_ONLINE_STATE = {
   authoritativeHistoryCount: 0,
   authoritativeAfkAccumulatedMs: null,
   authoritativeAfkRemainingMs: null,
+  authoritativeReconnectingPlayer: null,
+  authoritativeReconnectingPlayerColor: null,
+  authoritativeReconnectGraceDurationMs: null,
+  authoritativeReconnectDeadlineMs: null,
+  authoritativeReconnectRemainingMs: null,
   authoritativeMatchEnd: null,
   authoritativeSnapshotReceivedAtMs: null,
 } as const;
@@ -220,6 +230,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
           ? { light: snapshot.afkAccumulatedMs.light, dark: snapshot.afkAccumulatedMs.dark }
           : null,
         authoritativeAfkRemainingMs: snapshot.afkRemainingMs ?? null,
+        authoritativeReconnectingPlayer: snapshot.reconnectingPlayer ?? null,
+        authoritativeReconnectingPlayerColor: snapshot.reconnectingPlayerColor ?? null,
+        authoritativeReconnectGraceDurationMs: snapshot.reconnectGraceDurationMs ?? null,
+        authoritativeReconnectDeadlineMs: snapshot.reconnectDeadlineMs ?? null,
+        authoritativeReconnectRemainingMs: snapshot.reconnectRemainingMs ?? null,
         authoritativeMatchEnd: snapshot.matchEnd ?? null,
         authoritativeSnapshotReceivedAtMs: receivedAtMs,
       };

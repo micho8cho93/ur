@@ -125,6 +125,11 @@ describe('useGameStore', () => {
       },
       authoritativeAfkAccumulatedMs: { light: 0, dark: 20_000 },
       authoritativeAfkRemainingMs: 70_000,
+      authoritativeReconnectingPlayer: 'dark-user',
+      authoritativeReconnectingPlayerColor: 'dark',
+      authoritativeReconnectGraceDurationMs: 15_000,
+      authoritativeReconnectDeadlineMs: 24_000,
+      authoritativeReconnectRemainingMs: 15_000,
       authoritativeMatchEnd: {
         reason: 'completed',
         winnerUserId: 'light-user',
@@ -156,6 +161,11 @@ describe('useGameStore', () => {
     expect(state.authoritativePlayers).toBeNull();
     expect(state.authoritativeAfkAccumulatedMs).toBeNull();
     expect(state.authoritativeAfkRemainingMs).toBeNull();
+    expect(state.authoritativeReconnectingPlayer).toBeNull();
+    expect(state.authoritativeReconnectingPlayerColor).toBeNull();
+    expect(state.authoritativeReconnectGraceDurationMs).toBeNull();
+    expect(state.authoritativeReconnectDeadlineMs).toBeNull();
+    expect(state.authoritativeReconnectRemainingMs).toBeNull();
     expect(state.authoritativeMatchEnd).toBeNull();
     expect(state.authoritativeSnapshotReceivedAtMs).toBeNull();
     expect(state.lastProgressionAward).toBeNull();
@@ -244,7 +254,12 @@ describe('useGameStore', () => {
         activeTimedPlayerColor: 'light',
         activeTimedPhase: 'moving',
         afkAccumulatedMs: { light: 0, dark: 25_000 },
-        afkRemainingMs: 60_000,
+        afkRemainingMs: 20_000,
+        reconnectingPlayer: 'dark-user',
+        reconnectingPlayerColor: 'dark',
+        reconnectGraceDurationMs: 15_000,
+        reconnectDeadlineMs: 17_000,
+        reconnectRemainingMs: 15_000,
         matchEnd: {
           reason: 'completed',
           winnerUserId: 'light-user',
@@ -274,7 +289,12 @@ describe('useGameStore', () => {
     });
     expect(state.authoritativeHistoryCount).toBe(42);
     expect(state.authoritativeAfkAccumulatedMs).toEqual({ light: 0, dark: 25_000 });
-    expect(state.authoritativeAfkRemainingMs).toBe(60_000);
+    expect(state.authoritativeAfkRemainingMs).toBe(20_000);
+    expect(state.authoritativeReconnectingPlayer).toBe('dark-user');
+    expect(state.authoritativeReconnectingPlayerColor).toBe('dark');
+    expect(state.authoritativeReconnectGraceDurationMs).toBe(15_000);
+    expect(state.authoritativeReconnectDeadlineMs).toBe(17_000);
+    expect(state.authoritativeReconnectRemainingMs).toBe(15_000);
     expect(state.authoritativeMatchEnd).toEqual({
       reason: 'completed',
       winnerUserId: 'light-user',
@@ -530,6 +550,11 @@ describe('useGameStore', () => {
       },
       authoritativeAfkAccumulatedMs: { light: 10_000, dark: 20_000 },
       authoritativeAfkRemainingMs: 70_000,
+      authoritativeReconnectingPlayer: 'dark-user',
+      authoritativeReconnectingPlayerColor: 'dark',
+      authoritativeReconnectGraceDurationMs: 15_000,
+      authoritativeReconnectDeadlineMs: 24_000,
+      authoritativeReconnectRemainingMs: 15_000,
       authoritativeMatchEnd: {
         reason: 'forfeit_inactivity',
         winnerUserId: 'light-user',
@@ -561,6 +586,11 @@ describe('useGameStore', () => {
     expect(state.authoritativePlayers).toBeNull();
     expect(state.authoritativeAfkAccumulatedMs).toBeNull();
     expect(state.authoritativeAfkRemainingMs).toBeNull();
+    expect(state.authoritativeReconnectingPlayer).toBeNull();
+    expect(state.authoritativeReconnectingPlayerColor).toBeNull();
+    expect(state.authoritativeReconnectGraceDurationMs).toBeNull();
+    expect(state.authoritativeReconnectDeadlineMs).toBeNull();
+    expect(state.authoritativeReconnectRemainingMs).toBeNull();
     expect(state.authoritativeMatchEnd).toBeNull();
     expect(state.authoritativeSnapshotReceivedAtMs).toBeNull();
     expect(state.lastProgressionAward).toBeNull();
