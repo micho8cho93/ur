@@ -12,7 +12,7 @@ npm run dev
 
 ## Environment
 
-Copy `.env.example` to `.env.local` if you want to override defaults.
+Copy `.env.example` to the repo-root `.env.local` if you want to override defaults for local builds.
 
 ```bash
 VITE_NAKAMA_BASE_URL=https://nakama.urgame.live
@@ -27,6 +27,8 @@ VITE_USE_MOCK_DATA=true
 The Vite app also reads `EXPO_PUBLIC_*` Nakama env vars from the parent project directory, so local dashboard runs can share the root repo's Nakama config instead of duplicating it.
 
 Do not store shared admin passwords in `VITE_*` variables. Vite injects those into the client bundle. Use a real Nakama email/password account for dashboard access and keep any operational copies of those credentials in a droplet-only secret file such as `backend/deploy/env.production`.
+
+When `VITE_NAKAMA_BASE_URL` is not set and the app is running on a non-localhost host, `ur-internals` uses the current browser origin by default. That keeps deployed builds on `internals.*` talking to the same-origin Caddy proxy for `/v2/*`, `/ws`, and `/healthcheck`.
 
 ## Routes
 
