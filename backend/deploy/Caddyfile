@@ -13,31 +13,33 @@ internals.urgame.live {
     format console
   }
 
-  @internals_nakama_preflight {
-    method OPTIONS
-    path /v2/* /ws /ws/* /healthcheck
-    header Origin https://internals.urgame.live
-  }
+  route {
+    @internals_nakama_preflight {
+      method OPTIONS
+      path /v2/* /ws /ws/* /healthcheck
+      header Origin https://internals.urgame.live
+    }
 
-  handle @internals_nakama_preflight {
-    header Access-Control-Allow-Origin https://internals.urgame.live
-    header Access-Control-Allow-Credentials true
-    header Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With"
-    header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-    header Vary Origin
-    respond "" 204
-  }
+    handle @internals_nakama_preflight {
+      header Access-Control-Allow-Origin https://internals.urgame.live
+      header Access-Control-Allow-Credentials true
+      header Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With"
+      header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+      header Vary Origin
+      respond "" 204
+    }
 
-  @internals_nakama path /v2/* /ws /ws/* /healthcheck
-  handle @internals_nakama {
-    header Access-Control-Allow-Origin https://internals.urgame.live
-    header Access-Control-Allow-Credentials true
-    header Vary Origin
-    reverse_proxy nakama:7350
-  }
+    @internals_nakama path /v2/* /ws /ws/* /healthcheck
+    handle @internals_nakama {
+      header Access-Control-Allow-Origin https://internals.urgame.live
+      header Access-Control-Allow-Credentials true
+      header Vary Origin
+      reverse_proxy nakama:7350
+    }
 
-  encode zstd gzip
-  root * /var/www/internals
-  try_files {path} /index.html
-  file_server
+    encode zstd gzip
+    root * /var/www/internals
+    try_files {path} /index.html
+    file_server
+  }
 }
