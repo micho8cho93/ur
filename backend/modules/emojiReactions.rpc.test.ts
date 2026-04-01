@@ -131,7 +131,7 @@ describe('authoritative emoji reactions', () => {
       emoji: 'fire',
       senderUserId: 'light-user',
       senderColor: 'light',
-      remainingForSender: 4,
+      remainingForSender: 9,
       createdAtMs: 1_234,
     });
     expect(
@@ -139,7 +139,7 @@ describe('authoritative emoji reactions', () => {
     ).toHaveLength(2);
   });
 
-  it('enforces the five-reaction limit server-side', () => {
+  it('enforces the ten-reaction limit server-side', () => {
     const runtime = globalThis as RuntimeGlobals;
     const nowSpy = jest.spyOn(Date, 'now');
     const ctx = { matchId: 'match-1' };
@@ -158,7 +158,7 @@ describe('authoritative emoji reactions', () => {
     state = joinPresence({ runtime, ctx, logger, nk, dispatcher, state, presence: darkPresence });
     dispatcher.broadcastMessage.mockClear();
 
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 10; index += 1) {
       nowSpy.mockReturnValue(2_000 + index);
       state = runtime.matchLoop(ctx, logger, nk, dispatcher, index + 1, state, [
         {
@@ -169,7 +169,7 @@ describe('authoritative emoji reactions', () => {
       ]).state;
     }
 
-    expect(state.reactionCounts['light-user']).toBe(5);
+    expect(state.reactionCounts['light-user']).toBe(10);
     dispatcher.broadcastMessage.mockClear();
 
     state = runtime.matchLoop(ctx, logger, nk, dispatcher, 99, state, [
@@ -180,7 +180,7 @@ describe('authoritative emoji reactions', () => {
       },
     ]).state;
 
-    expect(state.reactionCounts['light-user']).toBe(5);
+    expect(state.reactionCounts['light-user']).toBe(10);
     expect(dispatcher.broadcastMessage.mock.calls.some(([opCode]) => opCode === MatchOpCode.REACTION_BROADCAST)).toBe(false);
     expect(decodeLastPayloadForOpCode(dispatcher, MatchOpCode.SERVER_ERROR)).toEqual(
       expect.objectContaining({
@@ -224,5 +224,101 @@ describe('authoritative emoji reactions', () => {
         message: 'Emoji reactions are only available in online human matches.',
       }),
     );
+  });
+
+  it('broadcasts live piece selections in online human matches', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const nowSpy = jest.spyOn(Date, 'now');
+    const ctx = { matchId: 'match-1' };
+    const logger = createLogger();
+    const nk = createNakama();
+    const dispatcher = createDispatcher();
+    const initialized = runtime.matchInit(ctx, logger, nk, {
+      playerIds: ['light-user', 'dark-user'],
+      modeId: 'standard',
+      rankedMatch: true,
+    });
+    const lightPresence = createPresence('light-user', 'light-session');
+    const darkPresence = createPresence('dark-user', 'dark-session');
+
+    let state = joinPresence({ runtime, ctx, logger, nk, dispatcher, state: initialized.state, presence: lightPresence });
+    state = joinPresence({ runtime, ctx, logger, nk, dispatcher, state, presence: darkPresence });
+    dispatcher.broadcastMessage.mockClear();
+
+    state.gameState.currentTurn = 'light';
+    state.gameState.phase = 'moving';
+    state.gameState.rollValue = 1;
+    state.gameState.light.pieces[0].position = 0;
+    state.gameState.dark.pieces.forEach((piece: { position: number; isFinished: boolean }, index: number) => {
+      piece.position = 20 + index;
+      piece.isFinished = true;
+    });
+
+    nowSpy.mockReturnValue(1_777);
+    runtime.matchLoop(ctx, logger, nk, dispatcher, 1, state, [
+      {
+        sender: lightPresence,
+        opCode: MatchOpCode.PIECE_SELECTION,
+        data: JSON.stringify({ type: 'piece_selection', pieceId: 'light-0' }),
+      },
+    ]);
+
+    expect(decodeLastPayloadForOpCode(dispatcher, MatchOpCode.PIECE_SELECTION_BROADCAST)).toEqual({
+      type: 'piece_selection_broadcast',
+      pieceId: 'light-0',
+      senderUserId: 'light-user',
+      senderColor: 'light',
+      createdAtMs: 1_777,
+    });
+  });
+
+  it('broadcasts a selected piece immediately before bot movement resolves', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const nowSpy = jest.spyOn(Date, 'now');
+    const ctx = { matchId: 'match-bot-1' };
+    const logger = createLogger();
+    const nk = createNakama();
+    const dispatcher = createDispatcher();
+    const initialized = runtime.matchInit(ctx, logger, nk, {
+      playerIds: ['light-user', 'bot-user'],
+      modeId: 'standard',
+      botMatch: true,
+      botUserId: 'bot-user',
+      botDifficulty: 'easy',
+    });
+    const lightPresence = createPresence('light-user', 'light-session');
+
+    nowSpy.mockReturnValue(2_000);
+    const state = joinPresence({ runtime, ctx, logger, nk, dispatcher, state: initialized.state, presence: lightPresence });
+    dispatcher.broadcastMessage.mockClear();
+
+    state.gameState.currentTurn = 'dark';
+    state.gameState.phase = 'moving';
+    state.gameState.rollValue = 1;
+    state.timer.turnDurationMs = 850;
+    state.timer.turnStartedAtMs = 2_000;
+    state.timer.turnDeadlineMs = 2_850;
+    state.timer.activePlayerColor = 'dark';
+    state.timer.activePlayerUserId = 'bot-user';
+    state.timer.activePhase = 'moving';
+    state.bot = {
+      userId: 'bot-user',
+      color: 'dark',
+      difficulty: 'easy',
+      displayName: 'Easy Bot',
+    };
+    state.gameState.dark.pieces[0].position = 0;
+    state.gameState.light.pieces.forEach((piece: { position: number; isFinished: boolean }, index: number) => {
+      piece.position = 20 + index;
+      piece.isFinished = true;
+    });
+
+    nowSpy.mockReturnValue(2_851);
+    runtime.matchLoop(ctx, logger, nk, dispatcher, 2, state, []);
+
+    const calls = dispatcher.broadcastMessage.mock.calls.map(([opCode]) => opCode);
+    expect(calls).toContain(MatchOpCode.PIECE_SELECTION_BROADCAST);
+    expect(calls).toContain(MatchOpCode.STATE_SNAPSHOT);
+    expect(calls.indexOf(MatchOpCode.PIECE_SELECTION_BROADCAST)).toBeLessThan(calls.indexOf(MatchOpCode.STATE_SNAPSHOT));
   });
 });

@@ -3945,15 +3945,28 @@ var MatchOpCode = {
   ROLL_REQUEST: 1,
   MOVE_REQUEST: 2,
   EMOJI_REACTION: 3,
+  PIECE_SELECTION: 4,
   STATE_SNAPSHOT: 100,
   SERVER_ERROR: 101,
   PROGRESSION_AWARD: 102,
   ELO_RATING_UPDATE: 103,
   TOURNAMENT_REWARD_SUMMARY: 104,
-  REACTION_BROADCAST: 105
+  REACTION_BROADCAST: 105,
+  PIECE_SELECTION_BROADCAST: 106
 };
-var EMOJI_REACTION_KEYS = ["laughing", "cool", "fire", "omg", "skeleton"];
-var MAX_EMOJI_REACTIONS_PER_MATCH = 5;
+var EMOJI_REACTION_KEYS = [
+  "laughing",
+  "cool",
+  "fire",
+  "omg",
+  "skeleton",
+  "sad",
+  "hugging",
+  "angry",
+  "eyes",
+  "question"
+];
+var MAX_EMOJI_REACTIONS_PER_MATCH = 10;
 var isRecord = (value) => typeof value === "object" && value !== null;
 var isEmojiReactionKey = (value) => typeof value === "string" && EMOJI_REACTION_KEYS.includes(value);
 var isOptional = (value, guard) => typeof value === "undefined" || guard(value);
@@ -3966,6 +3979,7 @@ var isMoveAction = (value) => {
 var isRollRequestPayload = (value) => isRecord(value) && value.type === "roll_request" && isOptional(value.autoTriggered, (candidate) => typeof candidate === "boolean");
 var isMoveRequestPayload = (value) => isRecord(value) && value.type === "move_request" && isMoveAction(value.move);
 var isEmojiReactionRequestPayload = (value) => isRecord(value) && value.type === "emoji_reaction" && isEmojiReactionKey(value.emoji);
+var isPieceSelectionRequestPayload = (value) => isRecord(value) && value.type === "piece_selection" && (typeof value.pieceId === "string" || value.pieceId === null);
 var encodePayload = (payload) => JSON.stringify(payload);
 var decodePayload = (raw) => {
   try {
@@ -9409,6 +9423,10 @@ var createMatchTimerState = () => ({
   activePhase: null,
   resetReason: null
 });
+var createMatchRollDisplayState = () => ({
+  value: null,
+  label: null
+});
 var createReactionCounts = (assignments) => Object.keys(assignments).reduce((counts, userId) => {
   counts[userId] = 0;
   return counts;
@@ -9739,6 +9757,7 @@ var getActiveAssignedUserCount = (state) => Object.keys(state.assignments).filte
 ).length;
 var canStartMatch = (state) => Object.keys(state.assignments).length >= MAX_PLAYERS && getActiveAssignedUserCount(state) >= MAX_PLAYERS;
 var canUseMatchEmojiReactions = (state) => !state.classification.bot && state.opponentType === "human" && Object.keys(state.assignments).length >= MAX_PLAYERS;
+var canUseLivePieceSelectionRequests = (state) => !state.classification.bot && state.opponentType === "human" && Object.keys(state.assignments).length >= MAX_PLAYERS;
 var canRunAuthoritativeTurnTimer = (state) => state.started && !state.gameState.winner && state.gameState.phase !== "ended" && Boolean(getUserIdForColor(state, state.gameState.currentTurn));
 var getAssignedHumanUserIdForColor = (state, color) => {
   const userId = getUserIdForColor(state, color);
@@ -10364,6 +10383,7 @@ function matchInit(_ctx, _logger, nk, params) {
     tournamentContext: resolveTournamentMatchContextFromParams(params),
     tournamentMatchWinXp,
     reactionCounts: createReactionCounts(assignments),
+    rollDisplay: createMatchRollDisplayState(),
     telemetry: createMatchTelemetry(),
     timer: createMatchTimerState(),
     afk: {
@@ -10553,6 +10573,14 @@ function matchLoop(ctx, logger, nk, dispatcher, _tick, state, messages) {
         applyEmojiReactionRequest(dispatcher, state, senderUserId, senderColor, decodedPayload);
         return;
       }
+      if (opCode === MatchOpCode.PIECE_SELECTION) {
+        if (!isPieceSelectionRequestPayload(decodedPayload)) {
+          sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Piece selection payload is invalid.");
+          return;
+        }
+        applyPieceSelectionRequest(dispatcher, state, senderUserId, senderColor, decodedPayload);
+        return;
+      }
       sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", `Unsupported opcode ${opCode}.`);
     } catch (error) {
       logMatchLoopError(logger, matchId, state, "message_processing", error);
@@ -10632,6 +10660,10 @@ function applyRollOutcome(state, playerColor, rollValue) {
     phase: "moving"
   });
   const validMoves = getValidMoves(rollingState, rollValue);
+  state.rollDisplay = {
+    value: rollValue,
+    label: validMoves.length === 0 && rollValue > 0 ? "No Move" : null
+  };
   if (validMoves.length === 0) {
     state.gameState = __spreadProps(__spreadValues({}, rollingState), {
       currentTurn: getOtherPlayerColor(rollingState.currentTurn),
@@ -10656,7 +10688,7 @@ function applyValidatedMove(state, playerColor, move) {
     state.telemetry.players[playerColor].capturesMade += 1;
     state.telemetry.players[opponentColor].capturesSuffered += 1;
   }
-  if (targetCoord && isContestedLanding(state.gameState.matchConfig.pathVariant, playerColor, move.toIndex)) {
+  if (targetCoord && isContestedLanding(state.gameState.matchConfig, playerColor, move.toIndex)) {
     state.telemetry.players[playerColor].contestedTilesLandedCount += 1;
   }
   completePlayerTurnTelemetry(state, playerColor, { didCapture, unusableRoll: false });
@@ -10719,21 +10751,43 @@ function applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, nowMs) {
       const rolledValue = rollDice();
       const validMoves = applyRollOutcome(state, activePlayerColor, rolledValue);
       if (validMoves.length > 0) {
+        const botMove = (_b = getBotMove(state.gameState, rolledValue, state.bot.difficulty)) != null ? _b : validMoves[0];
+        broadcastPieceSelection(
+          dispatcher,
+          state,
+          state.bot.userId,
+          activePlayerColor,
+          botMove.pieceId,
+          nowMs
+        );
         applyValidatedMove(
           state,
           activePlayerColor,
-          (_b = getBotMove(state.gameState, rolledValue, state.bot.difficulty)) != null ? _b : validMoves[0]
+          botMove
         );
       }
     } else if (state.gameState.phase === "moving" && state.gameState.rollValue !== null) {
       const validMoves = getValidMoves(state.gameState, state.gameState.rollValue);
       if (validMoves.length > 0) {
+        const botMove = (_c = getBotMove(state.gameState, state.gameState.rollValue, state.bot.difficulty)) != null ? _c : validMoves[0];
+        broadcastPieceSelection(
+          dispatcher,
+          state,
+          state.bot.userId,
+          activePlayerColor,
+          botMove.pieceId,
+          nowMs
+        );
         applyValidatedMove(
           state,
           activePlayerColor,
-          (_c = getBotMove(state.gameState, state.gameState.rollValue, state.bot.difficulty)) != null ? _c : validMoves[0]
+          botMove
         );
       } else {
+        state.rollDisplay = {
+          value: state.gameState.rollValue,
+          label: state.gameState.rollValue > 0 ? "No Move" : null
+        };
         state.gameState = __spreadProps(__spreadValues({}, state.gameState), {
           currentTurn: getOtherPlayerColor(activePlayerColor),
           phase: "rolling",
@@ -10770,6 +10824,10 @@ function applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, nowMs) {
     if (validMoves.length > 0) {
       applyValidatedMove(state, activePlayerColor, validMoves[0]);
     } else {
+      state.rollDisplay = {
+        value: state.gameState.rollValue,
+        label: state.gameState.rollValue > 0 ? "No Move" : null
+      };
       state.gameState = __spreadProps(__spreadValues({}, state.gameState), {
         currentTurn: getOtherPlayerColor(activePlayerColor),
         phase: "rolling",
@@ -10845,6 +10903,7 @@ function applyMoveRequest(logger, nk, dispatcher, state, userId, playerColor, pa
   }
   const nowMs = Date.now();
   resetAfkOnMeaningfulAction(state, playerColor, nowMs);
+  broadcastPieceSelection(dispatcher, state, userId, playerColor, payload.move.pieceId, nowMs);
   applyValidatedMove(state, playerColor, payload.move);
   syncCompletedMatchEnd(state);
   resetTurnTimerForCurrentState(state, nowMs, "player_move");
@@ -10892,6 +10951,47 @@ function applyEmojiReactionRequest(dispatcher, state, userId, playerColor, paylo
   };
   dispatcher.broadcastMessage(
     MatchOpCode.REACTION_BROADCAST,
+    encodePayload(broadcastPayload),
+    targets
+  );
+}
+function applyPieceSelectionRequest(dispatcher, state, userId, playerColor, payload) {
+  if (!canUseLivePieceSelectionRequests(state)) {
+    return;
+  }
+  if (!isPrivateMatchReady(state) || state.gameState.winner) {
+    return;
+  }
+  if (state.gameState.currentTurn !== playerColor) {
+    return;
+  }
+  if (payload.pieceId !== null) {
+    if (state.gameState.phase !== "moving" || state.gameState.rollValue === null) {
+      return;
+    }
+    const pieceCanMove = getValidMoves(state.gameState, state.gameState.rollValue).some(
+      (move) => move.pieceId === payload.pieceId
+    );
+    if (!pieceCanMove) {
+      return;
+    }
+  }
+  broadcastPieceSelection(dispatcher, state, userId, playerColor, payload.pieceId, Date.now());
+}
+function broadcastPieceSelection(dispatcher, state, userId, playerColor, pieceId, createdAtMs) {
+  const targets = getAssignedPlayerTargets(state);
+  if (targets.length === 0) {
+    return;
+  }
+  const broadcastPayload = {
+    type: "piece_selection_broadcast",
+    pieceId,
+    senderUserId: userId,
+    senderColor: playerColor,
+    createdAtMs
+  };
+  dispatcher.broadcastMessage(
+    MatchOpCode.PIECE_SELECTION_BROADCAST,
     encodePayload(broadcastPayload),
     targets
   );
@@ -11241,6 +11341,8 @@ function broadcastSnapshot(dispatcher, state, matchId) {
       light: buildSnapshotPlayer(state, "light"),
       dark: buildSnapshotPlayer(state, "dark")
     },
+    rollDisplayValue: state.rollDisplay.value,
+    rollDisplayLabel: state.rollDisplay.label,
     serverTimeMs: nowMs,
     turnDurationMs: state.timer.turnDurationMs,
     turnStartedAtMs: state.timer.turnStartedAtMs,

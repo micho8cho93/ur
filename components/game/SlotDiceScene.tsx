@@ -8,9 +8,11 @@ import {
   View,
 } from 'react-native';
 import {
+  buildJackpotPulseOrder,
   buildSlotDiceFaces,
   DEFAULT_DICE_ROLL_DURATION_MS,
   SLOT_DICE_COUNT,
+  SLOT_DICE_JACKPOT_VALUE,
   SLOT_DICE_SPIN_STEP_MS,
   SLOT_DICE_SPIN_STEP_VARIANCE_MS,
   SLOT_DICE_STOP_SETTLE_MS,
@@ -40,6 +42,10 @@ const SPIN_PHASE_TRIM_MS = scaleDuration(96);
 const CONTINUOUS_SPIN_BUFFER_MS = scaleDuration(140);
 const STOP_COMPLETION_BUFFER_MS = scaleDuration(140);
 const MIN_REEL_BOX_SIZE = 28;
+const JACKPOT_PULSE_LEAD_MS = scaleDuration(72);
+const JACKPOT_PULSE_STAGGER_MS = scaleDuration(124);
+const JACKPOT_PULSE_RISE_MS = scaleDuration(168);
+const JACKPOT_PULSE_FALL_MS = scaleDuration(236);
 
 type SlotDiceSceneProps = {
   diceImageScale?: number;
@@ -58,6 +64,8 @@ type SlotReelProps = {
   durationMs: number;
   imageSize: number;
   index: number;
+  jackpotPulseDelayMs: number;
+  jackpotPulseToken: number;
   onStopComplete?: (index: number) => void;
   playbackId: number;
   presentation: 'embedded' | 'stage';
@@ -104,6 +112,8 @@ const SlotReel: React.FC<SlotReelProps> = ({
   durationMs,
   imageSize,
   index,
+  jackpotPulseDelayMs,
+  jackpotPulseToken,
   onStopComplete,
   playbackId,
   presentation,
@@ -112,6 +122,7 @@ const SlotReel: React.FC<SlotReelProps> = ({
   variant,
 }) => {
   const spinSeedMarked = (playbackId + index) % 2 === 0;
+  const reelBorderRadius = Math.max(13, boxSize * 0.24);
   const spinTravelSteps = useMemo(
     () => getContinuousSpinTravelSteps(durationMs, index),
     [durationMs, index],
@@ -122,10 +133,13 @@ const SlotReel: React.FC<SlotReelProps> = ({
   const initialStripOffset =
     variant === 'start' ? 0 : getSettledStripOffset(targetMarked, spinSeedMarked, boxSize);
   const spinOffset = useRef(new Animated.Value(initialStripOffset)).current;
+  const jackpotGlow = useRef(new Animated.Value(0)).current;
   const spinOffsetValueRef = useRef(initialStripOffset);
   const settleAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
   const spinAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
+  const jackpotAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
   const spinStateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const jackpotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousSpinningRef = useRef(spinning);
   const latestSpinningRef = useRef(spinning);
   const settledStripStepRef = useRef<number | null>(variant === 'start' ? null : initialStripStep);
@@ -156,6 +170,11 @@ const SlotReel: React.FC<SlotReelProps> = ({
     spinStateTimerRef.current = null;
   }, []);
 
+  const clearJackpotTimer = useCallback(() => {
+    clearTimer(jackpotTimerRef.current);
+    jackpotTimerRef.current = null;
+  }, []);
+
   const stopSpinLoop = useCallback(() => {
     clearSpinStateTimer();
     spinAnimationRef.current?.stop();
@@ -168,10 +187,19 @@ const SlotReel: React.FC<SlotReelProps> = ({
     settleAnimationRef.current = null;
   }, []);
 
+  const stopJackpotAnimation = useCallback(() => {
+    clearJackpotTimer();
+    jackpotAnimationRef.current?.stop();
+    jackpotAnimationRef.current = null;
+    jackpotGlow.stopAnimation();
+    jackpotGlow.setValue(0);
+  }, [clearJackpotTimer, jackpotGlow]);
+
   const stopAllAnimations = useCallback(() => {
     stopSpinLoop();
     stopSettleAnimation();
-  }, [stopSettleAnimation, stopSpinLoop]);
+    stopJackpotAnimation();
+  }, [stopJackpotAnimation, stopSettleAnimation, stopSpinLoop]);
 
   const syncReel = useCallback(
     (nextMarked: boolean, nextVariant: SlotDiceVariant) => {
@@ -360,6 +388,42 @@ const SlotReel: React.FC<SlotReelProps> = ({
   }, [settleFromSpin, spinning, startSpinLoop, targetMarked, variant]);
 
   useEffect(() => stopAllAnimations, [stopAllAnimations]);
+
+  useEffect(() => {
+    if (jackpotPulseToken <= 0) {
+      stopJackpotAnimation();
+      return;
+    }
+
+    stopJackpotAnimation();
+    jackpotTimerRef.current = setTimeout(() => {
+      const animation = Animated.sequence([
+        Animated.timing(jackpotGlow, {
+          toValue: 1,
+          duration: JACKPOT_PULSE_RISE_MS,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(jackpotGlow, {
+          toValue: 0,
+          duration: JACKPOT_PULSE_FALL_MS,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: false,
+        }),
+      ]);
+
+      jackpotAnimationRef.current = animation;
+      animation.start(({ finished }) => {
+        jackpotAnimationRef.current = null;
+        if (finished) {
+          jackpotGlow.setValue(0);
+        }
+      });
+      jackpotTimerRef.current = null;
+    }, jackpotPulseDelayMs);
+
+    return stopJackpotAnimation;
+  }, [jackpotGlow, jackpotPulseDelayMs, jackpotPulseToken, stopJackpotAnimation]);
   const accessibilityText = visibleMarked ? 'marked' : 'unmarked';
 
   return (
@@ -375,67 +439,152 @@ const SlotReel: React.FC<SlotReelProps> = ({
       shouldRasterizeIOS
       style={[
         styles.reelWindow,
-        presentation === 'stage' ? styles.reelWindowStage : styles.reelWindowEmbedded,
         {
-          borderRadius: Math.max(13, boxSize * 0.24),
+          borderRadius: reelBorderRadius,
           height: boxSize,
           width: boxSize,
         },
       ]}
       testID={`slot-die-${index}`}
     >
-      <View style={styles.reelInset} />
-      <View
-        pointerEvents="none"
-        renderToHardwareTextureAndroid
-        shouldRasterizeIOS
-        style={styles.reelViewport}
-        testID={`slot-die-viewport-${index}`}
-      >
-        {variant === 'start' ? (
-          <View pointerEvents="none" style={styles.reelFace} testID={`slot-die-face-${index}`}>
-            <Image
-              source={DICE_UNMARKED}
-              style={[styles.dieImage, { height: imageSize, width: imageSize }]}
-              resizeMode="contain"
-              testID={`slot-die-image-${index}`}
-            />
-          </View>
-        ) : (
-          <Animated.View
-            pointerEvents="none"
-            renderToHardwareTextureAndroid
-            shouldRasterizeIOS
-            testID={`slot-die-strip-${index}`}
-            style={[
-              styles.spinStrip,
-              {
-                height: boxSize * spinStripFaces.length,
-                transform: [{ translateY: spinOffset }],
-              },
-            ]}
-          >
-            {spinStripFaces.map((faceMarked, faceIndex) => (
-              <View
-                key={`${index}-${faceIndex}-${faceMarked ? 'marked' : 'unmarked'}`}
-                style={[styles.spinStripCell, { height: boxSize }]}
-                testID={`slot-die-strip-cell-${index}-${faceIndex}`}
-              >
-                <Image
-                  source={faceMarked ? DICE_MARKED : DICE_UNMARKED}
-                  style={[styles.dieImage, { height: imageSize, width: imageSize }]}
-                  resizeMode="contain"
-                  testID={`slot-die-strip-image-${index}-${faceIndex}`}
-                />
-              </View>
-            ))}
-          </Animated.View>
-        )}
-      </View>
       <View style={styles.reelMaskTop} />
       <View style={styles.reelMaskBottom} />
-      <View style={styles.reelHighlight} />
-      <View style={styles.reelBorder} />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.jackpotOuterGlowAura,
+          {
+            borderRadius: reelBorderRadius + 2,
+            opacity: jackpotGlow,
+            transform: [
+              {
+                scale: jackpotGlow.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 1.05],
+                }),
+              },
+            ],
+          },
+        ]}
+        testID={`slot-die-jackpot-glow-${index}`}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.jackpotOuterGlowRing,
+          {
+            borderRadius: reelBorderRadius + 1,
+            opacity: jackpotGlow.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 0.98],
+            }),
+            transform: [
+              {
+                scale: jackpotGlow.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 1.03],
+                }),
+              },
+            ],
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.reelClipShell,
+          presentation === 'stage' ? styles.reelWindowStage : styles.reelWindowEmbedded,
+          {
+            borderRadius: reelBorderRadius,
+          },
+        ]}
+      >
+        <View style={styles.reelInset} />
+        <View
+          pointerEvents="none"
+          renderToHardwareTextureAndroid
+          shouldRasterizeIOS
+          style={styles.reelViewport}
+          testID={`slot-die-viewport-${index}`}
+        >
+          {variant === 'start' ? (
+            <View pointerEvents="none" style={styles.reelFace} testID={`slot-die-face-${index}`}>
+              <Image
+                source={DICE_UNMARKED}
+                style={[styles.dieImage, { height: imageSize, width: imageSize }]}
+                resizeMode="contain"
+                testID={`slot-die-image-${index}`}
+              />
+            </View>
+          ) : (
+            <Animated.View
+              pointerEvents="none"
+              renderToHardwareTextureAndroid
+              shouldRasterizeIOS
+              testID={`slot-die-strip-${index}`}
+              style={[
+                styles.spinStrip,
+                {
+                  height: boxSize * spinStripFaces.length,
+                  transform: [{ translateY: spinOffset }],
+                },
+              ]}
+            >
+              {spinStripFaces.map((faceMarked, faceIndex) => (
+                <View
+                  key={`${index}-${faceIndex}-${faceMarked ? 'marked' : 'unmarked'}`}
+                  style={[styles.spinStripCell, { height: boxSize }]}
+                  testID={`slot-die-strip-cell-${index}-${faceIndex}`}
+                >
+                  <Image
+                    source={faceMarked ? DICE_MARKED : DICE_UNMARKED}
+                    style={[styles.dieImage, { height: imageSize, width: imageSize }]}
+                    resizeMode="contain"
+                    testID={`slot-die-strip-image-${index}-${faceIndex}`}
+                  />
+                </View>
+              ))}
+            </Animated.View>
+          )}
+        </View>
+        <View style={styles.reelMaskTop} />
+        <View style={styles.reelMaskBottom} />
+        <View style={styles.reelHighlight} />
+        <Animated.View
+          pointerEvents="none"
+          style={[
+          styles.jackpotInnerGlowRing,
+          {
+            borderRadius: Math.max(10, reelBorderRadius - 1),
+            opacity: jackpotGlow.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 1],
+              }),
+              transform: [
+                {
+                  scale: jackpotGlow.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [1, 1.03],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+        <Animated.View
+          pointerEvents="none"
+          style={[
+          styles.jackpotInnerEdgeGlow,
+          {
+            borderRadius: Math.max(8, reelBorderRadius - 4),
+            opacity: jackpotGlow.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 1],
+              }),
+            },
+          ]}
+        />
+        <View style={styles.reelBorder} />
+      </View>
     </Animated.View>
   );
 };
@@ -462,11 +611,23 @@ export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
   const completedReelsRef = useRef(new Set<number>());
   const settledPlaybackRef = useRef<number | null>(null);
   const onSettledRef = useRef(onSettled);
+  const jackpotPulseSignatureRef = useRef<string | null>(null);
+  const [jackpotPulseToken, setJackpotPulseToken] = useState(0);
 
   const targetFaces = useMemo(
     () => buildSlotDiceFaces({ playbackId, rollValue }),
     [playbackId, rollValue],
   );
+  const jackpotPulseDelayByReel = useMemo(() => {
+    const pulseOrder = buildJackpotPulseOrder(playbackId);
+    const delays = Array.from({ length: SLOT_DICE_COUNT }, () => JACKPOT_PULSE_LEAD_MS);
+
+    pulseOrder.forEach((reelIndex, pulseIndex) => {
+      delays[reelIndex] = JACKPOT_PULSE_LEAD_MS + pulseIndex * JACKPOT_PULSE_STAGGER_MS;
+    });
+
+    return delays;
+  }, [playbackId]);
 
   useEffect(() => {
     onSettledRef.current = onSettled;
@@ -485,6 +646,8 @@ export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
     stopSequenceStartedRef.current = false;
     completedReelsRef.current = new Set<number>();
     settledPlaybackRef.current = null;
+    jackpotPulseSignatureRef.current = null;
+    setJackpotPulseToken(0);
     setSpinningReels(variant === 'animated' ? [...ALL_REELS_SPINNING] : [...ALL_REELS_STOPPED]);
   }, [clearTimers, playbackId, variant]);
 
@@ -559,6 +722,20 @@ export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
   }, [clearTimers, completePlayback, durationMs, rollValue, variant]);
 
   useEffect(() => clearTimers, [clearTimers]);
+
+  useEffect(() => {
+    const jackpotSignature =
+      variant === 'settled' && rollValue === SLOT_DICE_JACKPOT_VALUE
+        ? `${playbackId}:${variant}:${rollValue}`
+        : null;
+
+    if (jackpotSignature === null || jackpotPulseSignatureRef.current === jackpotSignature) {
+      return;
+    }
+
+    jackpotPulseSignatureRef.current = jackpotSignature;
+    setJackpotPulseToken((current) => current + 1);
+  }, [playbackId, rollValue, variant]);
 
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
     const { height, width } = event.nativeEvent.layout;
@@ -648,6 +825,8 @@ export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
               durationMs={durationMs}
               imageSize={imageSize}
               index={index}
+              jackpotPulseDelayMs={jackpotPulseDelayByReel[index] ?? JACKPOT_PULSE_LEAD_MS}
+              jackpotPulseToken={jackpotPulseToken}
               onStopComplete={handleReelStopComplete}
               playbackId={playbackId}
               presentation={presentation}
@@ -681,10 +860,17 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
   },
   reelWindow: {
-    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3.2,
+    backgroundColor: 'transparent',
+    overflow: 'visible',
+  },
+  reelClipShell: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   reelWindowEmbedded: {
     borderColor: '#86562A',
@@ -748,6 +934,61 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderWidth: 2,
     borderColor: 'rgba(84, 51, 24, 0.26)',
+  },
+  jackpotOuterGlowAura: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    bottom: -2,
+    left: -2,
+    borderWidth: 2.8,
+    borderColor: 'rgba(236, 206, 78, 0.96)',
+    backgroundColor: 'transparent',
+    shadowColor: '#E8BF42',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.95,
+    shadowRadius: 13,
+    elevation: 11,
+  },
+  jackpotOuterGlowRing: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderWidth: 2.4,
+    borderColor: 'rgba(246, 222, 120, 0.98)',
+    backgroundColor: 'transparent',
+    shadowColor: '#F0CF72',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 7,
+    elevation: 8,
+  },
+  jackpotInnerGlowRing: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    bottom: 2,
+    left: 2,
+    borderWidth: 2.1,
+    borderColor: 'rgba(234, 194, 72, 1)',
+    backgroundColor: 'transparent',
+    shadowColor: '#E4B84A',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.86,
+    shadowRadius: 5,
+    elevation: 6,
+  },
+  jackpotInnerEdgeGlow: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    bottom: 5,
+    left: 5,
+    borderWidth: 1.3,
+    borderColor: 'rgba(246, 228, 164, 0.96)',
+    backgroundColor: 'transparent',
   },
   dieImage: {
     alignSelf: 'center',

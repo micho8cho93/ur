@@ -17,13 +17,15 @@ import {
 import Animated, {
   Easing,
   cancelAnimation,
+  interpolateColor,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { DEFAULT_DICE_ROLL_DURATION_MS } from './slotDiceShared';
+import { DEFAULT_DICE_ROLL_DURATION_MS, SLOT_DICE_JACKPOT_VALUE } from './slotDiceShared';
 
 const STAGE_ROLL_BUTTON_WIDTH_SCALE = 1.2;
 const STAGE_ROLL_BUTTON_HEIGHT_SCALE = 0.8;
@@ -220,6 +222,10 @@ export const Dice: React.FC<DiceProps> = ({
   });
   const settledResultText = resolvedValue !== null ? String(resolvedValue) : null;
   const displayedResultText = resultLabel ?? settledResultText;
+  const showingNumericJackpotResult =
+    hasSettledResult &&
+    resolvedValue === SLOT_DICE_JACKPOT_VALUE &&
+    displayedResultText === String(SLOT_DICE_JACKPOT_VALUE);
 
   useEffect(() => {
     if (canRoll && !rolling) {
@@ -241,6 +247,8 @@ export const Dice: React.FC<DiceProps> = ({
   const sunkDepth = useSharedValue(pressedIn ? 1 : 0);
   const popPulse = useSharedValue(0);
   const impactPulse = useSharedValue(0);
+  const jackpotPulse = useSharedValue(0);
+  const jackpotPulseSignatureRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (pressedIn) {
@@ -268,6 +276,28 @@ export const Dice: React.FC<DiceProps> = ({
       );
     }
   }, [pressedIn, sunkDepth, popPulse, impactPulse]);
+
+  useEffect(() => {
+    if (!showingNumericJackpotResult) {
+      jackpotPulseSignatureRef.current = null;
+      cancelAnimation(jackpotPulse);
+      jackpotPulse.value = 0;
+      return;
+    }
+
+    const nextSignature = `${renderedPlaybackId}:${displayedResultText}`;
+    if (jackpotPulseSignatureRef.current === nextSignature) {
+      return;
+    }
+
+    jackpotPulseSignatureRef.current = nextSignature;
+    cancelAnimation(jackpotPulse);
+    jackpotPulse.value = 0;
+    jackpotPulse.value = withSequence(
+      withDelay(96, withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) })),
+      withDelay(500, withTiming(0, { duration: 240, easing: Easing.out(Easing.quad) })),
+    );
+  }, [displayedResultText, jackpotPulse, renderedPlaybackId, showingNumericJackpotResult]);
 
   const readinessStyle = useAnimatedStyle(() => ({
     opacity: readiness.value,
@@ -369,6 +399,50 @@ export const Dice: React.FC<DiceProps> = ({
       },
     ],
   }));
+
+  const jackpotBadgeStyle = useAnimatedStyle(() => {
+    const intensity = jackpotPulse.value;
+
+    return {
+      transform: [{ scale: 1 + intensity * 0.05 }],
+      borderColor: interpolateColor(
+        intensity,
+        [0, 1],
+        ['rgba(246, 219, 163, 0.45)', 'rgba(255, 225, 132, 1)'],
+      ),
+      backgroundColor: interpolateColor(
+        intensity,
+        [0, 1],
+        ['rgba(28, 12, 3, 0.72)', 'rgba(108, 66, 6, 0.94)'],
+      ),
+      shadowColor: '#FFD766',
+      shadowOpacity: 0.12 + intensity * 0.4,
+      shadowRadius: 4 + intensity * 10,
+      shadowOffset: { width: 0, height: 0 },
+    };
+  });
+
+  const jackpotTextStyle = useAnimatedStyle(() => {
+    const intensity = jackpotPulse.value;
+
+    return {
+      color: interpolateColor(intensity, [0, 1], ['#FFF2D8', '#FFE27A']),
+      transform: [{ scale: 1 + intensity * 0.08 }],
+      textShadowColor: 'rgba(255, 214, 97, 0.95)',
+      textShadowRadius: 2 + intensity * 10,
+    };
+  });
+
+  const jackpotTitleStyle = useAnimatedStyle(() => {
+    const intensity = jackpotPulse.value;
+
+    return {
+      color: interpolateColor(intensity, [0, 1], ['#F6E6CC', '#FFE27A']),
+      transform: [{ scale: 1 + intensity * 0.04 }],
+      textShadowColor: 'rgba(255, 214, 97, 0.9)',
+      textShadowRadius: intensity * 8,
+    };
+  });
 
   const title = isSceneRolling
     ? 'Casting...'
@@ -558,26 +632,40 @@ export const Dice: React.FC<DiceProps> = ({
                 ]}
               >
                 {showStatusCopy && showNumericResult && hasSettledResult ? (
-                  <View style={[styles.compactStageResultBadge, isMobileCompactStage && styles.mobileCompactStageResultBadge]}>
+                  <Animated.View
+                    style={[
+                      styles.compactStageResultBadge,
+                      isMobileCompactStage && styles.mobileCompactStageResultBadge,
+                      showingNumericJackpotResult && jackpotBadgeStyle,
+                    ]}
+                    testID={showingNumericJackpotResult ? 'dice-jackpot-result-badge' : undefined}
+                  >
                     <Text style={[styles.compactStageResultLabel, isMobileCompactStage && styles.mobileCompactStageResultLabel]}>
                       Roll
                     </Text>
-                    <Text style={[styles.compactStageResultValue, isMobileCompactStage && styles.mobileCompactStageResultValue]}>
+                    <Animated.Text
+                      style={[
+                        styles.compactStageResultValue,
+                        isMobileCompactStage && styles.mobileCompactStageResultValue,
+                        showingNumericJackpotResult && jackpotTextStyle,
+                      ]}
+                    >
                       {displayedResultText}
-                    </Text>
-                  </View>
+                    </Animated.Text>
+                  </Animated.View>
                 ) : showStatusCopy && showNumericResult ? (
-                  <Text
+                  <Animated.Text
                     numberOfLines={1}
                     style={[
                       styles.title,
                       styles.compactTitle,
                       styles.compactStageTitle,
                       isMobileCompactStage && styles.mobileCompactStageTitle,
+                      showingNumericJackpotResult && jackpotTitleStyle,
                     ]}
                   >
                     {compactStageDisplayTitle}
-                  </Text>
+                  </Animated.Text>
                 ) : null}
                 {showStatusCopy ? (
                   <Text
@@ -603,15 +691,17 @@ export const Dice: React.FC<DiceProps> = ({
               ) : null}
 
               {showStatusCopy && showNumericResult && (
-                <Text
+                <Animated.Text
                   style={[
                     styles.title,
                     compact && styles.compactTitle,
                     isLaptopUp && resolvedValue !== null && !isSceneRolling && styles.resultTitleLarge,
+                    showingNumericJackpotResult && jackpotTitleStyle,
                   ]}
+                  testID={showingNumericJackpotResult ? 'dice-jackpot-result-title' : undefined}
                 >
                   {title}
-                </Text>
+                </Animated.Text>
               )}
               {showStatusCopy ? (
                 <Text style={[styles.subtitle, compact && styles.compactSubtitle, isStage && styles.stageSubtitle]}>{subtitle}</Text>

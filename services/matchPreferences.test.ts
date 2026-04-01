@@ -43,7 +43,7 @@ describe('matchPreferences', () => {
 
     await expect(getMatchPreferences()).resolves.toEqual({
       ...DEFAULT_MATCH_PREFERENCES,
-      timerDurationSeconds: 30,
+      timerDurationSeconds: 20,
     });
   });
 

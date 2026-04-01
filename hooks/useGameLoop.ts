@@ -2,18 +2,29 @@ import { getBotMove } from '@/logic/bot/bot';
 import { useGameStore } from '@/store/useGameStore';
 import { useEffect } from 'react';
 
-export const useGameLoop = (enabled = true) => {
+type UseGameLoopOptions = {
+    enabled?: boolean;
+    onBotSelectPiece?: (pieceId: string | null) => void;
+};
+
+export const useGameLoop = ({ enabled = true, onBotSelectPiece }: UseGameLoopOptions = {}) => {
     const gameState = useGameStore(state => state.gameState);
     const botDifficulty = useGameStore(state => state.botDifficulty);
     const roll = useGameStore(state => state.roll);
     const makeMove = useGameStore(state => state.makeMove);
 
     useEffect(() => {
-        if (!enabled) return;
+        if (!enabled) {
+            onBotSelectPiece?.(null);
+            return;
+        }
 
         const { currentTurn, phase, winner, rollValue } = gameState;
 
-        if (winner) return;
+        if (winner) {
+            onBotSelectPiece?.(null);
+            return;
+        }
 
         if (currentTurn === 'dark') {
             // Bot Turn
@@ -26,8 +37,9 @@ export const useGameLoop = (enabled = true) => {
             } else if (phase === 'moving') {
                 // Bot needs to move
                 // Delay for visual effect
+                const move = getBotMove(gameState, rollValue!, botDifficulty);
+                onBotSelectPiece?.(move?.pieceId ?? null);
                 const timer = setTimeout(() => {
-                    const move = getBotMove(gameState, rollValue!, botDifficulty);
                     if (move) {
                         makeMove(move);
                     } else {
@@ -37,8 +49,12 @@ export const useGameLoop = (enabled = true) => {
                         // So move should exist.
                     }
                 }, 1500);
-                return () => clearTimeout(timer);
+                return () => {
+                    clearTimeout(timer);
+                    onBotSelectPiece?.(null);
+                };
             }
         }
-    }, [botDifficulty, enabled, gameState.currentTurn, gameState.phase, gameState.rollValue]);
+        onBotSelectPiece?.(null);
+    }, [botDifficulty, enabled, gameState, makeMove, onBotSelectPiece, roll]);
 };

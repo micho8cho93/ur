@@ -20,17 +20,30 @@ export const MatchOpCode = {
   ROLL_REQUEST: 1,
   MOVE_REQUEST: 2,
   EMOJI_REACTION: 3,
+  PIECE_SELECTION: 4,
   STATE_SNAPSHOT: 100,
   SERVER_ERROR: 101,
   PROGRESSION_AWARD: 102,
   ELO_RATING_UPDATE: 103,
   TOURNAMENT_REWARD_SUMMARY: 104,
   REACTION_BROADCAST: 105,
+  PIECE_SELECTION_BROADCAST: 106,
 } as const;
 
 export type MatchOpCodeValue = (typeof MatchOpCode)[keyof typeof MatchOpCode];
-export const EMOJI_REACTION_KEYS = ["laughing", "cool", "fire", "omg", "skeleton"] as const;
-export const MAX_EMOJI_REACTIONS_PER_MATCH = 5;
+export const EMOJI_REACTION_KEYS = [
+  "laughing",
+  "cool",
+  "fire",
+  "omg",
+  "skeleton",
+  "sad",
+  "hugging",
+  "angry",
+  "eyes",
+  "question",
+] as const;
+export const MAX_EMOJI_REACTIONS_PER_MATCH = 10;
 
 export type RollRequestPayload = {
   type: "roll_request";
@@ -49,10 +62,16 @@ export type EmojiReactionRequestPayload = {
   emoji: EmojiReactionKey;
 };
 
+export type PieceSelectionRequestPayload = {
+  type: "piece_selection";
+  pieceId: string | null;
+};
+
 export type ClientMatchPayload =
   | RollRequestPayload
   | MoveRequestPayload
-  | EmojiReactionRequestPayload;
+  | EmojiReactionRequestPayload
+  | PieceSelectionRequestPayload;
 
 export type MatchEndReason = "completed" | "forfeit_inactivity" | "forfeit_disconnect";
 
@@ -123,6 +142,14 @@ export type EmojiReactionBroadcastPayload = {
   createdAtMs: number;
 };
 
+export type PieceSelectionBroadcastPayload = {
+  type: "piece_selection_broadcast";
+  pieceId: string | null;
+  senderUserId: string;
+  senderColor: PlayerColor;
+  createdAtMs: number;
+};
+
 export type TournamentMatchRewardSummaryOutcome =
   | "advancing"
   | "eliminated"
@@ -156,6 +183,7 @@ export type ServerMatchPayload =
   | StateSnapshotPayload
   | ServerErrorPayload
   | EmojiReactionBroadcastPayload
+  | PieceSelectionBroadcastPayload
   | TournamentMatchRewardSummaryPayload;
 export type MatchProgressionPayload = ProgressionAwardNotificationPayload;
 export type MatchEloRatingPayload = EloRatingChangeNotificationPayload;
@@ -238,10 +266,18 @@ export const isEmojiReactionRequestPayload = (
 ): value is EmojiReactionRequestPayload =>
   isRecord(value) && value.type === "emoji_reaction" && isEmojiReactionKey(value.emoji);
 
+export const isPieceSelectionRequestPayload = (
+  value: unknown,
+): value is PieceSelectionRequestPayload =>
+  isRecord(value) &&
+  value.type === "piece_selection" &&
+  (typeof value.pieceId === "string" || value.pieceId === null);
+
 export const isClientMatchPayload = (value: unknown): value is ClientMatchPayload =>
   isRollRequestPayload(value) ||
   isMoveRequestPayload(value) ||
-  isEmojiReactionRequestPayload(value);
+  isEmojiReactionRequestPayload(value) ||
+  isPieceSelectionRequestPayload(value);
 
 export const isStateSnapshotPayload = (value: unknown): value is StateSnapshotPayload =>
   isRecord(value) &&
@@ -298,6 +334,16 @@ export const isEmojiReactionBroadcastPayload = (
   isNonNegativeInteger(value.remainingForSender) &&
   isFiniteNumber(value.createdAtMs);
 
+export const isPieceSelectionBroadcastPayload = (
+  value: unknown,
+): value is PieceSelectionBroadcastPayload =>
+  isRecord(value) &&
+  value.type === "piece_selection_broadcast" &&
+  (typeof value.pieceId === "string" || value.pieceId === null) &&
+  typeof value.senderUserId === "string" &&
+  isPlayerColor(value.senderColor) &&
+  isFiniteNumber(value.createdAtMs);
+
 const isTournamentMatchRewardSummaryOutcome = (
   value: unknown,
 ): value is TournamentMatchRewardSummaryOutcome =>
@@ -335,6 +381,7 @@ export const isServerMatchPayload = (value: unknown): value is ServerMatchPayloa
   isStateSnapshotPayload(value) ||
   isServerErrorPayload(value) ||
   isEmojiReactionBroadcastPayload(value) ||
+  isPieceSelectionBroadcastPayload(value) ||
   isTournamentMatchRewardSummaryPayload(value);
 
 export const isExtendedServerMatchPayload = (value: unknown): value is ExtendedServerMatchPayload =>

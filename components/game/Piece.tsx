@@ -16,10 +16,13 @@ import Animated, {
 } from 'react-native-reanimated';
 
 type PieceVariant = 'light' | 'dark' | 'reserve';
+type PieceHighlightTone = 'gold' | 'deepBlue';
 
 interface PieceProps {
   color: PlayerColor;
   highlight?: boolean;
+  highlightTone?: PieceHighlightTone;
+  invalidSelectionToken?: number;
   size?: 'sm' | 'md' | 'lg';
   pixelSize?: number;
   artScale?: number;
@@ -47,6 +50,8 @@ export const PIECE_ART_VISIBLE_COVERAGE = 0.625;
 export const Piece: React.FC<PieceProps> = ({
   color,
   highlight = false,
+  highlightTone = 'gold',
+  invalidSelectionToken = 0,
   size = 'md',
   pixelSize,
   artScale = 1,
@@ -58,6 +63,8 @@ export const Piece: React.FC<PieceProps> = ({
   const intro = useSharedValue(0.9);
   const glowPulse = useSharedValue(0);
   const motion = useSharedValue(0);
+  const rejectionOffset = useSharedValue(0);
+  const rejectionTwist = useSharedValue(0);
 
   const resolvedVariant: PieceVariant = variant ?? color;
   const resolvedSource = useMemo(() => {
@@ -114,6 +121,32 @@ export const Piece: React.FC<PieceProps> = ({
     motion.value = withTiming(0, { duration: urTheme.motion.duration.fast });
   }, [motion, state]);
 
+  useEffect(() => {
+    cancelAnimation(rejectionOffset);
+    cancelAnimation(rejectionTwist);
+    rejectionOffset.value = 0;
+    rejectionTwist.value = 0;
+
+    if (invalidSelectionToken <= 0) {
+      return;
+    }
+
+    rejectionOffset.value = withSequence(
+      withTiming(-6, { duration: 46, easing: Easing.out(Easing.quad) }),
+      withTiming(5, { duration: 58, easing: Easing.inOut(Easing.quad) }),
+      withTiming(-4, { duration: 52, easing: Easing.inOut(Easing.quad) }),
+      withTiming(3, { duration: 48, easing: Easing.inOut(Easing.quad) }),
+      withTiming(0, { duration: 56, easing: Easing.out(Easing.quad) }),
+    );
+    rejectionTwist.value = withSequence(
+      withTiming(-0.04, { duration: 46, easing: Easing.out(Easing.quad) }),
+      withTiming(0.035, { duration: 58, easing: Easing.inOut(Easing.quad) }),
+      withTiming(-0.024, { duration: 52, easing: Easing.inOut(Easing.quad) }),
+      withTiming(0.016, { duration: 48, easing: Easing.inOut(Easing.quad) }),
+      withTiming(0, { duration: 56, easing: Easing.out(Easing.quad) }),
+    );
+  }, [invalidSelectionToken, rejectionOffset, rejectionTwist]);
+
   const sizePx = useMemo(() => {
     // Gameplay geometry can pass an exact pixel size; presets remain as fallback for rails/cues.
     if (typeof pixelSize === 'number' && Number.isFinite(pixelSize) && pixelSize > 0) {
@@ -123,11 +156,26 @@ export const Piece: React.FC<PieceProps> = ({
   }, [pixelSize, size]);
 
   const artSizePx = useMemo(() => Math.max(1, sizePx * artScale), [artScale, sizePx]);
-  // Additional 15% reduction from the prior 0.8x size target.
-  const targetGlowSizePx = useMemo(() => Math.max(1, Math.round(sizePx * 0.68)), [sizePx]);
+  const glowSizes = useMemo(
+    () =>
+      highlightTone === 'deepBlue'
+        ? {
+            outer: Math.max(1, Math.round(sizePx * 1.18)),
+            middle: Math.max(1, Math.round(sizePx * 0.94)),
+            inner: Math.max(1, Math.round(sizePx * 0.74)),
+          }
+        : {
+            outer: Math.max(1, Math.round(sizePx * 0.82)),
+            middle: Math.max(1, Math.round(sizePx * 0.74)),
+            inner: Math.max(1, Math.round(sizePx * 0.68)),
+          },
+    [highlightTone, sizePx],
+  );
 
   const pieceStyle = useAnimatedStyle(() => ({
     transform: [
+      { translateX: rejectionOffset.value },
+      { rotateZ: `${rejectionTwist.value}rad` },
       { scale: intro.value * interpolate(motion.value, [0, 1], [1, 1.045], Extrapolation.CLAMP) },
       { translateY: interpolate(motion.value, [0, 1], [0, -1], Extrapolation.CLAMP) },
     ],
@@ -135,23 +183,76 @@ export const Piece: React.FC<PieceProps> = ({
   }));
 
   const glowStyle = useAnimatedStyle(() => ({
-    opacity: glowPulse.value * 0.9,
-    transform: [{ scale: 0.95 + glowPulse.value * 0.2 }],
+    opacity: highlightTone === 'deepBlue' ? 0.38 + glowPulse.value * 0.34 : glowPulse.value * 0.9,
+    transform: [{ scale: 0.96 + glowPulse.value * (highlightTone === 'deepBlue' ? 0.08 : 0.2) }],
   }));
+
+  const outerGlowStyle = useAnimatedStyle(() => ({
+    opacity: highlightTone === 'deepBlue' ? 0.22 + glowPulse.value * 0.22 : glowPulse.value * 0.38,
+    transform: [{ scale: 0.98 + glowPulse.value * (highlightTone === 'deepBlue' ? 0.12 : 0.16) }],
+  }));
+
+  const highlightPalette = useMemo(
+    () =>
+      highlightTone === 'deepBlue'
+        ? {
+            outerBackgroundColor: 'rgba(10, 28, 92, 0.16)',
+            middleBackgroundColor: 'rgba(16, 42, 116, 0.26)',
+            innerBackgroundColor: 'rgba(18, 56, 146, 0.22)',
+            borderColor: 'rgba(54, 108, 224, 0.9)',
+            shadowColor: 'rgba(46, 96, 214, 0.95)',
+          }
+        : {
+            outerBackgroundColor: 'rgba(240, 192, 64, 0.14)',
+            middleBackgroundColor: 'rgba(240, 192, 64, 0.18)',
+            innerBackgroundColor: 'rgba(240, 192, 64, 0.18)',
+            borderColor: 'rgba(246, 212, 138, 0.9)',
+            shadowColor: 'rgba(240, 192, 64, 0.9)',
+          },
+    [highlightTone],
+  );
 
   return (
     <Animated.View style={[styles.wrap, { width: sizePx, height: sizePx }, pieceStyle]}>
       {highlight && (
-        <Animated.View
-          style={[
-            styles.targetGlow,
-            glowStyle,
-            {
-              width: targetGlowSizePx,
-              height: targetGlowSizePx,
-            },
-          ]}
-        />
+        <>
+          <Animated.View
+            style={[
+              styles.outerGlow,
+              outerGlowStyle,
+              {
+                width: glowSizes.outer,
+                height: glowSizes.outer,
+                backgroundColor: highlightPalette.outerBackgroundColor,
+                shadowColor: highlightPalette.shadowColor,
+              },
+            ]}
+          />
+          <Animated.View
+            style={[
+              styles.targetGlow,
+              glowStyle,
+              {
+                width: glowSizes.middle,
+                height: glowSizes.middle,
+                backgroundColor: highlightPalette.middleBackgroundColor,
+                borderColor: highlightPalette.borderColor,
+                shadowColor: highlightPalette.shadowColor,
+              },
+            ]}
+          />
+          <Animated.View
+            style={[
+              styles.innerAura,
+              glowStyle,
+              {
+                width: glowSizes.inner,
+                height: glowSizes.inner,
+                backgroundColor: highlightPalette.innerBackgroundColor,
+              },
+            ]}
+          />
+        </>
       )}
 
       <View style={[styles.artFrame, { width: sizePx, height: sizePx }]}>
@@ -180,12 +281,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  outerGlow: {
+    position: 'absolute',
+    borderRadius: 999,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    elevation: 8,
+  },
   targetGlow: {
     position: 'absolute',
     borderRadius: urTheme.radii.pill,
     borderWidth: 1.6,
-    borderColor: 'rgba(246, 212, 138, 0.9)',
-    backgroundColor: 'rgba(240, 192, 64, 0.18)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.42,
+    shadowRadius: 12,
+    elevation: 7,
+  },
+  innerAura: {
+    position: 'absolute',
+    borderRadius: 999,
   },
   artFrame: {
     alignItems: 'center',

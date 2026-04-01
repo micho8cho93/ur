@@ -24,16 +24,20 @@ interface EdgeScoreProps {
 
 const SIDE_ACCENTS = {
   light: {
-    accent: '#F0C040',
-    glow: 'rgba(232, 104, 40, 0.34)',
-    flash: 'rgba(255, 233, 203, 0.8)',
-    tint: 'rgba(232, 104, 40, 0.12)',
+    accent: '#FFD24A',
+    glow: 'rgba(255, 218, 74, 0.46)',
+    flash: 'rgba(255, 244, 176, 0.9)',
+    tint: 'rgba(255, 190, 62, 0.14)',
+    border: 'rgba(255, 224, 112, 0.98)',
+    shadow: '#FFD84F',
   },
   dark: {
-    accent: '#8AB8FF',
-    glow: 'rgba(46, 111, 216, 0.34)',
-    flash: 'rgba(210, 228, 255, 0.76)',
-    tint: 'rgba(46, 111, 216, 0.14)',
+    accent: '#8FD6FF',
+    glow: 'rgba(84, 192, 255, 0.44)',
+    flash: 'rgba(204, 244, 255, 0.86)',
+    tint: 'rgba(54, 144, 255, 0.16)',
+    border: 'rgba(150, 222, 255, 0.98)',
+    shadow: '#68C8FF',
   },
 } as const;
 
@@ -76,12 +80,27 @@ export const EdgeScore: React.FC<EdgeScoreProps> = ({
 
   const glowAnimatedStyle = useAnimatedStyle(() => ({
     opacity: 0.08 + celebration.value * 0.32,
-    transform: [{ scale: 0.92 + celebration.value * 0.14 }],
+    transform: [
+      { scaleX: 1.18 + celebration.value * 0.34 },
+      { scaleY: 1.08 + celebration.value * 0.16 },
+    ],
   }));
 
   const flashAnimatedStyle = useAnimatedStyle(() => ({
     opacity: celebration.value * 0.2,
   }));
+  const activeWrapStyle = active
+    ? {
+        borderColor: accent.border,
+        ...boxShadow({
+          color: accent.shadow,
+          opacity: 0.5,
+          blurRadius: 20,
+          spreadDistance: 3,
+          elevation: 12,
+        }),
+      }
+    : null;
 
   return (
     <Animated.View
@@ -91,7 +110,7 @@ export const EdgeScore: React.FC<EdgeScoreProps> = ({
         styles.wrap,
         isMobile && styles.mobileWrap,
         isRightAligned && styles.rightWrap,
-        active && styles.activeWrap,
+        activeWrapStyle,
         shellAnimatedStyle,
         style,
       ]}
@@ -157,15 +176,6 @@ const styles = StyleSheet.create({
   rightWrap: {
     alignItems: 'flex-end',
   },
-  activeWrap: {
-    borderColor: 'rgba(240, 192, 64, 0.98)',
-    ...boxShadow({
-      color: '#F0C040',
-      opacity: 0.34,
-      blurRadius: 10,
-      elevation: 5,
-    }),
-  },
   texture: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.2,
@@ -175,11 +185,11 @@ const styles = StyleSheet.create({
   },
   scoreGlow: {
     position: 'absolute',
-    left: -18,
-    right: -18,
-    top: -18,
-    bottom: -18,
-    borderRadius: urTheme.radii.lg,
+    left: -30,
+    right: -30,
+    top: -22,
+    bottom: -22,
+    borderRadius: urTheme.radii.lg + 10,
   },
   flashOverlay: {
     ...StyleSheet.absoluteFillObject,

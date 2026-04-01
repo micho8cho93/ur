@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const DICE_ANIMATION_SPEED_OPTIONS = [0.25, 0.5, 0.75, 1] as const;
-export const TURN_TIMER_SECONDS_OPTIONS = [10, 20, 30] as const;
+export const TURN_TIMER_SECONDS_OPTIONS = [10, 20] as const;
 
 export type DiceAnimationSpeed = (typeof DICE_ANIMATION_SPEED_OPTIONS)[number];
 export type TurnTimerSeconds = (typeof TURN_TIMER_SECONDS_OPTIONS)[number];

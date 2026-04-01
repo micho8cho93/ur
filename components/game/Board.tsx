@@ -51,6 +51,10 @@ interface BoardProps {
   freezeMotion?: boolean;
   onInteraction?: () => void;
   onBoardImageLayout?: (layout: BoardImageLayoutFrame) => void;
+  highlightedPieceId?: string | null;
+  highlightedPieceColor?: PlayerColor | null;
+  onHighlightedPieceSettled?: (pieceId: string, color: PlayerColor) => void;
+  onSelectedPieceChange?: (pieceId: string | null) => void;
 }
 
 interface Point {
@@ -147,6 +151,7 @@ const MOVE_SLIDE_MIN_DURATION_MS = 240;
 const MOVE_SLIDE_BASE_DURATION_MS = 150;
 const MOVE_SLIDE_STEP_DURATION_MS = 110;
 const MOVE_SLIDE_MAX_DURATION_MS = 640;
+const AUTO_COMMIT_SELECTED_MOVE_MS = 180;
 const SHOW_BOARD_ALIGNMENT_DEBUG = false;
 const VERTICAL_BOARD_ROW_LANDING_OFFSET_Y_RATIOS = [
   0.008,
@@ -277,6 +282,10 @@ export const Board: React.FC<BoardProps> = ({
   freezeMotion = false,
   onInteraction,
   onBoardImageLayout,
+  highlightedPieceId = null,
+  highlightedPieceColor = null,
+  onHighlightedPieceSettled,
+  onSelectedPieceChange,
 }) => {
   const storeGameState = useGameStore((state) => state.gameState);
   const storeValidMoves = useGameStore((state) => state.validMoves);
@@ -289,6 +298,10 @@ export const Board: React.FC<BoardProps> = ({
   const [hoveredMove, setHoveredMove] = useState<MoveAction | null>(null);
   const [blockedPreview, setBlockedPreview] = useState<PreviewState | null>(null);
   const [animatedMove, setAnimatedMove] = useState<AnimatedBoardMove | null>(null);
+  const [invalidPieceFeedback, setInvalidPieceFeedback] = useState<{ pieceId: string | null; token: number }>({
+    pieceId: null,
+    token: 0,
+  });
 
   const cuePulse = useSharedValue(0);
   const scoreCuePulse = useSharedValue(0);
@@ -311,9 +324,25 @@ export const Board: React.FC<BoardProps> = ({
   const notifyInteraction = React.useCallback(() => {
     onInteraction?.();
   }, [onInteraction]);
-  const clearAnimatedMove = React.useCallback(() => {
-    setAnimatedMove(null);
+  const clearInvalidPieceFeedback = React.useCallback(() => {
+    setInvalidPieceFeedback((current) =>
+      current.pieceId === null ? current : { pieceId: null, token: current.token },
+    );
   }, []);
+  const triggerInvalidPieceFeedback = React.useCallback((pieceId: string) => {
+    setInvalidPieceFeedback((current) => ({
+      pieceId,
+      token: current.token + 1,
+    }));
+  }, []);
+  const clearAnimatedMove = React.useCallback(() => {
+    const settledHighlight = animatedExternalHighlightRef.current;
+    animatedExternalHighlightRef.current = null;
+    setAnimatedMove(null);
+    if (settledHighlight) {
+      onHighlightedPieceSettled?.(settledHighlight.pieceId, settledHighlight.color);
+    }
+  }, [onHighlightedPieceSettled]);
   const isVertical = orientation === 'vertical';
   const displayRows = isVertical ? BOARD_COLS : BOARD_ROWS;
   const displayCols = isVertical ? BOARD_ROWS : BOARD_COLS;
@@ -324,6 +353,8 @@ export const Board: React.FC<BoardProps> = ({
   const pathLength = pathDefinition.pathLength;
   const previousGameStateRef = React.useRef<GameState | null>(null);
   const previousHistoryCountRef = React.useRef<number>(historyEntryCount);
+  const autoCommitMoveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const animatedExternalHighlightRef = React.useRef<{ pieceId: string; color: PlayerColor } | null>(null);
   const getPathForColor = React.useCallback(
     (color: 'light' | 'dark') => (color === 'light' ? pathDefinition.light : pathDefinition.dark),
     [pathDefinition.dark, pathDefinition.light],
@@ -599,6 +630,12 @@ export const Board: React.FC<BoardProps> = ({
 
   const isMyTurn = assignedPlayerColor !== null && gameState.currentTurn === assignedPlayerColor;
   const isInteractiveTurn = !freezeMotion && allowInteraction && isMyTurn;
+  const clearAutoCommitMoveTimer = React.useCallback(() => {
+    if (autoCommitMoveTimerRef.current) {
+      clearTimeout(autoCommitMoveTimerRef.current);
+      autoCommitMoveTimerRef.current = null;
+    }
+  }, []);
 
   const spawnMove = useMemo(
     () => validMoves.find((move) => move.fromIndex === -1) ?? null,
@@ -855,6 +892,10 @@ export const Board: React.FC<BoardProps> = ({
   }, [selectedMove, validMoves]);
 
   useEffect(() => {
+    onSelectedPieceChange?.(selectedMove?.pieceId ?? null);
+  }, [onSelectedPieceChange, selectedMove?.pieceId]);
+
+  useEffect(() => {
     if (!hoveredMove) return;
 
     if (!isInteractiveTurn || gameState.phase !== 'moving') {
@@ -875,13 +916,15 @@ export const Board: React.FC<BoardProps> = ({
   }, [gameState.phase, hoveredMove, isInteractiveTurn, validMoves]);
 
   useEffect(() => {
+    clearAutoCommitMoveTimer();
     setSelectedMove(null);
     setHoveredMove(null);
     setBlockedPreview(null);
-  }, [gameState.currentTurn, gameState.phase, gameState.rollValue]);
+  }, [clearAutoCommitMoveTimer, gameState.currentTurn, gameState.phase, gameState.rollValue]);
 
   useEffect(() => {
     if (freezeMotion) {
+      clearAutoCommitMoveTimer();
       setSelectedMove(null);
       setHoveredMove(null);
       setBlockedPreview(null);
@@ -955,7 +998,7 @@ export const Board: React.FC<BoardProps> = ({
 
     previousGameStateRef.current = gameState;
     previousHistoryCountRef.current = historyEntryCount;
-  }, [buildAnimatedMove, clearAnimatedMove, freezeMotion, gameState, historyEntryCount]);
+  }, [buildAnimatedMove, clearAnimatedMove, clearAutoCommitMoveTimer, freezeMotion, gameState, historyEntryCount]);
 
   useEffect(() => {
     if (freezeMotion || !animatedMove) {
@@ -980,6 +1023,15 @@ export const Board: React.FC<BoardProps> = ({
     movingPieceImpact.value = 0;
     movingPieceLanding.value = 0;
     capturedPieceCrush.value = 0;
+    animatedExternalHighlightRef.current =
+      highlightedPieceId &&
+      highlightedPieceColor === animatedMove.color &&
+      highlightedPieceId === animatedMove.pieceId
+        ? {
+            pieceId: highlightedPieceId,
+            color: highlightedPieceColor,
+          }
+        : null;
     movingPieceLift.value = withSequence(
       withTiming(1, {
         duration: Math.max(90, Math.round(animatedMove.durationMs * 0.32)),
@@ -1061,7 +1113,13 @@ export const Board: React.FC<BoardProps> = ({
     movingPieceLanding,
     movingPieceLift,
     movingPieceProgress,
+    highlightedPieceColor,
+    highlightedPieceId,
   ]);
+
+  useEffect(() => () => {
+    clearAutoCommitMoveTimer();
+  }, [clearAutoCommitMoveTimer]);
 
   const executeMove = (move: MoveAction) => {
     console.info('[Board][executeMove]', {
@@ -1073,11 +1131,31 @@ export const Board: React.FC<BoardProps> = ({
       playerColor: assignedPlayerColor,
     });
     LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
+    clearAutoCommitMoveTimer();
     setBlockedPreview(null);
     makeMove(move);
     setSelectedMove(null);
     setHoveredMove(null);
   };
+
+  const beginMoveSelection = React.useCallback(
+    (move: MoveAction) => {
+      if (!isInteractiveTurn || gameState.phase !== 'moving') {
+        return;
+      }
+
+      clearAutoCommitMoveTimer();
+      clearInvalidPieceFeedback();
+      setBlockedPreview(null);
+      setHoveredMove(null);
+      setSelectedMove(move);
+      autoCommitMoveTimerRef.current = setTimeout(() => {
+        autoCommitMoveTimerRef.current = null;
+        executeMove(move);
+      }, AUTO_COMMIT_SELECTED_MOVE_MS);
+    },
+    [clearAutoCommitMoveTimer, clearInvalidPieceFeedback, executeMove, gameState.phase, isInteractiveTurn],
+  );
 
   const isMoveValid = (move: MoveAction | null | undefined): move is MoveAction =>
     Boolean(
@@ -1093,6 +1171,7 @@ export const Board: React.FC<BoardProps> = ({
   const handleSpawnCuePress = () => {
     notifyInteraction();
     if (!spawnMove || !isInteractiveTurn || gameState.phase !== 'moving') return;
+    clearInvalidPieceFeedback();
     setBlockedPreview(null);
     setHoveredMove(null);
     executeMove(spawnMove);
@@ -1122,6 +1201,7 @@ export const Board: React.FC<BoardProps> = ({
   const handleScoreCuePress = () => {
     notifyInteraction();
     if (!isInteractiveTurn || gameState.phase !== 'moving') return;
+    clearInvalidPieceFeedback();
     setBlockedPreview(null);
 
     if (selectedMove && selectedMove.toIndex === pathLength) {
@@ -1150,6 +1230,7 @@ export const Board: React.FC<BoardProps> = ({
       return;
     }
 
+    clearInvalidPieceFeedback();
     setBlockedPreview(null);
     executeMove(validPreview);
   };
@@ -1165,9 +1246,13 @@ export const Board: React.FC<BoardProps> = ({
     );
 
     if (moveFromTile) {
-      setBlockedPreview(null);
-      setHoveredMove(null);
-      executeMove(moveFromTile);
+      if (selectedMove && areMovesEqual(selectedMove, moveFromTile)) {
+        clearInvalidPieceFeedback();
+        executeMove(moveFromTile);
+        return;
+      }
+
+      beginMoveSelection(moveFromTile);
       return;
     }
 
@@ -1176,6 +1261,7 @@ export const Board: React.FC<BoardProps> = ({
         selectedMove.toIndex !== pathLength && mapAssignedIndexToCoord(selectedMove.toIndex, r, c);
 
       if (selectedToTileMatch) {
+        clearInvalidPieceFeedback();
         setBlockedPreview(null);
         executeMove(selectedMove);
         return;
@@ -1187,7 +1273,9 @@ export const Board: React.FC<BoardProps> = ({
     );
 
     if (moveToTile) {
+      clearInvalidPieceFeedback();
       setBlockedPreview(null);
+      clearAutoCommitMoveTimer();
       executeMove(moveToTile);
       return;
     }
@@ -1196,8 +1284,10 @@ export const Board: React.FC<BoardProps> = ({
       const attemptedToIndex = Math.min(playerPiece.position + gameState.rollValue, pathLength);
 
       if (attemptedToIndex > playerPiece.position) {
+        clearAutoCommitMoveTimer();
         setSelectedMove(null);
         setHoveredMove(null);
+        triggerInvalidPieceFeedback(playerPiece.id);
         setBlockedPreview({
           color: playerPiece.color,
           fromIndex: playerPiece.position,
@@ -1209,8 +1299,10 @@ export const Board: React.FC<BoardProps> = ({
       }
     }
 
+    clearAutoCommitMoveTimer();
     setSelectedMove(null);
     setHoveredMove(null);
+    clearInvalidPieceFeedback();
     setBlockedPreview(null);
   };
 
@@ -1412,6 +1504,10 @@ export const Board: React.FC<BoardProps> = ({
           !!selectedMove && selectedMove.fromIndex >= 0 && mapAssignedIndexToCoord(selectedMove.fromIndex, r, c);
         const isHintedPiece =
           !!hintedMove && hintedMove.fromIndex >= 0 && mapAssignedIndexToCoord(hintedMove.fromIndex, r, c);
+        const isExternallyHighlightedPiece =
+          !!highlightedPieceId &&
+          highlightedPieceColor === piece?.color &&
+          highlightedPieceId === piece?.id;
         const isFocusedPiece = isSelectedPiece || isHintedPiece;
         const isOwnTurnPiece = !!piece && piece.color === assignedPlayerColor;
 
@@ -1446,6 +1542,13 @@ export const Board: React.FC<BoardProps> = ({
               pieceArtScale={boardPieceArtScale}
               pieceArtOffsetY={boardPieceArtOffsetY}
               piece={visiblePiece}
+              pieceHighlight={isExternallyHighlightedPiece}
+              pieceHighlightTone="deepBlue"
+              pieceInvalidSelectionToken={
+                visiblePiece && invalidPieceFeedback.pieceId === visiblePiece.id
+                  ? invalidPieceFeedback.token
+                  : 0
+              }
               isValidTarget={isValidTarget}
               isSelectedPiece={isFocusedPiece}
               isInteractive={isInteractable}
@@ -1635,6 +1738,11 @@ export const Board: React.FC<BoardProps> = ({
               pixelSize={boardPiecePixelSize}
               artScale={boardPieceArtScale}
               artOffsetY={boardPieceArtOffsetY}
+              highlight={
+                highlightedPieceId === animatedMove.pieceId &&
+                highlightedPieceColor === animatedMove.color
+              }
+              highlightTone="deepBlue"
               state="idle"
             />
           </Animated.View>

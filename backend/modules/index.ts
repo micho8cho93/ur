@@ -52,6 +52,8 @@ import {
   MatchOpCode,
   MAX_EMOJI_REACTIONS_PER_MATCH,
   MoveRequestPayload,
+  PieceSelectionBroadcastPayload,
+  PieceSelectionRequestPayload,
   RollRequestPayload,
   ServerErrorCode,
   StateSnapshotPayload,
@@ -60,6 +62,7 @@ import {
   encodePayload,
   isEmojiReactionRequestPayload,
   isMoveRequestPayload,
+  isPieceSelectionRequestPayload,
   isRollRequestPayload,
 } from "../../shared/urMatchProtocol";
 import {
@@ -963,6 +966,11 @@ const canStartMatch = (state: MatchState): boolean =>
   Object.keys(state.assignments).length >= MAX_PLAYERS && getActiveAssignedUserCount(state) >= MAX_PLAYERS;
 
 const canUseMatchEmojiReactions = (state: MatchState): boolean =>
+  !state.classification.bot &&
+  state.opponentType === "human" &&
+  Object.keys(state.assignments).length >= MAX_PLAYERS;
+
+const canUseLivePieceSelectionRequests = (state: MatchState): boolean =>
   !state.classification.bot &&
   state.opponentType === "human" &&
   Object.keys(state.assignments).length >= MAX_PLAYERS;
@@ -2123,6 +2131,16 @@ function matchLoop(
         return;
       }
 
+      if (opCode === MatchOpCode.PIECE_SELECTION) {
+        if (!isPieceSelectionRequestPayload(decodedPayload)) {
+          sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Piece selection payload is invalid.");
+          return;
+        }
+
+        applyPieceSelectionRequest(dispatcher, state, senderUserId, senderColor, decodedPayload);
+        return;
+      }
+
       sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", `Unsupported opcode ${opCode}.`);
     } catch (error) {
       logMatchLoopError(logger, matchId, state, "message_processing", error);
@@ -2361,19 +2379,38 @@ function applyTimedTurnTimeout(
       const rolledValue = rollDice();
       const validMoves = applyRollOutcome(state, activePlayerColor, rolledValue);
       if (validMoves.length > 0) {
+        const botMove = getBotMove(state.gameState, rolledValue, state.bot.difficulty) ?? validMoves[0];
+        broadcastPieceSelection(
+          dispatcher,
+          state,
+          state.bot.userId,
+          activePlayerColor,
+          botMove.pieceId,
+          nowMs,
+        );
         applyValidatedMove(
           state,
           activePlayerColor,
-          getBotMove(state.gameState, rolledValue, state.bot.difficulty) ?? validMoves[0],
+          botMove,
         );
       }
     } else if (state.gameState.phase === "moving" && state.gameState.rollValue !== null) {
       const validMoves = getValidMoves(state.gameState, state.gameState.rollValue);
       if (validMoves.length > 0) {
+        const botMove =
+          getBotMove(state.gameState, state.gameState.rollValue, state.bot.difficulty) ?? validMoves[0];
+        broadcastPieceSelection(
+          dispatcher,
+          state,
+          state.bot.userId,
+          activePlayerColor,
+          botMove.pieceId,
+          nowMs,
+        );
         applyValidatedMove(
           state,
           activePlayerColor,
-          getBotMove(state.gameState, state.gameState.rollValue, state.bot.difficulty) ?? validMoves[0],
+          botMove,
         );
       } else {
         state.rollDisplay = {
@@ -2535,6 +2572,7 @@ function applyMoveRequest(
 
   const nowMs = Date.now();
   resetAfkOnMeaningfulAction(state, playerColor, nowMs);
+  broadcastPieceSelection(dispatcher, state, userId, playerColor, payload.move.pieceId, nowMs);
   applyValidatedMove(state, playerColor, payload.move);
   syncCompletedMatchEnd(state);
   resetTurnTimerForCurrentState(state, nowMs, "player_move");
@@ -2593,6 +2631,69 @@ function applyEmojiReactionRequest(
 
   dispatcher.broadcastMessage(
     MatchOpCode.REACTION_BROADCAST,
+    encodePayload(broadcastPayload),
+    targets,
+  );
+}
+
+function applyPieceSelectionRequest(
+  dispatcher: nkruntime.MatchDispatcher,
+  state: MatchState,
+  userId: string,
+  playerColor: PlayerColor,
+  payload: PieceSelectionRequestPayload,
+): void {
+  if (!canUseLivePieceSelectionRequests(state)) {
+    return;
+  }
+
+  if (!isPrivateMatchReady(state) || state.gameState.winner) {
+    return;
+  }
+
+  if (state.gameState.currentTurn !== playerColor) {
+    return;
+  }
+
+  if (payload.pieceId !== null) {
+    if (state.gameState.phase !== "moving" || state.gameState.rollValue === null) {
+      return;
+    }
+
+    const pieceCanMove = getValidMoves(state.gameState, state.gameState.rollValue).some(
+      (move) => move.pieceId === payload.pieceId,
+    );
+    if (!pieceCanMove) {
+      return;
+    }
+  }
+
+  broadcastPieceSelection(dispatcher, state, userId, playerColor, payload.pieceId, Date.now());
+}
+
+function broadcastPieceSelection(
+  dispatcher: nkruntime.MatchDispatcher,
+  state: MatchState,
+  userId: string,
+  playerColor: PlayerColor,
+  pieceId: string | null,
+  createdAtMs: number,
+): void {
+  const targets = getAssignedPlayerTargets(state);
+  if (targets.length === 0) {
+    return;
+  }
+
+  const broadcastPayload: PieceSelectionBroadcastPayload = {
+    type: "piece_selection_broadcast",
+    pieceId,
+    senderUserId: userId,
+    senderColor: playerColor,
+    createdAtMs,
+  };
+
+  dispatcher.broadcastMessage(
+    MatchOpCode.PIECE_SELECTION_BROADCAST,
     encodePayload(broadcastPayload),
     targets,
   );

@@ -27,6 +27,9 @@ interface TileProps {
   pieceArtOffsetX?: number;
   pieceArtOffsetY?: number;
   piece?: { id: string; color: PlayerColor };
+  pieceHighlight?: boolean;
+  pieceHighlightTone?: 'gold' | 'deepBlue';
+  pieceInvalidSelectionToken?: number;
   isValidTarget?: boolean;
   isSelectedPiece?: boolean;
   isInteractive?: boolean;
@@ -143,6 +146,9 @@ export const Tile: React.FC<TileProps> = ({
   pieceArtOffsetX = 0,
   pieceArtOffsetY = 0,
   piece,
+  pieceHighlight = false,
+  pieceHighlightTone = 'gold',
+  pieceInvalidSelectionToken = 0,
   isValidTarget = false,
   isSelectedPiece = false,
   isInteractive = false,
@@ -368,8 +374,10 @@ export const Tile: React.FC<TileProps> = ({
             artScale={pieceArtScale}
             artOffsetX={pieceArtOffsetX}
             artOffsetY={pieceArtOffsetY}
-            highlight={isValidTarget || isSelectedPiece}
-            state={isValidTarget || isSelectedPiece ? 'active' : 'idle'}
+            highlight={pieceHighlight || isValidTarget || isSelectedPiece}
+            highlightTone={pieceHighlight ? pieceHighlightTone : 'gold'}
+            invalidSelectionToken={pieceInvalidSelectionToken}
+            state={pieceHighlight || isValidTarget || isSelectedPiece ? 'active' : 'idle'}
           />
         </View>
       )}

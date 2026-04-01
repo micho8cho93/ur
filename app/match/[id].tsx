@@ -60,6 +60,7 @@ import { useAuth } from '@/src/auth/useAuth';
 import { useChallenges } from '@/src/challenges/useChallenges';
 import { useEloRating } from '@/src/elo/useEloRating';
 import { resolveDidPlayerWin, resolveMatchPlayerColor } from '@/src/match/playerOutcome';
+import { isSuddenDeathState } from '@/src/match/suddenDeath';
 import {
   buildForfeitTransitionCopy,
   buildReconnectGraceBannerText,
@@ -124,11 +125,13 @@ import {
   MatchOpCode,
   MAX_EMOJI_REACTIONS_PER_MATCH,
   MoveRequestPayload,
+  PieceSelectionRequestPayload,
   RollRequestPayload,
   TournamentMatchRewardSummaryPayload,
   decodePayload,
   encodePayload,
   isEmojiReactionBroadcastPayload,
+  isPieceSelectionBroadcastPayload,
   isServerErrorPayload,
   isStateSnapshotPayload,
   isTournamentMatchRewardSummaryPayload,
@@ -140,6 +143,7 @@ import { useFonts } from 'expo-font';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
+  Animated,
   BackHandler,
   Image,
   Platform,
@@ -148,6 +152,7 @@ import {
   StyleProp,
   StyleSheet,
   Text,
+  TextStyle,
   View,
   ViewStyle,
   useWindowDimensions,
@@ -197,6 +202,111 @@ const TOURNAMENT_REWARD_SUMMARY_FALLBACK_MS = 4_000;
 const TOURNAMENT_EXIT_VALIDATION_TIMEOUT_MS = 5_000;
 const MATCH_LEAVE_TIMEOUT_MS = 1_500;
 const SHOULD_BYPASS_CINEMATIC_INTROS = process.env.NODE_ENV === 'test';
+const JACKPOT_ROLL_VALUE = '4';
+const JACKPOT_ROLL_PULSE_IN_MS = 180;
+const JACKPOT_ROLL_GLOW_HOLD_MS = 500;
+const JACKPOT_ROLL_PULSE_OUT_MS = 240;
+
+const JackpotRollResultText = ({
+  active,
+  children,
+  numberOfLines = 1,
+  style,
+}: {
+  active: boolean;
+  children: string;
+  numberOfLines?: number;
+  style?: StyleProp<TextStyle>;
+}) => {
+  const glow = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    glow.stopAnimation();
+    glow.setValue(0);
+
+    if (!active) {
+      return;
+    }
+
+    const animation = Animated.sequence([
+      Animated.timing(glow, {
+        toValue: 1,
+        duration: JACKPOT_ROLL_PULSE_IN_MS,
+        useNativeDriver: true,
+      }),
+      Animated.delay(JACKPOT_ROLL_GLOW_HOLD_MS),
+      Animated.timing(glow, {
+        toValue: 0,
+        duration: JACKPOT_ROLL_PULSE_OUT_MS,
+        useNativeDriver: true,
+      }),
+    ]);
+
+    animation.start();
+
+    return () => {
+      glow.stopAnimation();
+    };
+  }, [active, children, glow]);
+
+  return (
+    <View pointerEvents="none" style={styles.jackpotRollTextWrap}>
+      <Animated.Text
+        numberOfLines={numberOfLines}
+        style={[
+          style,
+          styles.jackpotRollGlowText,
+          {
+            opacity: glow.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 1],
+            }),
+            transform: [
+              {
+                scale: glow.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 1.08],
+                }),
+              },
+            ],
+            textShadowColor: 'rgba(232, 191, 66, 0.95)',
+            textShadowRadius: 14,
+          },
+        ]}
+      >
+        {children}
+      </Animated.Text>
+      <Animated.Text
+        numberOfLines={numberOfLines}
+        style={[
+          style,
+          styles.jackpotRollGlowText,
+          {
+            opacity: glow.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 0.92],
+            }),
+            transform: [
+              {
+                scale: glow.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 1.04],
+                }),
+              },
+            ],
+            textShadowColor: 'rgba(246, 225, 136, 0.98)',
+            textShadowRadius: 8,
+          },
+        ]}
+      >
+        {children}
+      </Animated.Text>
+      <Text numberOfLines={numberOfLines} style={style}>
+        {children}
+      </Text>
+    </View>
+  );
+};
 
 const measureViewInWindow = (
   view: View | null,
@@ -357,7 +467,7 @@ const deriveServerConfirmedTournamentOutcomeFromSnapshot = (
 ): 'champion' | 'runner_up' | 'eliminated' | null =>
   deriveServerConfirmedTournamentOutcome(snapshot?.tournament);
 
-type MatchMomentCueKind = 'play' | 'rosette' | 'opponentJoined' | 'opponentDisconnected';
+type MatchMomentCueKind = 'play' | 'rosette' | 'opponentJoined' | 'opponentDisconnected' | 'suddenDeath';
 type RollButtonLatchPhase = 'idle' | 'awaitingOutcome' | 'awaitingTurnReset';
 type TutorialCoachPhase =
   | 'idle'
@@ -401,6 +511,14 @@ const MATCH_MOMENT_CUES: Record<MatchMomentCueKind, Omit<MatchMomentIndicatorCue
     background: 'rgba(47, 20, 15, 0.94)',
     durationMs: 1500,
   },
+  suddenDeath: {
+    message: 'Sudden Death',
+    accent: '#8EA6FF',
+    border: 'rgba(116, 145, 230, 0.88)',
+    glow: 'rgba(27, 60, 142, 0.24)',
+    background: 'rgba(13, 20, 44, 0.95)',
+    durationMs: 1650,
+  },
 };
 
 const EMOJI_REACTION_OPTIONS: readonly EmojiReactionMenuOption[] = [
@@ -409,6 +527,11 @@ const EMOJI_REACTION_OPTIONS: readonly EmojiReactionMenuOption[] = [
   { key: 'fire', emoji: '🔥', label: 'fire' },
   { key: 'omg', emoji: '😱', label: 'omg' },
   { key: 'skeleton', emoji: '💀', label: 'skeleton' },
+  { key: 'sad', emoji: '😢', label: 'sad face' },
+  { key: 'hugging', emoji: '🫂', label: 'hugging people' },
+  { key: 'angry', emoji: '😠', label: 'angry' },
+  { key: 'eyes', emoji: '👀', label: 'eyes' },
+  { key: 'question', emoji: '❓', label: 'question mark' },
 ] as const;
 
 const EMOJI_BY_KEY: Record<EmojiReactionKey, string> = EMOJI_REACTION_OPTIONS.reduce(
@@ -967,6 +1090,10 @@ export function GameRoom() {
   const [turnTimerCycleId, setTurnTimerCycleId] = React.useState(0);
   const [onlineTimerNowMs, setOnlineTimerNowMs] = React.useState(() => Date.now());
   const [activeMatchCue, setActiveMatchCue] = React.useState<MatchMomentIndicatorCue | null>(null);
+  const [highlightedOpponentPiece, setHighlightedOpponentPiece] = React.useState<{
+    pieceId: string;
+    color: PlayerColor;
+  } | null>(null);
   const [mobileScoreRowHeight, setMobileScoreRowHeight] = React.useState(0);
   const [tutorialCoachPhase, setTutorialCoachPhase] = React.useState<TutorialCoachPhase>('idle');
   const [tutorialCoachInterlude, setTutorialCoachInterlude] = React.useState<TutorialResultModalContent | null>(null);
@@ -1000,11 +1127,13 @@ export function GameRoom() {
   const pendingHeldRollDisplayRef = useRef<HeldRollDisplay | null>(null);
   const autoRollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const offlineBotSelectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turnTimeoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tutorialProgressTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const forceMoveAfterRollRef = useRef(false);
   const activeMatchCueRef = useRef<MatchMomentIndicatorCue | null>(null);
   const queuedMatchCuesRef = useRef<MatchMomentIndicatorCue[]>([]);
+  const lastSentPieceSelectionRef = useRef<string | null | undefined>(undefined);
   const pendingForfeitModalRevealKeyRef = useRef<string | null>(null);
   const enteringTournamentWaitingRoomRef = useRef(false);
   const matchCueIdRef = useRef(0);
@@ -1116,6 +1245,72 @@ export function GameRoom() {
     },
     [emojiReactionsRemaining, matchId, serverRevision, shouldShowEmojiControls],
   );
+
+  const settleHighlightedOpponentPiece = React.useCallback((pieceId: string, color: PlayerColor) => {
+    setHighlightedOpponentPiece((current) =>
+      current && current.pieceId === pieceId && current.color === color ? null : current,
+    );
+  }, []);
+
+  const sendPieceSelection = React.useCallback(
+    async (pieceId: string | null) => {
+      if (!matchId || !isOnlineHumanMatch || !isOnlineInteractionReady) {
+        return;
+      }
+
+      if (lastSentPieceSelectionRef.current === pieceId) {
+        return;
+      }
+
+      const socket = socketRef.current;
+      if (!socket) {
+        return;
+      }
+
+      const payload: PieceSelectionRequestPayload = {
+        type: 'piece_selection',
+        pieceId,
+      };
+
+      try {
+        await socket.sendMatchState(matchId, MatchOpCode.PIECE_SELECTION, encodePayload(payload));
+        lastSentPieceSelectionRef.current = pieceId;
+      } catch (error) {
+        suppressReconnectRef.current = isUnauthorizedNakamaError(error);
+        console.error('[Nakama][send_failed]', {
+          error,
+          eventType: payload.type,
+          matchId,
+          revision: serverRevision,
+        });
+        socket.ondisconnect({} as Event);
+      }
+    },
+    [isOnlineHumanMatch, isOnlineInteractionReady, matchId, serverRevision],
+  );
+
+  const handleSelectedPieceChange = React.useCallback(
+    (pieceId: string | null) => {
+      if (isOnlineHumanMatch && (pieceId !== null || lastSentPieceSelectionRef.current !== undefined)) {
+        void sendPieceSelection(pieceId);
+      }
+    },
+    [isOnlineHumanMatch, sendPieceSelection],
+  );
+
+  const handleBotSelectedPiece = React.useCallback((pieceId: string | null) => {
+    setHighlightedOpponentPiece((current) => {
+      if (!pieceId) {
+        return current === null ? current : null;
+      }
+
+      if (current?.pieceId === pieceId && current.color === 'dark') {
+        return current;
+      }
+
+      return { pieceId, color: 'dark' };
+    });
+  }, []);
 
   const tutorialLesson =
     tutorialLessonIndex < PLAYTHROUGH_TUTORIAL_LESSONS.length
@@ -2059,7 +2254,10 @@ export function GameRoom() {
     );
   }, []);
 
-  useGameLoop(isOffline && !isScriptedTutorialPhase && introsComplete && !showRulesIntroModal);
+  useGameLoop({
+    enabled: isOffline && !isScriptedTutorialPhase && introsComplete && !showRulesIntroModal,
+    onBotSelectPiece: handleBotSelectedPiece,
+  });
   useEffect(() => {
     if (isOffline || !authenticatedUserId || userId === authenticatedUserId) {
       return;
@@ -3261,6 +3459,29 @@ export function GameRoom() {
         return;
       }
 
+      if (matchData.op_code === MatchOpCode.PIECE_SELECTION_BROADCAST) {
+        if (!isPieceSelectionBroadcastPayload(payload)) {
+          return;
+        }
+
+        console.info('[Nakama][piece_selection_broadcast]', {
+          pieceId: payload.pieceId,
+          senderColor: payload.senderColor,
+          senderUserId: payload.senderUserId,
+          createdAtMs: payload.createdAtMs,
+        });
+
+        if (payload.senderUserId !== authenticatedUserId && payload.pieceId) {
+          setHighlightedOpponentPiece({
+            pieceId: payload.pieceId,
+            color: payload.senderColor,
+          });
+        } else if (payload.senderUserId !== authenticatedUserId) {
+          setHighlightedOpponentPiece(null);
+        }
+        return;
+      }
+
       if (matchData.op_code === MatchOpCode.SERVER_ERROR) {
         if (isServerErrorPayload(payload)) {
           console.warn('[Nakama][server_error]', {
@@ -3620,6 +3841,8 @@ export function GameRoom() {
     const previousSnapshot = previousStateRef.current;
     if (previousSnapshot.matchId !== (matchId ?? null)) {
       offlineMatchTelemetryRef.current = createOfflineMatchTelemetry();
+      lastSentPieceSelectionRef.current = undefined;
+      setHighlightedOpponentPiece(null);
       previousStateRef.current = { matchId: matchId ?? null, state: gameState, historyCount: effectiveHistoryCount };
       return;
     }
@@ -3727,6 +3950,10 @@ export function GameRoom() {
       }
     }
 
+    if (!isSuddenDeathState(previous) && isSuddenDeathState(gameState)) {
+      enqueueMatchCue('suddenDeath');
+    }
+
     if (!previous.winner && gameState.winner) {
       const resultCue = hasAssignedColor ? (didPlayerWin ? 'win' : 'lose') : 'win';
       void gameAudio.play(resultCue);
@@ -3766,15 +3993,21 @@ export function GameRoom() {
         return;
       }
 
+      if (isOnlineHumanMatch) {
+        void sendPieceSelection(move.pieceId);
+      }
+
       makeMove(move);
     },
     [
       handleTutorialMove,
+      isOnlineHumanMatch,
       isOnlineInteractionReady,
       isOpponentReadyToPlay,
       isScriptedTutorialPhase,
       makeMove,
       resumeAnnouncementCuesFromInteraction,
+      sendPieceSelection,
     ],
   );
 
@@ -4488,6 +4721,10 @@ export function GameRoom() {
           : heldRollDisplay?.label ?? null
         : null;
   const displayedRollText = displayedRollLabel ?? (displayedRollValue !== null ? String(displayedRollValue) : null);
+  const shouldJackpotGlowRollText =
+    !rollingVisual &&
+    displayedRollLabel === null &&
+    displayedRollText === JACKPOT_ROLL_VALUE;
   const showMobileRollResult =
     introsComplete &&
     isMobileLayout &&
@@ -4668,6 +4905,10 @@ export function GameRoom() {
           highlightMode="theatrical"
           validMovesOverride={displayedValidMoves}
           onMakeMoveOverride={handleBoardMove}
+          highlightedPieceId={highlightedOpponentPiece?.pieceId ?? null}
+          highlightedPieceColor={highlightedOpponentPiece?.color ?? null}
+          onHighlightedPieceSettled={settleHighlightedOpponentPiece}
+          onSelectedPieceChange={handleSelectedPieceChange}
           onInteraction={resumeAnnouncementCuesFromInteraction}
           allowInteraction={isOnlineInteractionReady}
           freezeMotion={shouldFreezeForfeitMotion}
@@ -4685,6 +4926,9 @@ export function GameRoom() {
       showRailHints
       highlightMode="theatrical"
       validMovesOverride={displayedValidMoves}
+      highlightedPieceId={highlightedOpponentPiece?.pieceId ?? null}
+      highlightedPieceColor={highlightedOpponentPiece?.color ?? null}
+      onHighlightedPieceSettled={settleHighlightedOpponentPiece}
       boardScale={boardScale}
       orientation="vertical"
       allowInteraction={false}
@@ -4881,7 +5125,8 @@ export function GameRoom() {
             },
           ]}
         >
-          <Text
+          <JackpotRollResultText
+            active={shouldJackpotGlowRollText}
             numberOfLines={1}
             style={[
               styles.mobileWebFloatingRollResultValue,
@@ -4898,8 +5143,8 @@ export function GameRoom() {
               },
             ]}
           >
-            {displayedRollText}
-          </Text>
+            {displayedRollText ?? ''}
+          </JackpotRollResultText>
         </View>
       ) : null}
 
@@ -4964,7 +5209,8 @@ export function GameRoom() {
         >
           <View style={styles.rollActionStack}>
             {showMobileWebBoardGapRollResult ? (
-              <Text
+              <JackpotRollResultText
+                active={shouldJackpotGlowRollText}
                 numberOfLines={1}
                 style={[
                   styles.mobileBoardGapRollResultValue,
@@ -4987,8 +5233,8 @@ export function GameRoom() {
                   },
                 ]}
               >
-                {displayedRollText}
-              </Text>
+                {displayedRollText ?? ''}
+              </JackpotRollResultText>
             ) : (
               <Dice
                 animationDurationMs={diceAnimationDurationMs}
@@ -5332,7 +5578,9 @@ export function GameRoom() {
               >
                 {showWebSideDiceVisual ? (
                   <View pointerEvents="none" style={[styles.webDiceVisualSlot, styles.webRollResultSlot, { height: webDiceVisualSlotHeight }]}>
-                    <Text
+                    <JackpotRollResultText
+                      active={showWebRollResult && shouldJackpotGlowRollText}
+                      numberOfLines={1}
                       style={[
                         styles.webRollResultValue,
                         {
@@ -5347,7 +5595,7 @@ export function GameRoom() {
                       ]}
                     >
                       {showWebRollResult ? (displayedRollText ?? '') : ''}
-                    </Text>
+                    </JackpotRollResultText>
                   </View>
                 ) : null}
                 <PieceRail
@@ -5611,7 +5859,8 @@ export function GameRoom() {
               ) : !useMobileSideReserveRails ? (
                 <View style={styles.mobileRollResultRow}>
                   {showMobileRollResult ? (
-                    <Text
+                    <JackpotRollResultText
+                      active={shouldJackpotGlowRollText}
                       numberOfLines={1}
                       style={[
                         styles.mobileRollResultValue,
@@ -5622,8 +5871,8 @@ export function GameRoom() {
                         },
                       ]}
                     >
-                      {displayedRollText}
-                    </Text>
+                      {displayedRollText ?? ''}
+                    </JackpotRollResultText>
                   ) : null}
                 </View>
               ) : null}
@@ -6279,6 +6528,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: urTheme.spacing.xs,
+  },
+  jackpotRollTextWrap: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  jackpotRollGlowText: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   mobileRollResultValue: {
     color: urTheme.colors.ivory,

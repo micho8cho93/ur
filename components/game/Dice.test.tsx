@@ -156,4 +156,19 @@ describe('Dice', () => {
 
     expect(screen.getByText('Result: No Move')).toBeTruthy();
   });
+
+  it('marks the visible numeric jackpot title when a 4 lands', () => {
+    render(
+      <Dice
+        value={4}
+        rolling={false}
+        onRoll={jest.fn()}
+        canRoll={false}
+        mode="panel"
+        showVisual={false}
+      />,
+    );
+
+    expect(screen.getByTestId('dice-jackpot-result-title')).toBeTruthy();
+  });
 });

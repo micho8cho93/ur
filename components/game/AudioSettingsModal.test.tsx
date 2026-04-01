@@ -73,6 +73,9 @@ describe('AudioSettingsModal', () => {
 
     expect(screen.getByText('Turn Timer')).toBeTruthy();
     expect(screen.getByText('Turn Timer Length')).toBeTruthy();
+    expect(screen.getByText('10s')).toBeTruthy();
+    expect(screen.getAllByText('20s').length).toBeGreaterThan(0);
+    expect(screen.queryByText('30s')).toBeNull();
   });
 
   it('tightens the sheet padding on compact mobile web viewports', () => {

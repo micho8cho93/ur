@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { SlotDiceScene } from './SlotDiceScene';
 import {
+  buildJackpotPulseOrder,
   buildSlotDiceFaces,
   SLOT_DICE_TOTAL_STOP_MS,
 } from './slotDiceShared';
@@ -71,6 +72,18 @@ describe('SlotDiceScene', () => {
     });
 
     expect(second).toEqual(first);
+  });
+
+  it.each([1, 2, 3, 4, 5, 6])('uses a non-consecutive jackpot pulse order for playback %s', (playbackId) => {
+    const pulseOrder = buildJackpotPulseOrder(playbackId);
+
+    expect(pulseOrder).toHaveLength(4);
+    expect(new Set(pulseOrder).size).toBe(4);
+    expect([...pulseOrder].sort((left, right) => left - right)).toEqual([0, 1, 2, 3]);
+
+    pulseOrder.slice(1).forEach((value, index) => {
+      expect(Math.abs(value - pulseOrder[index]!)).toBeGreaterThan(1);
+    });
   });
 
   it('can start spinning without a result and later settle on the resolved roll', () => {

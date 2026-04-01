@@ -3,6 +3,7 @@ const scaleDuration = (durationMs: number) => Math.round(durationMs * SLOT_DICE_
 
 export const DEFAULT_DICE_ROLL_DURATION_MS = scaleDuration(520);
 export const SLOT_DICE_COUNT = 4;
+export const SLOT_DICE_JACKPOT_VALUE = SLOT_DICE_COUNT;
 export const SLOT_DICE_SPIN_STEP_MS = scaleDuration(16);
 export const SLOT_DICE_SPIN_STEP_VARIANCE_MS = scaleDuration(1);
 export const SLOT_DICE_STOP_STAGGER_MS = scaleDuration(48);
@@ -12,6 +13,11 @@ export const SLOT_DICE_TOTAL_STOP_MS =
   SLOT_DICE_STOP_SETTLE_MS + SLOT_DICE_STOP_STAGGER_MS * (SLOT_DICE_COUNT - 1);
 
 export type SlotDiceVariant = 'animated' | 'start' | 'settled';
+
+const JACKPOT_PULSE_ORDERS: ReadonlyArray<ReadonlyArray<number>> = [
+  [1, 3, 0, 2],
+  [2, 0, 3, 1],
+];
 
 const createSeededRandom = (seed: number) => {
   let state = seed >>> 0;
@@ -54,4 +60,9 @@ export const buildSlotDiceFaces = ({
   const markedIndices = new Set(indices.slice(0, normalizedRollValue));
 
   return Array.from({ length: SLOT_DICE_COUNT }, (_, index) => markedIndices.has(index));
+};
+
+export const buildJackpotPulseOrder = (playbackId: number): number[] => {
+  const normalizedPlaybackId = Number.isFinite(playbackId) ? Math.abs(Math.round(playbackId)) : 0;
+  return [...(JACKPOT_PULSE_ORDERS[normalizedPlaybackId % JACKPOT_PULSE_ORDERS.length] ?? JACKPOT_PULSE_ORDERS[0])];
 };

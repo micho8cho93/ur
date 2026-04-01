@@ -3,6 +3,8 @@ import {
   isEmojiReactionBroadcastPayload,
   isEmojiReactionRequestPayload,
   isMatchEndPayload,
+  isPieceSelectionBroadcastPayload,
+  isPieceSelectionRequestPayload,
   isRollRequestPayload,
   isStateSnapshotPayload,
 } from './urMatchProtocol';
@@ -193,18 +195,44 @@ describe('urMatchProtocol', () => {
     expect(
       isEmojiReactionRequestPayload({
         type: 'emoji_reaction',
-        emoji: 'fire',
+        emoji: 'question',
       }),
     ).toBe(true);
 
     expect(
       isEmojiReactionBroadcastPayload({
         type: 'reaction_broadcast',
-        emoji: 'laughing',
+        emoji: 'hugging',
         senderUserId: 'light-user',
         senderColor: 'light',
-        remainingForSender: 4,
+        remainingForSender: 9,
         createdAtMs: 1_234,
+      }),
+    ).toBe(true);
+  });
+
+  it('accepts valid piece selection payloads and broadcasts', () => {
+    expect(
+      isPieceSelectionRequestPayload({
+        type: 'piece_selection',
+        pieceId: 'light-2',
+      }),
+    ).toBe(true);
+
+    expect(
+      isPieceSelectionRequestPayload({
+        type: 'piece_selection',
+        pieceId: null,
+      }),
+    ).toBe(true);
+
+    expect(
+      isPieceSelectionBroadcastPayload({
+        type: 'piece_selection_broadcast',
+        pieceId: 'dark-1',
+        senderUserId: 'dark-user',
+        senderColor: 'dark',
+        createdAtMs: 1_235,
       }),
     ).toBe(true);
   });
@@ -224,6 +252,25 @@ describe('urMatchProtocol', () => {
         senderUserId: 'light-user',
         senderColor: 'blue',
         remainingForSender: -1,
+        createdAtMs: 'now',
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects malformed piece selection payloads and broadcasts', () => {
+    expect(
+      isPieceSelectionRequestPayload({
+        type: 'piece_selection',
+        pieceId: 12,
+      }),
+    ).toBe(false);
+
+    expect(
+      isPieceSelectionBroadcastPayload({
+        type: 'piece_selection_broadcast',
+        pieceId: 'dark-1',
+        senderUserId: 'dark-user',
+        senderColor: 'blue',
         createdAtMs: 'now',
       }),
     ).toBe(false);
