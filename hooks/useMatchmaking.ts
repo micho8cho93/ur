@@ -11,6 +11,7 @@ import {
 } from '@/services/matchmaking';
 import { getSitePlayerCount } from '@/services/presence';
 import { useGameStore } from '@/store/useGameStore';
+import { useScreenTransition } from '@/src/transitions/ScreenTransitionContext';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -25,6 +26,8 @@ type CreatedPrivateMatch = PrivateMatchResult & {
 
 const PRIVATE_STATUS_POLL_INTERVAL_MS = 3_000;
 const ONLINE_COUNT_POLL_INTERVAL_MS = 5_000;
+const MATCH_ENTRY_PRE_DELAY_MS = 980;
+const MATCH_ENTRY_POST_DELAY_MS = 260;
 
 export const useMatchmaking = (mode: LobbyMode = 'bot') => {
   const [status, setStatus] = useState<MatchmakingStatus>('idle');
@@ -41,8 +44,32 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
   const setOnlineMode = useGameStore((state) => state.setOnlineMode);
   const setPlayerColor = useGameStore((state) => state.setPlayerColor);
   const router = useRouter();
+  const runScreenTransition = useScreenTransition();
   const onlineCountPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const privateStatusPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const runMatchEntryTransition = useCallback(
+    async (
+      request: {
+        title: string;
+        message: string;
+        variant?: 'neutral' | 'success' | 'warning';
+      },
+      action: () => void | Promise<void>,
+    ) => {
+      const didStart = await runScreenTransition({
+        ...request,
+        preActionDelayMs: MATCH_ENTRY_PRE_DELAY_MS,
+        postActionDelayMs: MATCH_ENTRY_POST_DELAY_MS,
+        action,
+      });
+
+      if (!didStart) {
+        await action();
+      }
+    },
+    [runScreenTransition],
+  );
 
   useEffect(() => {
     if (mode !== 'online' || !isNakamaEnabled() || !hasNakamaConfig()) {
@@ -135,38 +162,61 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
   }, [createdPrivateMatch, mode]);
 
   const openPrivateMatch = useCallback(
-    (result: Pick<PrivateMatchResult, 'matchId' | 'modeId' | 'code'>, isHost: boolean) => {
-      setMatchToken(null);
-      setPlayerColor(null);
-      initGame(result.matchId, { matchConfig: getMatchConfig(result.modeId) });
-      setSocketState('idle');
-      setStatus('matched');
-      setActiveAction(null);
-      router.push({
-        pathname: '/match/[id]',
-        params: {
-          id: result.matchId,
-          modeId: result.modeId,
-          privateMatch: '1',
-          privateCode: result.code,
-          ...(isHost ? { privateHost: '1' } : {}),
+    async (
+      result: Pick<PrivateMatchResult, 'matchId' | 'modeId' | 'code'>,
+      isHost: boolean,
+    ) => {
+      await runMatchEntryTransition(
+        {
+          title: isHost ? 'Opening Private Table' : 'Joining Private Table',
+          message: isHost
+            ? 'Laying out the private board and seating both players.'
+            : 'Connecting your code and opening the private board.',
+          variant: 'success',
         },
-      });
+        () => {
+          setMatchToken(null);
+          setPlayerColor(null);
+          initGame(result.matchId, { matchConfig: getMatchConfig(result.modeId) });
+          setSocketState('idle');
+          setStatus('matched');
+          setActiveAction(null);
+          router.push({
+            pathname: '/match/[id]',
+            params: {
+              id: result.matchId,
+              modeId: result.modeId,
+              privateMatch: '1',
+              privateCode: result.code,
+              ...(isHost ? { privateHost: '1' } : {}),
+            },
+          });
+        },
+      );
     },
-    [initGame, router, setMatchToken, setPlayerColor, setSocketState]
+    [initGame, router, runMatchEntryTransition, setMatchToken, setPlayerColor, setSocketState]
   );
 
   const startBotGame = useCallback(
-    (difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY, matchConfig: MatchConfig = DEFAULT_MATCH_CONFIG) => {
-      setOnlineMode('offline');
+    async (difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY, matchConfig: MatchConfig = DEFAULT_MATCH_CONFIG) => {
       const localMatchId = `local-${Date.now()}`;
-      setMatchToken(null);
-      initGame(localMatchId, { botDifficulty: difficulty, matchConfig });
-      setSocketState('connected');
-      setStatus('matched');
-      router.push(`/match/${localMatchId}?offline=1&botDifficulty=${difficulty}&modeId=${matchConfig.modeId}`);
+
+      await runMatchEntryTransition(
+        {
+          title: 'Preparing Board',
+          message: 'Setting the pieces and seating the local match.',
+        },
+        () => {
+          setOnlineMode('offline');
+          setMatchToken(null);
+          initGame(localMatchId, { botDifficulty: difficulty, matchConfig });
+          setSocketState('connected');
+          setStatus('matched');
+          router.push(`/match/${localMatchId}?offline=1&botDifficulty=${difficulty}&modeId=${matchConfig.modeId}`);
+        },
+      );
     },
-    [initGame, router, setMatchToken, setOnlineMode, setSocketState]
+    [initGame, router, runMatchEntryTransition, setMatchToken, setOnlineMode, setSocketState]
   );
 
   const startOnlineMatch = useCallback(async () => {
@@ -193,15 +243,24 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
       const result = await findMatch({
         onSearching: () => setStatus('searching'),
       });
-      setNakamaSession(result.session);
-      setUserId(result.userId);
-      setMatchToken(result.matchToken);
-      initGame(result.matchId);
-      setPlayerColor(result.playerColor);
-      setSocketState('connected');
-      setStatus('matched');
-      setActiveAction(null);
-      router.push(`/match/${result.matchId}`);
+      await runMatchEntryTransition(
+        {
+          title: 'Match Found',
+          message: 'Seating both players and preparing the board.',
+          variant: 'success',
+        },
+        () => {
+          setNakamaSession(result.session);
+          setUserId(result.userId);
+          setMatchToken(result.matchToken);
+          initGame(result.matchId);
+          setPlayerColor(result.playerColor);
+          setSocketState('connected');
+          setStatus('matched');
+          setActiveAction(null);
+          router.push(`/match/${result.matchId}`);
+        },
+      );
     } catch (error) {
       await cancelMatchmaking();
       const message = error instanceof Error ? error.message : 'No opponents found. Try again later.';
@@ -318,13 +377,13 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
       return;
     }
 
-    openPrivateMatch(createdPrivateMatch, true);
+    void openPrivateMatch(createdPrivateMatch, true);
   }, [createdPrivateMatch, openPrivateMatch]);
 
   const startMatch = useCallback(
     async (difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY) => {
       if (mode === 'bot') {
-        startBotGame(difficulty);
+        await startBotGame(difficulty);
       } else {
         await startOnlineMatch();
       }

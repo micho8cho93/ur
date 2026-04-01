@@ -7,6 +7,7 @@ import { ProgressionSummaryCard } from '@/components/progression/ProgressionSumm
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import { useAuth } from '@/src/auth/useAuth';
+import { useScreenTransition } from '@/src/transitions/ScreenTransitionContext';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -20,6 +21,7 @@ export default function AuthenticatedHome() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const runScreenTransition = useScreenTransition();
   const { user, logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
@@ -201,7 +203,22 @@ export default function AuthenticatedHome() {
               <Button
                 title="Play Tutorial"
                 variant="outline"
-                onPress={() => router.push(`/match/local-${Date.now()}?offline=1&tutorial=playthrough&botDifficulty=easy` as never)}
+                onPress={() => {
+                  const route = `/match/local-${Date.now()}?offline=1&tutorial=playthrough&botDifficulty=easy` as never;
+                  const navigate = () => router.push(route);
+
+                  void runScreenTransition({
+                    title: 'Preparing Tutorial',
+                    message: 'Laying out the guided board and loading the lesson.',
+                    preActionDelayMs: 980,
+                    postActionDelayMs: 260,
+                    action: navigate,
+                  }).then((didStart) => {
+                    if (!didStart) {
+                      navigate();
+                    }
+                  });
+                }}
                 style={[styles.actionButton, styles.extendedTutorialButton]}
                 labelStyle={blackButtonLabel}
               />

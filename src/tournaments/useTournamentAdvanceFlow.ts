@@ -152,19 +152,19 @@ export const useTournamentAdvanceFlow = ({
   const launchInFlightRef = useRef(false);
   const retryBackoffMsRef = useRef(TOURNAMENT_LAUNCH_RETRY_BACKOFF_MS);
 
-  const clearPollTimeout = () => {
+  const clearPollTimeout = useCallback(() => {
     if (pollTimeoutRef.current) {
       clearTimeout(pollTimeoutRef.current);
       pollTimeoutRef.current = null;
     }
-  };
+  }, []);
 
-  const clearReadyTimeouts = () => {
+  const clearReadyTimeouts = useCallback(() => {
     readyTimeoutsRef.current.forEach((timer) => clearTimeout(timer));
     readyTimeoutsRef.current = [];
-  };
+  }, []);
 
-  const scheduleRefresh = (refresh: () => void, delayMs = TOURNAMENT_WAIT_POLL_INTERVAL_MS) => {
+  const scheduleRefresh = useCallback((refresh: () => void, delayMs = TOURNAMENT_WAIT_POLL_INTERVAL_MS) => {
     clearPollTimeout();
 
     if (!isMountedRef.current || stoppedRef.current) {
@@ -175,7 +175,7 @@ export const useTournamentAdvanceFlow = ({
       pollTimeoutRef.current = null;
       refresh();
     }, delayMs);
-  };
+  }, [clearPollTimeout]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -187,7 +187,7 @@ export const useTournamentAdvanceFlow = ({
       clearReadyTimeouts();
       refreshStatusRef.current = null;
     };
-  }, []);
+  }, [clearPollTimeout, clearReadyTimeouts]);
 
   const launchNextMatch = useCallback(async () => {
     if (
@@ -234,7 +234,7 @@ export const useTournamentAdvanceFlow = ({
       clearPollTimeout();
       clearReadyTimeouts();
 
-      finalizeMatchLaunch(
+      await finalizeMatchLaunch(
         {
           runId,
           tournamentId,
@@ -274,12 +274,15 @@ export const useTournamentAdvanceFlow = ({
       }
     }
   }, [
+    clearPollTimeout,
+    clearReadyTimeouts,
     enabled,
     finalizeMatchLaunch,
     finishedMatchId,
     gameMode,
     playerUserId,
     runId,
+    scheduleRefresh,
     tournament,
     tournamentId,
     tournamentName,
@@ -417,7 +420,7 @@ export const useTournamentAdvanceFlow = ({
           clearReadyTimeouts();
           setPhase('ready');
           setStatusText('Match found');
-          setSubtleStatusText('The next board will launch on the current card boundary.');
+          setSubtleStatusText('The next board will launch automatically after a short countdown.');
           setRetryMessage(null);
           return;
         })
@@ -466,6 +469,8 @@ export const useTournamentAdvanceFlow = ({
       }
     };
   }, [
+    clearPollTimeout,
+    clearReadyTimeouts,
     didPlayerWin,
     enabled,
     finalizeMatchLaunch,
@@ -474,6 +479,7 @@ export const useTournamentAdvanceFlow = ({
     initialRound,
     playerUserId,
     runId,
+    scheduleRefresh,
     tournamentId,
     tournamentName,
   ]);

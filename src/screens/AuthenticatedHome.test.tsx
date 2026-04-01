@@ -4,6 +4,7 @@ import AuthenticatedHome from './AuthenticatedHome';
 
 const mockUseAuth = jest.fn();
 const mockPush = jest.fn();
+const mockRunScreenTransition = jest.fn();
 
 jest.mock('@/src/auth/useAuth', () => ({
   useAuth: (...args: unknown[]) => mockUseAuth(...args),
@@ -13,6 +14,10 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({
     push: mockPush,
   }),
+}));
+
+jest.mock('@/src/transitions/ScreenTransitionContext', () => ({
+  useScreenTransition: () => mockRunScreenTransition,
 }));
 
 jest.mock('@expo/vector-icons/MaterialIcons', () => {
@@ -70,6 +75,10 @@ jest.mock('@/components/ui/Button', () => ({
 describe('AuthenticatedHome', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRunScreenTransition.mockImplementation(async (request: { action?: () => void | Promise<void> }) => {
+      await request.action?.();
+      return true;
+    });
   });
 
   it('does not render a logout button for guest users', () => {

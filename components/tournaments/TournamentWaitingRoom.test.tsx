@@ -108,7 +108,46 @@ describe('TournamentWaitingRoom', () => {
     expect(screen.queryByText('Return to Home Page')).toBeNull();
   });
 
-  it('rotates to the next card every 15 seconds and launches on a card boundary', () => {
+  it('rotates to the next card every 15 seconds while the bracket is still waiting', () => {
+    render(
+      <TournamentWaitingRoom
+        visible
+        phase="waiting"
+        tournamentName="Spring Open"
+        derivedRound={3}
+        statusText="Another match is still in progress."
+        subtleStatusText="The next board will launch automatically when both winners arrive."
+        retryMessage={null}
+        standings={standings}
+        currentStanding={standings[0]}
+        highlightOwnerId="user-1"
+        finalPlacement={null}
+        isChampion={false}
+        rewardSummary={rewardSummary}
+        onReturnToMainPage={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Challenges Locked')).toBeTruthy();
+
+    act(() => {
+      jest.advanceTimersByTime(15_000);
+    });
+
+    expect(screen.getByText('XP Locked')).toBeTruthy();
+
+    act(() => {
+      jest.advanceTimersByTime(15_000);
+    });
+
+    expect(
+      screen.getByText(
+        'Mesopotamia grew between the Tigris and Euphrates, where cities like Ur became major centers of trade and ritual.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows a 3 second ready countdown before launching the next round', () => {
     const handleLaunch = jest.fn();
 
     render(
@@ -131,24 +170,29 @@ describe('TournamentWaitingRoom', () => {
       />,
     );
 
-    expect(screen.getByText('Challenges Locked')).toBeTruthy();
+    expect(screen.getByText('Next round starts in 3s')).toBeTruthy();
+    expect(handleLaunch).not.toHaveBeenCalled();
 
     act(() => {
-      jest.advanceTimersByTime(15_000);
+      jest.advanceTimersByTime(1_000);
+    });
+
+    expect(screen.getByText('Next round starts in 2s')).toBeTruthy();
+    expect(handleLaunch).not.toHaveBeenCalled();
+
+    act(() => {
+      jest.advanceTimersByTime(1_000);
+    });
+
+    expect(screen.getByText('Next round starts in 1s')).toBeTruthy();
+    expect(handleLaunch).not.toHaveBeenCalled();
+
+    act(() => {
+      jest.advanceTimersByTime(1_000);
     });
 
     expect(handleLaunch).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('XP Locked')).toBeTruthy();
-
-    act(() => {
-      jest.advanceTimersByTime(15_000);
-    });
-
-    expect(
-      screen.getByText(
-        'Mesopotamia grew between the Tigris and Euphrates, where cities like Ur became major centers of trade and ritual.',
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText('Opening next round...')).toBeTruthy();
   });
 
   it('renders finalized champion copy when the tournament is complete', () => {

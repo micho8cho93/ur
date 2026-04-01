@@ -4,6 +4,7 @@ import { Session } from '@heroiclabs/nakama-js';
 
 import { getMatchConfig } from '@/logic/matchConfigs';
 import { launchTournamentMatch } from '@/services/tournaments';
+import { useScreenTransition } from '@/src/transitions/ScreenTransitionContext';
 import type { PublicTournamentSummary, TournamentMatchLaunchResult } from '@/src/tournaments/types';
 import { useGameStore } from '@/store/useGameStore';
 
@@ -19,6 +20,9 @@ type FinalizeMatchLaunchOptions = {
   returnTarget?: string;
 };
 
+const MATCH_ENTRY_PRE_DELAY_MS = 980;
+const MATCH_ENTRY_POST_DELAY_MS = 260;
+
 export const useTournamentMatchLauncher = () => {
   const router = useRouter();
   const [launchingRunId, setLaunchingRunId] = useState<string | null>(null);
@@ -29,44 +33,60 @@ export const useTournamentMatchLauncher = () => {
   const setSocketState = useGameStore((state) => state.setSocketState);
   const setOnlineMode = useGameStore((state) => state.setOnlineMode);
   const setPlayerColor = useGameStore((state) => state.setPlayerColor);
+  const runScreenTransition = useScreenTransition();
 
   const finalizeMatchLaunch = useCallback(
-    (
+    async (
       tournament: TournamentLaunchable,
       result: TournamentMatchLaunchResult & { session: Session; userId: string },
       options?: FinalizeMatchLaunchOptions,
     ) => {
       const navigationMode = options?.navigationMode ?? 'push';
       const navigate = navigationMode === 'replace' ? router.replace : router.push;
+      const completeLaunch = () => {
+        setNakamaSession(result.session);
+        setUserId(result.userId);
+        setMatchToken(result.matchToken ?? null);
+        setOnlineMode('nakama');
+        setPlayerColor(null);
+        initGame(result.matchId, {
+          matchConfig: getMatchConfig(tournament.gameMode),
+        });
+        setSocketState('idle');
 
-      setNakamaSession(result.session);
-      setUserId(result.userId);
-      setMatchToken(result.matchToken ?? null);
-      setOnlineMode('nakama');
-      setPlayerColor(null);
-      initGame(result.matchId, {
-        matchConfig: getMatchConfig(tournament.gameMode),
-      });
-      setSocketState('idle');
+        navigate({
+          pathname: '/match/[id]',
+          params: {
+            id: result.matchId,
+            modeId: tournament.gameMode,
+            tournamentRunId: result.tournamentRunId,
+            tournamentId: result.tournamentId,
+            tournamentName: tournament.name,
+            tournamentReturnTarget: options?.returnTarget ?? 'detail',
+            ...(typeof result.tournamentRound === 'number' ? { tournamentRound: String(result.tournamentRound) } : {}),
+            ...(result.tournamentEntryId ? { tournamentEntryId: result.tournamentEntryId } : {}),
+          },
+        });
+      };
 
-      navigate({
-        pathname: '/match/[id]',
-        params: {
-          id: result.matchId,
-          modeId: tournament.gameMode,
-          tournamentRunId: result.tournamentRunId,
-          tournamentId: result.tournamentId,
-          tournamentName: tournament.name,
-          tournamentReturnTarget: options?.returnTarget ?? 'detail',
-          ...(typeof result.tournamentRound === 'number' ? { tournamentRound: String(result.tournamentRound) } : {}),
-          ...(result.tournamentEntryId ? { tournamentEntryId: result.tournamentEntryId } : {}),
-        },
+      const didStart = await runScreenTransition({
+        title: 'Preparing Next Board',
+        message: 'Carrying your tournament seat into the next match.',
+        variant: 'success',
+        preActionDelayMs: MATCH_ENTRY_PRE_DELAY_MS,
+        postActionDelayMs: MATCH_ENTRY_POST_DELAY_MS,
+        action: completeLaunch,
       });
+
+      if (!didStart) {
+        completeLaunch();
+      }
     },
     [
       initGame,
       router.push,
       router.replace,
+      runScreenTransition,
       setMatchToken,
       setNakamaSession,
       setOnlineMode,
@@ -85,7 +105,7 @@ export const useTournamentMatchLauncher = () => {
         if (!result.matchId) {
           throw new Error(result.statusMessage ?? 'Tournament match is not ready yet.');
         }
-        finalizeMatchLaunch(tournament, result, {
+        await finalizeMatchLaunch(tournament, result, {
           navigationMode: 'push',
           returnTarget: 'detail',
         });

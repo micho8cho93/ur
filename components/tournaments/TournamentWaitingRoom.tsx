@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/Button';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
+import { TOURNAMENT_READY_LAUNCH_COUNTDOWN_SECONDS } from '@/src/match/transitionPresentation';
 import type { TournamentAdvanceFlowPhase } from '@/src/tournaments/useTournamentAdvanceFlow';
 import type { PublicTournamentStanding } from '@/src/tournaments/types';
 import type { TournamentMatchRewardSummaryPayload } from '@/shared/urMatchProtocol';
@@ -206,6 +207,7 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
   const useSplitLayout = isWideViewport || isDesktopViewport;
   const showExitActions = phase === 'eliminated' || phase === 'finalized';
   const [cardIndex, setCardIndex] = useState(0);
+  const [readyLaunchCountdownSeconds, setReadyLaunchCountdownSeconds] = useState<number | null>(null);
   const [shuffleSeed, setShuffleSeed] = useState(0);
   const launchTriggeredRef = useRef(false);
   const cards = useMemo(
@@ -229,9 +231,23 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
     : 'You advanced. Stay here while the royal court settles the bracket and opens your next board.';
   const rotationNote = showExitActions
     ? 'Final standings are locked. Return home whenever you are ready.'
-    : phase === 'ready' || phase === 'launching'
-      ? 'Stay here. The next board opens automatically on the next archive turn.'
+    : phase === 'ready'
+      ? 'Stay here. The next board opens automatically after a short launch countdown.'
+      : phase === 'launching'
+        ? 'Stay here. The next board is opening now.'
       : 'The archive reshuffles every 15 seconds while the bracket finishes the round.';
+  const readyLaunchStatusTitle =
+    readyLaunchCountdownSeconds === null
+      ? null
+      : readyLaunchCountdownSeconds > 0
+        ? `Next round starts in ${readyLaunchCountdownSeconds}s`
+        : 'Opening next round...';
+  const readyLaunchStatusBody =
+    readyLaunchCountdownSeconds === null
+      ? null
+      : readyLaunchCountdownSeconds > 0
+        ? 'Stay seated here. The next board will launch automatically when the countdown finishes.'
+        : 'Your next board is opening automatically now.';
   const detailPanel = showExitActions
     ? {
         label: 'Final Bracket',
@@ -252,6 +268,7 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
 
   useEffect(() => {
     launchTriggeredRef.current = false;
+    setReadyLaunchCountdownSeconds(null);
 
     if (!visible) {
       return;
@@ -263,13 +280,14 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
     if (showExitActions) {
       return;
     }
+  }, [showExitActions, visible]);
+
+  useEffect(() => {
+    if (!visible || showExitActions || phase === 'ready' || phase === 'launching') {
+      return;
+    }
 
     const interval = setInterval(() => {
-      if ((phase === 'ready' || phase === 'launching') && onLaunchNextMatch && !launchTriggeredRef.current) {
-        launchTriggeredRef.current = true;
-        void onLaunchNextMatch();
-      }
-
       setCardIndex((current) => {
         const next = current + 1;
         if (next >= cards.length) {
@@ -284,7 +302,52 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
     return () => {
       clearInterval(interval);
     };
-  }, [cards.length, onLaunchNextMatch, phase, showExitActions, visible]);
+  }, [cards.length, phase, showExitActions, visible]);
+
+  useEffect(() => {
+    if (!visible || showExitActions) {
+      setReadyLaunchCountdownSeconds(null);
+      return;
+    }
+
+    if (phase === 'launching') {
+      setReadyLaunchCountdownSeconds(0);
+      return;
+    }
+
+    if (phase !== 'ready') {
+      setReadyLaunchCountdownSeconds(null);
+      launchTriggeredRef.current = false;
+      return;
+    }
+
+    setReadyLaunchCountdownSeconds(TOURNAMENT_READY_LAUNCH_COUNTDOWN_SECONDS);
+
+    const interval = setInterval(() => {
+      setReadyLaunchCountdownSeconds((current) => {
+        if (current === null) {
+          return current;
+        }
+
+        if (current <= 1) {
+          clearInterval(interval);
+
+          if (onLaunchNextMatch && !launchTriggeredRef.current) {
+            launchTriggeredRef.current = true;
+            void onLaunchNextMatch();
+          }
+
+          return 0;
+        }
+
+        return current - 1;
+      });
+    }, 1_000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [onLaunchNextMatch, phase, showExitActions, visible]);
 
   useEffect(() => {
     if (phase !== 'ready' && phase !== 'launching') {
@@ -410,6 +473,20 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
                   {detailPanel.body}
                 </Text>
               </View>
+
+              {readyLaunchStatusTitle ? (
+                <View style={styles.launchCountdownPanel}>
+                  <Text style={styles.launchCountdownLabel}>Hands-Free Launch</Text>
+                  <Text style={[styles.launchCountdownTitle, isCompactViewport && styles.transitionTitleCompact]}>
+                    {readyLaunchStatusTitle}
+                  </Text>
+                  {readyLaunchStatusBody ? (
+                    <Text style={[styles.launchCountdownBody, isCompactViewport && styles.helperTextCompact]}>
+                      {readyLaunchStatusBody}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
 
               <Text style={[styles.rotationNote, isCompactViewport && styles.helperTextCompact]}>{rotationNote}</Text>
             </View>
@@ -710,6 +787,32 @@ const styles = StyleSheet.create({
   },
   transitionBody: {
     color: 'rgba(215, 231, 251, 0.82)',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  launchCountdownPanel: {
+    width: '100%',
+    gap: urTheme.spacing.xs,
+    borderRadius: urTheme.radii.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(246, 214, 151, 0.22)',
+    backgroundColor: 'rgba(41, 29, 13, 0.5)',
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.md,
+  },
+  launchCountdownLabel: {
+    ...urTypography.label,
+    color: '#F4D189',
+    fontSize: 10,
+  },
+  launchCountdownTitle: {
+    ...urTypography.title,
+    color: '#F7E9CE',
+    fontSize: 24,
+    lineHeight: 28,
+  },
+  launchCountdownBody: {
+    color: 'rgba(239, 226, 202, 0.82)',
     fontSize: 13,
     lineHeight: 19,
   },

@@ -3,9 +3,10 @@ import { AuthProvider } from '@/src/auth/AuthProvider';
 import { ChallengesProvider } from '@/src/challenges/ChallengesContext';
 import { EloRatingProvider } from '@/src/elo/EloContext';
 import { ProgressionProvider } from '@/src/progression/ProgressionContext';
+import { ScreenTransitionProvider } from '@/src/transitions/ScreenTransitionContext';
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
-import { LogBox, View } from 'react-native';
+import { LogBox, Platform, View } from 'react-native';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 
 import '../global.css';
@@ -15,6 +16,8 @@ LogBox.ignoreLogs([
 ]);
 
 function RootNavigator() {
+  const rootFadeAnimation = Platform.OS === 'ios' || Platform.OS === 'android' ? 'fade' : undefined;
+
   return (
     <View style={{ flex: 1, backgroundColor: urTheme.colors.night }}>
       <Stack
@@ -35,8 +38,20 @@ function RootNavigator() {
         <Stack.Screen name="challenges" options={{ title: 'Challenges' }} />
         <Stack.Screen name="leaderboard" options={{ title: 'Elo Leaderboard' }} />
         <Stack.Screen name="username-onboarding" options={{ headerShown: false }} />
-        <Stack.Screen name="(game)" options={{ headerShown: false }} />
-        <Stack.Screen name="match" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="(game)"
+          options={{
+            headerShown: false,
+            ...(rootFadeAnimation ? { animation: rootFadeAnimation } : {}),
+          }}
+        />
+        <Stack.Screen
+          name="match"
+          options={{
+            headerShown: false,
+            ...(rootFadeAnimation ? { animation: rootFadeAnimation } : {}),
+          }}
+        />
         <Stack.Screen name="tutorial" options={{ headerShown: false }} />
         <Stack.Screen name="oauthredirect" options={{ headerShown: false }} />
       </Stack>
@@ -52,7 +67,9 @@ export default function Layout() {
         <EloRatingProvider>
           <ProgressionProvider>
             <ChallengesProvider>
-              <RootNavigator />
+              <ScreenTransitionProvider>
+                <RootNavigator />
+              </ScreenTransitionProvider>
             </ChallengesProvider>
           </ProgressionProvider>
         </EloRatingProvider>
