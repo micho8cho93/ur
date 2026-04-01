@@ -5,8 +5,8 @@ import { TOURNAMENT_READY_LAUNCH_COUNTDOWN_SECONDS } from '@/src/match/transitio
 import type { TournamentAdvanceFlowPhase } from '@/src/tournaments/useTournamentAdvanceFlow';
 import type { PublicTournamentStanding } from '@/src/tournaments/types';
 import type { TournamentMatchRewardSummaryPayload } from '@/shared/urMatchProtocol';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 const STONE_SLAB_BACKGROUND = require('../../assets/images/ur_bg.png');
 
@@ -37,7 +37,8 @@ type WaitingRoomCard = {
   accent: string;
 };
 
-const CARD_DURATION_MS = 15_000;
+const CARD_DURATION_MS = 8_000;
+const CARD_MOVE_TO_BACK_DURATION_MS = 720;
 
 const ROYAL_GAME_OF_UR_FACTS = [
   'The best-known Royal Game of Ur boards were excavated from the Royal Tombs of Ur in southern Iraq.',
@@ -209,7 +210,17 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
   const [cardIndex, setCardIndex] = useState(0);
   const [readyLaunchCountdownSeconds, setReadyLaunchCountdownSeconds] = useState<number | null>(null);
   const [shuffleSeed, setShuffleSeed] = useState(0);
+  const [outgoingCard, setOutgoingCard] = useState<WaitingRoomCard | null>(null);
+  const [cardTransitionId, setCardTransitionId] = useState(0);
   const launchTriggeredRef = useRef(false);
+  const cardMoveToBackProgress = useRef(new Animated.Value(0)).current;
+  const cardIndexRef = useRef(0);
+  const shuffleSeedRef = useRef(0);
+  const cardsRef = useRef<WaitingRoomCard[]>([]);
+  const outgoingCardRef = useRef<WaitingRoomCard | null>(null);
+  const visibleRef = useRef(visible);
+  const phaseRef = useRef(phase);
+  const showExitActionsRef = useRef(showExitActions);
   const cards = useMemo(
     () => shuffleCards(buildCards(rewardSummary, showExitActions, isChampion, finalPlacement), shuffleSeed),
     [finalPlacement, isChampion, rewardSummary, showExitActions, shuffleSeed],
@@ -235,7 +246,7 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
       ? 'Stay here. The next board opens automatically after a short launch countdown.'
       : phase === 'launching'
         ? 'Stay here. The next board is opening now.'
-      : 'The archive reshuffles every 15 seconds while the bracket finishes the round.';
+      : 'The archive cycles every 8 seconds while the bracket finishes the round.';
   const readyLaunchStatusTitle =
     readyLaunchCountdownSeconds === null
       ? null
@@ -267,8 +278,145 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
         };
 
   useEffect(() => {
+    cardIndexRef.current = cardIndex;
+    shuffleSeedRef.current = shuffleSeed;
+    cardsRef.current = cards;
+    outgoingCardRef.current = outgoingCard;
+    visibleRef.current = visible;
+    phaseRef.current = phase;
+    showExitActionsRef.current = showExitActions;
+  }, [cardIndex, cards, outgoingCard, phase, showExitActions, shuffleSeed, visible]);
+
+  const incomingCardAnimatedStyle = useMemo(
+    () => ({
+      opacity: outgoingCard
+        ? cardMoveToBackProgress.interpolate({
+            inputRange: [0, 0.6, 1],
+            outputRange: [0.8, 0.94, 1],
+          })
+        : 1,
+      transform: outgoingCard
+        ? [
+            {
+              translateY: cardMoveToBackProgress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [12, 0],
+              }),
+            },
+            {
+              scale: cardMoveToBackProgress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.965, 1],
+              }),
+            },
+            {
+              rotate: cardMoveToBackProgress.interpolate({
+                inputRange: [0, 1],
+                outputRange: ['4deg', '0deg'],
+              }),
+            },
+          ]
+        : undefined,
+    }),
+    [cardMoveToBackProgress, outgoingCard],
+  );
+  const outgoingCardAnimatedStyle = useMemo(
+    () => ({
+      opacity: cardMoveToBackProgress.interpolate({
+        inputRange: [0, 0.7, 1],
+        outputRange: [1, 0.94, 0.72],
+      }),
+      transform: [
+        {
+          translateX: cardMoveToBackProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 22],
+          }),
+        },
+        {
+          translateY: cardMoveToBackProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 30],
+          }),
+        },
+        {
+          scale: cardMoveToBackProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [1, 0.93],
+          }),
+        },
+        {
+          rotate: cardMoveToBackProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: ['0deg', '8deg'],
+          }),
+        },
+      ],
+    }),
+    [cardMoveToBackProgress],
+  );
+
+  const cycleCard = useCallback(() => {
+    if (
+      !visibleRef.current ||
+      showExitActionsRef.current ||
+      phaseRef.current === 'ready' ||
+      phaseRef.current === 'launching' ||
+      outgoingCardRef.current
+    ) {
+      return;
+    }
+
+    const currentCards = cardsRef.current;
+    const currentIndex = cardIndexRef.current;
+
+    if (currentCards.length <= 1) {
+      return;
+    }
+
+    const currentCard = currentCards[currentIndex] ?? currentCards[0];
+
+    if (!currentCard) {
+      return;
+    }
+
+    const wrapsToNewDeck = currentIndex + 1 >= currentCards.length;
+    const nextIndex = wrapsToNewDeck ? 0 : currentIndex + 1;
+    const nextCards = wrapsToNewDeck ? shuffleCards(currentCards, shuffleSeedRef.current + 1) : currentCards;
+
+    outgoingCardRef.current = currentCard;
+    cardIndexRef.current = nextIndex;
+    cardsRef.current = nextCards;
+    setOutgoingCard(currentCard);
+    setCardTransitionId((current) => current + 1);
+    setCardIndex(nextIndex);
+
+    if (wrapsToNewDeck) {
+      shuffleSeedRef.current += 1;
+      setShuffleSeed((current) => current + 1);
+    }
+
+    cardMoveToBackProgress.stopAnimation();
+    cardMoveToBackProgress.setValue(0);
+
+    Animated.timing(cardMoveToBackProgress, {
+      toValue: 1,
+      duration: CARD_MOVE_TO_BACK_DURATION_MS,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      cardMoveToBackProgress.setValue(0);
+      outgoingCardRef.current = null;
+      setOutgoingCard(null);
+    });
+  }, [cardMoveToBackProgress]);
+
+  useEffect(() => {
     launchTriggeredRef.current = false;
     setReadyLaunchCountdownSeconds(null);
+    setOutgoingCard(null);
+    cardMoveToBackProgress.stopAnimation();
+    cardMoveToBackProgress.setValue(0);
 
     if (!visible) {
       return;
@@ -280,7 +428,7 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
     if (showExitActions) {
       return;
     }
-  }, [showExitActions, visible]);
+  }, [cardMoveToBackProgress, showExitActions, visible]);
 
   useEffect(() => {
     if (!visible || showExitActions || phase === 'ready' || phase === 'launching') {
@@ -288,21 +436,38 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
     }
 
     const interval = setInterval(() => {
-      setCardIndex((current) => {
-        const next = current + 1;
-        if (next >= cards.length) {
-          setShuffleSeed((value) => value + 1);
-          return 0;
-        }
-
-        return next;
-      });
+      cycleCard();
     }, CARD_DURATION_MS);
 
     return () => {
       clearInterval(interval);
     };
-  }, [cards.length, phase, showExitActions, visible]);
+  }, [cycleCard, phase, showExitActions, visible]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !visible || typeof document === 'undefined') {
+      return;
+    }
+
+    const htmlStyle = document.documentElement.style;
+    const bodyStyle = document.body.style;
+    const previousHtmlOverflow = htmlStyle.overflow;
+    const previousBodyOverflow = bodyStyle.overflow;
+    const previousBodyOverscrollBehavior = bodyStyle.overscrollBehavior;
+    const previousBodyTouchAction = bodyStyle.touchAction;
+
+    htmlStyle.overflow = 'hidden';
+    bodyStyle.overflow = 'hidden';
+    bodyStyle.overscrollBehavior = 'none';
+    bodyStyle.touchAction = 'none';
+
+    return () => {
+      htmlStyle.overflow = previousHtmlOverflow;
+      bodyStyle.overflow = previousBodyOverflow;
+      bodyStyle.overscrollBehavior = previousBodyOverscrollBehavior;
+      bodyStyle.touchAction = previousBodyTouchAction;
+    };
+  }, [visible]);
 
   useEffect(() => {
     if (!visible || showExitActions) {
@@ -377,14 +542,16 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
         contentContainerStyle={[
           styles.scrollContent,
           isCompactViewport && styles.scrollContentCompact,
+          isVeryShortViewport && styles.scrollContentVeryShort,
           isDesktopViewport && styles.scrollContentDesktop,
           isTightDesktopViewport && styles.scrollContentDesktopTight,
           isWideViewport && styles.scrollContentWide,
-          { minHeight: height },
+          { height },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         bounces={false}
+        scrollEnabled={false}
       >
         <View
           style={[
@@ -502,19 +669,46 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
               <View style={styles.cardShadow} />
               <View style={[styles.cardGhost, styles.cardGhostRear]} />
               <View style={[styles.cardGhost, styles.cardGhostFront]} />
-              <View
-                style={[
-                  styles.card,
-                  isCompactViewport && styles.cardCompact,
-                  isDesktopViewport && styles.cardDesktop,
-                  useSplitLayout && styles.cardWide,
-                  { borderColor: `${activeCard.accent}66` },
-                ]}
-              >
-                <Text style={[styles.cardEyebrow, { color: activeCard.accent }]}>{activeCard.eyebrow}</Text>
-                <Text style={[styles.cardTitle, isCompactViewport && styles.cardTitleCompact]}>{activeCard.title}</Text>
-                <Text style={[styles.cardBody, isCompactViewport && styles.cardBodyCompact]}>{activeCard.body}</Text>
-              </View>
+              <Animated.View pointerEvents="none" style={[styles.cardLayer, incomingCardAnimatedStyle]}>
+                <View
+                  style={[
+                    styles.card,
+                    isCompactViewport && styles.cardCompact,
+                    isVeryShortViewport && styles.cardVeryShort,
+                    isDesktopViewport && styles.cardDesktop,
+                    useSplitLayout && styles.cardWide,
+                    { borderColor: `${activeCard.accent}66` },
+                  ]}
+                >
+                  <Text style={[styles.cardEyebrow, { color: activeCard.accent }]}>{activeCard.eyebrow}</Text>
+                  <Text style={[styles.cardTitle, isCompactViewport && styles.cardTitleCompact]}>{activeCard.title}</Text>
+                  <Text style={[styles.cardBody, isCompactViewport && styles.cardBodyCompact]}>{activeCard.body}</Text>
+                </View>
+              </Animated.View>
+              {outgoingCard ? (
+                <Animated.View
+                  key={`${outgoingCard.key}-${cardTransitionId}`}
+                  pointerEvents="none"
+                  style={[styles.cardLayer, styles.cardLayerFront, outgoingCardAnimatedStyle]}
+                >
+                  <View
+                    style={[
+                      styles.card,
+                      isCompactViewport && styles.cardCompact,
+                      isVeryShortViewport && styles.cardVeryShort,
+                      isDesktopViewport && styles.cardDesktop,
+                      useSplitLayout && styles.cardWide,
+                      { borderColor: `${outgoingCard.accent}66` },
+                    ]}
+                  >
+                    <Text style={[styles.cardEyebrow, { color: outgoingCard.accent }]}>{outgoingCard.eyebrow}</Text>
+                    <Text style={[styles.cardTitle, isCompactViewport && styles.cardTitleCompact]}>
+                      {outgoingCard.title}
+                    </Text>
+                    <Text style={[styles.cardBody, isCompactViewport && styles.cardBodyCompact]}>{outgoingCard.body}</Text>
+                  </View>
+                </Animated.View>
+              ) : null}
             </View>
           </View>
 
@@ -582,7 +776,11 @@ const styles = StyleSheet.create({
     paddingVertical: urTheme.spacing.xl,
   },
   scrollContentCompact: {
-    justifyContent: 'flex-start',
+    paddingHorizontal: urTheme.spacing.sm,
+    paddingVertical: urTheme.spacing.sm,
+  },
+  scrollContentVeryShort: {
+    paddingVertical: urTheme.spacing.xs,
   },
   scrollContentDesktop: {
     paddingHorizontal: urTheme.spacing.lg,
@@ -620,6 +818,7 @@ const styles = StyleSheet.create({
     paddingVertical: urTheme.spacing.lg,
   },
   heroPanelVeryShort: {
+    gap: urTheme.spacing.xs,
     paddingVertical: urTheme.spacing.md,
   },
   heroPanelDesktop: {
@@ -824,7 +1023,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cardDeckWrapCompact: {
-    minHeight: 260,
+    minHeight: 236,
   },
   cardDeckWrapDesktop: {
     flex: 1,
@@ -853,12 +1052,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(8, 13, 22, 0.38)',
   },
   cardGhostRear: {
-    height: 242,
-    transform: [{ rotate: '-5deg' }, { translateY: 10 }],
+    height: 232,
+    transform: [{ rotate: '-5deg' }, { translateY: 14 }],
   },
   cardGhostFront: {
-    height: 252,
-    transform: [{ rotate: '4deg' }, { translateY: 4 }],
+    height: 242,
+    transform: [{ rotate: '4deg' }, { translateY: 8 }],
+  },
+  cardLayer: {
+    position: 'absolute',
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardLayerFront: {
+    zIndex: 2,
   },
   card: {
     width: '100%',
@@ -880,10 +1088,14 @@ const styles = StyleSheet.create({
     }),
   },
   cardCompact: {
-    minHeight: 224,
+    minHeight: 212,
     borderRadius: 24,
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.md,
+  },
+  cardVeryShort: {
+    minHeight: 196,
+    paddingVertical: urTheme.spacing.sm,
   },
   cardDesktop: {
     minHeight: 236,

@@ -108,7 +108,7 @@ describe('TournamentWaitingRoom', () => {
     expect(screen.queryByText('Return to Home Page')).toBeNull();
   });
 
-  it('rotates to the next card every 15 seconds while the bracket is still waiting', () => {
+  it('rotates to the next card every 8 seconds while the bracket is still waiting', () => {
     render(
       <TournamentWaitingRoom
         visible
@@ -131,13 +131,13 @@ describe('TournamentWaitingRoom', () => {
     expect(screen.getByText('Challenges Locked')).toBeTruthy();
 
     act(() => {
-      jest.advanceTimersByTime(15_000);
+      jest.advanceTimersByTime(8_000);
     });
 
     expect(screen.getByText('XP Locked')).toBeTruthy();
 
     act(() => {
-      jest.advanceTimersByTime(15_000);
+      jest.advanceTimersByTime(9_000);
     });
 
     expect(
@@ -281,8 +281,63 @@ describe('TournamentWaitingRoom', () => {
       />,
     );
 
-    expect(screen.getByTestId('tournament-waiting-room-scroll')).toBeTruthy();
+    expect(screen.getByTestId('tournament-waiting-room-scroll').props.scrollEnabled).toBe(false);
     expect(StyleSheet.flatten(screen.getByText('Spring Open').props.style).fontSize).toBe(30);
     expect(StyleSheet.flatten(screen.getByText('2 challenges completed').props.style).fontSize).toBe(26);
+  });
+
+  it('locks document scrolling while the waiting room is visible on web', () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+
+    const mockDocument = {
+      body: { style: { overflow: '', overscrollBehavior: '', touchAction: '' } },
+      documentElement: { style: { overflow: '' } },
+    } as unknown as Document;
+    const originalDocument = global.document;
+
+    Object.defineProperty(global, 'document', {
+      configurable: true,
+      value: mockDocument,
+    });
+
+    const view = render(
+      <TournamentWaitingRoom
+        visible
+        phase="waiting"
+        tournamentName="Spring Open"
+        derivedRound={3}
+        statusText="Another match is still in progress."
+        subtleStatusText="The next board will launch automatically when both winners arrive."
+        retryMessage={null}
+        standings={standings}
+        currentStanding={standings[0]}
+        highlightOwnerId="user-1"
+        finalPlacement={null}
+        isChampion={false}
+        rewardSummary={rewardSummary}
+        onReturnToMainPage={jest.fn()}
+      />,
+    );
+
+    expect(global.document.body.style.overflow).toBe('hidden');
+    expect(global.document.documentElement.style.overflow).toBe('hidden');
+
+    view.unmount();
+
+    expect(global.document.body.style.overflow).toBe('');
+    expect(global.document.documentElement.style.overflow).toBe('');
+
+    if (originalDocument) {
+      Object.defineProperty(global, 'document', {
+        configurable: true,
+        value: originalDocument,
+      });
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (global as any).document;
+    }
   });
 });
