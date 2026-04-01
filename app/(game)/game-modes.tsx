@@ -19,6 +19,7 @@ const MODE_ICONS: Record<Exclude<MatchModeId, 'standard'>, keyof typeof Material
   gameMode_3_pieces: 'flag',
   gameMode_5_pieces: 'filter-5',
   gameMode_finkel_rules: 'filter-7',
+  gameMode_pvp: 'people',
   gameMode_capture: 'flash-on',
   gameMode_full_path: 'timeline',
 };
@@ -64,7 +65,7 @@ export default function GameModesScreen() {
       >
         <View style={[styles.hero, isDesktopViewport && styles.heroDesktop, isTightDesktopViewport && styles.heroDesktopTight]}>
           <Text style={styles.eyebrow}>Game Modes</Text>
-          <Text style={styles.title}>Offline Practice Variants</Text>
+          <Text style={styles.title}>Offline Game Variants</Text>
         </View>
 
         <View
@@ -87,10 +88,12 @@ export default function GameModesScreen() {
             >
               <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
               <View style={styles.cardBorder} />
-              <XpRewardBadge
-                amount={getXpAwardAmount(config.offlineWinRewardSource)}
-                style={styles.rewardBadge}
-              />
+              {config.allowsXp ? (
+                <XpRewardBadge
+                  amount={getXpAwardAmount(config.offlineWinRewardSource)}
+                  style={styles.rewardBadge}
+                />
+              ) : null}
 
               <View style={styles.cardHeader}>
                 <View style={styles.iconWrap}>

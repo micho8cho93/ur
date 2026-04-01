@@ -2,13 +2,14 @@ import type { PathVariant } from './pathVariants';
 import { getXpAwardAmount, type BotMatchXpSource } from '../shared/progression';
 
 export type RulesVariant = 'standard' | 'capture' | 'no-capture';
-export type MatchOpponentType = 'bot';
+export type MatchOpponentType = 'bot' | 'human';
 export type MatchModeId =
   | 'standard'
   | 'gameMode_1_piece'
   | 'gameMode_3_pieces'
   | 'gameMode_5_pieces'
   | 'gameMode_finkel_rules'
+  | 'gameMode_pvp'
   | 'gameMode_capture'
   | 'gameMode_full_path';
 
@@ -149,6 +150,28 @@ const FINKEL_RULES_MATCH_CONFIG: MatchConfig = {
   },
 };
 
+const LOCAL_PVP_MATCH_CONFIG: MatchConfig = {
+  modeId: 'gameMode_pvp',
+  displayName: 'PvP',
+  pieceCountPerSide: 7,
+  rulesVariant: 'standard',
+  allowsXp: false,
+  allowsOnline: false,
+  allowsChallenges: false,
+  allowsCoins: false,
+  allowsRankedStats: false,
+  offlineWinRewardSource: 'practice_finkel_rules_win',
+  opponentType: 'human',
+  pathVariant: 'default',
+  isPracticeMode: true,
+  selectionSubtitle: 'Two human players on one device using seven-piece Finkel rules offline.',
+  rulesIntro: {
+    title: 'PvP',
+    message:
+      'This local mode uses the classic full-length duel with two human players on one device:\n\n• Each side plays with 7 pieces.\n• Standard captures are allowed, except the shared middle rosette stays protected.\n• Every roll and move is taken by a human locally, with no bot turns and no online connection.',
+  },
+};
+
 const CAPTURE_MATCH_CONFIG: MatchConfig = {
   modeId: 'gameMode_capture',
   displayName: 'Capture',
@@ -197,6 +220,7 @@ const GAME_MODE_MATCH_CONFIGS: readonly MatchConfig[] = [
   PURE_LUCK_MATCH_CONFIG,
   RACE_MATCH_CONFIG,
   FINKEL_RULES_MATCH_CONFIG,
+  LOCAL_PVP_MATCH_CONFIG,
   CAPTURE_MATCH_CONFIG,
   EXTENDED_PATH_MATCH_CONFIG,
 ] as const;
@@ -207,6 +231,7 @@ export const MATCH_CONFIGS: Readonly<Record<MatchModeId, MatchConfig>> = {
   gameMode_3_pieces: RACE_MATCH_CONFIG,
   gameMode_5_pieces: LEGACY_FIVE_PIECE_MATCH_CONFIG,
   gameMode_finkel_rules: FINKEL_RULES_MATCH_CONFIG,
+  gameMode_pvp: LOCAL_PVP_MATCH_CONFIG,
   gameMode_capture: CAPTURE_MATCH_CONFIG,
   gameMode_full_path: EXTENDED_PATH_MATCH_CONFIG,
 };
@@ -218,6 +243,7 @@ const MATCH_MODE_SELECTION_IDS: readonly MatchModeId[] = [
   'gameMode_1_piece',
   'gameMode_3_pieces',
   'gameMode_finkel_rules',
+  'gameMode_pvp',
   'gameMode_capture',
   'gameMode_full_path',
 ] as const;
@@ -232,12 +258,29 @@ export const MATCH_MODE_SELECTION_OPTIONS: ReadonlyArray<MatchModeOption> = MATC
   };
 });
 
-export const PRIVATE_MATCH_OPTIONS: ReadonlyArray<PrivateMatchOption> = MATCH_MODE_SELECTION_OPTIONS;
-export const getPracticeModeRewardLabel = (config: MatchConfig): string =>
-  `Practice Mode Win Reward: +${getXpAwardAmount(config.offlineWinRewardSource)} XP`;
+const PRIVATE_MATCH_SELECTION_IDS: readonly MatchModeId[] = [
+  'gameMode_1_piece',
+  'gameMode_3_pieces',
+  'gameMode_finkel_rules',
+  'gameMode_capture',
+  'gameMode_full_path',
+] as const;
+
+export const PRIVATE_MATCH_OPTIONS: ReadonlyArray<PrivateMatchOption> = PRIVATE_MATCH_SELECTION_IDS.map((modeId) => {
+  const config = MATCH_CONFIGS[modeId];
+
+  return {
+    modeId,
+    label: config.displayName,
+    description: config.selectionSubtitle ?? config.displayName,
+  };
+});
+
+export const getPracticeModeRewardLabel = (config: MatchConfig): string | null =>
+  config.allowsXp ? `Practice Mode Win Reward: +${getXpAwardAmount(config.offlineWinRewardSource)} XP` : null;
 
 export const GAME_MODE_SCREEN_NOTE =
-  'Game Modes are offline bot matches with reduced XP rewards when signed in. Permanent challenges still track here, but online play stays disabled.';
+  'Game Modes stay fully offline. Most variants seat you against a local bot with reduced signed-in XP rewards, while PvP is a same-device two-player ruleset with no bot turns or online rewards.';
 
 export const isMatchModeId = (value: unknown): value is MatchModeId =>
   typeof value === 'string' && value in MATCH_CONFIGS;
@@ -252,8 +295,11 @@ export const getPracticeModeBadgeLabel = (config: MatchConfig): string =>
   config.isPracticeMode ? `Practice Mode · ${config.displayName}` : config.displayName;
 
 export const getPrivateMatchOption = (modeId: MatchModeId): PrivateMatchOption =>
-  PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === modeId) ??
-  PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === 'standard')!;
+  PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === modeId) ?? {
+    modeId,
+    label: MATCH_CONFIGS[modeId].displayName,
+    description: MATCH_CONFIGS[modeId].selectionSubtitle ?? MATCH_CONFIGS[modeId].displayName,
+  };
 
 export const getPrivateMatchLabel = (modeId: MatchModeId): string => getPrivateMatchOption(modeId).label;
 

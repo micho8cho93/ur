@@ -54,6 +54,18 @@ describe('engine variants', () => {
     expect(state.dark.pieces).toHaveLength(7);
   });
 
+  it('creates local PvP with seven pieces per side and no bot opponent', () => {
+    const localPvPConfig = getMatchConfig('gameMode_pvp');
+    const state = createInitialState(localPvPConfig);
+
+    expect(state.matchConfig.modeId).toBe('gameMode_pvp');
+    expect(state.matchConfig.rulesVariant).toBe('standard');
+    expect(state.matchConfig.pathVariant).toBe('default');
+    expect(state.matchConfig.opponentType).toBe('human');
+    expect(state.light.pieces).toHaveLength(7);
+    expect(state.dark.pieces).toHaveLength(7);
+  });
+
   it('uses the default path with the Capture rules variant', () => {
     const captureConfig = getMatchConfig('gameMode_capture');
     const state = createInitialState(captureConfig);

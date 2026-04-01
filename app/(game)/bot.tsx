@@ -63,8 +63,9 @@ const BOT_LEVELS: BotLevelCard[] = [
 export default function BotSelection() {
   const { width, height } = useWindowDimensions();
   const { modeId: rawModeId } = useLocalSearchParams<{ modeId?: string | string[] }>();
-  const { startBotGame } = useMatchmaking('bot');
+  const { startBotGame, startOfflineMatch } = useMatchmaking('bot');
   const [pendingDifficulty, setPendingDifficulty] = React.useState<BotDifficulty | null>(null);
+  const [isPreparingLocalPvP, setIsPreparingLocalPvP] = React.useState(false);
   const isCompactLayout = width < 820;
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
@@ -81,12 +82,20 @@ export default function BotSelection() {
   const resolvedModeId = Array.isArray(rawModeId) ? rawModeId[0] : rawModeId;
   const matchConfig = React.useMemo(() => getMatchConfig(resolvedModeId), [resolvedModeId]);
   const isPracticeMode = matchConfig.isPracticeMode;
+  const isLocalPvPMode = matchConfig.opponentType === 'human';
   const headerTitle = isPracticeMode ? 'Game Modes' : 'Local Match';
-  const winRewardXp = getXpAwardAmount(matchConfig.offlineWinRewardSource);
+  const winRewardXp = matchConfig.allowsXp ? getXpAwardAmount(matchConfig.offlineWinRewardSource) : null;
 
   const handleSelect = (difficulty: BotDifficulty) => {
     setPendingDifficulty(difficulty);
     startBotGame(difficulty, matchConfig);
+  };
+
+  const handleStartLocalPvP = () => {
+    setIsPreparingLocalPvP(true);
+    void startOfflineMatch(matchConfig).finally(() => {
+      setIsPreparingLocalPvP(false);
+    });
   };
 
   const renderBotCard = (level: BotLevelCard, cardStyle: StyleProp<ViewStyle>) => {
@@ -96,7 +105,7 @@ export default function BotSelection() {
       <View key={level.difficulty} style={[styles.card, cardStyle, { borderColor: `${level.accent}C8` }]}>
         <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
         <View style={styles.cardBorder} />
-        <XpRewardBadge amount={winRewardXp} style={styles.rewardBadge} />
+        {winRewardXp !== null ? <XpRewardBadge amount={winRewardXp} style={styles.rewardBadge} /> : null}
 
         <View style={styles.cardHeader}>
           <View style={[styles.iconWrap, { backgroundColor: `${level.accent}26`, borderColor: `${level.accent}88` }]}>
@@ -118,6 +127,33 @@ export default function BotSelection() {
       </View>
     );
   };
+
+  const renderLocalPvPCard = (cardStyle: StyleProp<ViewStyle>) => (
+    <View key="local-pvp" style={[styles.card, cardStyle, { borderColor: '#3E8F87C8' }]}>
+      <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
+      <View style={styles.cardBorder} />
+
+      <View style={styles.cardHeader}>
+        <View style={[styles.iconWrap, { backgroundColor: '#3E8F8726', borderColor: '#3E8F8788' }]}>
+          <MaterialIcons name="people" size={20} color="#75D1C7" />
+        </View>
+        <View style={styles.copyColumn}>
+          <Text style={styles.cardTitle}>Same Device</Text>
+          <Text style={styles.cardTagline}>Two human players</Text>
+        </View>
+      </View>
+
+      <Text style={styles.cardDescription}>
+        Pass the device back and forth. This match stays fully offline, uses seven-piece Finkel rules, and never hands a turn to a bot.
+      </Text>
+      <Button
+        title={isPreparingLocalPvP ? 'Preparing...' : 'Start Local PvP'}
+        disabled={isPreparingLocalPvP}
+        loading={isPreparingLocalPvP}
+        onPress={handleStartLocalPvP}
+      />
+    </View>
+  );
 
   return (
     <View style={styles.screen}>
@@ -153,10 +189,16 @@ export default function BotSelection() {
         <View style={[styles.hero, isDesktopViewport && styles.heroDesktop, isTightDesktopViewport && styles.heroDesktopTight]}>
           {showInlineHeaderEyebrow ? <Text style={styles.eyebrow}>{headerTitle}</Text> : null}
           <Text style={styles.title}>
-            {isPracticeMode ? `${matchConfig.displayName} Difficulty` : 'Choose The Court You Want To Face'}
+            {isLocalPvPMode
+              ? `${matchConfig.displayName} Local Match`
+              : isPracticeMode
+                ? `${matchConfig.displayName} Difficulty`
+                : 'Choose The Court You Want To Face'}
           </Text>
           <Text style={styles.subtitle}>
-            {isPracticeMode
+            {isLocalPvPMode
+              ? `${matchConfig.selectionSubtitle}. Launch a same-device match where both sides are controlled locally.`
+              : isPracticeMode
               ? `${matchConfig.selectionSubtitle}. Choose a bot difficulty for this offline practice match.`
               : 'Stronger Ur bots come from better state evaluation and deeper lookahead. Pick your opponent and enter the board.'}
           </Text>
@@ -167,7 +209,11 @@ export default function BotSelection() {
           ) : null}
         </View>
 
-        {isCompactLayout ? (
+        {isLocalPvPMode ? (
+          <View style={[styles.gridList, isDesktopViewport && styles.gridListDesktop]}>
+            {renderLocalPvPCard([styles.gridCard, isDesktopViewport && styles.cardDesktop])}
+          </View>
+        ) : isCompactLayout ? (
           <ScrollView
             horizontal
             decelerationRate="fast"

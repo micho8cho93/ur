@@ -197,26 +197,46 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
     [initGame, router, runMatchEntryTransition, setMatchToken, setPlayerColor, setSocketState]
   );
 
-  const startBotGame = useCallback(
-    async (difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY, matchConfig: MatchConfig = DEFAULT_MATCH_CONFIG) => {
+  const startOfflineMatch = useCallback(
+    async (
+      matchConfig: MatchConfig = DEFAULT_MATCH_CONFIG,
+      difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY,
+    ) => {
       const localMatchId = `local-${Date.now()}`;
+      const isOfflineBotMatch = matchConfig.opponentType === 'bot';
 
       await runMatchEntryTransition(
         {
-          title: 'Preparing Board',
-          message: 'Setting the pieces and seating the local match.',
+          title: isOfflineBotMatch ? 'Preparing Board' : 'Preparing Local PvP',
+          message: isOfflineBotMatch
+            ? 'Setting the pieces and seating the local match.'
+            : 'Setting the pieces and seating both local players.',
         },
         () => {
           setOnlineMode('offline');
           setMatchToken(null);
-          initGame(localMatchId, { botDifficulty: difficulty, matchConfig });
+          initGame(localMatchId, {
+            matchConfig,
+            ...(isOfflineBotMatch ? { botDifficulty: difficulty } : {}),
+          });
           setSocketState('connected');
           setStatus('matched');
-          router.push(`/match/${localMatchId}?offline=1&botDifficulty=${difficulty}&modeId=${matchConfig.modeId}`);
+          router.push(
+            isOfflineBotMatch
+              ? `/match/${localMatchId}?offline=1&botDifficulty=${difficulty}&modeId=${matchConfig.modeId}`
+              : `/match/${localMatchId}?offline=1&modeId=${matchConfig.modeId}`,
+          );
         },
       );
     },
     [initGame, router, runMatchEntryTransition, setMatchToken, setOnlineMode, setSocketState]
+  );
+
+  const startBotGame = useCallback(
+    async (difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY, matchConfig: MatchConfig = DEFAULT_MATCH_CONFIG) => {
+      await startOfflineMatch(matchConfig, difficulty);
+    },
+    [startOfflineMatch]
   );
 
   const startOnlineMatch = useCallback(async () => {
@@ -383,16 +403,17 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
   const startMatch = useCallback(
     async (difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY) => {
       if (mode === 'bot') {
-        await startBotGame(difficulty);
+        await startOfflineMatch(DEFAULT_MATCH_CONFIG, difficulty);
       } else {
         await startOnlineMatch();
       }
     },
-    [mode, startBotGame, startOnlineMatch]
+    [mode, startOfflineMatch, startOnlineMatch]
   );
 
   return {
     startMatch,
+    startOfflineMatch,
     startBotGame,
     startPrivateMatch,
     startCreatedPrivateMatch,

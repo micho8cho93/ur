@@ -794,6 +794,8 @@ export function GameRoom() {
   const isPlaythroughTutorialMatch = tutorialId === PLAYTHROUGH_TUTORIAL_ID;
   const useAuthoritativeRollDisplay = !isOffline && !isPlaythroughTutorialMatch;
   const effectiveMatchConfig = storedMatchId === matchId ? gameState.matchConfig : resolvedMatchConfig;
+  const isOfflineBotMatch = isOffline && effectiveMatchConfig.opponentType === 'bot';
+  const isOfflineLocalPvPMatch = isOffline && effectiveMatchConfig.opponentType === 'human';
   const isPrivateMatch = privateMatchParam === '1';
   const isPrivateMatchHost = privateHostParam === '1';
   const privateMatchCode = privateCodeParam ?? null;
@@ -820,6 +822,13 @@ export function GameRoom() {
   );
   const scoreTitles = useMemo<Record<PlayerColor, string>>(() => {
     if (isOffline) {
+      if (isOfflineLocalPvPMatch) {
+        return {
+          light: 'Player 1',
+          dark: 'Player 2',
+        };
+      }
+
       return {
         light: humanScoreTitle,
         dark: getBotScoreTitle(resolvedBotDifficulty),
@@ -834,11 +843,11 @@ export function GameRoom() {
         getSnapshotScoreTitle(authoritativePlayers, 'dark') ??
         (resolvedPlayerColor === 'dark' ? humanScoreTitle : 'DARK'),
     };
-  }, [authoritativePlayers, humanScoreTitle, isOffline, resolvedBotDifficulty, resolvedPlayerColor]);
+  }, [authoritativePlayers, humanScoreTitle, isOffline, isOfflineLocalPvPMatch, resolvedBotDifficulty, resolvedPlayerColor]);
   const practiceModeRewardLabel = isPracticeModeMatch ? getPracticeModeRewardLabel(effectiveMatchConfig) : null;
   const hasAssignedColor = resolvedPlayerColor === 'light' || resolvedPlayerColor === 'dark';
   const canSyncOfflineBotRewards =
-    effectiveMatchConfig.allowsXp && isOffline && isNakamaEnabled() && hasNakamaConfig() && Boolean(user);
+    isOfflineBotMatch && effectiveMatchConfig.allowsXp && isNakamaEnabled() && hasNakamaConfig() && Boolean(user);
   const shouldShowAccountRewards =
     (!isOffline && (effectiveMatchConfig.allowsXp || isPrivateMatch)) || canSyncOfflineBotRewards;
   const shouldShowChallengeRewards =
@@ -852,12 +861,15 @@ export function GameRoom() {
   const eloUnchangedReason = isRankedHumanMatch
     ? null
     : isOffline
-        ? 'Bot and offline matches do not affect Elo.'
+        ? 'Offline matches do not affect Elo.'
         : !effectiveMatchConfig.allowsRankedStats && !isTournamentMatch
           ? 'This mode does not affect Elo.'
           : 'Elo was unchanged for this match.';
   const effectiveMatchToken = storedMatchId === matchId ? matchToken : null;
-  const isMyTurn = hasAssignedColor && gameState.currentTurn === resolvedPlayerColor;
+  const localInteractionColor = isOfflineLocalPvPMatch ? gameState.currentTurn : resolvedPlayerColor;
+  const hasInteractiveColor = localInteractionColor === 'light' || localInteractionColor === 'dark';
+  const isMyTurn = hasInteractiveColor && gameState.currentTurn === localInteractionColor;
+  const activeTurnColor: PlayerColor = gameState.currentTurn;
   const didPlayerWin =
     resolveDidPlayerWin({
       winnerColor: gameState.winner,
@@ -875,7 +887,12 @@ export function GameRoom() {
     return Number.isFinite(parsed) ? Math.max(1, Math.floor(parsed)) : null;
   }, [tournamentRoundParam]);
   const onlineMatchEnd = isOffline ? null : authoritativeMatchEnd;
-  const winModalTitle = didPlayerWin ? 'Victory' : 'Defeat';
+  const localPvPWinnerColor = isOfflineLocalPvPMatch && gameState.winner ? gameState.winner : null;
+  const winModalTitle = localPvPWinnerColor
+    ? `${scoreTitles[localPvPWinnerColor]} Wins`
+    : didPlayerWin
+      ? 'Victory'
+      : 'Defeat';
   const isOnlineForfeit =
     onlineMatchEnd?.reason === 'forfeit_inactivity' || onlineMatchEnd?.reason === 'forfeit_disconnect';
   const tournamentEliminationMessage =
@@ -885,6 +902,10 @@ export function GameRoom() {
         ? 'You forfeited due to inactivity and were eliminated from the tournament.'
         : 'Your tournament run has ended.';
   const winModalMessage = useMemo(() => {
+    if (localPvPWinnerColor) {
+      return `${scoreTitles[localPvPWinnerColor]} bore off all ${pieceCountPerSide} pieces in this local PvP match.`;
+    }
+
     if (hasAssignedColor && onlineMatchEnd?.reason === 'forfeit_inactivity') {
       return didPlayerWin ? 'Opponent forfeited due to inactivity.' : 'You forfeited due to inactivity.';
     }
@@ -894,7 +915,7 @@ export function GameRoom() {
     }
 
     return didPlayerWin ? 'The royal path is yours.' : 'The opponent seized the final lane.';
-  }, [didPlayerWin, hasAssignedColor, onlineMatchEnd]);
+  }, [didPlayerWin, hasAssignedColor, localPvPWinnerColor, onlineMatchEnd, pieceCountPerSide, scoreTitles]);
   const joinedPlayerCount = useMemo(() => {
     if (isOffline) {
       return 0;
@@ -2244,7 +2265,7 @@ export function GameRoom() {
   }, []);
 
   useGameLoop({
-    enabled: isOffline && !isScriptedTutorialPhase && introsComplete && !showRulesIntroModal,
+    enabled: isOfflineBotMatch && !isScriptedTutorialPhase && introsComplete && !showRulesIntroModal,
     onBotSelectPiece: handleBotSelectedPiece,
   });
   useEffect(() => {
@@ -3206,7 +3227,7 @@ export function GameRoom() {
     }
 
     if (
-      !isOffline ||
+      !isOfflineBotMatch ||
       !introsComplete ||
       isScriptedTutorialPhase ||
       !botTimerEnabled ||
@@ -3258,7 +3279,7 @@ export function GameRoom() {
     gameState.winner,
     isOpponentReadyToPlay,
     isMyTurn,
-    isOffline,
+    isOfflineBotMatch,
     isScriptedTutorialPhase,
     introsComplete,
     triggerLocalRoll,
@@ -3274,6 +3295,7 @@ export function GameRoom() {
     if (
       !introsComplete ||
       !autoRollEnabled ||
+      isOfflineLocalPvPMatch ||
       isScriptedTutorialPhase ||
       !canRoll ||
       rollingVisual ||
@@ -3302,6 +3324,7 @@ export function GameRoom() {
     autoRollEnabled,
     canRoll,
     introsComplete,
+    isOfflineLocalPvPMatch,
     isScriptedTutorialPhase,
     rollButtonLatchPhase,
     rollingVisual,
@@ -3317,7 +3340,7 @@ export function GameRoom() {
       return;
     }
 
-    if (!isOffline || !isOpponentReadyToPlay || !isMyTurn || gameState.winner !== null || gameState.phase === 'ended') {
+    if (!isOfflineBotMatch || !isOpponentReadyToPlay || !isMyTurn || gameState.winner !== null || gameState.phase === 'ended') {
       forceMoveAfterRollRef.current = false;
       return;
     }
@@ -3328,7 +3351,7 @@ export function GameRoom() {
 
     forceMoveAfterRollRef.current = false;
     makeMove(validMoves[0]);
-  }, [gameState.phase, gameState.winner, isMyTurn, isOffline, isOpponentReadyToPlay, makeMove, validMoves]);
+  }, [gameState.phase, gameState.winner, isMyTurn, isOfflineBotMatch, isOpponentReadyToPlay, makeMove, validMoves]);
   useEffect(() => {
     if (!matchId) return;
     if (storedMatchId !== matchId) {
@@ -3384,7 +3407,7 @@ export function GameRoom() {
       suppressReconnectRef.current = true;
       setOnlineMode('offline');
       setMatchPresences([]);
-      setPlayerColor('light');
+      setPlayerColor(isOfflineLocalPvPMatch ? null : 'light');
       setSocketState('connected');
       return;
     }
@@ -3771,7 +3794,14 @@ export function GameRoom() {
       setRollCommandSender(null);
       setMoveCommandSender(null);
     };
-  }, [isOffline, matchId, serverRevision, setMoveCommandSender, setRollCommandSender]);
+  }, [
+    isOffline,
+    isOfflineLocalPvPMatch,
+    matchId,
+    serverRevision,
+    setMoveCommandSender,
+    setRollCommandSender,
+  ]);
   useEffect(() => {
     return () => {
       clearHeldRollResult();
@@ -3849,7 +3879,7 @@ export function GameRoom() {
     }
 
     const previous = previousSnapshot.state;
-    const isBotRoll = isOffline && gameState.currentTurn === 'dark';
+    const isBotRoll = isOfflineBotMatch && gameState.currentTurn === 'dark';
     const rollValueChanged = previous.rollValue !== gameState.rollValue;
     let shouldSkipResolvedRollAudio = false;
     const newHistoryEntries = getAppendedHistoryEntries(
@@ -4905,6 +4935,7 @@ export function GameRoom() {
           showRailHints
           highlightMode="theatrical"
           validMovesOverride={displayedValidMoves}
+          playerColorOverride={isOfflineLocalPvPMatch ? gameState.currentTurn : undefined}
           onMakeMoveOverride={handleBoardMove}
           highlightedPieceId={highlightedOpponentPiece?.pieceId ?? null}
           highlightedPieceColor={highlightedOpponentPiece?.color ?? null}
@@ -4927,6 +4958,7 @@ export function GameRoom() {
       showRailHints
       highlightMode="theatrical"
       validMovesOverride={displayedValidMoves}
+      playerColorOverride={isOfflineLocalPvPMatch ? gameState.currentTurn : undefined}
       highlightedPieceId={highlightedOpponentPiece?.pieceId ?? null}
       highlightedPieceColor={highlightedOpponentPiece?.color ?? null}
       onHighlightedPieceSettled={settleHighlightedOpponentPiece}
@@ -5108,7 +5140,7 @@ export function GameRoom() {
             title={scoreTitles.dark}
             score={gameState.dark.finishedCount}
             maxScore={pieceCountPerSide}
-            active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
+            active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'dark'}
             align="right"
           />
         </View>
@@ -5475,7 +5507,7 @@ export function GameRoom() {
                 title={scoreTitles.light}
                 score={gameState.light.finishedCount}
                 maxScore={pieceCountPerSide}
-                active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
+                active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'light'}
               />
             </View>
             {isMobileLayout && isTurnTimerVisible ? (
@@ -5543,7 +5575,7 @@ export function GameRoom() {
                   title={scoreTitles.dark}
                   score={gameState.dark.finishedCount}
                   maxScore={pieceCountPerSide}
-                  active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
+                  active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'dark'}
                   align="right"
                   style={[
                     isMobileLayout && isTurnTimerVisible ? { marginRight: mobileDarkScoreNudge } : undefined,
@@ -5556,7 +5588,7 @@ export function GameRoom() {
                   title={scoreTitles.dark}
                   score={gameState.dark.finishedCount}
                   maxScore={pieceCountPerSide}
-                  active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
+                  active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'dark'}
                   align="right"
                   style={isMobileLayout && isTurnTimerVisible ? { marginRight: mobileDarkScoreNudge } : undefined}
                 />
@@ -5607,7 +5639,7 @@ export function GameRoom() {
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={lightReserve}
                   totalCount={pieceCountPerSide}
-                  active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
+                  active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'light'}
                   hideReservePieces={shouldHideReservePieces}
                   onReserveSlotsLayout={setLightReserveSlots}
                 />
@@ -5695,7 +5727,7 @@ export function GameRoom() {
                   piecePixelSize={scaledReservePiecePixelSize}
                   reserveCount={darkReserve}
                   totalCount={pieceCountPerSide}
-                  active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
+                  active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'dark'}
                   hideReservePieces={shouldHideReservePieces}
                   onReserveSlotsLayout={setDarkReserveSlots}
                 />
@@ -5778,7 +5810,7 @@ export function GameRoom() {
                       trayScale={reserveTrayScale}
                       reserveCount={lightReserve}
                       totalCount={pieceCountPerSide}
-                      active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
+                      active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'light'}
                       hideReservePieces={shouldHideReservePieces}
                       onReserveSlotsLayout={setLightReserveSlots}
                       onRailFrameLayout={handleLightTrayFrameLayout}
@@ -5822,7 +5854,7 @@ export function GameRoom() {
                       trayScale={reserveTrayScale}
                       reserveCount={darkReserve}
                       totalCount={pieceCountPerSide}
-                      active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
+                      active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'dark'}
                       hideReservePieces={shouldHideReservePieces}
                       onReserveSlotsLayout={setDarkReserveSlots}
                       onRailFrameLayout={handleDarkTrayFrameLayout}
@@ -5896,7 +5928,7 @@ export function GameRoom() {
                         piecePixelSize={scaledReservePiecePixelSize}
                         reserveCount={lightReserve}
                         totalCount={pieceCountPerSide}
-                        active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
+                        active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'light'}
                         hideReservePieces={shouldHideReservePieces}
                         onReserveSlotsLayout={setLightReserveSlots}
                       />
@@ -5910,7 +5942,7 @@ export function GameRoom() {
                         piecePixelSize={scaledReservePiecePixelSize}
                         reserveCount={darkReserve}
                         totalCount={pieceCountPerSide}
-                        active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
+                        active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'dark'}
                         hideReservePieces={shouldHideReservePieces}
                         onReserveSlotsLayout={setDarkReserveSlots}
                       />

@@ -138,6 +138,10 @@ const mockSetMoveCommandSender = jest.fn();
 const mockSetLastProgressionSnapshot = jest.fn();
 const mockSetLastEloRatingProfileSnapshot = jest.fn();
 const mockSetLastChallengeProgressSnapshot = jest.fn();
+const mockRunScreenTransition = jest.fn(async (request?: { action?: () => void | Promise<void> }) => {
+  await request?.action?.();
+  return true;
+});
 const mockGetMatchPreferences = jest.fn();
 const mockUpdateMatchPreferences = jest.fn();
 const mockConnectSocketWithRetry = jest.fn();
@@ -695,6 +699,10 @@ jest.mock('react-native-safe-area-context', () => ({
   }),
 }));
 
+jest.mock('@/src/transitions/ScreenTransitionContext', () => ({
+  useScreenTransition: () => mockRunScreenTransition,
+}));
+
 jest.mock('@expo/vector-icons/MaterialIcons', () => {
   const React = require('react');
   const { Text } = require('react-native');
@@ -1049,6 +1057,11 @@ describe('GameRoom match dice stage', () => {
       modeId: 'gameMode_finkel_rules',
       title: 'Finkel Rules',
       snippet: /shared middle rosette stays protected/i,
+    },
+    {
+      modeId: 'gameMode_pvp',
+      title: 'PvP',
+      snippet: /every roll and move is taken by a human locally/i,
     },
     {
       modeId: 'gameMode_full_path',
