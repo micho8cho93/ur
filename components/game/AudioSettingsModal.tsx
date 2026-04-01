@@ -43,6 +43,8 @@ interface AudioSettingsModalProps {
   timerDurationSeconds: TurnTimerSeconds;
   showTimerToggle?: boolean;
   showTimerDurationPicker?: boolean;
+  timerToggleTitle?: string;
+  timerToggleHint?: string;
   onClose: () => void;
   onToggleAnnouncementCues: (enabled: boolean) => void;
   onToggleMusic: (enabled: boolean) => void;
@@ -168,6 +170,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   timerDurationSeconds = DEFAULT_MATCH_PREFERENCES.timerDurationSeconds,
   showTimerToggle = false,
   showTimerDurationPicker = true,
+  timerToggleTitle = 'Turn Timer',
+  timerToggleHint = 'Show the hourglass and allow timeout auto-roll and auto-move in bot matches',
   onClose,
   onToggleAnnouncementCues,
   onToggleMusic,
@@ -291,8 +295,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
         {showTimerToggle ? (
           <ToggleSettingRow
-            title="Turn Timer"
-            hint="Show the hourglass and allow timeout auto-roll and auto-move in bot matches"
+            title={timerToggleTitle}
+            hint={timerToggleHint}
             value={timerEnabled}
             onValueChange={onToggleTimer}
           />

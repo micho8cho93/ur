@@ -4367,7 +4367,7 @@ describe('GameRoom match dice stage', () => {
     ).toBe(true);
   });
 
-  it('hides timer-length settings for online matches while leaving offline timer settings available', async () => {
+  it('keeps online timer settings visual-only while leaving offline timer settings available', async () => {
     mockSearchParams.id = 'online-3';
     mockSearchParams.offline = '0';
     mockHasNakamaConfig.mockReturnValue(true);
@@ -4388,7 +4388,10 @@ describe('GameRoom match dice stage', () => {
 
     expect(
       mockAudioSettingsModal.mock.calls.some(
-        ([props]) => props.showTimerToggle === false && props.showTimerDurationPicker === false,
+        ([props]) =>
+          props.showTimerToggle === true &&
+          props.showTimerDurationPicker === false &&
+          props.timerToggleTitle === 'Turn Timer Animation',
       ),
     ).toBe(true);
 
@@ -4405,7 +4408,10 @@ describe('GameRoom match dice stage', () => {
 
     expect(
       mockAudioSettingsModal.mock.calls.some(
-        ([props]) => props.showTimerToggle === true && props.showTimerDurationPicker === true,
+        ([props]) =>
+          props.showTimerToggle === true &&
+          props.showTimerDurationPicker === true &&
+          props.timerToggleTitle === 'Turn Timer',
       ),
     ).toBe(true);
   });

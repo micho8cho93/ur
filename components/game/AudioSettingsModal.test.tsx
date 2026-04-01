@@ -49,17 +49,19 @@ describe('AudioSettingsModal', () => {
     useWindowDimensionsSpy.mockRestore();
   });
 
-  it('hides the timer-length picker when requested for online play', () => {
+  it('shows only the timer animation toggle when requested for online play', () => {
     render(
       <AudioSettingsModal
         {...baseProps}
-        showTimerToggle={false}
+        showTimerToggle
         showTimerDurationPicker={false}
+        timerToggleTitle="Turn Timer Animation"
+        timerToggleHint="Show the hourglass and countdown on your screen. Online matches still use the server turn timer."
       />,
     );
 
     expect(screen.queryByText('Turn Timer Length')).toBeNull();
-    expect(screen.queryByText('Turn Timer')).toBeNull();
+    expect(screen.getByText('Turn Timer Animation')).toBeTruthy();
   });
 
   it('shows offline timer controls when both timer flags are enabled', () => {

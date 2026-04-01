@@ -59,6 +59,7 @@ import { buildMatchChallengeRewardSummary, type MatchChallengeRewardSummary } fr
 import { useAuth } from '@/src/auth/useAuth';
 import { useChallenges } from '@/src/challenges/useChallenges';
 import { useEloRating } from '@/src/elo/useEloRating';
+import { resolveAuthoritativeRemainingMs } from '@/src/match/authoritativeTimer';
 import { resolveDidPlayerWin, resolveMatchPlayerColor } from '@/src/match/playerOutcome';
 import { isSuddenDeathState } from '@/src/match/suddenDeath';
 import {
@@ -1651,22 +1652,6 @@ export function GameRoom() {
     [diceAnimationSpeed],
   );
   const visualTurnTimerDurationMs = turnTimerSeconds * 1000;
-  const resolvedAuthoritativeServerTimeMs = useMemo(() => {
-    if (
-      isOffline ||
-      authoritativeServerTimeMs === null ||
-      authoritativeSnapshotReceivedAtMs === null
-    ) {
-      return null;
-    }
-
-    return authoritativeServerTimeMs + Math.max(0, onlineTimerNowMs - authoritativeSnapshotReceivedAtMs);
-  }, [
-    authoritativeServerTimeMs,
-    authoritativeSnapshotReceivedAtMs,
-    isOffline,
-    onlineTimerNowMs,
-  ]);
   const onlineTurnTimerDurationMs = !isOffline && authoritativeTurnDeadlineMs !== null
     ? (authoritativeTurnDurationMs ?? 10_000)
     : undefined;
@@ -1678,42 +1663,42 @@ export function GameRoom() {
       return undefined;
     }
 
-    if (resolvedAuthoritativeServerTimeMs !== null && authoritativeTurnDeadlineMs !== null) {
-      return Math.max(0, authoritativeTurnDeadlineMs - resolvedAuthoritativeServerTimeMs);
-    }
-
-    if (authoritativeTurnRemainingMs !== null) {
-      return Math.max(0, authoritativeTurnRemainingMs);
-    }
-
-    return undefined;
+    return resolveAuthoritativeRemainingMs({
+      deadlineMs: authoritativeTurnDeadlineMs,
+      remainingMs: authoritativeTurnRemainingMs,
+      serverTimeMs: authoritativeServerTimeMs,
+      snapshotReceivedAtMs: authoritativeSnapshotReceivedAtMs,
+      nowMs: onlineTimerNowMs,
+    });
   }, [
     authoritativeTurnDeadlineMs,
     authoritativeTurnRemainingMs,
+    authoritativeServerTimeMs,
+    authoritativeSnapshotReceivedAtMs,
     isOffline,
     onlineTurnTimerDurationMs,
-    resolvedAuthoritativeServerTimeMs,
+    onlineTimerNowMs,
   ]);
   const onlineReconnectTimerRemainingMs = useMemo(() => {
     if (isOffline || onlineReconnectTimerDurationMs === undefined) {
       return undefined;
     }
 
-    if (resolvedAuthoritativeServerTimeMs !== null && authoritativeReconnectDeadlineMs !== null) {
-      return Math.max(0, authoritativeReconnectDeadlineMs - resolvedAuthoritativeServerTimeMs);
-    }
-
-    if (authoritativeReconnectRemainingMs !== null) {
-      return Math.max(0, authoritativeReconnectRemainingMs);
-    }
-
-    return undefined;
+    return resolveAuthoritativeRemainingMs({
+      deadlineMs: authoritativeReconnectDeadlineMs,
+      remainingMs: authoritativeReconnectRemainingMs,
+      serverTimeMs: authoritativeServerTimeMs,
+      snapshotReceivedAtMs: authoritativeSnapshotReceivedAtMs,
+      nowMs: onlineTimerNowMs,
+    });
   }, [
     authoritativeReconnectDeadlineMs,
     authoritativeReconnectRemainingMs,
+    authoritativeServerTimeMs,
+    authoritativeSnapshotReceivedAtMs,
     isOffline,
     onlineReconnectTimerDurationMs,
-    resolvedAuthoritativeServerTimeMs,
+    onlineTimerNowMs,
   ]);
   const resolvedOnlineTimerDurationMs = hasReconnectGraceActive
     ? onlineReconnectTimerDurationMs
@@ -1738,6 +1723,10 @@ export function GameRoom() {
       remainingMs: onlineReconnectTimerRemainingMs,
     });
   }, [hasReconnectGraceActive, isOpponentReconnecting, onlineReconnectTimerRemainingMs]);
+  const timerToggleTitle = isOffline ? 'Turn Timer' : 'Turn Timer Animation';
+  const timerToggleHint = isOffline
+    ? 'Show the hourglass and allow timeout auto-roll and auto-move in bot matches'
+    : 'Show the hourglass and countdown on your screen. Online matches still use the server turn timer.';
 
   const clearRollTimer = React.useCallback(() => {
     if (rollTimerRef.current) {
@@ -3176,8 +3165,12 @@ export function GameRoom() {
       isOffline ||
       !introsComplete ||
       isScriptedTutorialPhase ||
-      (authoritativeTurnDeadlineMs === null && authoritativeReconnectDeadlineMs === null) ||
-      authoritativeServerTimeMs === null ||
+      (
+        authoritativeTurnDeadlineMs === null &&
+        authoritativeReconnectDeadlineMs === null &&
+        authoritativeTurnRemainingMs === null &&
+        authoritativeReconnectRemainingMs === null
+      ) ||
       authoritativeSnapshotReceivedAtMs === null ||
       gameState.winner !== null ||
       gameState.phase === 'ended'
@@ -3195,9 +3188,11 @@ export function GameRoom() {
     };
   }, [
     authoritativeReconnectDeadlineMs,
+    authoritativeReconnectRemainingMs,
     authoritativeServerTimeMs,
     authoritativeSnapshotReceivedAtMs,
     authoritativeTurnDeadlineMs,
+    authoritativeTurnRemainingMs,
     gameState.phase,
     gameState.winner,
     introsComplete,
@@ -4082,17 +4077,23 @@ export function GameRoom() {
   };
 
   const handleToggleBotTimer = async (enabled: boolean) => {
-    forceMoveAfterRollRef.current = false;
-    setBotTimerEnabled(enabled);
+    if (isOffline) {
+      forceMoveAfterRollRef.current = false;
 
-    if (enabled) {
-      setTurnTimerCycleId((current) => current + 1);
+      if (enabled) {
+        setTurnTimerCycleId((current) => current + 1);
+      }
     }
 
+    setBotTimerEnabled(enabled);
     await updateMatchPreferences({ timerEnabled: enabled });
   };
 
   const handleSetTurnTimerDuration = async (seconds: TurnTimerSeconds) => {
+    if (!isOffline) {
+      return;
+    }
+
     setTurnTimerSeconds(seconds);
     setTurnTimerCycleId((current) => current + 1);
     await updateMatchPreferences({ timerDurationSeconds: seconds });
@@ -4660,9 +4661,9 @@ export function GameRoom() {
     !SHOULD_BYPASS_CINEMATIC_INTROS &&
     !hasPlayedReserveCascadeIntro &&
     hasMeasuredReserveTargets;
-  const isTurnTimerEnabled = introsComplete && !isScriptedTutorialPhase && (!isOffline || botTimerEnabled);
+  const isTurnTimerVisible = introsComplete && !isScriptedTutorialPhase && botTimerEnabled;
   const isVisualTurnTimerRunning =
-    isTurnTimerEnabled &&
+    isTurnTimerVisible &&
     gameState.phase !== 'ended' &&
     gameState.winner === null &&
     (isOffline
@@ -5458,7 +5459,7 @@ export function GameRoom() {
             style={[
               styles.scoreRow,
               styles.scoreRowOverlay,
-              isMobileLayout && isTurnTimerEnabled && styles.mobileScoreRow,
+              isMobileLayout && isTurnTimerVisible && styles.mobileScoreRow,
               { top: mobileScoreOverlayTop - mobileHeaderLift },
               isMobileLayout && styles.scoreRowOverlayMobile,
               isMobileLayout && { left: mobileScoreRowInset, right: mobileScoreRowInset },
@@ -5477,7 +5478,7 @@ export function GameRoom() {
                 active={introsComplete && !shouldFreezeForfeitMotion && isMyTurn}
               />
             </View>
-            {isMobileLayout && isTurnTimerEnabled ? (
+            {isMobileLayout && isTurnTimerVisible ? (
               <View
                 pointerEvents={showMobileWebStatusInfoButton ? 'box-none' : 'none'}
                 style={styles.scoreTimerSlot}
@@ -5517,7 +5518,7 @@ export function GameRoom() {
                 </View>
               </View>
             ) : null}
-            {showMobileWebStatusInfoButton && !(isMobileLayout && isTurnTimerEnabled) ? (
+            {showMobileWebStatusInfoButton && !(isMobileLayout && isTurnTimerVisible) ? (
               <Pressable
                 testID="mobile-match-status-button"
                 accessibilityRole="button"
@@ -5545,7 +5546,7 @@ export function GameRoom() {
                   active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
                   align="right"
                   style={[
-                    isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined,
+                    isMobileLayout && isTurnTimerVisible ? { marginRight: mobileDarkScoreNudge } : undefined,
                     styles.mobileDetachedScoreGhost,
                   ]}
                 />
@@ -5557,7 +5558,7 @@ export function GameRoom() {
                   maxScore={pieceCountPerSide}
                   active={introsComplete && !shouldFreezeForfeitMotion && !isMyTurn}
                   align="right"
-                  style={isMobileLayout && isTurnTimerEnabled ? { marginRight: mobileDarkScoreNudge } : undefined}
+                  style={isMobileLayout && isTurnTimerVisible ? { marginRight: mobileDarkScoreNudge } : undefined}
                 />
               )}
             </View>
@@ -5610,7 +5611,7 @@ export function GameRoom() {
                   hideReservePieces={shouldHideReservePieces}
                   onReserveSlotsLayout={setLightReserveSlots}
                 />
-                {!showWebSideDiceVisual && isTurnTimerEnabled ? (
+                {!showWebSideDiceVisual && isTurnTimerVisible ? (
                   <GameStageHUD
                     isMyTurn={isMyTurn}
                     canRoll={canRoll}
@@ -5623,7 +5624,7 @@ export function GameRoom() {
                     timerWarningThreshold={VISUAL_TURN_TIMER_WARNING_THRESHOLD}
                   />
                 ) : null}
-                {showWebSideDiceVisual && isTurnTimerEnabled ? (
+                {showWebSideDiceVisual && isTurnTimerVisible ? (
                   <View style={[styles.webUnderTrayControl, { minHeight: webRollButtonSize }]}>
                     <GameStageHUD
                       isMyTurn={isMyTurn}
@@ -6058,8 +6059,10 @@ export function GameRoom() {
         moveHintEnabled={moveHintEnabled}
         timerEnabled={botTimerEnabled}
         timerDurationSeconds={turnTimerSeconds}
-        showTimerToggle={isOffline}
+        showTimerToggle
         showTimerDurationPicker={isOffline}
+        timerToggleTitle={timerToggleTitle}
+        timerToggleHint={timerToggleHint}
         onClose={() => setShowAudioSettings(false)}
         onToggleAnnouncementCues={(enabled) => {
           void handleToggleAnnouncementCues(enabled);
