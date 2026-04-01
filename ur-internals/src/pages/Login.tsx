@@ -26,7 +26,7 @@ export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { authError, clearAuthError, isAuthenticating, loginWithEmail } = useSession()
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState('uradmin')
   const [password, setPassword] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
   const redirectTo = resolveRedirectTo(location.state)
@@ -87,22 +87,22 @@ export function LoginPage() {
           <div className="auth-panel__form-copy">
             <p className="meta-label">Secure access</p>
             <h2>Admin sign-in</h2>
-            <p className="auth-footnote">Use the email and password for your Nakama admin account to enter the operations workspace.</p>
+            <p className="auth-footnote">Use <code>uradmin</code> or your admin email, plus the Nakama password for that account.</p>
           </div>
 
           {errorMessage ? <div className="alert alert--error">{errorMessage}</div> : null}
 
           <form className="form auth-form" onSubmit={handleEmailLogin}>
             <div className="field">
-              <label htmlFor="email">Email</label>
+              <label htmlFor="email">Username or email</label>
               <input
                 id="email"
                 name="email"
-                type="email"
+                type="text"
                 autoComplete="username"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="admin@urgame.live"
+                placeholder="uradmin"
                 required
               />
             </div>

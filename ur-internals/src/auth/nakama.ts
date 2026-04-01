@@ -3,6 +3,8 @@ import env from '../config/env'
 import { clearStoredAdminSession, readStoredAdminSession, writeStoredAdminSession } from './sessionStorage'
 
 let client: Client | null = null
+const SHARED_ADMIN_USERNAME = 'uradmin'
+const SHARED_ADMIN_EMAIL = 'uradmin@urgame.live'
 
 function getClient() {
   if (!client) {
@@ -106,14 +108,15 @@ async function normalizeAuthenticationError(error: unknown): Promise<Error> {
 }
 
 export async function authenticateWithEmail(email: string, password: string): Promise<Session> {
-  const normalizedEmail = email.trim()
+  const normalizedEmail = email.trim().toLowerCase()
+  const loginEmail = normalizedEmail === SHARED_ADMIN_USERNAME ? SHARED_ADMIN_EMAIL : normalizedEmail
 
-  if (!normalizedEmail) {
-    throw new Error('Email is required.')
+  if (!loginEmail) {
+    throw new Error('Username or email is required.')
   }
 
   try {
-    const session = await getClient().authenticateEmail(normalizedEmail, password, false)
+    const session = await getClient().authenticateEmail(loginEmail, password, false)
     persistSession(session)
     return session
   } catch (error) {
