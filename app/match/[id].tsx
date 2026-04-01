@@ -972,10 +972,6 @@ export function GameRoom() {
     authoritativeMatchEnd !== null;
   const rematchAcceptedUserIds = authoritativeRematch?.acceptedUserIds ?? [];
   const didAcceptRematch = authenticatedUserId ? rematchAcceptedUserIds.includes(authenticatedUserId) : false;
-  const rematchCountdownLabel =
-    onlineRematchTimerRemainingMs !== null
-      ? `${Math.max(0, Math.ceil(onlineRematchTimerRemainingMs / 1000))}s remaining`
-      : null;
   const hasReconnectGraceActive = !isOffline && authoritativeReconnectingPlayerColor !== null;
   const hasPrivateReconnectFallback =
     isPrivateMatch &&
@@ -1802,6 +1798,10 @@ export function GameRoom() {
     isOffline,
     onlineTimerNowMs,
   ]);
+  const rematchCountdownLabel =
+    onlineRematchTimerRemainingMs !== null
+      ? `${Math.max(0, Math.ceil(onlineRematchTimerRemainingMs / 1000))}s remaining`
+      : null;
   const hasActiveRematchCountdown =
     !isOffline &&
     authoritativeRematch?.status === 'pending' &&
