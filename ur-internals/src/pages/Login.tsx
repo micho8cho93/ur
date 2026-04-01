@@ -25,20 +25,20 @@ function getTargetLabel() {
 export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { authError, clearAuthError, isAuthenticating, loginWithEmail } = useSession()
-  const [email, setEmail] = useState('uradmin')
+  const { authError, clearAuthError, isAuthenticating, loginWithUsername } = useSession()
+  const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
   const redirectTo = resolveRedirectTo(location.state)
   const errorMessage = localError ?? authError
 
-  async function handleEmailLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleUsernameLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setLocalError(null)
     clearAuthError()
 
     try {
-      await loginWithEmail(email, password)
+      await loginWithUsername(username, password)
       void navigate(redirectTo, { replace: true })
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : 'Unable to sign in.')
@@ -53,7 +53,7 @@ export function LoginPage() {
             <p className="meta-label">Ur Game Internals</p>
             <h1>Operator access</h1>
             <p className="auth-copy">
-              Sign in with a real Nakama admin account, verify access through{' '}
+              Sign in with the hardcoded admin account, verify access through{' '}
               <code>rpc_admin_whoami</code>, and then enter the dashboard.
             </p>
           </div>
@@ -65,7 +65,7 @@ export function LoginPage() {
             </div>
             <div className="metric-card">
               <span className="meta-label">Access</span>
-              <strong>Nakama admin account</strong>
+              <strong>Hardcoded admin account</strong>
             </div>
           </div>
 
@@ -75,9 +75,9 @@ export function LoginPage() {
               <span className="muted">Successful auth stores the Nakama session token locally and restores it on reload when possible.</span>
             </li>
             <li className="list__item">
-              <strong>Role-gated access</strong>
+              <strong>Quick credentials</strong>
               <span className="muted">
-                The signed-in Nakama account must also have an admin role before the dashboard will unlock.
+                <code>admin</code> / <code>password</code>
               </span>
             </li>
           </ul>
@@ -87,22 +87,22 @@ export function LoginPage() {
           <div className="auth-panel__form-copy">
             <p className="meta-label">Secure access</p>
             <h2>Admin sign-in</h2>
-            <p className="auth-footnote">Use <code>uradmin</code> or your admin email, plus the Nakama password for that account.</p>
+            <p className="auth-footnote">Use the shared hardcoded admin credentials to enter the operations workspace.</p>
           </div>
 
           {errorMessage ? <div className="alert alert--error">{errorMessage}</div> : null}
 
-          <form className="form auth-form" onSubmit={handleEmailLogin}>
+          <form className="form auth-form" onSubmit={handleUsernameLogin}>
             <div className="field">
-              <label htmlFor="email">Username or email</label>
+              <label htmlFor="username">Username</label>
               <input
-                id="email"
-                name="email"
+                id="username"
+                name="username"
                 type="text"
                 autoComplete="username"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="uradmin"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="admin"
                 required
               />
             </div>

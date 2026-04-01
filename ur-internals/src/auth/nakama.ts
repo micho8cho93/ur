@@ -3,8 +3,9 @@ import env from '../config/env'
 import { clearStoredAdminSession, readStoredAdminSession, writeStoredAdminSession } from './sessionStorage'
 
 let client: Client | null = null
-const SHARED_ADMIN_USERNAME = 'uradmin'
-const SHARED_ADMIN_EMAIL = 'uradmin@urgame.live'
+const TEST_ADMIN_USERNAME = 'admin'
+const TEST_ADMIN_PASSWORD = 'password'
+const TEST_ADMIN_CUSTOM_ID = 'ur-internals-admin'
 
 function getClient() {
   if (!client) {
@@ -107,16 +108,19 @@ async function normalizeAuthenticationError(error: unknown): Promise<Error> {
   return new Error('Unable to sign in to Nakama.')
 }
 
-export async function authenticateWithEmail(email: string, password: string): Promise<Session> {
-  const normalizedEmail = email.trim().toLowerCase()
-  const loginEmail = normalizedEmail === SHARED_ADMIN_USERNAME ? SHARED_ADMIN_EMAIL : normalizedEmail
+export async function authenticateWithUsername(username: string, password: string): Promise<Session> {
+  const normalizedUsername = username.trim()
 
-  if (!loginEmail) {
-    throw new Error('Username or email is required.')
+  if (normalizedUsername !== TEST_ADMIN_USERNAME || password !== TEST_ADMIN_PASSWORD) {
+    throw new Error('Invalid username or password.')
   }
 
   try {
-    const session = await getClient().authenticateEmail(loginEmail, password, false)
+    const session = await getClient().authenticateCustom(
+      TEST_ADMIN_CUSTOM_ID,
+      true,
+      TEST_ADMIN_USERNAME,
+    )
     persistSession(session)
     return session
   } catch (error) {

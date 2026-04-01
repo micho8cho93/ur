@@ -3,7 +3,7 @@ import type { Session } from '@heroiclabs/nakama-js'
 import { getAdminWhoAmI } from '../api/auth'
 import type { AdminIdentity } from '../types/auth'
 import {
-  authenticateWithEmail,
+  authenticateWithUsername,
   clearNakamaSession,
   restoreStoredNakamaSession,
 } from './nakama'
@@ -98,12 +98,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  async function loginWithEmail(email: string, password: string) {
+  async function loginWithUsername(username: string, password: string) {
     setIsAuthenticating(true)
     setAuthError(null)
 
     try {
-      const session = await authenticateWithEmail(email, password)
+      const session = await authenticateWithUsername(username, password)
       return await verifyAdminSession(session)
     } catch (error) {
       const message = await resetSessionWithError(error)
@@ -134,7 +134,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         isAuthenticated: Boolean(sessionToken && adminIdentity),
         adminIdentity,
         authError,
-        loginWithEmail,
+        loginWithUsername,
         logout,
         clearAuthError,
       }}

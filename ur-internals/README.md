@@ -26,11 +26,9 @@ VITE_USE_MOCK_DATA=true
 
 The Vite app also reads `EXPO_PUBLIC_*` Nakama env vars from the parent project directory, so local dashboard runs can share the root repo's Nakama config instead of duplicating it.
 
-Do not store shared admin passwords in `VITE_*` variables. Vite injects those into the client bundle. Use a real Nakama email/password account for dashboard access and keep any operational copies of those credentials in a droplet-only secret file such as `backend/deploy/env.production`.
+Do not store shared admin passwords in `VITE_*` variables unless you explicitly intend to expose them to every browser. Vite injects those into the client bundle.
 
 When `VITE_NAKAMA_BASE_URL` is not set and the app is running on a non-localhost host, `ur-internals` uses the current browser origin by default. That keeps deployed builds on `internals.*` talking to the same-origin Caddy proxy for `/v2/*`, `/ws`, and `/healthcheck`.
-
-The login form also accepts the shared username alias `uradmin`, which maps to the Nakama email account `uradmin@urgame.live`. Only the alias is in the frontend code; the password still lives in Nakama and is entered at sign-in time.
 
 ## Routes
 
