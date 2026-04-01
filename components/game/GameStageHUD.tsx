@@ -81,6 +81,8 @@ export const GameStageHUD: React.FC<GameStageHUDProps> = ({
   const resolvedTimerSize = timerSize ?? (compact ? (isInline ? 30 : 34) : 40);
   const resolvedInlineCountdownLineHeight = countdownLineHeight ?? resolvedTimerSize;
   const resolvedInlineCountdownFontSize = countdownFontSize ?? Math.max(26, resolvedInlineCountdownLineHeight - 2);
+  const resolvedCountdownFontSize = isInline ? resolvedInlineCountdownFontSize : compact ? 18 : 21;
+  const countdownSlotWidth = Math.max(compact ? 48 : 54, Math.ceil(resolvedCountdownFontSize * 1.7));
   const inlineCountdownTextStyle = isInline
     ? {
       color: urTheme.colors.ivory,
@@ -110,17 +112,28 @@ export const GameStageHUD: React.FC<GameStageHUDProps> = ({
               size={resolvedTimerSize}
             />
             {countdownSeconds !== null ? (
-              <Text
+              <View
+                testID="game-stage-hud-countdown-slot"
                 style={[
-                  styles.timerCountdown,
-                  compact && styles.compactTimerCountdown,
-                  isInline && styles.inlineTimerCountdown,
-                  inlineCountdownTextStyle,
-                  { fontFamily: countdownFontFamily },
+                  styles.countdownSlot,
+                  compact && styles.compactCountdownSlot,
+                  isInline && styles.inlineCountdownSlot,
+                  { width: countdownSlotWidth },
                 ]}
               >
-                {countdownSeconds}s
-              </Text>
+                <Text
+                  testID="game-stage-hud-countdown"
+                  style={[
+                    styles.timerCountdown,
+                    compact && styles.compactTimerCountdown,
+                    isInline && styles.inlineTimerCountdown,
+                    inlineCountdownTextStyle,
+                    { fontFamily: countdownFontFamily },
+                  ]}
+                >
+                  {countdownSeconds}
+                </Text>
+              </View>
             ) : null}
           </View>
         </View>
@@ -159,10 +172,21 @@ const styles = StyleSheet.create({
   timerStack: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: urTheme.spacing.xs,
+    gap: urTheme.spacing.sm,
   },
   inlineTimerStack: {
     justifyContent: 'center',
+    gap: urTheme.spacing.md,
+  },
+  countdownSlot: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactCountdownSlot: {
+    width: 48,
+  },
+  inlineCountdownSlot: {
+    width: 56,
   },
   timerCountdown: {
     ...urTypography.title,
@@ -170,8 +194,9 @@ const styles = StyleSheet.create({
     fontSize: 21,
     lineHeight: 24,
     letterSpacing: 0.7,
-    minWidth: 34,
     textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
     ...textShadow({
       color: '#050403',
       offset: { width: 0, height: 1 },
@@ -181,10 +206,8 @@ const styles = StyleSheet.create({
   compactTimerCountdown: {
     fontSize: 18,
     lineHeight: 20,
-    minWidth: 30,
   },
   inlineTimerCountdown: {
-    minWidth: 0,
     textAlign: 'center',
   },
 });

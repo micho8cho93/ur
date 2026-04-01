@@ -168,6 +168,7 @@ type MatchState = {
   tournamentContext: TournamentMatchContext | null;
   tournamentMatchWinXp: number | null;
   reactionCounts: Record<string, number>;
+  rollDisplay: MatchRollDisplayState;
   telemetry: MatchTelemetry;
   timer: MatchTimerState;
   afk: Record<PlayerColor, PlayerAfkState>;
@@ -231,6 +232,11 @@ type MatchTelemetry = {
   totalMoves: number;
   totalTurns: number;
   players: Record<PlayerColor, MatchPlayerTelemetry>;
+};
+
+type MatchRollDisplayState = {
+  value: number | null;
+  label: string | null;
 };
 
 type MatchTimerResetReason =
@@ -525,6 +531,11 @@ const createMatchTimerState = (): MatchTimerState => ({
   activePlayerUserId: null,
   activePhase: null,
   resetReason: null,
+});
+
+const createMatchRollDisplayState = (): MatchRollDisplayState => ({
+  value: null,
+  label: null,
 });
 
 const createReactionCounts = (assignments: Record<string, PlayerColor>): Record<string, number> =>
@@ -1841,6 +1852,7 @@ function matchInit(
     tournamentContext: resolveTournamentMatchContextFromParams(params),
     tournamentMatchWinXp,
     reactionCounts: createReactionCounts(assignments),
+    rollDisplay: createMatchRollDisplayState(),
     telemetry: createMatchTelemetry(),
     timer: createMatchTimerState(),
     afk: {
@@ -2225,6 +2237,10 @@ function applyRollOutcome(state: MatchState, playerColor: PlayerColor, rollValue
   };
 
   const validMoves = getValidMoves(rollingState, rollValue);
+  state.rollDisplay = {
+    value: rollValue,
+    label: validMoves.length === 0 && rollValue > 0 ? "No Move" : null,
+  };
 
   if (validMoves.length === 0) {
     state.gameState = {
@@ -2255,7 +2271,7 @@ function applyValidatedMove(state: MatchState, playerColor: PlayerColor, move: M
     state.telemetry.players[opponentColor].capturesSuffered += 1;
   }
 
-  if (targetCoord && isContestedLanding(state.gameState.matchConfig.pathVariant, playerColor, move.toIndex)) {
+  if (targetCoord && isContestedLanding(state.gameState.matchConfig, playerColor, move.toIndex)) {
     state.telemetry.players[playerColor].contestedTilesLandedCount += 1;
   }
 
@@ -2360,6 +2376,10 @@ function applyTimedTurnTimeout(
           getBotMove(state.gameState, state.gameState.rollValue, state.bot.difficulty) ?? validMoves[0],
         );
       } else {
+        state.rollDisplay = {
+          value: state.gameState.rollValue,
+          label: state.gameState.rollValue > 0 ? "No Move" : null,
+        };
         state.gameState = {
           ...state.gameState,
           currentTurn: getOtherPlayerColor(activePlayerColor),
@@ -2401,6 +2421,10 @@ function applyTimedTurnTimeout(
     if (validMoves.length > 0) {
       applyValidatedMove(state, activePlayerColor, validMoves[0]);
     } else {
+      state.rollDisplay = {
+        value: state.gameState.rollValue,
+        label: state.gameState.rollValue > 0 ? "No Move" : null,
+      };
       state.gameState = {
         ...state.gameState,
         currentTurn: getOtherPlayerColor(activePlayerColor),
@@ -3050,6 +3074,8 @@ function broadcastSnapshot(dispatcher: nkruntime.MatchDispatcher, state: MatchSt
       light: buildSnapshotPlayer(state, "light"),
       dark: buildSnapshotPlayer(state, "dark"),
     },
+    rollDisplayValue: state.rollDisplay.value,
+    rollDisplayLabel: state.rollDisplay.label,
     serverTimeMs: nowMs,
     turnDurationMs: state.timer.turnDurationMs,
     turnStartedAtMs: state.timer.turnStartedAtMs,

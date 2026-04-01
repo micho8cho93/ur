@@ -256,9 +256,16 @@ describe('authoritative online timer runtime', () => {
     expect(result.state.gameState.light.pieces[0].position).toBe(0);
     expect(result.state.gameState.currentTurn).toBe('dark');
     expect(result.state.gameState.phase).toBe('rolling');
+    expect(result.state.rollDisplay).toEqual({ value: 1, label: null });
     expect(result.state.afk.light.accumulatedMs).toBe(10_000);
     expect(result.state.timer.turnStartedAtMs).toBe(12_001);
     expect(result.state.timer.turnDeadlineMs).toBe(22_001);
+    expect(decodeLastSnapshot(dispatcher)).toEqual(
+      expect.objectContaining({
+        rollDisplayValue: 1,
+        rollDisplayLabel: null,
+      }),
+    );
   });
 
   it('starts tournament bot matches with one human presence and plays bot turns on the short bot delay', () => {
@@ -586,10 +593,17 @@ describe('authoritative online timer runtime', () => {
     expect(result.state.gameState.phase).toBe('rolling');
     expect(result.state.gameState.rollValue).toBeNull();
     expect(result.state.gameState.history.at(-1)).toBe('light rolled 0 but had no moves.');
+    expect(result.state.rollDisplay).toEqual({ value: 0, label: null });
     expect(result.state.timer.activePlayerColor).toBe('dark');
     expect(result.state.timer.activePhase).toBe('rolling');
     expect(result.state.timer.turnStartedAtMs).toBe(12_001);
     expect(result.state.timer.turnDeadlineMs).toBe(22_001);
+    expect(decodeLastSnapshot(dispatcher)).toEqual(
+      expect.objectContaining({
+        rollDisplayValue: 0,
+        rollDisplayLabel: null,
+      }),
+    );
   });
 
   it('forfeits the player that reaches two timed-out turns of accumulated inactivity', () => {

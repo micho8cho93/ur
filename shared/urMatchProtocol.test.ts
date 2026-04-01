@@ -26,6 +26,8 @@ describe('urMatchProtocol', () => {
             title: 'Guest',
           },
         },
+        rollDisplayValue: 3,
+        rollDisplayLabel: 'No Move',
         serverTimeMs: 1_000,
         turnDurationMs: 10_000,
         turnStartedAtMs: 500,
@@ -116,6 +118,26 @@ describe('urMatchProtocol', () => {
           light: '0',
           dark: 10,
         },
+      }),
+    ).toBe(false);
+
+    expect(
+      isStateSnapshotPayload({
+        type: 'state_snapshot',
+        matchId: 'match-1',
+        revision: 3,
+        gameState: createInitialState(),
+        players: {
+          light: {
+            userId: 'light-user',
+            title: 'Michel',
+          },
+          dark: {
+            userId: 'dark-user',
+            title: 'Guest',
+          },
+        },
+        rollDisplayValue: 5,
       }),
     ).toBe(false);
   });

@@ -636,6 +636,8 @@ export function GameRoom() {
   const authoritativeActiveTimedPhase = useGameStore((state) => state.authoritativeActiveTimedPhase);
   const authoritativeHistoryCount = useGameStore((state) => state.authoritativeHistoryCount) ?? 0;
   const authoritativePlayers = useGameStore((state) => state.authoritativePlayers);
+  const authoritativeRollDisplayValue = useGameStore((state) => state.authoritativeRollDisplayValue);
+  const authoritativeRollDisplayLabel = useGameStore((state) => state.authoritativeRollDisplayLabel);
   const authoritativeReconnectingPlayerColor = useGameStore((state) => state.authoritativeReconnectingPlayerColor);
   const authoritativeReconnectGraceDurationMs = useGameStore((state) => state.authoritativeReconnectGraceDurationMs);
   const authoritativeReconnectDeadlineMs = useGameStore((state) => state.authoritativeReconnectDeadlineMs);
@@ -666,6 +668,7 @@ export function GameRoom() {
     refresh: refreshChallenges,
   } = useChallenges();
   const isPlaythroughTutorialMatch = tutorialId === PLAYTHROUGH_TUTORIAL_ID;
+  const useAuthoritativeRollDisplay = !isOffline && !isPlaythroughTutorialMatch;
   const effectiveMatchConfig = storedMatchId === matchId ? gameState.matchConfig : resolvedMatchConfig;
   const isPrivateMatch = privateMatchParam === '1';
   const isPrivateMatchHost = privateHostParam === '1';
@@ -3669,7 +3672,7 @@ export function GameRoom() {
     if (newHistoryEntries.length > 0) {
       for (const entry of newHistoryEntries) {
         const noMoveRollValue = getNoMoveRollValueFromHistoryEntry(entry);
-        if (noMoveRollValue !== null) {
+        if (noMoveRollValue !== null && !useAuthoritativeRollDisplay) {
           const heldDisplay = {
             value: noMoveRollValue,
             label: noMoveRollValue > 0 ? 'No Move' : null,
@@ -3742,6 +3745,7 @@ export function GameRoom() {
     playerColor,
     rollingVisual,
     showHeldRollResult,
+    useAuthoritativeRollDisplay,
     validMoves.length,
   ]);
 
@@ -4472,12 +4476,16 @@ export function GameRoom() {
     tutorialPendingStep,
     validMoves,
   ]);
-  const displayedRollValue = gameState.rollValue ?? heldRollDisplay?.value ?? null;
+  const displayedRollValue = useAuthoritativeRollDisplay
+    ? gameState.rollValue ?? authoritativeRollDisplayValue ?? null
+    : gameState.rollValue ?? heldRollDisplay?.value ?? null;
   const displayedRollLabel =
     tutorialForcedNoMove && displayedRollValue !== null && displayedRollValue > 0
       ? 'No Move'
       : gameState.rollValue === null
-        ? heldRollDisplay?.label ?? null
+        ? useAuthoritativeRollDisplay
+          ? authoritativeRollDisplayLabel ?? null
+          : heldRollDisplay?.label ?? null
         : null;
   const displayedRollText = displayedRollLabel ?? (displayedRollValue !== null ? String(displayedRollValue) : null);
   const showMobileRollResult =

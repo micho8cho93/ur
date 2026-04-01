@@ -123,6 +123,8 @@ describe('useGameStore', () => {
         light: { userId: 'light-user', title: 'Michel' },
         dark: { userId: 'dark-user', title: 'Guest' },
       },
+      authoritativeRollDisplayValue: 4,
+      authoritativeRollDisplayLabel: null,
       authoritativeAfkAccumulatedMs: { light: 0, dark: 20_000 },
       authoritativeAfkRemainingMs: 70_000,
       authoritativeReconnectingPlayer: 'dark-user',
@@ -159,6 +161,8 @@ describe('useGameStore', () => {
     expect(state.authoritativeActiveTimedPlayerColor).toBeNull();
     expect(state.authoritativeActiveTimedPhase).toBeNull();
     expect(state.authoritativePlayers).toBeNull();
+    expect(state.authoritativeRollDisplayValue).toBeNull();
+    expect(state.authoritativeRollDisplayLabel).toBeNull();
     expect(state.authoritativeAfkAccumulatedMs).toBeNull();
     expect(state.authoritativeAfkRemainingMs).toBeNull();
     expect(state.authoritativeReconnectingPlayer).toBeNull();
@@ -253,6 +257,8 @@ describe('useGameStore', () => {
         activeTimedPlayer: 'light-user',
         activeTimedPlayerColor: 'light',
         activeTimedPhase: 'moving',
+        rollDisplayValue: 3,
+        rollDisplayLabel: 'No Move',
         afkAccumulatedMs: { light: 0, dark: 25_000 },
         afkRemainingMs: 20_000,
         reconnectingPlayer: 'dark-user',
@@ -287,6 +293,8 @@ describe('useGameStore', () => {
       light: { userId: 'light-user', title: 'Michel' },
       dark: { userId: 'dark-user', title: 'Guest' },
     });
+    expect(state.authoritativeRollDisplayValue).toBe(3);
+    expect(state.authoritativeRollDisplayLabel).toBe('No Move');
     expect(state.authoritativeHistoryCount).toBe(42);
     expect(state.authoritativeAfkAccumulatedMs).toEqual({ light: 0, dark: 25_000 });
     expect(state.authoritativeAfkRemainingMs).toBe(20_000);

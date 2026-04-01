@@ -40,6 +40,8 @@ interface GameStore {
   authoritativeActiveTimedPlayerColor: PlayerColor | null;
   authoritativeActiveTimedPhase: GameState['phase'] | null;
   authoritativePlayers: StateSnapshotPlayers | null;
+  authoritativeRollDisplayValue: number | null;
+  authoritativeRollDisplayLabel: string | null;
   authoritativeHistoryCount: number;
   authoritativeAfkAccumulatedMs: Record<PlayerColor, number> | null;
   authoritativeAfkRemainingMs: number | null;
@@ -99,6 +101,8 @@ const EMPTY_AUTHORITATIVE_ONLINE_STATE = {
   authoritativeActiveTimedPlayerColor: null,
   authoritativeActiveTimedPhase: null,
   authoritativePlayers: null,
+  authoritativeRollDisplayValue: null,
+  authoritativeRollDisplayLabel: null,
   authoritativeHistoryCount: 0,
   authoritativeAfkAccumulatedMs: null,
   authoritativeAfkRemainingMs: null,
@@ -225,6 +229,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         authoritativeActiveTimedPlayerColor: snapshot.activeTimedPlayerColor ?? null,
         authoritativeActiveTimedPhase: snapshot.activeTimedPhase ?? null,
         authoritativePlayers: snapshot.players,
+        authoritativeRollDisplayValue: snapshot.rollDisplayValue ?? null,
+        authoritativeRollDisplayLabel: snapshot.rollDisplayLabel ?? null,
         authoritativeHistoryCount: snapshot.historyCount ?? snapshot.gameState.history.length,
         authoritativeAfkAccumulatedMs: snapshot.afkAccumulatedMs
           ? { light: snapshot.afkAccumulatedMs.light, dark: snapshot.afkAccumulatedMs.dark }

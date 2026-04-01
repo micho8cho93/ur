@@ -78,6 +78,8 @@ export type StateSnapshotPayload = {
   gameState: GameState;
   historyCount?: number;
   players: StateSnapshotPlayers;
+  rollDisplayValue?: number | null;
+  rollDisplayLabel?: string | null;
   serverTimeMs?: number;
   turnDurationMs?: number;
   turnStartedAtMs?: number | null;
@@ -184,6 +186,9 @@ const isNonNegativeInteger = (value: unknown): value is number =>
 const isNullableFiniteNumber = (value: unknown): value is number | null =>
   value === null || isFiniteNumber(value);
 
+const isNullableRollDisplayValue = (value: unknown): value is number | null =>
+  value === null || isNonNegativeInteger(value) && value <= 4;
+
 const isOptional = <T>(value: unknown, guard: (candidate: unknown) => candidate is T): value is T | undefined =>
   typeof value === "undefined" || guard(value);
 
@@ -247,6 +252,8 @@ export const isStateSnapshotPayload = (value: unknown): value is StateSnapshotPa
   isRecord(value.gameState) &&
   isOptional(value.historyCount, isNonNegativeInteger) &&
   isStateSnapshotPlayers(value.players) &&
+  isOptional(value.rollDisplayValue, isNullableRollDisplayValue) &&
+  isOptional(value.rollDisplayLabel, isNullableString) &&
   isOptional(value.serverTimeMs, isFiniteNumber) &&
   isOptional(value.turnDurationMs, isFiniteNumber) &&
   isOptional(value.turnStartedAtMs, isNullableFiniteNumber) &&
