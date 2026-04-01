@@ -4,10 +4,6 @@ import { clearStoredAdminSession, readStoredAdminSession, writeStoredAdminSessio
 
 let client: Client | null = null
 
-const TEST_ADMIN_USERNAME = 'admin'
-const TEST_ADMIN_PASSWORD = 'password'
-const TEST_ADMIN_CUSTOM_ID = 'ur-internals-admin'
-
 function getClient() {
   if (!client) {
     client = new Client(
@@ -109,19 +105,15 @@ async function normalizeAuthenticationError(error: unknown): Promise<Error> {
   return new Error('Unable to sign in to Nakama.')
 }
 
-export async function authenticateWithUsername(username: string, password: string): Promise<Session> {
-  const normalizedUsername = username.trim()
+export async function authenticateWithEmail(email: string, password: string): Promise<Session> {
+  const normalizedEmail = email.trim()
 
-  if (normalizedUsername !== TEST_ADMIN_USERNAME || password !== TEST_ADMIN_PASSWORD) {
-    throw new Error('Invalid username or password.')
+  if (!normalizedEmail) {
+    throw new Error('Email is required.')
   }
 
   try {
-    const session = await getClient().authenticateCustom(
-      TEST_ADMIN_CUSTOM_ID,
-      true,
-      TEST_ADMIN_USERNAME,
-    )
+    const session = await getClient().authenticateEmail(normalizedEmail, password, false)
     persistSession(session)
     return session
   } catch (error) {

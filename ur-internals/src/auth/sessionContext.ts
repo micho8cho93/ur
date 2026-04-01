@@ -9,7 +9,7 @@ export interface SessionContextValue {
   isAuthenticated: boolean
   adminIdentity: AdminIdentity | null
   authError: string | null
-  loginWithUsername: (username: string, password: string) => Promise<AdminIdentity>
+  loginWithEmail: (email: string, password: string) => Promise<AdminIdentity>
   logout: () => Promise<void>
   clearAuthError: () => void
 }

@@ -26,6 +26,8 @@ VITE_USE_MOCK_DATA=true
 
 The Vite app also reads `EXPO_PUBLIC_*` Nakama env vars from the parent project directory, so local dashboard runs can share the root repo's Nakama config instead of duplicating it.
 
+Do not store shared admin passwords in `VITE_*` variables. Vite injects those into the client bundle. Use a real Nakama email/password account for dashboard access and keep any operational copies of those credentials in a droplet-only secret file such as `backend/deploy/env.production`.
+
 ## Routes
 
 - `/` overview dashboard
