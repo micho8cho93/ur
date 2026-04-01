@@ -21,6 +21,7 @@ export const MatchOpCode = {
   MOVE_REQUEST: 2,
   EMOJI_REACTION: 3,
   PIECE_SELECTION: 4,
+  REMATCH_RESPONSE: 5,
   STATE_SNAPSHOT: 100,
   SERVER_ERROR: 101,
   PROGRESSION_AWARD: 102,
@@ -67,11 +68,17 @@ export type PieceSelectionRequestPayload = {
   pieceId: string | null;
 };
 
+export type RematchResponsePayload = {
+  type: "rematch_response";
+  accepted: boolean;
+};
+
 export type ClientMatchPayload =
   | RollRequestPayload
   | MoveRequestPayload
   | EmojiReactionRequestPayload
-  | PieceSelectionRequestPayload;
+  | PieceSelectionRequestPayload
+  | RematchResponsePayload;
 
 export type MatchEndReason = "completed" | "forfeit_inactivity" | "forfeit_disconnect";
 
@@ -89,6 +96,16 @@ export type StateSnapshotPlayer = {
 };
 
 export type StateSnapshotPlayers = Record<PlayerColor, StateSnapshotPlayer>;
+
+export type RematchStatus = "idle" | "pending" | "matched" | "expired";
+
+export type StateSnapshotRematch = {
+  status: RematchStatus;
+  deadlineMs: number | null;
+  acceptedUserIds: string[];
+  nextMatchId: string | null;
+  nextPrivateCode: string | null;
+};
 
 export type StateSnapshotPayload = {
   type: "state_snapshot";
@@ -115,6 +132,7 @@ export type StateSnapshotPayload = {
   reconnectDeadlineMs?: number | null;
   reconnectRemainingMs?: number | null;
   matchEnd?: MatchEndPayload | null;
+  rematch: StateSnapshotRematch;
 };
 
 export type ServerErrorCode =
@@ -229,6 +247,20 @@ const isStateSnapshotPlayer = (value: unknown): value is StateSnapshotPlayer =>
 const isStateSnapshotPlayers = (value: unknown): value is StateSnapshotPlayers =>
   isRecord(value) && isStateSnapshotPlayer(value.light) && isStateSnapshotPlayer(value.dark);
 
+const isRematchStatus = (value: unknown): value is RematchStatus =>
+  value === "idle" || value === "pending" || value === "matched" || value === "expired";
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((entry) => typeof entry === "string");
+
+const isStateSnapshotRematch = (value: unknown): value is StateSnapshotRematch =>
+  isRecord(value) &&
+  isRematchStatus(value.status) &&
+  isNullableFiniteNumber(value.deadlineMs) &&
+  isStringArray(value.acceptedUserIds) &&
+  isNullableString(value.nextMatchId) &&
+  isNullableString(value.nextPrivateCode);
+
 const isAfkAccumulatedPayload = (value: unknown): value is Record<PlayerColor, number> =>
   isRecord(value) && isFiniteNumber(value.light) && isFiniteNumber(value.dark);
 
@@ -273,11 +305,15 @@ export const isPieceSelectionRequestPayload = (
   value.type === "piece_selection" &&
   (typeof value.pieceId === "string" || value.pieceId === null);
 
+export const isRematchResponsePayload = (value: unknown): value is RematchResponsePayload =>
+  isRecord(value) && value.type === "rematch_response" && typeof value.accepted === "boolean";
+
 export const isClientMatchPayload = (value: unknown): value is ClientMatchPayload =>
   isRollRequestPayload(value) ||
   isMoveRequestPayload(value) ||
   isEmojiReactionRequestPayload(value) ||
-  isPieceSelectionRequestPayload(value);
+  isPieceSelectionRequestPayload(value) ||
+  isRematchResponsePayload(value);
 
 export const isStateSnapshotPayload = (value: unknown): value is StateSnapshotPayload =>
   isRecord(value) &&
@@ -315,7 +351,8 @@ export const isStateSnapshotPayload = (value: unknown): value is StateSnapshotPa
   isOptional(value.reconnectGraceDurationMs, isNullableFiniteNumber) &&
   isOptional(value.reconnectDeadlineMs, isNullableFiniteNumber) &&
   isOptional(value.reconnectRemainingMs, isNullableFiniteNumber) &&
-  (typeof value.matchEnd === "undefined" || isMatchEndPayload(value.matchEnd) || value.matchEnd === null);
+  (typeof value.matchEnd === "undefined" || isMatchEndPayload(value.matchEnd) || value.matchEnd === null) &&
+  (typeof value.rematch === "undefined" || isStateSnapshotRematch(value.rematch));
 
 export const isServerErrorPayload = (value: unknown): value is ServerErrorPayload =>
   isRecord(value) &&

@@ -127,6 +127,7 @@ import {
   MAX_EMOJI_REACTIONS_PER_MATCH,
   MoveRequestPayload,
   PieceSelectionRequestPayload,
+  RematchResponsePayload,
   RollRequestPayload,
   TournamentMatchRewardSummaryPayload,
   decodePayload,
@@ -767,6 +768,7 @@ export function GameRoom() {
   const authoritativeReconnectDeadlineMs = useGameStore((state) => state.authoritativeReconnectDeadlineMs);
   const authoritativeReconnectRemainingMs = useGameStore((state) => state.authoritativeReconnectRemainingMs);
   const authoritativeMatchEnd = useGameStore((state) => state.authoritativeMatchEnd);
+  const authoritativeRematch = useGameStore((state) => state.authoritativeRematch);
   const authoritativeSnapshotReceivedAtMs = useGameStore((state) => state.authoritativeSnapshotReceivedAtMs);
   const applyServerSnapshot = useGameStore((state) => state.applyServerSnapshot);
   const setGameStateFromServer = useGameStore((state) => state.setGameStateFromServer);
@@ -964,11 +966,29 @@ export function GameRoom() {
     !isOffline &&
     (joinedPlayerCount >= 2 || gameState.winner !== null || hasTournamentBotOpponent);
   const isOnlineHumanMatch = !isOffline && !hasTournamentBotOpponent;
+  const isEligibleForRematch =
+    isOnlineHumanMatch &&
+    !isTournamentMatch &&
+    authoritativeMatchEnd !== null;
+  const rematchAcceptedUserIds = authoritativeRematch?.acceptedUserIds ?? [];
+  const didAcceptRematch = authenticatedUserId ? rematchAcceptedUserIds.includes(authenticatedUserId) : false;
+  const rematchCountdownLabel =
+    onlineRematchTimerRemainingMs !== null
+      ? `${Math.max(0, Math.ceil(onlineRematchTimerRemainingMs / 1000))}s remaining`
+      : null;
   const hasReconnectGraceActive = !isOffline && authoritativeReconnectingPlayerColor !== null;
+  const hasPrivateReconnectFallback =
+    isPrivateMatch &&
+    !hasReconnectGraceActive &&
+    gameState.winner === null &&
+    gameState.phase !== 'ended' &&
+    gameState.history.length > 0 &&
+    joinedPlayerCount < 2;
   const isOpponentReconnecting =
-    hasReconnectGraceActive &&
-    hasAssignedColor &&
-    authoritativeReconnectingPlayerColor !== resolvedPlayerColor;
+    (hasReconnectGraceActive &&
+      hasAssignedColor &&
+      authoritativeReconnectingPlayerColor !== resolvedPlayerColor) ||
+    hasPrivateReconnectFallback;
   const shouldShowEmojiControls = isOnlineHumanMatch && hasOpponentJoined;
   const requiresOpponentPresence = isPrivateMatch || (isTournamentMatch && !hasTournamentBotOpponent);
   const isOpponentReadyToPlay = !hasReconnectGraceActive && (!requiresOpponentPresence || hasOpponentJoined);
@@ -981,10 +1001,10 @@ export function GameRoom() {
       return null;
     }
 
-    if (hasReconnectGraceActive) {
+    if (hasReconnectGraceActive || hasPrivateReconnectFallback) {
       const reconnectStatus = isOpponentReconnecting ? 'Opponent Reconnecting' : 'Player Reconnecting';
       if (isPrivateMatch) {
-        return `Private Match - ${reconnectStatus}`;
+        return reconnectStatus;
       }
       if (isTournamentMatch) {
         return `${tournamentDisplayName} - ${reconnectStatus}`;
@@ -1009,6 +1029,7 @@ export function GameRoom() {
     return `Online Match - ${opponentStatus}`;
   }, [
     hasOpponentJoined,
+    hasPrivateReconnectFallback,
     hasReconnectGraceActive,
     isOpponentReconnecting,
     isOffline,
@@ -1175,6 +1196,7 @@ export function GameRoom() {
     historyCount: effectiveHistoryCount,
   });
   const previousRenderedMatchIdRef = useRef<string | null>(matchId ?? null);
+  const processedRematchMatchIdRef = useRef<string | null>(null);
   const tutorialHydratingStateRef = useRef(false);
   const previousTurnTimerStateRef = useRef<{
     matchId: string | null;
@@ -1318,6 +1340,37 @@ export function GameRoom() {
       }
     },
     [isOnlineHumanMatch, sendPieceSelection],
+  );
+
+  const sendRematchResponse = React.useCallback(
+    async (accepted: boolean) => {
+      if (!matchId || !isEligibleForRematch || !isOnlineInteractionReady) {
+        return;
+      }
+
+      const socket = socketRef.current;
+      if (!socket) {
+        return;
+      }
+
+      const payload: RematchResponsePayload = {
+        type: 'rematch_response',
+        accepted,
+      };
+
+      try {
+        await socket.sendMatchState(matchId, MatchOpCode.REMATCH_RESPONSE, encodePayload(payload));
+      } catch (error) {
+        suppressReconnectRef.current = isUnauthorizedNakamaError(error);
+        console.error('[Nakama][send_failed]', {
+          error,
+          eventType: payload.type,
+          matchId,
+        });
+        socket.ondisconnect({} as Event);
+      }
+    },
+    [isEligibleForRematch, isOnlineInteractionReady, matchId],
   );
 
   const handleBotSelectedPiece = React.useCallback((pieceId: string | null) => {
@@ -1721,6 +1774,39 @@ export function GameRoom() {
     onlineReconnectTimerDurationMs,
     onlineTimerNowMs,
   ]);
+  const onlineRematchTimerRemainingMs = useMemo(() => {
+    if (
+      isOffline ||
+      authoritativeRematch?.status !== 'pending' ||
+      authoritativeRematch.deadlineMs === null
+    ) {
+      return null;
+    }
+
+    return (
+      resolveAuthoritativeRemainingMs({
+        deadlineMs: authoritativeRematch.deadlineMs,
+        remainingMs:
+          authoritativeServerTimeMs !== null
+            ? Math.max(0, authoritativeRematch.deadlineMs - authoritativeServerTimeMs)
+            : null,
+        serverTimeMs: authoritativeServerTimeMs,
+        snapshotReceivedAtMs: authoritativeSnapshotReceivedAtMs,
+        nowMs: onlineTimerNowMs,
+      }) ?? null
+    );
+  }, [
+    authoritativeRematch,
+    authoritativeServerTimeMs,
+    authoritativeSnapshotReceivedAtMs,
+    isOffline,
+    onlineTimerNowMs,
+  ]);
+  const hasActiveRematchCountdown =
+    !isOffline &&
+    authoritativeRematch?.status === 'pending' &&
+    authoritativeRematch.deadlineMs !== null &&
+    authoritativeSnapshotReceivedAtMs !== null;
   const resolvedOnlineTimerDurationMs = hasReconnectGraceActive
     ? onlineReconnectTimerDurationMs
     : onlineTurnTimerDurationMs;
@@ -2362,10 +2448,6 @@ export function GameRoom() {
       return;
     }
 
-    if (!isOffline && onlineMatchEnd === null) {
-      return;
-    }
-
     const forfeitReason = onlineMatchEnd?.reason;
 
     if (forfeitReason !== 'forfeit_disconnect' && forfeitReason !== 'forfeit_inactivity') {
@@ -2432,6 +2514,7 @@ export function GameRoom() {
     }
 
     previousRenderedMatchIdRef.current = matchId ?? null;
+    processedRematchMatchIdRef.current = null;
     setShowWinModal(false);
     setTournamentRewardSummary(null);
     setTournamentRewardFallbackActive(false);
@@ -2577,6 +2660,55 @@ export function GameRoom() {
       nakamaService.disconnectSocket(true);
     }
   }, [isOffline, matchId]);
+
+  useEffect(() => {
+    const nextMatchId = authoritativeRematch?.nextMatchId ?? null;
+    if (
+      !nextMatchId ||
+      nextMatchId === matchId ||
+      processedRematchMatchIdRef.current === nextMatchId
+    ) {
+      return;
+    }
+
+    processedRematchMatchIdRef.current = nextMatchId;
+    let cancelled = false;
+
+    void (async () => {
+      await leaveCurrentMatch();
+
+      if (cancelled || activeRouteMatchIdRef.current !== matchId) {
+        return;
+      }
+
+      setShowWinModal(false);
+
+      router.replace({
+        pathname: '/match/[id]',
+        params: {
+          id: nextMatchId,
+          modeId: effectiveMatchConfig.modeId,
+          ...(isPrivateMatch ? { privateMatch: '1' } : {}),
+          ...(isPrivateMatch && isPrivateMatchHost ? { privateHost: '1' } : {}),
+          ...(isPrivateMatch && authoritativeRematch?.nextPrivateCode
+            ? { privateCode: authoritativeRematch.nextPrivateCode }
+            : {}),
+        },
+      } as never);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    authoritativeRematch,
+    effectiveMatchConfig.modeId,
+    isPrivateMatch,
+    isPrivateMatchHost,
+    leaveCurrentMatch,
+    matchId,
+    router,
+  ]);
 
   const finalizeExitMatchToHome = React.useCallback(
     async (options?: { refreshTournamentStatus?: boolean }) => {
@@ -3193,8 +3325,7 @@ export function GameRoom() {
         authoritativeReconnectRemainingMs === null
       ) ||
       authoritativeSnapshotReceivedAtMs === null ||
-      gameState.winner !== null ||
-      gameState.phase === 'ended'
+      (!hasActiveRematchCountdown && (gameState.winner !== null || gameState.phase === 'ended'))
     ) {
       return;
     }
@@ -3212,6 +3343,7 @@ export function GameRoom() {
     authoritativeReconnectRemainingMs,
     authoritativeServerTimeMs,
     authoritativeSnapshotReceivedAtMs,
+    hasActiveRematchCountdown,
     authoritativeTurnDeadlineMs,
     authoritativeTurnRemainingMs,
     gameState.phase,
@@ -4141,27 +4273,66 @@ export function GameRoom() {
   }, [isTournamentMatch, isTournamentResultModal]);
 
   const renderSharedResultSummary = () => (
-    <MatchResultSummaryContent
-      didPlayerWin={didPlayerWin}
-      isPracticeModeMatch={isPracticeModeMatch}
-      isPrivateMatch={isPrivateMatch}
-      canSyncOfflineBotRewards={canSyncOfflineBotRewards}
-      practiceModeRewardLabel={practiceModeRewardLabel}
-      isPlaythroughTutorialMatch={isPlaythroughTutorialMatch}
-      isRankedHumanMatch={isRankedHumanMatch}
-      lastEloRatingChange={lastEloRatingChange}
-      eloUnchangedReason={eloUnchangedReason}
-      shouldShowAccountRewards={shouldShowAccountRewards}
-      progression={progression}
-      isRefreshingMatchRewards={isRefreshingMatchRewards}
-      progressionError={progressionError}
-      lastProgressionAward={lastProgressionAward}
-      shouldShowChallengeRewards={shouldShowChallengeRewards}
-      matchChallengeSummary={matchChallengeSummary}
-      matchRewardsErrorMessage={matchRewardsErrorMessage}
-      tournamentRewardSummary={isTournamentRewardSummaryPrimary ? tournamentRewardSummary : null}
-      tournamentCountdownLabel={shouldAutoExitTournamentResultModal ? tournamentCountdownLabel : null}
-    />
+    <>
+      <MatchResultSummaryContent
+        didPlayerWin={didPlayerWin}
+        isPracticeModeMatch={isPracticeModeMatch}
+        isPrivateMatch={isPrivateMatch}
+        canSyncOfflineBotRewards={canSyncOfflineBotRewards}
+        practiceModeRewardLabel={practiceModeRewardLabel}
+        isPlaythroughTutorialMatch={isPlaythroughTutorialMatch}
+        isRankedHumanMatch={isRankedHumanMatch}
+        lastEloRatingChange={lastEloRatingChange}
+        eloUnchangedReason={eloUnchangedReason}
+        shouldShowAccountRewards={shouldShowAccountRewards}
+        progression={progression}
+        isRefreshingMatchRewards={isRefreshingMatchRewards}
+        progressionError={progressionError}
+        lastProgressionAward={lastProgressionAward}
+        shouldShowChallengeRewards={shouldShowChallengeRewards}
+        matchChallengeSummary={matchChallengeSummary}
+        matchRewardsErrorMessage={matchRewardsErrorMessage}
+        tournamentRewardSummary={isTournamentRewardSummaryPrimary ? tournamentRewardSummary : null}
+        tournamentCountdownLabel={shouldAutoExitTournamentResultModal ? tournamentCountdownLabel : null}
+      />
+      {showWinModal && isEligibleForRematch && authoritativeRematch && authoritativeRematch.status !== 'idle' ? (
+        <View style={styles.rematchCard}>
+          <Text style={styles.rematchEyebrow}>Rematch Window</Text>
+          {authoritativeRematch.status === 'pending' && !didAcceptRematch ? (
+            <>
+              <Text style={styles.rematchBodyText}>Both players can accept a rematch before the window closes.</Text>
+              {rematchCountdownLabel ? <Text style={styles.rematchCountdownText}>{rematchCountdownLabel}</Text> : null}
+              <Pressable
+                accessibilityRole="button"
+                disabled={!isOnlineInteractionReady}
+                onPress={() => {
+                  void sendRematchResponse(true);
+                }}
+                style={({ pressed }) => [
+                  styles.rematchButton,
+                  !isOnlineInteractionReady && styles.rematchButtonDisabled,
+                  pressed && isOnlineInteractionReady && styles.rematchButtonPressed,
+                ]}
+              >
+                <Text style={styles.rematchButtonText}>Rematch</Text>
+              </Pressable>
+            </>
+          ) : null}
+          {authoritativeRematch.status === 'pending' && didAcceptRematch ? (
+            <>
+              <Text style={styles.rematchBodyText}>Waiting for opponent...</Text>
+              {rematchCountdownLabel ? <Text style={styles.rematchCountdownText}>{rematchCountdownLabel}</Text> : null}
+            </>
+          ) : null}
+          {authoritativeRematch.status === 'expired' ? (
+            <Text style={styles.rematchBodyText}>Rematch expired.</Text>
+          ) : null}
+          {authoritativeRematch.status === 'matched' ? (
+            <Text style={styles.rematchBodyText}>Joining rematch...</Text>
+          ) : null}
+        </View>
+      ) : null}
+    </>
   );
 
   const lightReserve = gameState.light.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
@@ -6152,6 +6323,52 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#D9C39A',
+  },
+  rematchCard: {
+    width: '100%',
+    marginTop: urTheme.spacing.sm,
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(216, 232, 251, 0.18)',
+    backgroundColor: 'rgba(10, 18, 27, 0.78)',
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.md,
+  },
+  rematchEyebrow: {
+    ...urTypography.label,
+    color: '#F4D9A8',
+    fontSize: 10,
+    marginBottom: 6,
+  },
+  rematchBodyText: {
+    color: 'rgba(247, 229, 203, 0.92)',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  rematchCountdownText: {
+    color: 'rgba(216, 232, 251, 0.82)',
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 6,
+  },
+  rematchButton: {
+    alignSelf: 'flex-start',
+    marginTop: urTheme.spacing.sm,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.sm,
+    borderRadius: urTheme.radii.md,
+    backgroundColor: '#B8862E',
+  },
+  rematchButtonDisabled: {
+    opacity: 0.48,
+  },
+  rematchButtonPressed: {
+    opacity: 0.86,
+  },
+  rematchButtonText: {
+    ...urTypography.label,
+    color: '#1A1207',
+    fontSize: 12,
   },
   matchRewardsXpDisplay: {
     width: '100%',

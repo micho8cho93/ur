@@ -54,8 +54,10 @@ import {
   MoveRequestPayload,
   PieceSelectionBroadcastPayload,
   PieceSelectionRequestPayload,
+  RematchResponsePayload,
   RollRequestPayload,
   ServerErrorCode,
+  StateSnapshotRematch,
   StateSnapshotPayload,
   TournamentMatchRewardSummaryPayload,
   decodePayload,
@@ -63,6 +65,7 @@ import {
   isEmojiReactionRequestPayload,
   isMoveRequestPayload,
   isPieceSelectionRequestPayload,
+  isRematchResponsePayload,
   isRollRequestPayload,
 } from "../../shared/urMatchProtocol";
 import {
@@ -177,6 +180,7 @@ type MatchState = {
   afk: Record<PlayerColor, PlayerAfkState>;
   disconnect: Record<PlayerColor, PlayerDisconnectState>;
   matchEnd: MatchEndPayload | null;
+  rematch: MatchRematchState;
   resultRecorded: boolean;
 };
 
@@ -295,6 +299,14 @@ type MatchBotState = {
   displayName: string;
 } | null;
 
+type MatchRematchState = {
+  status: StateSnapshotRematch["status"];
+  deadlineMs: number | null;
+  acceptedByUserId: Record<string, boolean>;
+  nextMatchId: string | null;
+  nextPrivateCode: string | null;
+};
+
 type RuntimeRecord = Record<string, unknown>;
 
 const TICK_RATE = 10;
@@ -305,6 +317,7 @@ const ONLINE_TURN_DURATION_MS = 10_000;
 const ONLINE_AFK_FORFEIT_MS = ONLINE_TURN_DURATION_MS * 2;
 const ONLINE_DISCONNECT_GRACE_MS = 15_000;
 const ONLINE_RECONNECT_RESUME_MS = 5_000;
+const REMATCH_WINDOW_MS = 10_000;
 const BOT_TURN_DELAY_MS = 850;
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -789,6 +802,29 @@ const createPrivateMatchCodeRecord = (
   return record;
 };
 
+const createReservedPrivateMatchCodeRecord = (
+  nk: nkruntime.Nakama,
+  modeId: MatchModeId,
+  matchId: string,
+  creatorUserId: string,
+  joinedUserId: string,
+  code: string
+): PrivateMatchCodeRecord => {
+  const now = new Date().toISOString();
+  const record: PrivateMatchCodeRecord = {
+    code,
+    matchId,
+    modeId,
+    creatorUserId,
+    joinedUserId,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  writePrivateMatchCodeRecord(nk, record, "*");
+  return record;
+};
+
 const claimPrivateMatchCode = (
   nk: nkruntime.Nakama,
   code: string,
@@ -843,6 +879,27 @@ const syncPrivateMatchReservation = (nk: nkruntime.Nakama, state: MatchState): v
   state.privateCreatorUserId = record.creatorUserId;
   state.privateGuestUserId = record.joinedUserId;
 };
+
+const createMatchRematchState = (): MatchRematchState => ({
+  status: "idle",
+  deadlineMs: null,
+  acceptedByUserId: {},
+  nextMatchId: null,
+  nextPrivateCode: null,
+});
+
+const getRematchAcceptedUserIds = (state: MatchState): string[] =>
+  Object.entries(state.rematch.acceptedByUserId)
+    .filter(([, accepted]) => accepted === true)
+    .map(([userId]) => userId);
+
+const buildSnapshotRematch = (state: MatchState): StateSnapshotRematch => ({
+  status: state.rematch.status,
+  deadlineMs: state.rematch.deadlineMs,
+  acceptedUserIds: getRematchAcceptedUserIds(state),
+  nextMatchId: state.rematch.nextMatchId,
+  nextPrivateCode: state.rematch.nextPrivateCode,
+});
 
 const canUserJoinPrivateMatch = (state: MatchState, userId: string): boolean => {
   if (!state.privateMatch) {
@@ -988,6 +1045,66 @@ const getAssignedHumanUserIdForColor = (state: MatchState, color: PlayerColor): 
   }
 
   return userId;
+};
+
+const getOrderedRematchHumanUserIds = (state: MatchState): [string, string] | null => {
+  const lightUserId = getAssignedHumanUserIdForColor(state, "light");
+  const darkUserId = getAssignedHumanUserIdForColor(state, "dark");
+
+  if (!lightUserId || !darkUserId) {
+    return null;
+  }
+
+  return [lightUserId, darkUserId];
+};
+
+const canOpenRematchWindow = (state: MatchState): boolean =>
+  state.resultRecorded &&
+  state.gameState.winner !== null &&
+  state.opponentType === "human" &&
+  !state.classification.bot &&
+  !state.tournamentContext &&
+  getOrderedRematchHumanUserIds(state) !== null;
+
+const openRematchWindow = (state: MatchState, nowMs: number): boolean => {
+  const rematchPlayerIds = getOrderedRematchHumanUserIds(state);
+  if (!canOpenRematchWindow(state) || state.rematch.status !== "idle" || !rematchPlayerIds) {
+    return false;
+  }
+
+  state.rematch = {
+    status: "pending",
+    deadlineMs: nowMs + REMATCH_WINDOW_MS,
+    acceptedByUserId: rematchPlayerIds.reduce(
+      (entries, userId) => {
+        entries[userId] = false;
+        return entries;
+      },
+      {} as Record<string, boolean>,
+    ),
+    nextMatchId: null,
+    nextPrivateCode: null,
+  };
+  state.revision += 1;
+  return true;
+};
+
+const expireRematchWindow = (state: MatchState): boolean => {
+  if (state.rematch.status !== "pending") {
+    return false;
+  }
+
+  state.rematch.status = "expired";
+  state.revision += 1;
+  return true;
+};
+
+const haveAllRematchPlayersAccepted = (state: MatchState): boolean => {
+  const rematchPlayerIds = getOrderedRematchHumanUserIds(state);
+  return Boolean(
+    rematchPlayerIds &&
+    rematchPlayerIds.every((userId) => state.rematch.acceptedByUserId[userId] === true),
+  );
 };
 
 const getDisconnectedAssignedColors = (state: MatchState): PlayerColor[] =>
@@ -1240,6 +1357,114 @@ const syncCompletedMatchEnd = (state: MatchState): void => {
   }
 
   state.matchEnd = buildMatchEndPayload(state, "completed", state.gameState.winner);
+};
+
+const buildRematchMatchParams = (
+  state: MatchState,
+  privateCode: string | null
+): Record<string, unknown> => {
+  const rematchPlayerIds = getOrderedRematchHumanUserIds(state);
+  if (!rematchPlayerIds) {
+    throw new Error("Rematch requires two human players.");
+  }
+
+  const [lightUserId, darkUserId] = rematchPlayerIds;
+  const params: Record<string, unknown> = {
+    playerIds: [lightUserId, darkUserId],
+    modeId: state.modeId,
+    rankedMatch: state.classification.ranked,
+    casualMatch: state.classification.casual,
+    botMatch: false,
+    privateMatch: state.privateMatch,
+    winRewardSource: state.winRewardSource,
+    allowsChallengeRewards: state.allowsChallengeRewards,
+  };
+
+  if (state.privateMatch) {
+    if (!privateCode || !state.privateCreatorUserId || !state.privateGuestUserId) {
+      throw new Error("Private rematch requires preserved creator, guest, and private code.");
+    }
+
+    params.privateCode = privateCode;
+    params.privateCreatorUserId = state.privateCreatorUserId;
+    params.privateGuestUserId = state.privateGuestUserId;
+  }
+
+  return params;
+};
+
+const maybeCreateRematchMatch = (
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  state: MatchState,
+  currentMatchId: string
+): boolean => {
+  if (
+    state.rematch.status !== "pending" ||
+    state.rematch.nextMatchId !== null ||
+    !haveAllRematchPlayersAccepted(state)
+  ) {
+    return false;
+  }
+
+  let nextPrivateCode: string | null = null;
+  if (state.privateMatch) {
+    syncPrivateMatchReservation(nk, state);
+    nextPrivateCode = createAvailablePrivateMatchCode(nk);
+  }
+
+  const nextMatchId = nk.matchCreate(MATCH_HANDLER, buildRematchMatchParams(state, nextPrivateCode));
+
+  state.rematch.status = "matched";
+  state.rematch.nextMatchId = nextMatchId;
+  state.rematch.nextPrivateCode = nextPrivateCode;
+  state.revision += 1;
+
+  if (state.privateMatch && nextPrivateCode && state.privateCreatorUserId && state.privateGuestUserId) {
+    try {
+      createReservedPrivateMatchCodeRecord(
+        nk,
+        state.modeId,
+        nextMatchId,
+        state.privateCreatorUserId,
+        state.privateGuestUserId,
+        nextPrivateCode,
+      );
+    } catch (error) {
+      logger.warn(
+        "Created private rematch %s from match %s but failed to persist private code reservation: %s",
+        nextMatchId,
+        currentMatchId,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  logger.info("Created authoritative rematch %s from completed match %s.", nextMatchId, currentMatchId);
+  return true;
+};
+
+const syncRematchState = (
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  dispatcher: nkruntime.MatchDispatcher,
+  state: MatchState,
+  matchId: string,
+  nowMs: number
+): void => {
+  let didChange = false;
+
+  didChange = openRematchWindow(state, nowMs) || didChange;
+
+  if (state.rematch.status === "pending" && state.rematch.deadlineMs !== null && nowMs >= state.rematch.deadlineMs) {
+    didChange = expireRematchWindow(state) || didChange;
+  } else if (state.rematch.status === "pending") {
+    didChange = maybeCreateRematchMatch(logger, nk, state, matchId) || didChange;
+  }
+
+  if (didChange) {
+    broadcastSnapshot(dispatcher, state, matchId);
+  }
 };
 
 const finalizeCompletedMatch = (
@@ -1792,6 +2017,8 @@ function matchInit(
   const privateCode = typeof params.privateCode === "string" ? normalizePrivateMatchCodeInput(params.privateCode) : "";
   const privateCreatorUserId =
     typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
+  const privateGuestUserId =
+    typeof params.privateGuestUserId === "string" ? params.privateGuestUserId : null;
   const botUserId = readStringField(params, ["botUserId", "bot_user_id"]);
   const botDifficultyValue = readStringField(params, ["botDifficulty", "bot_difficulty"]);
   const botDifficulty =
@@ -1854,7 +2081,7 @@ function matchInit(
     privateMatch,
     privateCode: isPrivateMatchCode(privateCode) ? privateCode : null,
     privateCreatorUserId,
-    privateGuestUserId: null,
+    privateGuestUserId,
     winRewardSource,
     allowsChallengeRewards,
     tournamentContext: resolveTournamentMatchContextFromParams(params),
@@ -1872,6 +2099,7 @@ function matchInit(
       dark: createPlayerDisconnectState(),
     },
     matchEnd: null,
+    rematch: createMatchRematchState(),
     resultRecorded: false,
   };
 
@@ -1989,6 +2217,14 @@ function matchLeave(
       finalizeCompletedMatch(logger, nk, dispatcher, state, getMatchId(ctx));
     } catch (error) {
       logMatchLoopError(logger, getMatchId(ctx), state, "leave_result_processing", error);
+    }
+  }
+
+  if (state.gameState.winner && state.resultRecorded) {
+    try {
+      syncRematchState(logger, nk, dispatcher, state, getMatchId(ctx), nowMs);
+    } catch (error) {
+      logMatchLoopError(logger, getMatchId(ctx), state, "leave_rematch_processing", error);
     }
   }
 
@@ -2141,6 +2377,16 @@ function matchLoop(
         return;
       }
 
+      if (opCode === MatchOpCode.REMATCH_RESPONSE) {
+        if (!isRematchResponsePayload(decodedPayload)) {
+          sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Rematch payload is invalid.");
+          return;
+        }
+
+        applyRematchResponse(dispatcher, state, senderUserId, decodedPayload, matchId);
+        return;
+      }
+
       sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", `Unsupported opcode ${opCode}.`);
     } catch (error) {
       logMatchLoopError(logger, matchId, state, "message_processing", error);
@@ -2180,6 +2426,17 @@ function matchLoop(
     }
   }
 
+  try {
+    syncRematchState(logger, nk, dispatcher, state, matchId, Date.now());
+  } catch (error) {
+    logMatchLoopError(logger, matchId, state, "rematch_processing", error);
+    try {
+      broadcastSnapshot(dispatcher, state, matchId);
+    } catch (snapshotError) {
+      logMatchLoopError(logger, matchId, state, "rematch_recovery_snapshot", snapshotError);
+    }
+  }
+
   return { state };
 }
 
@@ -2197,6 +2454,14 @@ function matchTerminate(
       finalizeCompletedMatch(logger, nk, dispatcher, state, getMatchId(ctx));
     } catch (error) {
       logMatchLoopError(logger, getMatchId(ctx), state, "terminate_result_processing", error);
+    }
+  }
+
+  if (state.gameState.winner && state.resultRecorded) {
+    try {
+      syncRematchState(logger, nk, dispatcher, state, getMatchId(ctx), Date.now());
+    } catch (error) {
+      logMatchLoopError(logger, getMatchId(ctx), state, "terminate_rematch_processing", error);
     }
   }
 
@@ -2699,6 +2964,37 @@ function broadcastPieceSelection(
   );
 }
 
+function applyRematchResponse(
+  dispatcher: nkruntime.MatchDispatcher,
+  state: MatchState,
+  userId: string,
+  payload: RematchResponsePayload,
+  matchId: string,
+): void {
+  if (state.rematch.status !== "pending") {
+    return;
+  }
+
+  if (!(userId in state.rematch.acceptedByUserId)) {
+    return;
+  }
+
+  if (state.rematch.deadlineMs !== null && Date.now() >= state.rematch.deadlineMs) {
+    if (expireRematchWindow(state)) {
+      broadcastSnapshot(dispatcher, state, matchId);
+    }
+    return;
+  }
+
+  if (state.rematch.acceptedByUserId[userId] === payload.accepted) {
+    return;
+  }
+
+  state.rematch.acceptedByUserId[userId] = payload.accepted;
+  state.revision += 1;
+  broadcastSnapshot(dispatcher, state, matchId);
+}
+
 function processCompletedMatchRatings(
   logger: nkruntime.Logger,
   nk: nkruntime.Nakama,
@@ -3199,6 +3495,7 @@ function broadcastSnapshot(dispatcher: nkruntime.MatchDispatcher, state: MatchSt
     reconnectDeadlineMs: reconnectGraceState?.reconnectDeadlineMs ?? null,
     reconnectRemainingMs: reconnectGraceState?.reconnectRemainingMs ?? null,
     matchEnd: state.matchEnd,
+    rematch: buildSnapshotRematch(state),
   };
 
   dispatcher.broadcastMessage(MatchOpCode.STATE_SNAPSHOT, encodePayload(payload));

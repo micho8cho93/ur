@@ -39,6 +39,13 @@ const makeSnapshot = (
       title: 'Guest',
     },
   },
+  rematch: {
+    status: 'idle',
+    deadlineMs: null,
+    acceptedUserIds: [],
+    nextMatchId: null,
+    nextPrivateCode: null,
+  },
   ...overrides,
 });
 
@@ -139,6 +146,13 @@ describe('useGameStore', () => {
         forfeitingUserId: null,
         message: null,
       },
+      authoritativeRematch: {
+        status: 'pending',
+        deadlineMs: 14_000,
+        acceptedUserIds: ['light-user'],
+        nextMatchId: null,
+        nextPrivateCode: null,
+      },
       authoritativeSnapshotReceivedAtMs: 9_000,
       rollCommandSender: jest.fn(),
       moveCommandSender: jest.fn(),
@@ -171,6 +185,7 @@ describe('useGameStore', () => {
     expect(state.authoritativeReconnectDeadlineMs).toBeNull();
     expect(state.authoritativeReconnectRemainingMs).toBeNull();
     expect(state.authoritativeMatchEnd).toBeNull();
+    expect(state.authoritativeRematch).toBeNull();
     expect(state.authoritativeSnapshotReceivedAtMs).toBeNull();
     expect(state.lastProgressionAward).toBeNull();
     expect(state.lastEloRatingChange).toBeNull();
@@ -273,6 +288,13 @@ describe('useGameStore', () => {
           forfeitingUserId: null,
           message: null,
         },
+        rematch: {
+          status: 'pending',
+          deadlineMs: 14_000,
+          acceptedUserIds: ['light-user'],
+          nextMatchId: 'match-2',
+          nextPrivateCode: 'ABCD1234',
+        },
       }),
     );
 
@@ -310,6 +332,13 @@ describe('useGameStore', () => {
       forfeitingUserId: null,
       message: null,
     });
+    expect(state.authoritativeRematch).toEqual({
+      status: 'pending',
+      deadlineMs: 14_000,
+      acceptedUserIds: ['light-user'],
+      nextMatchId: 'match-2',
+      nextPrivateCode: 'ABCD1234',
+    });
     expect(state.authoritativeSnapshotReceivedAtMs).toBe(new Date('2026-03-27T12:00:00.000Z').getTime());
   });
 
@@ -346,6 +375,7 @@ describe('useGameStore', () => {
     expect(state.serverRevision).toBe(0);
     expect(state.gameState).toEqual(engine.createInitialState());
     expect(state.authoritativeMatchEnd).toBeNull();
+    expect(state.authoritativeRematch).toBeNull();
   });
 
   it('offline roll() during rolling phase sets rollValue, moves to moving phase, and computes validMoves', () => {
@@ -570,6 +600,13 @@ describe('useGameStore', () => {
         forfeitingUserId: 'dark-user',
         message: null,
       },
+      authoritativeRematch: {
+        status: 'matched',
+        deadlineMs: 14_000,
+        acceptedUserIds: ['light-user', 'dark-user'],
+        nextMatchId: 'next-match',
+        nextPrivateCode: null,
+      },
       authoritativeSnapshotReceivedAtMs: 9_000,
       nakamaSession: { token: 'token' } as never,
       userId: 'user-1',
@@ -600,6 +637,7 @@ describe('useGameStore', () => {
     expect(state.authoritativeReconnectDeadlineMs).toBeNull();
     expect(state.authoritativeReconnectRemainingMs).toBeNull();
     expect(state.authoritativeMatchEnd).toBeNull();
+    expect(state.authoritativeRematch).toBeNull();
     expect(state.authoritativeSnapshotReceivedAtMs).toBeNull();
     expect(state.lastProgressionAward).toBeNull();
     expect(state.lastEloRatingChange).toBeNull();

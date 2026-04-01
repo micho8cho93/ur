@@ -5,7 +5,7 @@ import { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { UserChallengeProgressRpcResponse } from '@/shared/challenges';
 import { EloRatingChangeNotificationPayload, EloRatingProfileRpcResponse } from '@/shared/elo';
 import { ProgressionAwardResponse, ProgressionSnapshot } from '@/shared/progression';
-import { MatchEndPayload, StateSnapshotPayload, StateSnapshotPlayers } from '@/shared/urMatchProtocol';
+import { MatchEndPayload, StateSnapshotPayload, StateSnapshotPlayers, StateSnapshotRematch } from '@/shared/urMatchProtocol';
 import { createInitialState, getValidMoves, applyMove, rollDice } from '@/logic/engine';
 import { MatchPresenceEvent, Session } from '@heroiclabs/nakama-js';
 
@@ -51,6 +51,7 @@ interface GameStore {
   authoritativeReconnectDeadlineMs: number | null;
   authoritativeReconnectRemainingMs: number | null;
   authoritativeMatchEnd: MatchEndPayload | null;
+  authoritativeRematch: StateSnapshotRematch | null;
   authoritativeSnapshotReceivedAtMs: number | null;
   lastProgressionAward: ProgressionAwardResponse | null;
   lastEloRatingChange: EloRatingChangeNotificationPayload | null;
@@ -112,6 +113,7 @@ const EMPTY_AUTHORITATIVE_ONLINE_STATE = {
   authoritativeReconnectDeadlineMs: null,
   authoritativeReconnectRemainingMs: null,
   authoritativeMatchEnd: null,
+  authoritativeRematch: null,
   authoritativeSnapshotReceivedAtMs: null,
 } as const;
 
@@ -242,6 +244,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         authoritativeReconnectDeadlineMs: snapshot.reconnectDeadlineMs ?? null,
         authoritativeReconnectRemainingMs: snapshot.reconnectRemainingMs ?? null,
         authoritativeMatchEnd: snapshot.matchEnd ?? null,
+        authoritativeRematch: snapshot.rematch ?? null,
         authoritativeSnapshotReceivedAtMs: receivedAtMs,
       };
     });

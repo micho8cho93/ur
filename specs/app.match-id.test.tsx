@@ -5,6 +5,7 @@ import { getMatchConfig } from '@/logic/matchConfigs';
 import type { GameState, MoveAction } from '@/logic/types';
 import { CHALLENGE_DEFINITIONS, createDefaultUserChallengeProgressSnapshot } from '@/shared/challenges';
 import { buildProgressionSnapshot } from '@/shared/progression';
+import { MatchOpCode } from '@/shared/urMatchProtocol';
 
 const mockMatchDiceRollStage = jest.fn(({
   rolling,
@@ -218,6 +219,7 @@ const mockStoreState = {
   authoritativeReconnectDeadlineMs: null,
   authoritativeReconnectRemainingMs: null,
   authoritativeMatchEnd: null,
+  authoritativeRematch: null,
   authoritativeSnapshotReceivedAtMs: null,
   lastProgressionAward: null,
   lastEloRatingChange: null,
@@ -943,6 +945,7 @@ describe('GameRoom match dice stage', () => {
         authoritativeReconnectDeadlineMs: snapshot.reconnectDeadlineMs ?? null,
         authoritativeReconnectRemainingMs: snapshot.reconnectRemainingMs ?? null,
         authoritativeMatchEnd: snapshot.matchEnd ?? null,
+        authoritativeRematch: snapshot.rematch ?? null,
         authoritativeSnapshotReceivedAtMs: Date.now(),
       });
     });
@@ -973,6 +976,7 @@ describe('GameRoom match dice stage', () => {
     mockStoreState.authoritativeReconnectDeadlineMs = null;
     mockStoreState.authoritativeReconnectRemainingMs = null;
     mockStoreState.authoritativeMatchEnd = null;
+    mockStoreState.authoritativeRematch = null;
     mockStoreState.authoritativeSnapshotReceivedAtMs = null;
     mockAuthState.user = null;
     mockStoreState.setGameStateFromServer = jest.fn((nextState: GameState) => {
@@ -3502,6 +3506,140 @@ describe('GameRoom match dice stage', () => {
     });
 
     expect(mockRouterReplace).toHaveBeenCalledWith('/');
+  });
+
+  it('sends a rematch response from the online result modal', async () => {
+    mockSearchParams.id = 'online-rematch';
+    mockSearchParams.offline = '0';
+    mockSearchParams.modeId = 'standard';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-rematch',
+    });
+    mockStoreState.matchId = 'online-rematch';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockStoreState.authoritativePlayers = makeSnapshotPlayers();
+    mockStoreState.authoritativeMatchEnd = {
+      reason: 'completed',
+      winnerUserId: 'self-user',
+      loserUserId: 'opponent-user',
+      forfeitingUserId: null,
+      message: null,
+    };
+    mockStoreState.authoritativeRematch = {
+      status: 'pending',
+      deadlineMs: 5_000,
+      acceptedUserIds: [],
+      nextMatchId: null,
+      nextPrivateCode: null,
+    };
+    mockStoreState.authoritativeServerTimeMs = 1_000;
+    mockStoreState.authoritativeSnapshotReceivedAtMs = Date.now();
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByText('Rematch Window')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Rematch'));
+    });
+
+    expect(mockSocketSendMatchState).toHaveBeenCalledWith(
+      'online-rematch',
+      MatchOpCode.REMATCH_RESPONSE,
+      JSON.stringify({
+        type: 'rematch_response',
+        accepted: true,
+      }),
+    );
+  });
+
+  it('leaves the finished match and routes into the server-created rematch once nextMatchId arrives', async () => {
+    mockSearchParams.id = 'online-rematch-private';
+    mockSearchParams.offline = '0';
+    mockSearchParams.modeId = 'standard';
+    mockSearchParams.privateMatch = '1';
+    mockSearchParams.privateHost = '1';
+    mockSearchParams.privateCode = 'OLDCODE1';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-rematch-private',
+    });
+    mockStoreState.matchId = 'online-rematch-private';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockStoreState.authoritativePlayers = makeSnapshotPlayers();
+    mockStoreState.authoritativeMatchEnd = {
+      reason: 'completed',
+      winnerUserId: 'self-user',
+      loserUserId: 'opponent-user',
+      forfeitingUserId: null,
+      message: null,
+    };
+    mockStoreState.authoritativeRematch = {
+      status: 'pending',
+      deadlineMs: 5_000,
+      acceptedUserIds: ['self-user'],
+      nextMatchId: null,
+      nextPrivateCode: null,
+    };
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      mockStoreState.authoritativeRematch = {
+        status: 'matched',
+        deadlineMs: 5_000,
+        acceptedUserIds: ['self-user', 'opponent-user'],
+        nextMatchId: 'online-rematch-private-2',
+        nextPrivateCode: 'NEWCODE1',
+      };
+      view.rerender(<GameRoom />);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(mockSocketLeaveMatch).toHaveBeenCalledWith('online-rematch-private'));
+    await waitFor(() =>
+      expect(mockRouterReplace).toHaveBeenCalledWith({
+        pathname: '/match/[id]',
+        params: {
+          id: 'online-rematch-private-2',
+          modeId: 'standard',
+          privateMatch: '1',
+          privateHost: '1',
+          privateCode: 'NEWCODE1',
+        },
+      }),
+    );
   });
 
   it('resolves a stale final-win summary into a return-home tournament result modal', async () => {

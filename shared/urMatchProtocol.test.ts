@@ -5,6 +5,7 @@ import {
   isMatchEndPayload,
   isPieceSelectionBroadcastPayload,
   isPieceSelectionRequestPayload,
+  isRematchResponsePayload,
   isRollRequestPayload,
   isStateSnapshotPayload,
 } from './urMatchProtocol';
@@ -54,6 +55,13 @@ describe('urMatchProtocol', () => {
           loserUserId: 'dark-user',
           forfeitingUserId: null,
           message: null,
+        },
+        rematch: {
+          status: 'pending',
+          deadlineMs: 11_000,
+          acceptedUserIds: ['light-user'],
+          nextMatchId: null,
+          nextPrivateCode: null,
         },
       }),
     ).toBe(true);
@@ -235,6 +243,22 @@ describe('urMatchProtocol', () => {
         createdAtMs: 1_235,
       }),
     ).toBe(true);
+  });
+
+  it('accepts valid rematch response payloads', () => {
+    expect(
+      isRematchResponsePayload({
+        type: 'rematch_response',
+        accepted: true,
+      }),
+    ).toBe(true);
+
+    expect(
+      isRematchResponsePayload({
+        type: 'rematch_response',
+        accepted: 'yes',
+      }),
+    ).toBe(false);
   });
 
   it('rejects malformed emoji reaction payloads and broadcasts', () => {
