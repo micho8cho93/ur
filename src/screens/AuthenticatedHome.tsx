@@ -11,7 +11,6 @@ import {
   HOME_FREDOKA_FONT_FAMILY,
   HOME_SUPERCELL_FONT_FAMILY,
   HomeLayoutVariant,
-  resolveHomeMagicFontFamily,
   resolveHomeUsernameFontFamily,
 } from '@/src/home/homeTheme';
 import { useScreenTransition } from '@/src/transitions/ScreenTransitionContext';
@@ -71,8 +70,6 @@ export default function AuthenticatedHome() {
   const logoPanelWidth = isDesktopLayout ? logoWidth * 0.62 : logoWidth * 0.76;
   const logoPanelHeight = logoPanelWidth / HOME_LOGO_VISIBLE_ASPECT_RATIO;
   const usernameFontFamily = resolveHomeUsernameFontFamily(fontsLoaded);
-  const magicFontFamily = resolveHomeMagicFontFamily(fontsLoaded);
-  const headerBadgeLabel = user?.provider === 'guest' ? null : 'ROYAL CHALLENGER';
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -154,7 +151,7 @@ export default function AuthenticatedHome() {
       });
     }
 
-    return <View style={styles.utilitySpacer} />;
+    return null;
   };
 
   const renderUtilityAction = () => {
@@ -214,18 +211,6 @@ export default function AuthenticatedHome() {
             />
           </View>
         </View>
-
-        {headerBadgeLabel ? (
-          <Text
-            style={[
-              styles.headerHint,
-              isDesktopLayout ? styles.headerHintDesktop : styles.headerHintCompact,
-              { fontFamily: magicFontFamily },
-            ]}
-          >
-            {headerBadgeLabel}
-          </Text>
-        ) : null}
       </View>
 
       <View style={[styles.stage, { width: stageWidth }]}>
@@ -536,21 +521,6 @@ const styles = StyleSheet.create({
   logo: {
     width: '100%',
     height: '100%',
-  },
-  headerHint: {
-    color: '#FFE6A5',
-    textAlign: 'center',
-    letterSpacing: 0.2,
-  },
-  headerHintDesktop: {
-    fontSize: 13,
-    lineHeight: 15,
-    marginTop: 2,
-  },
-  headerHintCompact: {
-    fontSize: 11,
-    lineHeight: 13,
-    marginTop: 2,
   },
   stage: {
     width: '100%',
