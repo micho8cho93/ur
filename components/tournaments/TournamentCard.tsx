@@ -1,6 +1,8 @@
-import { Button } from '@/components/ui/Button';
-import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import { HomeActionButton } from '@/components/home/HomeActionButton';
+import {
+  resolveHomeFredokaFontFamily,
+  resolveHomeMagicFontFamily,
+} from '@/src/home/homeTheme';
 import {
   buildTournamentBotSummary,
   buildTournamentPrizeSummary,
@@ -13,13 +15,20 @@ import {
 } from '@/src/tournaments/presentation';
 import type { PublicTournamentSummary } from '@/src/tournaments/types';
 import React, { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import {
+  ImageBackground,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
 type TournamentCardProps = {
   tournament: PublicTournamentSummary;
   joining?: boolean;
   launching?: boolean;
   primaryTitle?: string;
+  fontLoaded?: boolean;
   onJoin: (tournament: PublicTournamentSummary) => void;
   onLaunch: (tournament: PublicTournamentSummary) => void;
   onViewStandings: (tournament: PublicTournamentSummary) => void;
@@ -27,36 +36,40 @@ type TournamentCardProps = {
 
 const chipToneStyles = {
   neutral: {
-    backgroundColor: 'rgba(247, 229, 203, 0.1)',
-    borderColor: 'rgba(247, 229, 203, 0.22)',
-    color: urTheme.colors.parchment,
+    backgroundColor: 'rgba(97, 70, 33, 0.13)',
+    borderColor: 'rgba(123, 95, 47, 0.22)',
+    color: '#5A3E1C',
   },
   info: {
-    backgroundColor: 'rgba(58, 107, 174, 0.22)',
-    borderColor: 'rgba(130, 182, 255, 0.42)',
-    color: 'rgba(216, 232, 251, 0.96)',
+    backgroundColor: 'rgba(66, 118, 196, 0.16)',
+    borderColor: 'rgba(97, 153, 232, 0.28)',
+    color: '#234C79',
   },
   success: {
-    backgroundColor: 'rgba(64, 118, 76, 0.22)',
-    borderColor: 'rgba(126, 208, 142, 0.44)',
-    color: '#D9F7D8',
+    backgroundColor: 'rgba(94, 150, 66, 0.15)',
+    borderColor: 'rgba(107, 173, 74, 0.28)',
+    color: '#375B22',
   },
   warning: {
-    backgroundColor: 'rgba(150, 89, 26, 0.22)',
-    borderColor: 'rgba(240, 192, 64, 0.42)',
-    color: '#F6DEAF',
+    backgroundColor: 'rgba(181, 116, 31, 0.14)',
+    borderColor: 'rgba(193, 130, 49, 0.28)',
+    color: '#6B4312',
   },
 } as const;
+
+const tournamentPanelArt = require('../../assets/images/tournament_large_panel_cropped.png');
 
 export const TournamentCard: React.FC<TournamentCardProps> = ({
   tournament,
   joining = false,
   launching = false,
   primaryTitle,
+  fontLoaded = false,
   onJoin,
   onLaunch,
   onViewStandings,
 }) => {
+  const { width } = useWindowDimensions();
   const [now, setNow] = useState(() => Date.now());
   const chip = getTournamentChipState(tournament);
   const primary = getTournamentCardPrimaryState(tournament);
@@ -66,6 +79,10 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
   const shouldTickCountdown = lobbyCountdownMs !== null && lobbyCountdownMs > 0;
   const botSummary = buildTournamentBotSummary(tournament);
   const countdownLabelTitle = tournament.bots.autoAdd ? 'Bot Fill Starts In' : 'Lobby Autofinalizes In';
+  const titleFontFamily = resolveHomeMagicFontFamily(fontLoaded);
+  const bodyFontFamily = resolveHomeFredokaFontFamily(fontLoaded);
+  const isCompact = width < 760;
+  const useStackedButtons = width < 560;
 
   useEffect(() => {
     setNow(Date.now());
@@ -84,208 +101,334 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
   }, [shouldTickCountdown, tournament.lobbyDeadlineAt]);
 
   return (
-    <View style={styles.card}>
-      <View pointerEvents="none" style={styles.cardTexture}>
-        <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.textureFill} />
-      </View>
-      <View pointerEvents="none" style={styles.cardBorder} />
-
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>{tournament.name}</Text>
+    <View style={styles.cardShell}>
+      <ImageBackground
+        source={tournamentPanelArt}
+        resizeMode="stretch"
+        style={[styles.panel, isCompact ? styles.panelCompact : styles.panelDesktop]}
+        imageStyle={styles.panelImage}
+      >
         <View
           style={[
-            styles.chip,
-            { backgroundColor: chipToneStyles[chip.tone].backgroundColor, borderColor: chipToneStyles[chip.tone].borderColor },
+            styles.panelViewport,
+            isCompact ? styles.panelViewportCompact : styles.panelViewportDesktop,
           ]}
         >
-          <Text style={[styles.chipText, { color: chipToneStyles[chip.tone].color }]}>{chip.label}</Text>
-        </View>
-      </View>
+          <View style={styles.headerBlock}>
+            <View
+              style={[
+                styles.chip,
+                {
+                  backgroundColor: chipToneStyles[chip.tone].backgroundColor,
+                  borderColor: chipToneStyles[chip.tone].borderColor,
+                },
+              ]}
+            >
+              <Text style={[styles.chipText, { color: chipToneStyles[chip.tone].color, fontFamily: bodyFontFamily }]}>
+                {chip.label}
+              </Text>
+            </View>
 
-      <Text numberOfLines={3} style={styles.description}>
-        {tournament.description}
-      </Text>
+            <Text style={[styles.kicker, { fontFamily: bodyFontFamily }]}>Public Tournament</Text>
 
-      <View style={styles.metaGrid}>
-        <View style={styles.metaCell}>
-          <Text style={styles.metaLabel}>Start</Text>
-          <Text style={styles.metaValue}>{formatTournamentDateTime(tournament.startAt)}</Text>
-        </View>
-        <View style={styles.metaCell}>
-          <Text style={styles.metaLabel}>Entrants</Text>
-          <Text style={styles.metaValue}>
-            {tournament.entrants}/{tournament.maxEntrants}
-          </Text>
-        </View>
-        <View style={styles.metaCell}>
-          <Text style={styles.metaLabel}>Mode</Text>
-          <Text style={styles.metaValue}>{getTournamentModeLabel(tournament.gameMode)}</Text>
-        </View>
-        <View style={styles.metaCell}>
-          <Text style={styles.metaLabel}>Region</Text>
-          <Text style={styles.metaValue}>{tournament.region}</Text>
-        </View>
-      </View>
+            <Text
+              numberOfLines={isCompact ? 2 : 1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
+              style={[
+                styles.title,
+                isCompact ? styles.titleCompact : styles.titleDesktop,
+                { fontFamily: titleFontFamily },
+              ]}
+            >
+              {tournament.name}
+            </Text>
 
-      <Text style={styles.prizeSummary}>{buildTournamentPrizeSummary(tournament)}</Text>
-      <Text style={styles.botSummary}>{botSummary}</Text>
+            <Text
+              numberOfLines={isCompact ? 3 : 2}
+              style={[
+                styles.description,
+                isCompact ? styles.descriptionCompact : styles.descriptionDesktop,
+                { fontFamily: bodyFontFamily },
+              ]}
+            >
+              {tournament.description}
+            </Text>
+          </View>
 
-      {lobbyCountdownLabel ? (
-        <View style={styles.countdownPanel}>
-          <Text style={styles.countdownLabel}>{countdownLabelTitle}</Text>
-          <Text style={styles.countdownValue}>{lobbyCountdownLabel}</Text>
+          <View style={styles.metaGrid}>
+            <View style={styles.metaCell}>
+              <Text style={[styles.metaLabel, { fontFamily: bodyFontFamily }]}>Start</Text>
+              <Text style={[styles.metaValue, { fontFamily: bodyFontFamily }]}>
+                {formatTournamentDateTime(tournament.startAt)}
+              </Text>
+            </View>
+            <View style={styles.metaCell}>
+              <Text style={[styles.metaLabel, { fontFamily: bodyFontFamily }]}>Entrants</Text>
+              <Text style={[styles.metaValue, { fontFamily: bodyFontFamily }]}>
+                {tournament.entrants}/{tournament.maxEntrants}
+              </Text>
+            </View>
+            <View style={styles.metaCell}>
+              <Text style={[styles.metaLabel, { fontFamily: bodyFontFamily }]}>Mode</Text>
+              <Text style={[styles.metaValue, { fontFamily: bodyFontFamily }]}>
+                {getTournamentModeLabel(tournament.gameMode)}
+              </Text>
+            </View>
+            <View style={styles.metaCell}>
+              <Text style={[styles.metaLabel, { fontFamily: bodyFontFamily }]}>Region</Text>
+              <Text style={[styles.metaValue, { fontFamily: bodyFontFamily }]}>
+                {tournament.region}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.summaryStack}>
+            <Text
+              numberOfLines={2}
+              style={[styles.summaryLine, styles.summaryLineGold, { fontFamily: bodyFontFamily }]}
+            >
+              {buildTournamentPrizeSummary(tournament)}
+            </Text>
+            <Text numberOfLines={2} style={[styles.summaryLine, { fontFamily: bodyFontFamily }]}>
+              {botSummary}
+            </Text>
+          </View>
+
+          {lobbyCountdownLabel ? (
+            <View style={styles.countdownPanel}>
+              <Text style={[styles.countdownLabel, { fontFamily: bodyFontFamily }]}>
+                {countdownLabelTitle}
+              </Text>
+              <Text style={[styles.countdownValue, { fontFamily: titleFontFamily }]}>
+                {lobbyCountdownLabel}
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={[styles.buttonRow, useStackedButtons && styles.buttonRowStacked]}>
+            <View style={[styles.buttonSlot, useStackedButtons && styles.buttonSlotStacked]}>
+              <HomeActionButton
+                title="View Standings"
+                tone="stone"
+                size={isCompact ? 'small' : 'regular'}
+                compact={isCompact}
+                fontLoaded={fontLoaded}
+                onPress={() => onViewStandings(tournament)}
+              />
+            </View>
+            <View style={[styles.buttonSlot, useStackedButtons && styles.buttonSlotStacked]}>
+              <HomeActionButton
+                title={resolvedPrimaryTitle}
+                tone="gold"
+                size={isCompact ? 'small' : 'regular'}
+                compact={isCompact}
+                fontLoaded={fontLoaded}
+                loading={primary.loading || joining || launching}
+                disabled={primary.disabled || joining || launching}
+                onPress={() => {
+                  if (primary.intent === 'join') {
+                    onJoin(tournament);
+                    return;
+                  }
+
+                  if (primary.intent === 'play') {
+                    onLaunch(tournament);
+                  }
+                }}
+              />
+            </View>
+          </View>
         </View>
-      ) : null}
-
-      <View style={styles.buttonRow}>
-        <Button
-          title="View Standings"
-          variant="outline"
-          style={styles.secondaryButton}
-          onPress={() => onViewStandings(tournament)}
-        />
-        <Button
-          title={resolvedPrimaryTitle}
-          loading={primary.loading || joining || launching}
-          disabled={primary.disabled || joining || launching}
-          style={styles.primaryButton}
-          onPress={() => {
-            if (primary.intent === 'join') {
-              onJoin(tournament);
-              return;
-            }
-
-            if (primary.intent === 'play') {
-              onLaunch(tournament);
-            }
-          }}
-        />
-      </View>
+      </ImageBackground>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  card: {
+  cardShell: {
     width: '100%',
-    borderRadius: urTheme.radii.lg,
-    borderWidth: 1.4,
-    borderColor: 'rgba(217, 164, 65, 0.74)',
-    padding: urTheme.spacing.lg,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(13, 15, 18, 0.64)',
-    ...boxShadow({
-      color: '#000',
-      opacity: 0.28,
-      offset: { width: 0, height: 10 },
-      blurRadius: 14,
-      elevation: 9,
-    }),
   },
-  cardTexture: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.16,
+  panel: {
+    width: '100%',
+    overflow: 'visible',
+    justifyContent: 'center',
   },
-  textureFill: {
-    ...StyleSheet.absoluteFillObject,
+  panelDesktop: {
+    minHeight: 424,
   },
-  cardBorder: {
-    ...StyleSheet.absoluteFillObject,
-    margin: urTheme.spacing.xs,
-    borderRadius: urTheme.radii.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 231, 192, 0.25)',
+  panelCompact: {
+    minHeight: 560,
   },
-  headerRow: {
-    gap: urTheme.spacing.sm,
-    marginBottom: urTheme.spacing.sm,
+  panelImage: {
+    width: '100%',
+    height: '100%',
   },
-  title: {
-    ...urTypography.title,
-    color: urTheme.colors.parchment,
-    fontSize: 28,
-    lineHeight: 32,
+  panelViewport: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  panelViewportDesktop: {
+    top: '13%',
+    right: '12%',
+    bottom: '14%',
+    left: '12%',
+  },
+  panelViewportCompact: {
+    top: '12%',
+    right: '11%',
+    bottom: '12%',
+    left: '11%',
+  },
+  headerBlock: {
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 14,
   },
   chip: {
-    alignSelf: 'flex-start',
-    borderRadius: urTheme.radii.pill,
+    alignSelf: 'center',
+    borderRadius: 999,
     borderWidth: 1,
-    paddingHorizontal: urTheme.spacing.sm + 2,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginBottom: 8,
   },
   chipText: {
-    ...urTypography.label,
-    fontSize: 10,
+    fontSize: 12,
+    lineHeight: 14,
+    textAlign: 'center',
+  },
+  kicker: {
+    color: 'rgba(107, 76, 30, 0.92)',
+    fontSize: 12,
+    lineHeight: 15,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  title: {
+    color: '#3D230D',
+    textAlign: 'center',
+    textShadowColor: 'rgba(255, 245, 220, 0.34)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
+    width: '100%',
+  },
+  titleDesktop: {
+    fontSize: 29,
+    lineHeight: 31,
+  },
+  titleCompact: {
+    fontSize: 24,
+    lineHeight: 27,
   },
   description: {
-    color: 'rgba(238, 223, 197, 0.85)',
-    lineHeight: 21,
-    marginBottom: urTheme.spacing.md,
+    color: 'rgba(70, 49, 23, 0.92)',
+    textAlign: 'center',
+    maxWidth: 740,
   },
-  metaGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: urTheme.spacing.sm,
-    marginBottom: urTheme.spacing.md,
+  descriptionDesktop: {
+    fontSize: 14,
+    lineHeight: 19,
+    marginTop: 6,
   },
-  metaCell: {
-    minWidth: 120,
-    flexGrow: 1,
-    borderRadius: urTheme.radii.md,
-    borderWidth: 1,
-    borderColor: 'rgba(247, 229, 203, 0.12)',
-    backgroundColor: 'rgba(247, 229, 203, 0.05)',
-    paddingHorizontal: urTheme.spacing.sm,
-    paddingVertical: urTheme.spacing.sm,
-  },
-  metaLabel: {
-    ...urTypography.label,
-    color: 'rgba(216, 232, 251, 0.72)',
-    fontSize: 10,
-    marginBottom: 4,
-  },
-  metaValue: {
-    color: urTheme.colors.shell,
+  descriptionCompact: {
     fontSize: 13,
     lineHeight: 18,
+    marginTop: 5,
   },
-  prizeSummary: {
-    color: 'rgba(246, 214, 151, 0.92)',
-    marginBottom: urTheme.spacing.sm,
+  metaGrid: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+    marginBottom: 12,
   },
-  botSummary: {
-    color: 'rgba(216, 232, 251, 0.82)',
-    marginBottom: urTheme.spacing.md,
+  metaCell: {
+    minWidth: 116,
+    maxWidth: 168,
+    flexGrow: 1,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(123, 95, 47, 0.18)',
+    backgroundColor: 'rgba(255, 249, 235, 0.52)',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  metaLabel: {
+    color: 'rgba(115, 83, 35, 0.88)',
+    fontSize: 10,
+    lineHeight: 12,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 3,
+  },
+  metaValue: {
+    color: '#49301A',
+    fontSize: 13,
+    lineHeight: 16,
+    textAlign: 'center',
+  },
+  summaryStack: {
+    width: '100%',
+    gap: 4,
+    marginBottom: 12,
+  },
+  summaryLine: {
+    color: 'rgba(73, 48, 26, 0.92)',
+    fontSize: 13,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
+  summaryLineGold: {
+    color: '#7A571F',
   },
   countdownPanel: {
-    marginBottom: urTheme.spacing.md,
-    borderRadius: urTheme.radii.md,
+    minWidth: 210,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(240, 192, 64, 0.36)',
-    backgroundColor: 'rgba(150, 89, 26, 0.16)',
-    paddingHorizontal: urTheme.spacing.sm,
-    paddingVertical: urTheme.spacing.sm,
+    borderColor: 'rgba(187, 136, 56, 0.26)',
+    backgroundColor: 'rgba(255, 247, 225, 0.62)',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    alignItems: 'center',
     gap: 4,
+    marginBottom: 14,
   },
   countdownLabel: {
-    ...urTypography.label,
-    color: '#F6DEAF',
-    fontSize: 10,
+    color: '#7A571F',
+    fontSize: 11,
+    lineHeight: 13,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
   },
   countdownValue: {
-    color: urTheme.colors.parchment,
-    fontSize: 24,
-    lineHeight: 28,
-    fontFamily: urTypography.title.fontFamily,
+    color: '#3B2412',
+    fontSize: 22,
+    lineHeight: 24,
+    textAlign: 'center',
   },
   buttonRow: {
+    width: '100%',
     flexDirection: 'row',
-    gap: urTheme.spacing.sm,
+    justifyContent: 'center',
+    gap: 12,
   },
-  secondaryButton: {
-    flex: 1,
+  buttonRowStacked: {
+    flexDirection: 'column',
+    alignItems: 'center',
   },
-  primaryButton: {
+  buttonSlot: {
     flex: 1,
+    maxWidth: 260,
+  },
+  buttonSlotStacked: {
+    width: '100%',
+    maxWidth: '100%',
   },
 });

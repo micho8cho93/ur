@@ -1,18 +1,36 @@
 import { XpRewardBadge } from '@/components/progression/XpRewardBadge';
-import { Button } from '@/components/ui/Button';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
+import { SketchButton } from '@/components/ui/SketchButton';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
-import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import { urTheme } from '@/constants/urTheme';
 import { GAME_MODE_CONFIGS, type MatchModeId } from '@/logic/matchConfigs';
 import { getXpAwardAmount } from '@/shared/progression';
+import {
+  HOME_FREDOKA_FONT_FAMILY,
+  HOME_SUPERCELL_FONT_FAMILY,
+  resolveHomeFredokaFontFamily,
+  resolveHomeMagicFontFamily,
+} from '@/src/home/homeTheme';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useRouter } from 'expo-router';
+import { useFonts } from 'expo-font';
+import { Stack, useRouter } from 'expo-router';
 import React from 'react';
-import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import {
+  ImageBackground,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const homeWideBackground = require('../../assets/images/home_bg.png');
 const homeMobileBackground = require('../../assets/images/home_bg_mobile.png');
+const quickPlayModePanel = require('../../assets/images/quick_play_mode_panel_cropped.png');
+
+const MODE_PANEL_ART_ASPECT_RATIO = 1113 / 458;
 
 const MODE_ICONS: Record<Exclude<MatchModeId, 'standard'>, keyof typeof MaterialIcons.glyphMap> = {
   gameMode_1_piece: 'casino',
@@ -26,166 +44,257 @@ const MODE_ICONS: Record<Exclude<MatchModeId, 'standard'>, keyof typeof Material
 
 export default function GameModesScreen() {
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
+  const [fontsLoaded] = useFonts({
+    [HOME_FREDOKA_FONT_FAMILY]: require('../../assets/fonts/Fredoka-VariableFont_wdth,wght.ttf'),
+    [HOME_SUPERCELL_FONT_FAMILY]: require('../../assets/fonts/Supercell-Magic-Regular.ttf'),
+  });
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
   const isCompactLayout = width < 820;
   const isDesktopViewport = Platform.OS === 'web' && width >= 920;
   const isTightDesktopViewport = isDesktopViewport && height <= 820;
   const useThreeColumnLayout = isDesktopViewport && width >= 1100;
+  const horizontalPadding = isDesktopViewport ? urTheme.spacing.lg : urTheme.spacing.md;
+  const topPadding = insets.top + (isDesktopViewport ? 12 : 8);
+  const bottomPadding = insets.bottom + (isCompactLayout ? urTheme.spacing.xl : urTheme.spacing.lg);
+  const stageWidth = useThreeColumnLayout
+    ? Math.min(width - horizontalPadding * 2, 1100)
+    : isDesktopViewport
+      ? Math.min(width - horizontalPadding * 2, 940)
+      : isCompactLayout
+        ? Math.min(width - horizontalPadding * 2, 430)
+        : Math.min(width - horizontalPadding * 2, 780);
+  const titleFontFamily = resolveHomeMagicFontFamily(fontsLoaded);
+  const bodyFontFamily = resolveHomeFredokaFontFamily(fontsLoaded);
 
   return (
-    <View style={styles.screen}>
-      <WideScreenBackground
-        source={homeWideBackground}
-        visible={showWideBackground}
-        overlayColor="rgba(7, 10, 15, 0.18)"
-      />
-      <MobileBackground
-        source={homeMobileBackground}
-        visible={showMobileBackground}
-        overlayColor="rgba(7, 10, 15, 0.18)"
-      />
-      <Image
-        source={urTextures.woodDark}
-        resizeMode="repeat"
-        style={[styles.texture, showWideBackground && styles.textureWide]}
-      />
-      <View style={styles.topGlow} />
-      <View style={styles.bottomShade} />
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.screen}>
+        <WideScreenBackground
+          source={homeWideBackground}
+          visible={showWideBackground}
+          overlayColor="rgba(56, 30, 13, 0.08)"
+        />
+        <MobileBackground
+          source={homeMobileBackground}
+          visible={showMobileBackground}
+          overlayColor="rgba(56, 30, 13, 0.08)"
+        />
+        <View style={styles.backgroundTint} />
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          isDesktopViewport && styles.scrollContentDesktop,
-          isTightDesktopViewport && styles.scrollContentDesktopTight,
-        ]}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-      >
-        <View style={[styles.hero, isDesktopViewport && styles.heroDesktop, isTightDesktopViewport && styles.heroDesktopTight]}>
-          <Text style={styles.eyebrow}>Game Modes</Text>
-          <Text style={styles.title}>Offline Game Variants</Text>
-        </View>
-
-        <View
-          style={[
-            styles.gridList,
-            isCompactLayout && styles.gridListCompact,
-            isDesktopViewport && styles.gridListDesktop,
-            useThreeColumnLayout && styles.gridListThreeColumn,
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            isDesktopViewport && styles.scrollContentDesktop,
+            isTightDesktopViewport && styles.scrollContentDesktopTight,
+            {
+              minHeight: height,
+              paddingTop: topPadding,
+              paddingBottom: bottomPadding,
+              paddingHorizontal: horizontalPadding,
+            },
           ]}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
         >
-          {GAME_MODE_CONFIGS.map((config) => (
-            <View
-              key={config.modeId}
+          <View style={styles.topBar}>
+            <SketchButton
+              label="Back"
+              accessibilityLabel="Back"
+              onPress={() => router.back()}
+              iconName="arrow-back"
+              fontFamily={bodyFontFamily}
+            />
+          </View>
+
+          <View
+            style={[
+              styles.hero,
+              isDesktopViewport && styles.heroDesktop,
+              isTightDesktopViewport && styles.heroDesktopTight,
+              { maxWidth: stageWidth },
+            ]}
+          >
+            <Text
               style={[
-                styles.card,
-                isCompactLayout && styles.cardCompact,
-                isDesktopViewport && styles.cardDesktop,
-                useThreeColumnLayout && styles.cardThreeColumn,
+                styles.title,
+                isCompactLayout ? styles.titleCompact : styles.titleDesktop,
+                { fontFamily: titleFontFamily },
               ]}
             >
-              <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
-              <View style={styles.cardBorder} />
-              {config.allowsXp ? (
-                <XpRewardBadge
-                  amount={getXpAwardAmount(config.offlineWinRewardSource)}
-                  style={styles.rewardBadge}
-                />
-              ) : null}
+              Offline Games
+            </Text>
+            <Text
+              style={[
+                styles.subtitle,
+                isCompactLayout ? styles.subtitleCompact : styles.subtitleDesktop,
+                { fontFamily: bodyFontFamily },
+              ]}
+            >
+              Choose a local ruleset and jump straight into a match.
+            </Text>
+          </View>
 
-              <View style={styles.cardHeader}>
-                <View style={styles.iconWrap}>
-                  <MaterialIcons
-                    name={MODE_ICONS[config.modeId as Exclude<MatchModeId, 'standard'>]}
-                    size={20}
-                    color={urTheme.colors.goldBright}
+          <View style={[styles.stage, { width: stageWidth }]}>
+            <View
+              style={[
+                styles.gridList,
+                isCompactLayout && styles.gridListCompact,
+                isDesktopViewport && styles.gridListDesktop,
+                useThreeColumnLayout && styles.gridListThreeColumn,
+              ]}
+            >
+              {GAME_MODE_CONFIGS.map((config) => (
+                <View
+                  key={config.modeId}
+                  style={[
+                    styles.cardShell,
+                    isCompactLayout && styles.cardShellCompact,
+                    isDesktopViewport && styles.cardShellDesktop,
+                    useThreeColumnLayout && styles.cardShellThreeColumn,
+                  ]}
+                >
+                  <ImageBackground
+                    source={quickPlayModePanel}
+                    resizeMode="stretch"
+                    style={styles.cardPanel}
+                    imageStyle={styles.cardPanelImage}
+                  >
+                    {config.allowsXp ? (
+                      <XpRewardBadge
+                        amount={getXpAwardAmount(config.offlineWinRewardSource)}
+                        style={[
+                          styles.rewardBadge,
+                          useThreeColumnLayout && styles.rewardBadgeThreeColumn,
+                        ]}
+                      />
+                    ) : null}
+                    <View
+                      style={[
+                        styles.cardPanelContent,
+                        isCompactLayout && styles.cardPanelContentCompact,
+                        useThreeColumnLayout && styles.cardPanelContentThreeColumn,
+                      ]}
+                    >
+                      <View style={styles.cardTitleGroup}>
+                        <View style={styles.iconWrap}>
+                          <MaterialIcons
+                            name={MODE_ICONS[config.modeId as Exclude<MatchModeId, 'standard'>]}
+                            size={useThreeColumnLayout ? 16 : 18}
+                            color="#8A611B"
+                          />
+                        </View>
+                        <Text
+                          numberOfLines={2}
+                          style={[
+                            styles.cardTitle,
+                            useThreeColumnLayout && styles.cardTitleThreeColumn,
+                            { fontFamily: titleFontFamily },
+                          ]}
+                        >
+                          {config.displayName}
+                        </Text>
+                      </View>
+
+                      <Text
+                        numberOfLines={useThreeColumnLayout ? 3 : 2}
+                        style={[
+                          styles.cardSubtitle,
+                          useThreeColumnLayout && styles.cardSubtitleThreeColumn,
+                          { fontFamily: bodyFontFamily },
+                        ]}
+                      >
+                        {config.selectionSubtitle}
+                      </Text>
+                    </View>
+                  </ImageBackground>
+
+                  <SketchButton
+                    label={`Choose ${config.displayName}`}
+                    accessibilityLabel={`Choose ${config.displayName}`}
+                    onPress={() => router.push(`/(game)/bot?modeId=${config.modeId}`)}
+                    wide
+                    fontFamily={bodyFontFamily}
                   />
                 </View>
-                <View style={styles.copyColumn}>
-                  <Text style={styles.cardTitle}>{config.displayName}</Text>
-                  <Text style={styles.cardSubtitle}>{config.selectionSubtitle}</Text>
-                </View>
-              </View>
-
-              <Button
-                title={`Choose ${config.displayName}`}
-                onPress={() => router.push(`/(game)/bot?modeId=${config.modeId}`)}
-              />
+              ))}
             </View>
-          ))}
-        </View>
-      </ScrollView>
-    </View>
+          </View>
+        </ScrollView>
+      </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: urTheme.colors.night,
+    backgroundColor: '#43250F',
   },
   scrollContent: {
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.lg,
+    alignItems: 'center',
   },
   scrollContentDesktop: {
     justifyContent: 'center',
-    paddingHorizontal: urTheme.spacing.lg,
-    paddingVertical: urTheme.spacing.lg,
   },
   scrollContentDesktopTight: {
-    paddingVertical: urTheme.spacing.md,
+    justifyContent: 'flex-start',
   },
-  texture: {
+  backgroundTint: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.28,
+    backgroundColor: 'rgba(56, 30, 13, 0.08)',
   },
-  textureWide: {
-    opacity: 0.12,
-  },
-  topGlow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '32%',
-    backgroundColor: 'rgba(180, 120, 30, 0.12)',
-  },
-  bottomShade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '48%',
-    backgroundColor: 'rgba(0, 0, 0, 0.24)',
+  topBar: {
+    width: '100%',
+    alignItems: 'flex-start',
+    marginBottom: urTheme.spacing.sm,
   },
   hero: {
     alignItems: 'center',
     marginBottom: urTheme.spacing.lg,
-    paddingTop: urTheme.spacing.md,
   },
   heroDesktop: {
-    marginBottom: urTheme.spacing.md,
-    paddingTop: urTheme.spacing.xs,
+    marginBottom: urTheme.spacing.md + 2,
   },
   heroDesktopTight: {
     marginBottom: urTheme.spacing.sm,
   },
-  eyebrow: {
-    ...urTypography.label,
-    color: urTheme.colors.parchment,
-    fontSize: 11,
-    marginBottom: urTheme.spacing.xs,
-  },
   title: {
-    ...urTypography.title,
-    color: urTheme.colors.ivory,
+    color: '#22160C',
     textAlign: 'center',
+    textShadowColor: 'rgba(255, 244, 221, 0.32)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
+  },
+  titleDesktop: {
     fontSize: 34,
-    lineHeight: 40,
-    maxWidth: 520,
+    lineHeight: 38,
+  },
+  titleCompact: {
+    fontSize: 28,
+    lineHeight: 32,
+  },
+  subtitle: {
+    color: 'rgba(34, 22, 12, 0.88)',
+    textAlign: 'center',
+    maxWidth: 560,
+  },
+  subtitleDesktop: {
+    fontSize: 16,
+    lineHeight: 22,
+    marginTop: urTheme.spacing.sm,
+  },
+  subtitleCompact: {
+    fontSize: 15,
+    lineHeight: 21,
+    marginTop: urTheme.spacing.xs,
+  },
+  stage: {
+    width: '100%',
+    marginTop: urTheme.spacing.md,
   },
   gridList: {
     flexDirection: 'row',
@@ -193,89 +302,110 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     rowGap: urTheme.spacing.md,
     width: '100%',
-    maxWidth: 760,
     alignSelf: 'center',
   },
   gridListCompact: {
     flexDirection: 'column',
+    gap: urTheme.spacing.lg,
   },
   gridListDesktop: {
-    maxWidth: 940,
     rowGap: urTheme.spacing.sm,
   },
   gridListThreeColumn: {
-    maxWidth: 1120,
+    rowGap: urTheme.spacing.md,
   },
-  card: {
+  cardShell: {
     width: '48.5%',
-    minHeight: 220,
-    overflow: 'hidden',
-    borderRadius: urTheme.radii.lg,
-    borderWidth: 1.3,
-    borderColor: 'rgba(217, 164, 65, 0.7)',
-    backgroundColor: 'rgba(13, 15, 18, 0.66)',
-    padding: urTheme.spacing.lg,
-    ...boxShadow({
-      color: '#000',
-      opacity: 0.24,
-      offset: { width: 0, height: 10 },
-      blurRadius: 14,
-      elevation: 8,
-    }),
+    alignItems: 'center',
+    gap: 14,
   },
-  cardCompact: {
+  cardShellCompact: {
     width: '100%',
   },
-  cardDesktop: {
-    minHeight: 196,
-    padding: urTheme.spacing.md + 2,
+  cardShellDesktop: {
+    width: '48.75%',
   },
-  cardThreeColumn: {
+  cardShellThreeColumn: {
     width: '31.8%',
-    minHeight: 188,
   },
-  cardTexture: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.14,
+  cardPanel: {
+    width: '100%',
+    aspectRatio: MODE_PANEL_ART_ASPECT_RATIO,
+    justifyContent: 'center',
+    overflow: 'visible',
   },
-  cardBorder: {
-    ...StyleSheet.absoluteFillObject,
-    margin: urTheme.spacing.xs,
-    borderRadius: urTheme.radii.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 230, 181, 0.22)',
+  cardPanelImage: {
+    width: '100%',
+    height: '100%',
   },
-  rewardBadge: {
-    marginBottom: urTheme.spacing.md,
+  cardPanelContent: {
+    position: 'absolute',
+    top: '17%',
+    left: '16%',
+    right: '16%',
+    bottom: '18%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  cardHeader: {
+  cardPanelContentCompact: {
+    top: '16%',
+    left: '15%',
+    right: '15%',
+    bottom: '17%',
+  },
+  cardPanelContentThreeColumn: {
+    left: '14%',
+    right: '14%',
+  },
+  cardTitleGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: urTheme.spacing.sm,
-    marginBottom: urTheme.spacing.md,
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    marginBottom: 8,
   },
   iconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.46)',
-    backgroundColor: 'rgba(201, 152, 32, 0.14)',
+    borderColor: 'rgba(138, 97, 27, 0.22)',
+    backgroundColor: 'rgba(138, 97, 27, 0.08)',
+    flexShrink: 0,
   },
-  copyColumn: {
-    flex: 1,
+  rewardBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    minWidth: 78,
+    transform: [{ scale: 0.86 }],
+  },
+  rewardBadgeThreeColumn: {
+    minWidth: 70,
+    transform: [{ scale: 0.8 }],
   },
   cardTitle: {
-    ...urTypography.title,
-    color: urTheme.colors.ivory,
-    fontSize: 24,
-    lineHeight: 28,
+    color: '#4B2E12',
+    fontSize: 17,
+    lineHeight: 18,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
+  cardTitleThreeColumn: {
+    fontSize: 15,
+    lineHeight: 16,
   },
   cardSubtitle: {
-    color: 'rgba(239, 224, 198, 0.84)',
-    lineHeight: 21,
-    marginTop: 2,
+    color: '#6B5740',
+    fontSize: 13,
+    lineHeight: 16,
+    textAlign: 'center',
+  },
+  cardSubtitleThreeColumn: {
+    fontSize: 12,
+    lineHeight: 14,
   },
 });

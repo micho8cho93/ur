@@ -1,34 +1,122 @@
-import { TournamentCard } from '@/components/tournaments/TournamentCard';
+import { HomeActionButton } from '@/components/home/HomeActionButton';
 import { XpRewardBadge } from '@/components/progression/XpRewardBadge';
-import { Button } from '@/components/ui/Button';
+import { TournamentCard } from '@/components/tournaments/TournamentCard';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
-import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
-import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import { SketchButton } from '@/components/ui/SketchButton';
+import {
+  MIN_WIDE_WEB_BACKGROUND_WIDTH,
+  WideScreenBackground,
+} from '@/components/ui/WideScreenBackground';
+import { urTheme } from '@/constants/urTheme';
 import { LobbyMode, useMatchmaking } from '@/hooks/useMatchmaking';
 import { PRIVATE_MATCH_OPTIONS } from '@/logic/matchConfigs';
 import { getXpAwardAmount } from '@/shared/progression';
-import { PRIVATE_MATCH_CODE_LENGTH, isPrivateMatchCode, normalizePrivateMatchCodeInput } from '@/shared/privateMatchCode';
+import {
+  PRIVATE_MATCH_CODE_LENGTH,
+  isPrivateMatchCode,
+  normalizePrivateMatchCodeInput,
+} from '@/shared/privateMatchCode';
+import {
+  HOME_FREDOKA_FONT_FAMILY,
+  HOME_SUPERCELL_FONT_FAMILY,
+  resolveHomeFredokaFontFamily,
+  resolveHomeMagicFontFamily,
+} from '@/src/home/homeTheme';
 import { useTournamentList } from '@/src/tournaments/useTournamentList';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFonts } from 'expo-font';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Image,
+  ImageBackground,
   Platform,
   ScrollView,
   Share,
+  StyleProp,
   StyleSheet,
   Text,
   TextInput,
   View,
+  ViewStyle,
   useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const multiplayerWideBackground = require('../../assets/images/multiplayer_bg.png');
-const multiplayerMobileBackground = require('../../assets/images/multiplayer_bg_mobile.png');
+const homeWideBackground = require('../../assets/images/home_bg.png');
+const homeMobileBackground = require('../../assets/images/home_bg_mobile.png');
+const quickPlayModePanel = require('../../assets/images/quick_play_mode_panel_cropped.png');
+
+type OnlineActionPanelProps = {
+  title: string;
+  subtitle: string;
+  titleFontFamily: string;
+  bodyFontFamily: string;
+  compact: boolean;
+  rewardAmount?: number;
+  style?: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+};
+
+function OnlineActionPanel({
+  title,
+  subtitle,
+  titleFontFamily,
+  bodyFontFamily,
+  compact,
+  rewardAmount,
+  style,
+  children,
+}: OnlineActionPanelProps) {
+  return (
+    <ImageBackground
+      source={quickPlayModePanel}
+      resizeMode="stretch"
+      style={[
+        styles.modePanel,
+        compact ? styles.modePanelCompact : styles.modePanelDesktop,
+        style,
+      ]}
+      imageStyle={styles.modePanelImage}
+    >
+      {typeof rewardAmount === 'number' ? (
+        <XpRewardBadge
+          amount={rewardAmount}
+          style={[styles.modeRewardBadge, compact && styles.modeRewardBadgeCompact]}
+        />
+      ) : null}
+
+      <View
+        style={[
+          styles.modePanelContent,
+          compact ? styles.modePanelContentCompact : styles.modePanelContentDesktop,
+        ]}
+      >
+        <Text
+          style={[
+            styles.modePanelTitle,
+            compact ? styles.modePanelTitleCompact : styles.modePanelTitleDesktop,
+            { fontFamily: titleFontFamily },
+          ]}
+        >
+          {title}
+        </Text>
+        <Text
+          style={[
+            styles.modePanelSubtitle,
+            { fontFamily: bodyFontFamily },
+          ]}
+        >
+          {subtitle}
+        </Text>
+
+        <View style={styles.modePanelBody}>{children}</View>
+      </View>
+    </ImageBackground>
+  );
+}
 
 export default function Lobby() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { mode: rawMode } = useLocalSearchParams<{ mode?: string }>();
   const mode: LobbyMode = useMemo(() => (rawMode === 'online' ? 'online' : 'bot'), [rawMode]);
   const router = useRouter();
@@ -57,8 +145,27 @@ export default function Lobby() {
     joiningRunId,
     launchingRunId,
   } = useTournamentList({ featured: true, limit: 12 });
+  const [fontsLoaded] = useFonts({
+    [HOME_FREDOKA_FONT_FAMILY]: require('../../assets/fonts/Fredoka-VariableFont_wdth,wght.ttf'),
+    [HOME_SUPERCELL_FONT_FAMILY]: require('../../assets/fonts/Supercell-Magic-Regular.ttf'),
+  });
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
+  const isCompactLayout = width < 820;
+  const isDesktopViewport = Platform.OS === 'web' && width >= 920;
+  const useThreeColumnLayout = Platform.OS === 'web' && width >= 1180;
+  const horizontalPadding = isDesktopViewport ? urTheme.spacing.lg : urTheme.spacing.md;
+  const topPadding = insets.top + (isDesktopViewport ? 12 : 8);
+  const bottomPadding = insets.bottom + (isCompactLayout ? urTheme.spacing.xl : urTheme.spacing.lg);
+  const stageWidth = useThreeColumnLayout
+    ? Math.min(width - horizontalPadding * 2, 1180)
+    : isDesktopViewport
+      ? Math.min(width - horizontalPadding * 2, 980)
+      : isCompactLayout
+        ? Math.min(width - horizontalPadding * 2, 430)
+        : Math.min(width - horizontalPadding * 2, 820);
+  const titleFontFamily = resolveHomeMagicFontFamily(fontsLoaded);
+  const bodyFontFamily = resolveHomeFredokaFontFamily(fontsLoaded);
 
   useEffect(() => {
     if (mode === 'bot') {
@@ -122,7 +229,8 @@ export default function Lobby() {
   const isFindingOpponent = isBusy && activeAction === 'find_opponent';
   const isCreatingPrivateGame = isBusy && activeAction === 'create_private';
   const isJoiningPrivateGame = isBusy && activeAction === 'join_private';
-  const pendingPrivateOption = PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === pendingPrivateMode) ?? null;
+  const pendingPrivateOption =
+    PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === pendingPrivateMode) ?? null;
   const createdPrivateOption =
     PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === createdPrivateMatch?.modeId) ?? null;
   const normalizedPrivateCodeInput = normalizePrivateMatchCodeInput(privateCodeInput);
@@ -179,108 +287,169 @@ export default function Lobby() {
   })();
 
   return (
-    <View style={styles.screen}>
-      <WideScreenBackground
-        source={multiplayerWideBackground}
-        visible={showWideBackground}
-        overlayColor="rgba(7, 10, 16, 0.24)"
-      />
-      <MobileBackground
-        source={multiplayerMobileBackground}
-        visible={showMobileBackground}
-        overlayColor="rgba(7, 10, 16, 0.24)"
-      />
-      <View pointerEvents="none" style={[styles.pageTexture, showWideBackground && styles.pageTextureWide]}>
-        <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.textureFill} />
-      </View>
-      <View pointerEvents="none" style={styles.pageGlow} />
-      <View pointerEvents="none" style={styles.pageShade} />
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.screen}>
+        <WideScreenBackground
+          source={homeWideBackground}
+          visible={showWideBackground}
+          overlayColor="rgba(56, 30, 13, 0.08)"
+        />
+        <MobileBackground
+          source={homeMobileBackground}
+          visible={showMobileBackground}
+          overlayColor="rgba(56, 30, 13, 0.08)"
+        />
+        <View style={styles.backgroundTint} />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.hero}>
-          <Text style={styles.pageTitle}>Online Play</Text>
-          <Text style={styles.pageSubtitle}>
-            Match publicly, create a private table with a short code, or join one your friend already opened.
-          </Text>
-
-          <View style={styles.onlineCountRow}>
-            <View style={[styles.onlineDot, onlineCount && onlineCount > 0 ? styles.onlineDotActive : null]} />
-            <Text style={styles.onlineCountText}>
-              {onlineCount !== null
-                ? `${onlineCount} player${onlineCount !== 1 ? 's' : ''} on site`
-                : 'Checking who is on site...'}
-            </Text>
-          </View>
-
-          {errorMessage ? (
-            <View style={styles.errorBanner}>
-              <Text style={styles.errorBannerText}>{errorMessage}</Text>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.featuredSection}>
-          <View style={styles.featuredHeader}>
-            <View style={styles.featuredHeaderCopy}>
-              <Text style={styles.featuredEyebrow}>Featured Tournaments</Text>
-              <Text style={styles.featuredTitle}>Open runs ready for public play</Text>
-              <Text style={styles.featuredSubtitle}>
-                Inspect the standings before you commit, then join or launch a tournament match without disturbing the usual public and private queue flows.
-              </Text>
-            </View>
-            <Button
-              title="See all tournaments"
-              variant="outline"
-              style={styles.featuredHeaderButton}
-              onPress={() => router.push('/tournaments' as never)}
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              minHeight: height,
+              paddingTop: topPadding,
+              paddingBottom: bottomPadding,
+              paddingHorizontal: horizontalPadding,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.topBar}>
+            <SketchButton
+              label="Back"
+              accessibilityLabel="Back"
+              onPress={() => router.back()}
+              iconName="arrow-back"
+              fontFamily={bodyFontFamily}
             />
           </View>
 
-          {tournamentErrorMessage ? (
-            <View style={styles.featuredErrorBanner}>
-              <Text style={styles.errorBannerText}>{tournamentErrorMessage}</Text>
-            </View>
-          ) : null}
+          <View style={[styles.stage, { width: stageWidth }]}>
 
-          {isLoadingFeaturedTournaments ? (
-            <View style={styles.featuredEmptyState}>
-              <Text style={styles.featuredEmptyTitle}>Loading featured tournaments...</Text>
-              <Text style={styles.featuredEmptyText}>Checking the current public runs from the tournament archive.</Text>
-            </View>
-          ) : featuredTournaments.length === 0 ? (
-            <View style={styles.featuredEmptyState}>
-              <Text style={styles.featuredEmptyTitle}>No featured tournaments yet</Text>
-              <Text style={styles.featuredEmptyText}>
-                Public tournament runs will appear here as soon as operators open them for play.
+            <View style={styles.hero}>
+              <Text
+                style={[
+                  styles.pageTitle,
+                  isCompactLayout ? styles.pageTitleCompact : styles.pageTitleDesktop,
+                  { fontFamily: titleFontFamily },
+                ]}
+              >
+                Play Online
               </Text>
-            </View>
-          ) : (
-            <View style={styles.featuredGrid}>
-              {featuredTournaments.map((tournament) => (
-                <View key={tournament.runId} style={styles.featuredCardCell}>
-                  <TournamentCard
-                    tournament={tournament}
-                    joining={joiningRunId === tournament.runId}
-                    launching={launchingRunId === tournament.runId}
-                    primaryTitle={confirmJoinRunId === tournament.runId ? 'Confirm' : undefined}
-                    onJoin={(selected) => {
-                      if (confirmJoinRunId !== selected.runId) {
-                        setConfirmJoinRunId(selected.runId);
-                        return;
-                      }
+              <Text style={[styles.pageSubtitle, { fontFamily: bodyFontFamily }]}>
+                Match publicly, set up a private room, or jump into a tournament run without leaving the new home-page stage.
+              </Text>
 
-                      void (async () => {
-                        const joinedTournament = await joinTournament(selected.runId);
-                        if (!joinedTournament?.membership.isJoined) {
+              <View style={styles.onlineCountBadge}>
+                <View
+                  style={[
+                    styles.onlineDot,
+                    onlineCount && onlineCount > 0 ? styles.onlineDotActive : null,
+                  ]}
+                />
+                <Text style={[styles.onlineCountText, { fontFamily: bodyFontFamily }]}>
+                  {onlineCount !== null
+                    ? `${onlineCount} player${onlineCount !== 1 ? 's' : ''} on site`
+                    : 'Checking who is on site...'}
+                </Text>
+              </View>
+
+              {errorMessage ? (
+                <View style={styles.errorBanner}>
+                  <Text style={[styles.errorBannerText, { fontFamily: bodyFontFamily }]}>
+                    {errorMessage}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.featuredSection}>
+              <View style={styles.featuredHeader}>
+                <Text style={[styles.featuredEyebrow, { fontFamily: bodyFontFamily }]}>
+                  Featured Tournaments
+                </Text>
+                <Text style={[styles.featuredTitle, { fontFamily: titleFontFamily }]}>
+                  Open public runs staged like the new quick-play panels
+                </Text>
+                <Text style={[styles.featuredSubtitle, { fontFamily: bodyFontFamily }]}>
+                  Inspect the standings before you commit, then join or launch the next tournament match from the framed tournament panel itself.
+                </Text>
+                <View style={styles.featuredHeaderAction}>
+                  <SketchButton
+                    label="See All Tournaments"
+                    accessibilityLabel="See all tournaments"
+                    onPress={() => router.push('/tournaments' as never)}
+                    fontFamily={bodyFontFamily}
+                  />
+                </View>
+              </View>
+
+              {tournamentErrorMessage ? (
+                <View style={styles.errorBanner}>
+                  <Text style={[styles.errorBannerText, { fontFamily: bodyFontFamily }]}>
+                    {tournamentErrorMessage}
+                  </Text>
+                </View>
+              ) : null}
+
+              {isLoadingFeaturedTournaments ? (
+                <View style={styles.featuredStateCard}>
+                  <Text style={[styles.featuredStateTitle, { fontFamily: titleFontFamily }]}>
+                    Loading featured tournaments...
+                  </Text>
+                  <Text style={[styles.featuredStateText, { fontFamily: bodyFontFamily }]}>
+                    Checking the current public runs from the tournament archive.
+                  </Text>
+                </View>
+              ) : featuredTournaments.length === 0 ? (
+                <View style={styles.featuredStateCard}>
+                  <Text style={[styles.featuredStateTitle, { fontFamily: titleFontFamily }]}>
+                    No featured tournaments yet
+                  </Text>
+                  <Text style={[styles.featuredStateText, { fontFamily: bodyFontFamily }]}>
+                    Public tournament runs will appear here as soon as operators open them for play.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.featuredList}>
+                  {featuredTournaments.map((tournament) => (
+                    <TournamentCard
+                      key={tournament.runId}
+                      tournament={tournament}
+                      fontLoaded={fontsLoaded}
+                      joining={joiningRunId === tournament.runId}
+                      launching={launchingRunId === tournament.runId}
+                      primaryTitle={confirmJoinRunId === tournament.runId ? 'Confirm' : undefined}
+                      onJoin={(selected) => {
+                        if (confirmJoinRunId !== selected.runId) {
+                          setConfirmJoinRunId(selected.runId);
                           return;
                         }
 
+                        void (async () => {
+                          const joinedTournament = await joinTournament(selected.runId);
+                          if (!joinedTournament?.membership.isJoined) {
+                            return;
+                          }
+
+                          setConfirmJoinRunId(null);
+                          router.push(
+                            {
+                              pathname: '/tournaments/[runId]',
+                              params: {
+                                runId: selected.runId,
+                              },
+                            } as never,
+                          );
+                        })();
+                      }}
+                      onLaunch={(selected) => {
+                        setConfirmJoinRunId(null);
+                        void launchMatch(selected);
+                      }}
+                      onViewStandings={(selected) => {
                         setConfirmJoinRunId(null);
                         router.push(
                           {
@@ -290,449 +459,542 @@ export default function Lobby() {
                             },
                           } as never,
                         );
-                      })();
-                    }}
-                    onLaunch={(selected) => {
-                      setConfirmJoinRunId(null);
-                      void launchMatch(selected);
-                    }}
-                    onViewStandings={(selected) => {
-                      setConfirmJoinRunId(null);
-                      router.push(
-                        {
-                          pathname: '/tournaments/[runId]',
-                          params: {
-                            runId: selected.runId,
-                          },
-                        } as never,
-                      );
-                    }}
-                  />
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-
-        <View style={styles.cardGrid}>
-          <View style={styles.card}>
-            <View pointerEvents="none" style={styles.cardTexture}>
-              <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.textureFill} />
-            </View>
-            <View pointerEvents="none" style={styles.cardBorder} />
-            <XpRewardBadge amount={publicWinRewardXp} style={styles.rewardBadge} />
-
-            <Text style={styles.title}>Find Opponent</Text>
-            <Text style={styles.subtitle}>
-              Jump into public matchmaking and get paired with the next available player.
-            </Text>
-
-            {statusLabel ? (
-              <Text style={[styles.statusText, status === 'error' && activeAction === 'find_opponent' && styles.statusError]}>
-                {statusLabel}
-              </Text>
-            ) : null}
-
-            <Button
-              title={buttonTitle}
-              loading={isFindingOpponent}
-              disabled={isCreatingPrivateGame || isJoiningPrivateGame}
-              onPress={handleStart}
-            />
-          </View>
-
-          <View style={styles.card}>
-            <View pointerEvents="none" style={styles.cardTexture}>
-              <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.textureFill} />
-            </View>
-            <View pointerEvents="none" style={styles.cardBorder} />
-            <XpRewardBadge amount={privateWinRewardXp} style={styles.rewardBadge} />
-
-            <Text style={styles.title}>Create Private Game</Text>
-            <Text style={styles.subtitle}>
-              {`Make a shareable room code for a friend. Private match wins award +${privateWinRewardXp} XP and now count toward permanent challenge progress.`}
-            </Text>
-
-            {privateStatusLabel ? <Text style={styles.statusText}>{privateStatusLabel}</Text> : null}
-
-            {createdPrivateMatch ? (
-              <>
-                <View style={styles.privateCodePanel}>
-                  <Text style={styles.privateCodeEyebrow}>
-                    {createdPrivateOption ? `${createdPrivateOption.label} Private Code` : 'Private Game Code'}
-                  </Text>
-                  <Text selectable style={styles.privateCodeValue}>
-                    {createdPrivateMatch.code}
-                  </Text>
-                  <View style={styles.privatePresenceRow}>
-                    <View
-                      style={[
-                        styles.privatePresenceDot,
-                        createdPrivateMatch.hasGuestJoined ? styles.privatePresenceDotReady : null,
-                      ]}
-                    />
-                    <Text style={styles.privatePresenceText}>
-                      {createdPrivateMatch.hasGuestJoined ? 'Friend has arrived' : 'Waiting for friend'}
-                    </Text>
-                  </View>
-                  {copyFeedback ? <Text style={styles.copyFeedbackText}>{copyFeedback}</Text> : null}
-                </View>
-
-                <View style={styles.actionRow}>
-                  <Button title="Copy Code" variant="outline" style={styles.actionButton} onPress={() => void handleCopyPrivateCode()} />
-                  <Button title="Start Game" style={styles.actionButton} onPress={startCreatedPrivateMatch} />
-                </View>
-
-                <Button title="Pick Another Ruleset" variant="outline" onPress={clearCreatedPrivateMatch} />
-              </>
-            ) : (
-              <View style={styles.optionGrid}>
-                {PRIVATE_MATCH_OPTIONS.map((option) => (
-                  <View key={option.modeId} style={styles.optionCell}>
-                    <Button
-                      title={option.label}
-                      variant="outline"
-                      loading={isCreatingPrivateGame && pendingPrivateMode === option.modeId}
-                      disabled={isBusy && pendingPrivateMode !== option.modeId}
-                      onPress={() => {
-                        void startPrivateMatch(option.modeId);
                       }}
                     />
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-
-          <View style={styles.card}>
-            <View pointerEvents="none" style={styles.cardTexture}>
-              <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.textureFill} />
+                  ))}
+                </View>
+              )}
             </View>
-            <View pointerEvents="none" style={styles.cardBorder} />
-            <XpRewardBadge amount={privateWinRewardXp} style={styles.rewardBadge} />
 
-            <Text style={styles.title}>Enter Private Game Code</Text>
-            <Text style={styles.subtitle}>
-              {`Paste the short code your friend sent you to enter their private table, play for the +${privateWinRewardXp} XP private-match reward, and unlock social challenge progress.`}
-            </Text>
+            <View style={styles.actionsSection}>
+              <Text style={[styles.actionsEyebrow, { fontFamily: bodyFontFamily }]}>
+                Matchmaking Options
+              </Text>
+              <Text style={[styles.actionsTitle, { fontFamily: titleFontFamily }]}>
+                Choose how you want to enter the court
+              </Text>
+              <View style={[styles.actionGrid, useThreeColumnLayout && styles.actionGridThreeColumn]}>
+                <View
+                  style={[
+                    styles.actionCell,
+                    isCompactLayout && styles.actionCellCompact,
+                    useThreeColumnLayout && styles.actionCellThreeColumn,
+                  ]}
+                >
+                  <OnlineActionPanel
+                    title="Find Opponent"
+                    subtitle="Jump into public matchmaking and get paired with the next available player."
+                    titleFontFamily={titleFontFamily}
+                    bodyFontFamily={bodyFontFamily}
+                    compact={isCompactLayout}
+                    rewardAmount={publicWinRewardXp}
+                  >
+                    {statusLabel ? (
+                      <Text style={[styles.statusText, { fontFamily: bodyFontFamily }]}>
+                        {statusLabel}
+                      </Text>
+                    ) : null}
 
-            {joinStatusLabel ? <Text style={styles.statusText}>{joinStatusLabel}</Text> : null}
+                    <HomeActionButton
+                      title={buttonTitle}
+                      tone="gold"
+                      compact
+                      fontLoaded={fontsLoaded}
+                      loading={isFindingOpponent}
+                      disabled={isCreatingPrivateGame || isJoiningPrivateGame}
+                      style={styles.primaryActionButton}
+                      onPress={handleStart}
+                    />
+                  </OnlineActionPanel>
+                </View>
 
-            <TextInput
-              value={privateCodeInput}
-              onChangeText={(value) => setPrivateCodeInput(normalizePrivateMatchCodeInput(value))}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={PRIVATE_MATCH_CODE_LENGTH}
-              placeholder="Enter code"
-              placeholderTextColor="rgba(247, 229, 203, 0.36)"
-              selectionColor={urTheme.colors.goldBright}
-              returnKeyType="go"
-              onSubmitEditing={() => {
-                if (canJoinPrivateGame) {
-                  void handleJoinPrivateGame();
-                }
-              }}
-              style={styles.codeInput}
-            />
+                <View
+                  style={[
+                    styles.actionCell,
+                    isCompactLayout && styles.actionCellCompact,
+                    useThreeColumnLayout && styles.actionCellThreeColumn,
+                  ]}
+                >
+                  <OnlineActionPanel
+                    title="Create Private Game"
+                    subtitle={`Make a shareable room code for a friend. Private match wins award +${privateWinRewardXp} XP and count toward permanent challenge progress.`}
+                    titleFontFamily={titleFontFamily}
+                    bodyFontFamily={bodyFontFamily}
+                    compact={isCompactLayout}
+                    rewardAmount={privateWinRewardXp}
+                  >
+                    {privateStatusLabel ? (
+                      <Text style={[styles.statusText, { fontFamily: bodyFontFamily }]}>
+                        {privateStatusLabel}
+                      </Text>
+                    ) : null}
 
-            <Button
-              title={isJoiningPrivateGame ? 'Joining...' : 'Join Private Game'}
-              loading={isJoiningPrivateGame}
-              disabled={!canJoinPrivateGame}
-              onPress={() => void handleJoinPrivateGame()}
-            />
+                    {createdPrivateMatch ? (
+                      <>
+                        <View style={styles.privateCodePanel}>
+                          <Text style={[styles.privateCodeEyebrow, { fontFamily: bodyFontFamily }]}>
+                            {createdPrivateOption
+                              ? `${createdPrivateOption.label} Private Code`
+                              : 'Private Game Code'}
+                          </Text>
+                          <Text selectable style={[styles.privateCodeValue, { fontFamily: titleFontFamily }]}>
+                            {createdPrivateMatch.code}
+                          </Text>
+                          <View style={styles.privatePresenceRow}>
+                            <View
+                              style={[
+                                styles.privatePresenceDot,
+                                createdPrivateMatch.hasGuestJoined
+                                  ? styles.privatePresenceDotReady
+                                  : null,
+                              ]}
+                            />
+                            <Text style={[styles.privatePresenceText, { fontFamily: bodyFontFamily }]}>
+                              {createdPrivateMatch.hasGuestJoined
+                                ? 'Friend has arrived'
+                                : 'Waiting for friend'}
+                            </Text>
+                          </View>
+                          {copyFeedback ? (
+                            <Text style={[styles.copyFeedbackText, { fontFamily: bodyFontFamily }]}>
+                              {copyFeedback}
+                            </Text>
+                          ) : null}
+                        </View>
+
+                        <View style={styles.actionRow}>
+                          <View style={styles.actionRowCell}>
+                            <SketchButton
+                              label="Copy Code"
+                              accessibilityLabel="Copy code"
+                              onPress={() => void handleCopyPrivateCode()}
+                              fontFamily={bodyFontFamily}
+                              wide
+                              style={styles.sketchWideButton}
+                            />
+                          </View>
+                          <View style={styles.actionRowCell}>
+                            <HomeActionButton
+                              title="Start Game"
+                              tone="gold"
+                              compact
+                              fontLoaded={fontsLoaded}
+                              style={styles.primaryActionButton}
+                              onPress={startCreatedPrivateMatch}
+                            />
+                          </View>
+                        </View>
+
+                        <View style={styles.secondaryActionWrap}>
+                          <SketchButton
+                            label="Pick Another Ruleset"
+                            accessibilityLabel="Pick another ruleset"
+                            onPress={clearCreatedPrivateMatch}
+                            fontFamily={bodyFontFamily}
+                            wide
+                            style={styles.sketchWideButton}
+                          />
+                        </View>
+                      </>
+                    ) : (
+                      <View style={styles.optionGrid}>
+                        {PRIVATE_MATCH_OPTIONS.map((option) => (
+                          <View key={option.modeId} style={styles.optionCell}>
+                            <HomeActionButton
+                              title={option.label}
+                              tone="stone"
+                              size="small"
+                              compact
+                              fontLoaded={fontsLoaded}
+                              style={styles.optionActionButton}
+                              loading={
+                                isCreatingPrivateGame &&
+                                pendingPrivateMode === option.modeId
+                              }
+                              disabled={isBusy && pendingPrivateMode !== option.modeId}
+                              onPress={() => {
+                                void startPrivateMatch(option.modeId);
+                              }}
+                            />
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </OnlineActionPanel>
+                </View>
+
+                <View
+                  style={[
+                    styles.actionCell,
+                    isCompactLayout && styles.actionCellCompact,
+                    useThreeColumnLayout && styles.actionCellThreeColumn,
+                  ]}
+                >
+                  <OnlineActionPanel
+                    title="Enter Private Code"
+                    subtitle={`Paste the short code your friend sent you to enter their private table and play for the +${privateWinRewardXp} XP private-match reward.`}
+                    titleFontFamily={titleFontFamily}
+                    bodyFontFamily={bodyFontFamily}
+                    compact={isCompactLayout}
+                    rewardAmount={privateWinRewardXp}
+                  >
+                    {joinStatusLabel ? (
+                      <Text style={[styles.statusText, { fontFamily: bodyFontFamily }]}>
+                        {joinStatusLabel}
+                      </Text>
+                    ) : null}
+
+                    <TextInput
+                      value={privateCodeInput}
+                      onChangeText={(value) =>
+                        setPrivateCodeInput(normalizePrivateMatchCodeInput(value))
+                      }
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      maxLength={PRIVATE_MATCH_CODE_LENGTH}
+                      placeholder="Enter code"
+                      placeholderTextColor="rgba(102, 77, 46, 0.46)"
+                      selectionColor="#C48E2B"
+                      returnKeyType="go"
+                      onSubmitEditing={() => {
+                        if (canJoinPrivateGame) {
+                          void handleJoinPrivateGame();
+                        }
+                      }}
+                      style={[styles.codeInput, styles.primaryActionField, { fontFamily: bodyFontFamily }]}
+                    />
+
+                    <HomeActionButton
+                      title={isJoiningPrivateGame ? 'Joining...' : 'Join Game'}
+                      tone="gold"
+                      compact
+                      fontLoaded={fontsLoaded}
+                      loading={isJoiningPrivateGame}
+                      disabled={!canJoinPrivateGame}
+                      style={styles.primaryActionButton}
+                      onPress={() => void handleJoinPrivateGame()}
+                    />
+                  </OnlineActionPanel>
+                </View>
+              </View>
+            </View>
           </View>
-        </View>
-      </ScrollView>
-    </View>
+        </ScrollView>
+      </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: urTheme.colors.night,
+    backgroundColor: '#43250F',
   },
-  scrollView: {
-    width: '100%',
+  backgroundTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(56, 30, 13, 0.08)',
   },
   scrollContent: {
-    flexGrow: 1,
+    alignItems: 'center',
+  },
+  stage: {
     width: '100%',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.xl,
+    gap: urTheme.spacing.lg,
+  },
+  topBar: {
+    width: '100%',
+    alignItems: 'flex-start',
+    marginBottom: urTheme.spacing.sm,
   },
   hero: {
     width: '100%',
-    maxWidth: 1080,
     alignItems: 'center',
-    marginBottom: urTheme.spacing.lg,
+    gap: urTheme.spacing.sm,
   },
   pageTitle: {
-    ...urTypography.title,
-    color: urTheme.colors.parchment,
-    fontSize: 38,
-    lineHeight: 42,
+    color: '#22160C',
     textAlign: 'center',
+    textShadowColor: 'rgba(255, 244, 221, 0.32)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
+  },
+  pageTitleDesktop: {
+    fontSize: 36,
+    lineHeight: 40,
+  },
+  pageTitleCompact: {
+    fontSize: 29,
+    lineHeight: 33,
   },
   pageSubtitle: {
-    color: 'rgba(238, 223, 197, 0.86)',
-    textAlign: 'center',
+    maxWidth: 680,
+    color: 'rgba(34, 22, 12, 0.88)',
+    fontSize: 16,
     lineHeight: 22,
-    maxWidth: 640,
-    marginTop: urTheme.spacing.xs,
-    marginBottom: urTheme.spacing.md,
-  },
-  pageTexture: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.28,
-  },
-  pageTextureWide: {
-    opacity: 0.12,
-  },
-  pageGlow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '42%',
-    backgroundColor: 'rgba(90, 132, 177, 0.18)',
-  },
-  pageShade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '45%',
-    backgroundColor: 'rgba(7, 11, 16, 0.24)',
-  },
-  cardGrid: {
-    width: '100%',
-    maxWidth: 1080,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: urTheme.spacing.md,
-  },
-  featuredSection: {
-    width: '100%',
-    maxWidth: 1080,
-    marginBottom: urTheme.spacing.lg,
-    gap: urTheme.spacing.md,
-  },
-  featuredHeader: {
-    gap: urTheme.spacing.md,
-  },
-  featuredHeaderCopy: {
-    gap: 4,
-  },
-  featuredEyebrow: {
-    ...urTypography.label,
-    color: urTheme.colors.goldBright,
-    fontSize: 11,
     textAlign: 'center',
   },
-  featuredTitle: {
-    ...urTypography.title,
-    color: urTheme.colors.parchment,
-    fontSize: 28,
-    lineHeight: 32,
-    textAlign: 'center',
-  },
-  featuredSubtitle: {
-    color: 'rgba(238, 223, 197, 0.82)',
-    textAlign: 'center',
-    lineHeight: 21,
-    maxWidth: 840,
-    alignSelf: 'center',
-  },
-  featuredHeaderButton: {
-    alignSelf: 'center',
-  },
-  featuredErrorBanner: {
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.sm,
-    borderRadius: urTheme.radii.md,
-    borderWidth: 1,
-    borderColor: 'rgba(246, 170, 162, 0.4)',
-    backgroundColor: 'rgba(80, 22, 18, 0.54)',
-  },
-  featuredGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: urTheme.spacing.md,
-  },
-  featuredCardCell: {
-    flexBasis: 320,
-    flexGrow: 1,
-  },
-  featuredEmptyState: {
-    borderRadius: urTheme.radii.lg,
-    borderWidth: 1.4,
-    borderColor: 'rgba(217, 164, 65, 0.74)',
-    padding: urTheme.spacing.lg,
-    backgroundColor: 'rgba(13, 15, 18, 0.56)',
-    alignItems: 'center',
-    ...boxShadow({
-      color: '#000',
-      opacity: 0.22,
-      offset: { width: 0, height: 8 },
-      blurRadius: 12,
-      elevation: 6,
-    }),
-  },
-  featuredEmptyTitle: {
-    ...urTypography.title,
-    color: urTheme.colors.parchment,
-    fontSize: 24,
-    textAlign: 'center',
-    marginBottom: urTheme.spacing.xs,
-  },
-  featuredEmptyText: {
-    color: 'rgba(238, 223, 197, 0.8)',
-    textAlign: 'center',
-    lineHeight: 21,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 340,
-    minWidth: 280,
-    flexGrow: 1,
-    borderRadius: urTheme.radii.lg,
-    borderWidth: 1.4,
-    borderColor: 'rgba(217, 164, 65, 0.74)',
-    padding: urTheme.spacing.lg,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(13, 15, 18, 0.64)',
-    ...boxShadow({
-      color: '#000',
-      opacity: 0.28,
-      offset: { width: 0, height: 10 },
-      blurRadius: 14,
-      elevation: 9,
-    }),
-  },
-  cardTexture: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.16,
-  },
-  textureFill: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  cardBorder: {
-    ...StyleSheet.absoluteFillObject,
-    margin: urTheme.spacing.xs,
-    borderRadius: urTheme.radii.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 231, 192, 0.25)',
-  },
-  rewardBadge: {
-    marginBottom: urTheme.spacing.md,
-  },
-  title: {
-    ...urTypography.title,
-    color: urTheme.colors.parchment,
-    fontSize: 30,
-    lineHeight: 36,
-    marginBottom: urTheme.spacing.sm,
-    textAlign: 'center',
-  },
-  subtitle: {
-    color: 'rgba(238, 223, 197, 0.85)',
-    textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: urTheme.spacing.md,
-  },
-  onlineCountRow: {
+  onlineCountBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: urTheme.spacing.sm,
     gap: 8,
+    minHeight: 38,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(114, 82, 35, 0.18)',
+    backgroundColor: 'rgba(255, 247, 228, 0.52)',
   },
   onlineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(128, 128, 128, 0.6)',
+    width: 9,
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(126, 115, 99, 0.7)',
   },
   onlineDotActive: {
-    backgroundColor: '#4ADE80',
-    ...boxShadow({
-      color: '#4ADE80',
-      opacity: 0.6,
-      blurRadius: 4,
-    }),
+    backgroundColor: '#5DB11F',
+    shadowColor: '#5DB11F',
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
   },
   onlineCountText: {
-    ...urTypography.label,
-    color: 'rgba(216, 232, 251, 0.9)',
-    fontSize: 13,
+    color: '#5B3E1B',
+    fontSize: 14,
+    lineHeight: 16,
+    textAlign: 'center',
   },
   errorBanner: {
     width: '100%',
-    maxWidth: 620,
-    marginTop: urTheme.spacing.sm,
+    maxWidth: 760,
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.sm,
-    borderRadius: urTheme.radii.md,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(246, 170, 162, 0.4)',
-    backgroundColor: 'rgba(80, 22, 18, 0.54)',
+    borderColor: 'rgba(143, 52, 41, 0.22)',
+    backgroundColor: 'rgba(255, 235, 226, 0.76)',
   },
   errorBannerText: {
-    ...urTypography.label,
-    color: '#F6AAA2',
-    fontSize: 11,
+    color: '#8F3429',
+    fontSize: 12,
+    lineHeight: 17,
     textAlign: 'center',
   },
-  statusText: {
-    ...urTypography.label,
-    color: 'rgba(216, 232, 251, 0.9)',
-    fontSize: 11,
-    marginBottom: urTheme.spacing.md,
+  featuredSection: {
+    width: '100%',
+    gap: urTheme.spacing.md,
+  },
+  featuredHeader: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  featuredEyebrow: {
+    color: '#7A571F',
+    fontSize: 12,
+    lineHeight: 14,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
     textAlign: 'center',
-    lineHeight: 18,
   },
-  statusError: {
-    color: '#F6AAA2',
-  },
-  optionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: urTheme.spacing.sm,
-  },
-  optionCell: {
-    flexBasis: 120,
-    flexGrow: 1,
-  },
-  privateCodePanel: {
-    marginBottom: urTheme.spacing.md,
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.md,
-    borderRadius: urTheme.radii.md,
-    borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.45)',
-    backgroundColor: 'rgba(13, 15, 18, 0.52)',
-  },
-  privateCodeEyebrow: {
-    ...urTypography.label,
-    color: urTheme.colors.goldBright,
-    fontSize: 11,
-    textAlign: 'center',
-    letterSpacing: 0.8,
-    marginBottom: urTheme.spacing.xs,
-  },
-  privateCodeValue: {
-    color: urTheme.colors.parchment,
+  featuredTitle: {
+    color: '#22160C',
     fontSize: 30,
     lineHeight: 34,
+    textAlign: 'center',
+    maxWidth: 720,
+  },
+  featuredSubtitle: {
+    maxWidth: 820,
+    color: 'rgba(58, 37, 17, 0.88)',
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  featuredHeaderAction: {
+    marginTop: 4,
+  },
+  featuredStateCard: {
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 28,
+    paddingVertical: 24,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(126, 93, 42, 0.18)',
+    backgroundColor: 'rgba(255, 248, 232, 0.5)',
+  },
+  featuredStateTitle: {
+    color: '#3B2412',
+    fontSize: 24,
+    lineHeight: 28,
+    textAlign: 'center',
+  },
+  featuredStateText: {
+    maxWidth: 620,
+    color: 'rgba(73, 48, 26, 0.88)',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  featuredList: {
+    width: '100%',
+    gap: 14,
+  },
+  actionsSection: {
+    width: '100%',
+    alignItems: 'center',
+    gap: urTheme.spacing.md,
+  },
+  actionsEyebrow: {
+    color: '#7A571F',
+    fontSize: 12,
+    lineHeight: 14,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+  actionsTitle: {
+    color: '#FFF5DE',
+    fontSize: 30,
+    lineHeight: 34,
+    textAlign: 'center',
+    maxWidth: 640,
+    textShadowColor: 'rgba(72, 31, 10, 0.52)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 2,
+  },
+  actionGrid: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: urTheme.spacing.md,
+  },
+  actionGridThreeColumn: {
+    justifyContent: 'space-between',
+  },
+  actionCell: {
+    width: '48.8%',
+  },
+  actionCellCompact: {
+    width: '100%',
+  },
+  actionCellThreeColumn: {
+    width: '31.7%',
+  },
+  modePanel: {
+    width: '100%',
+    overflow: 'visible',
+    justifyContent: 'center',
+  },
+  modePanelDesktop: {
+    minHeight: 430,
+  },
+  modePanelCompact: {
+    minHeight: 460,
+  },
+  modePanelImage: {
+    width: '100%',
+    height: '100%',
+  },
+  modeRewardBadge: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    minWidth: 82,
+  },
+  modeRewardBadgeCompact: {
+    top: 12,
+    right: 12,
+    transform: [{ scale: 0.9 }],
+  },
+  modePanelContent: {
+    paddingTop: 78,
+    paddingBottom: 60,
+    paddingHorizontal: 42,
+    alignItems: 'center',
+  },
+  modePanelContentDesktop: {
+    gap: 10,
+  },
+  modePanelContentCompact: {
+    paddingTop: 72,
+    paddingBottom: 52,
+    paddingHorizontal: 34,
+    gap: 9,
+  },
+  modePanelTitle: {
+    color: '#4B2E12',
+    textAlign: 'center',
+    maxWidth: '72%',
+  },
+  modePanelTitleDesktop: {
+    fontSize: 22,
+    lineHeight: 25,
+  },
+  modePanelTitleCompact: {
+    fontSize: 19,
+    lineHeight: 22,
+  },
+  modePanelSubtitle: {
+    color: '#6B5740',
+    fontSize: 14,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+  modePanelBody: {
+    width: '100%',
+    marginTop: 6,
+    gap: 12,
+    alignItems: 'center',
+  },
+  primaryActionButton: {
+    width: '100%',
+    maxWidth: 216,
+    alignSelf: 'center',
+  },
+  primaryActionField: {
+    width: '100%',
+    maxWidth: 216,
+    alignSelf: 'center',
+  },
+  optionActionButton: {
+    width: '100%',
+    maxWidth: 148,
+    alignSelf: 'center',
+  },
+  statusText: {
+    color: '#5E4630',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  privateCodePanel: {
+    width: '100%',
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(126, 93, 42, 0.18)',
+    backgroundColor: 'rgba(255, 248, 232, 0.62)',
+    alignItems: 'center',
+    gap: 8,
+  },
+  privateCodeEyebrow: {
+    color: '#7A571F',
+    fontSize: 12,
+    lineHeight: 14,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+  privateCodeValue: {
+    color: '#3B2412',
+    fontSize: 28,
+    lineHeight: 30,
     letterSpacing: 2.2,
     textAlign: 'center',
-    marginBottom: urTheme.spacing.sm,
   },
   privatePresenceRow: {
     flexDirection: 'row',
@@ -741,51 +1003,75 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   privatePresenceDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(217, 164, 65, 0.5)',
+    width: 9,
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(196, 142, 43, 0.55)',
   },
   privatePresenceDotReady: {
-    backgroundColor: '#4ADE80',
-    ...boxShadow({
-      color: '#4ADE80',
-      opacity: 0.55,
-      blurRadius: 4,
-    }),
+    backgroundColor: '#5DB11F',
+    shadowColor: '#5DB11F',
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
   },
   privatePresenceText: {
-    color: 'rgba(247, 229, 203, 0.82)',
-    fontSize: 12,
+    color: '#5E4630',
+    fontSize: 13,
+    lineHeight: 16,
     textAlign: 'center',
   },
   copyFeedbackText: {
-    marginTop: urTheme.spacing.sm,
-    color: 'rgba(216, 232, 251, 0.9)',
-    fontSize: 11,
+    color: '#385D2C',
+    fontSize: 12,
+    lineHeight: 16,
     textAlign: 'center',
   },
   actionRow: {
+    width: '100%',
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: urTheme.spacing.sm,
-    marginBottom: urTheme.spacing.sm,
+    gap: 12,
   },
-  actionButton: {
+  actionRowCell: {
+    minWidth: 138,
     flexGrow: 1,
-    minWidth: 120,
+    maxWidth: 208,
+  },
+  secondaryActionWrap: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 2,
+    maxWidth: 232,
+    alignSelf: 'center',
+  },
+  sketchWideButton: {
+    width: '100%',
+  },
+  optionGrid: {
+    width: '100%',
+    maxWidth: 270,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  optionCell: {
+    minWidth: 116,
+    maxWidth: 130,
+    flexGrow: 1,
   },
   codeInput: {
-    minHeight: 54,
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 1.3,
-    borderColor: 'rgba(217, 164, 65, 0.68)',
-    backgroundColor: 'rgba(10, 12, 15, 0.68)',
-    color: urTheme.colors.parchment,
+    width: '100%',
+    minHeight: 56,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: 'rgba(123, 95, 47, 0.24)',
+    backgroundColor: 'rgba(255, 249, 235, 0.72)',
+    color: '#4B2E12',
     textAlign: 'center',
     fontSize: 22,
+    lineHeight: 26,
     letterSpacing: 2.2,
     paddingHorizontal: urTheme.spacing.md,
-    marginBottom: urTheme.spacing.md,
   },
 });

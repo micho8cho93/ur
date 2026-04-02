@@ -1,23 +1,58 @@
+import { HomeActionButton } from '@/components/home/HomeActionButton';
 import { TournamentCard } from '@/components/tournaments/TournamentCard';
-import { Button } from '@/components/ui/Button';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
-import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
-import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import { SketchButton } from '@/components/ui/SketchButton';
+import {
+  MIN_WIDE_WEB_BACKGROUND_WIDTH,
+  WideScreenBackground,
+} from '@/components/ui/WideScreenBackground';
+import { urTheme } from '@/constants/urTheme';
+import {
+  HOME_FREDOKA_FONT_FAMILY,
+  HOME_SUPERCELL_FONT_FAMILY,
+  resolveHomeFredokaFontFamily,
+  resolveHomeMagicFontFamily,
+} from '@/src/home/homeTheme';
 import { useTournamentList } from '@/src/tournaments/useTournamentList';
-import { useRouter } from 'expo-router';
+import { useFonts } from 'expo-font';
+import { Stack, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import {
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const multiplayerWideBackground = require('../../../assets/images/multiplayer_bg.png');
-const multiplayerMobileBackground = require('../../../assets/images/multiplayer_bg_mobile.png');
+const homeWideBackground = require('../../../assets/images/home_bg.png');
+const homeMobileBackground = require('../../../assets/images/home_bg_mobile.png');
 
 export default function PublicTournamentBrowseScreen() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const [confirmJoinRunId, setConfirmJoinRunId] = useState<string | null>(null);
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
+  const isCompactLayout = width < 820;
+  const isDesktopViewport = Platform.OS === 'web' && width >= 920;
+  const horizontalPadding = isDesktopViewport ? urTheme.spacing.lg : urTheme.spacing.md;
+  const topPadding = insets.top + (isDesktopViewport ? 12 : 8);
+  const bottomPadding = insets.bottom + (isCompactLayout ? urTheme.spacing.xl : urTheme.spacing.lg);
+  const stageWidth = isDesktopViewport
+    ? Math.min(width - horizontalPadding * 2, 1080)
+    : isCompactLayout
+      ? Math.min(width - horizontalPadding * 2, 430)
+      : Math.min(width - horizontalPadding * 2, 820);
+  const [fontsLoaded] = useFonts({
+    [HOME_FREDOKA_FONT_FAMILY]: require('../../../assets/fonts/Fredoka-VariableFont_wdth,wght.ttf'),
+    [HOME_SUPERCELL_FONT_FAMILY]: require('../../../assets/fonts/Supercell-Magic-Regular.ttf'),
+  });
+  const titleFontFamily = resolveHomeMagicFontFamily(fontsLoaded);
+  const bodyFontFamily = resolveHomeFredokaFontFamily(fontsLoaded);
   const {
     tournaments,
     isLoading,
@@ -29,219 +64,259 @@ export default function PublicTournamentBrowseScreen() {
   } = useTournamentList();
 
   return (
-    <View style={styles.screen}>
-      <WideScreenBackground
-        source={multiplayerWideBackground}
-        visible={showWideBackground}
-        overlayColor="rgba(7, 10, 16, 0.24)"
-      />
-      <MobileBackground
-        source={multiplayerMobileBackground}
-        visible={showMobileBackground}
-        overlayColor="rgba(7, 10, 16, 0.24)"
-      />
-      <View pointerEvents="none" style={[styles.pageTexture, showWideBackground && styles.pageTextureWide]}>
-        <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.textureFill} />
-      </View>
-      <View pointerEvents="none" style={styles.pageGlow} />
-      <View pointerEvents="none" style={styles.pageShade} />
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.screen}>
+        <WideScreenBackground
+          source={homeWideBackground}
+          visible={showWideBackground}
+          overlayColor="rgba(56, 30, 13, 0.08)"
+        />
+        <MobileBackground
+          source={homeMobileBackground}
+          visible={showMobileBackground}
+          overlayColor="rgba(56, 30, 13, 0.08)"
+        />
+        <View style={styles.backgroundTint} />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.hero}>
-          <Text style={styles.pageTitle}>Public Tournaments</Text>
-          <Text style={styles.pageSubtitle}>
-            Browse every open tournament run, inspect the full standings before you enter, and jump into tournament play when your seat is ready.
-          </Text>
-        </View>
-
-        {errorMessage ? (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorBannerText}>{errorMessage}</Text>
-          </View>
-        ) : null}
-
-        {isLoading ? (
-          <View style={styles.emptyPanel}>
-            <Text style={styles.emptyTitle}>Loading tournaments...</Text>
-            <Text style={styles.emptyText}>Summoning the latest public runs from the royal archive.</Text>
-          </View>
-        ) : tournaments.length === 0 ? (
-          <View style={styles.emptyPanel}>
-            <Text style={styles.emptyTitle}>No tournaments are open right now</Text>
-            <Text style={styles.emptyText}>Check back soon for the next public run.</Text>
-            <Button title="Return to Lobby" variant="outline" onPress={() => router.replace('/(game)/lobby?mode=online')} />
-          </View>
-        ) : (
-          <View style={styles.cardList}>
-            {tournaments.map((tournament) => (
-              <TournamentCard
-                key={tournament.runId}
-                tournament={tournament}
-                joining={joiningRunId === tournament.runId}
-                launching={launchingRunId === tournament.runId}
-                primaryTitle={confirmJoinRunId === tournament.runId ? 'Confirm' : undefined}
-                onJoin={(selected) => {
-                  if (confirmJoinRunId !== selected.runId) {
-                    setConfirmJoinRunId(selected.runId);
-                    return;
-                  }
-
-                  void (async () => {
-                    const joinedTournament = await joinTournament(selected.runId);
-                    if (!joinedTournament?.membership.isJoined) {
-                      return;
-                    }
-
-                    setConfirmJoinRunId(null);
-                    router.push(
-                      {
-                        pathname: '/tournaments/[runId]',
-                        params: {
-                          runId: selected.runId,
-                        },
-                      } as never,
-                    );
-                  })();
-                }}
-                onLaunch={(selected) => {
-                  setConfirmJoinRunId(null);
-                  void launchMatch(selected);
-                }}
-                onViewStandings={(selected) => {
-                  setConfirmJoinRunId(null);
-                  router.push(
-                    {
-                      pathname: '/tournaments/[runId]',
-                      params: {
-                        runId: selected.runId,
-                      },
-                    } as never,
-                  );
-                }}
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              minHeight: height,
+              paddingTop: topPadding,
+              paddingBottom: bottomPadding,
+              paddingHorizontal: horizontalPadding,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={[styles.stage, { width: stageWidth }]}>
+            <View style={styles.topBar}>
+              <SketchButton
+                label="Back"
+                accessibilityLabel="Back to online play"
+                onPress={() => router.replace('/(game)/lobby?mode=online')}
+                iconName="arrow-back"
+                fontFamily={bodyFontFamily}
               />
-            ))}
+            </View>
+
+            <View style={styles.hero}>
+              <Text style={[styles.pageEyebrow, { fontFamily: bodyFontFamily }]}>
+                Public Tournament Board
+              </Text>
+              <Text
+                style={[
+                  styles.pageTitle,
+                  isCompactLayout ? styles.pageTitleCompact : styles.pageTitleDesktop,
+                  { fontFamily: titleFontFamily },
+                ]}
+              >
+                Public Tournaments
+              </Text>
+              <Text style={[styles.pageSubtitle, { fontFamily: bodyFontFamily }]}>
+                Browse every open tournament run, inspect the standings first, then join or launch from the panel without losing any of the existing tournament logic.
+              </Text>
+            </View>
+
+            {errorMessage ? (
+              <View style={styles.errorBanner}>
+                <Text style={[styles.errorBannerText, { fontFamily: bodyFontFamily }]}>
+                  {errorMessage}
+                </Text>
+              </View>
+            ) : null}
+
+            {isLoading ? (
+              <View style={styles.stateCard}>
+                <Text style={[styles.stateTitle, { fontFamily: titleFontFamily }]}>
+                  Loading tournaments...
+                </Text>
+                <Text style={[styles.stateText, { fontFamily: bodyFontFamily }]}>
+                  Summoning the latest public runs from the royal archive.
+                </Text>
+              </View>
+            ) : tournaments.length === 0 ? (
+              <View style={styles.stateCard}>
+                <Text style={[styles.stateTitle, { fontFamily: titleFontFamily }]}>
+                  No tournaments are open right now
+                </Text>
+                <Text style={[styles.stateText, { fontFamily: bodyFontFamily }]}>
+                  Check back soon for the next public run.
+                </Text>
+                <View style={styles.stateAction}>
+                  <HomeActionButton
+                    title="Return to Lobby"
+                    tone="gold"
+                    compact={isCompactLayout}
+                    fontLoaded={fontsLoaded}
+                    onPress={() => router.replace('/(game)/lobby?mode=online')}
+                  />
+                </View>
+              </View>
+            ) : (
+              <View style={styles.cardList}>
+                {tournaments.map((tournament) => (
+                  <TournamentCard
+                    key={tournament.runId}
+                    tournament={tournament}
+                    fontLoaded={fontsLoaded}
+                    joining={joiningRunId === tournament.runId}
+                    launching={launchingRunId === tournament.runId}
+                    primaryTitle={confirmJoinRunId === tournament.runId ? 'Confirm' : undefined}
+                    onJoin={(selected) => {
+                      if (confirmJoinRunId !== selected.runId) {
+                        setConfirmJoinRunId(selected.runId);
+                        return;
+                      }
+
+                      void (async () => {
+                        const joinedTournament = await joinTournament(selected.runId);
+                        if (!joinedTournament?.membership.isJoined) {
+                          return;
+                        }
+
+                        setConfirmJoinRunId(null);
+                        router.push(
+                          {
+                            pathname: '/tournaments/[runId]',
+                            params: {
+                              runId: selected.runId,
+                            },
+                          } as never,
+                        );
+                      })();
+                    }}
+                    onLaunch={(selected) => {
+                      setConfirmJoinRunId(null);
+                      void launchMatch(selected);
+                    }}
+                    onViewStandings={(selected) => {
+                      setConfirmJoinRunId(null);
+                      router.push(
+                        {
+                          pathname: '/tournaments/[runId]',
+                          params: {
+                            runId: selected.runId,
+                          },
+                        } as never,
+                      );
+                    }}
+                  />
+                ))}
+              </View>
+            )}
           </View>
-        )}
-      </ScrollView>
-    </View>
+        </ScrollView>
+      </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: urTheme.colors.night,
+    backgroundColor: '#43250F',
   },
-  scrollView: {
-    width: '100%',
+  backgroundTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(56, 30, 13, 0.08)',
   },
   scrollContent: {
-    flexGrow: 1,
     alignItems: 'center',
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.xl,
+  },
+  stage: {
+    width: '100%',
+    alignItems: 'center',
+    gap: urTheme.spacing.md,
+  },
+  topBar: {
+    width: '100%',
+    alignItems: 'flex-start',
   },
   hero: {
     width: '100%',
-    maxWidth: 1080,
     alignItems: 'center',
-    marginBottom: urTheme.spacing.lg,
+    gap: 6,
+  },
+  pageEyebrow: {
+    color: '#7A571F',
+    fontSize: 12,
+    lineHeight: 14,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    textAlign: 'center',
   },
   pageTitle: {
-    ...urTypography.title,
-    color: urTheme.colors.parchment,
-    fontSize: 38,
-    lineHeight: 42,
+    color: '#22160C',
     textAlign: 'center',
+    textShadowColor: 'rgba(255, 244, 221, 0.32)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
+  },
+  pageTitleDesktop: {
+    fontSize: 36,
+    lineHeight: 40,
+  },
+  pageTitleCompact: {
+    fontSize: 29,
+    lineHeight: 33,
   },
   pageSubtitle: {
-    color: 'rgba(238, 223, 197, 0.86)',
+    maxWidth: 760,
+    color: 'rgba(34, 22, 12, 0.88)',
+    fontSize: 15,
+    lineHeight: 21,
     textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: 720,
-    marginTop: urTheme.spacing.xs,
-  },
-  pageTexture: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.28,
-  },
-  pageTextureWide: {
-    opacity: 0.12,
-  },
-  textureFill: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  pageGlow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '42%',
-    backgroundColor: 'rgba(90, 132, 177, 0.18)',
-  },
-  pageShade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '45%',
-    backgroundColor: 'rgba(7, 11, 16, 0.24)',
-  },
-  cardList: {
-    width: '100%',
-    maxWidth: 1080,
-    gap: urTheme.spacing.md,
   },
   errorBanner: {
     width: '100%',
-    maxWidth: 1080,
-    marginBottom: urTheme.spacing.md,
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.sm,
-    borderRadius: urTheme.radii.md,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(246, 170, 162, 0.4)',
-    backgroundColor: 'rgba(80, 22, 18, 0.54)',
+    borderColor: 'rgba(143, 52, 41, 0.22)',
+    backgroundColor: 'rgba(255, 235, 226, 0.76)',
   },
   errorBannerText: {
-    ...urTypography.label,
-    color: '#F6AAA2',
-    fontSize: 11,
+    color: '#8F3429',
+    fontSize: 12,
+    lineHeight: 17,
     textAlign: 'center',
   },
-  emptyPanel: {
+  stateCard: {
     width: '100%',
-    maxWidth: 680,
     alignItems: 'center',
-    gap: urTheme.spacing.sm,
-    borderRadius: urTheme.radii.lg,
-    borderWidth: 1.4,
-    borderColor: 'rgba(217, 164, 65, 0.74)',
-    padding: urTheme.spacing.xl,
-    backgroundColor: 'rgba(13, 15, 18, 0.64)',
-    ...boxShadow({
-      color: '#000',
-      opacity: 0.28,
-      offset: { width: 0, height: 10 },
-      blurRadius: 14,
-      elevation: 9,
-    }),
+    gap: 8,
+    paddingHorizontal: 28,
+    paddingVertical: 24,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(126, 93, 42, 0.18)',
+    backgroundColor: 'rgba(255, 248, 232, 0.5)',
   },
-  emptyTitle: {
-    ...urTypography.title,
-    color: urTheme.colors.parchment,
-    fontSize: 28,
+  stateTitle: {
+    color: '#3B2412',
+    fontSize: 24,
+    lineHeight: 28,
     textAlign: 'center',
   },
-  emptyText: {
-    color: 'rgba(238, 223, 197, 0.82)',
+  stateText: {
+    color: 'rgba(73, 48, 26, 0.88)',
+    fontSize: 14,
+    lineHeight: 20,
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: urTheme.spacing.sm,
+    maxWidth: 620,
+  },
+  stateAction: {
+    width: '100%',
+    maxWidth: 280,
+    marginTop: 8,
+  },
+  cardList: {
+    width: '100%',
+    gap: 14,
   },
 });

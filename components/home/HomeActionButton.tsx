@@ -1,5 +1,14 @@
 import React from 'react';
-import { Platform, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  StyleProp,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle,
+} from 'react-native';
 
 import { urTheme } from '@/constants/urTheme';
 import { resolveHomeMagicFontFamily } from '@/src/home/homeTheme';
@@ -23,6 +32,7 @@ type HomeActionButtonProps = {
   size?: HomeActionButtonSize;
   compact?: boolean;
   disabled?: boolean;
+  loading?: boolean;
   fontLoaded?: boolean;
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
@@ -224,18 +234,20 @@ export function HomeActionButton({
   size = 'regular',
   compact = false,
   disabled = false,
+  loading = false,
   fontLoaded = false,
   style,
   accessibilityLabel,
 }: HomeActionButtonProps) {
   const palette = TONES[tone];
   const labelFontFamily = resolveHomeMagicFontFamily(fontLoaded);
+  const isDisabled = disabled || loading;
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
-      disabled={disabled}
+      disabled={isDisabled}
       onPress={onPress}
       style={(state) => [
         styles.pressable,
@@ -247,8 +259,8 @@ export function HomeActionButton({
           : compact
             ? styles.compactHeight
             : styles.regularHeight,
-        !disabled && getPressableInteractionStyle(state),
-        disabled && styles.disabled,
+        !isDisabled && getPressableInteractionStyle(state),
+        isDisabled && styles.disabled,
         style,
       ]}
     >
@@ -266,6 +278,7 @@ export function HomeActionButton({
               numberOfLines={1}
               style={[
                 styles.label,
+                loading && styles.labelHidden,
                 compact ? styles.labelCompact : styles.labelRegular,
                 size === 'small' && styles.labelSmall,
                 {
@@ -276,6 +289,26 @@ export function HomeActionButton({
             >
               {title}
             </Text>
+            {loading ? (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="small" color={palette.text} />
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.label,
+                    styles.loadingLabel,
+                    compact ? styles.labelCompact : styles.labelRegular,
+                    size === 'small' && styles.labelSmall,
+                    {
+                      color: palette.text,
+                      fontFamily: labelFontFamily,
+                    },
+                  ]}
+                >
+                  {title}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
       )}
@@ -343,6 +376,20 @@ const styles = StyleSheet.create({
   labelSmall: {
     fontSize: 12,
     lineHeight: 14,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'transparent',
+  },
+  loadingLabel: {
+    width: 'auto',
+  },
+  labelHidden: {
+    opacity: 0,
   },
   pressed: {
     transform: [{ translateY: 2 }],

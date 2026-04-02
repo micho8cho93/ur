@@ -1,20 +1,28 @@
-import { XpRewardBadge } from '@/components/progression/XpRewardBadge';
-import { Button } from '@/components/ui/Button';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
+import { SketchButton } from '@/components/ui/SketchButton';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
-import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import { urTheme } from '@/constants/urTheme';
 import { useMatchmaking } from '@/hooks/useMatchmaking';
 import { BotDifficulty } from '@/logic/bot/types';
 import { GAME_MODE_SCREEN_NOTE, getMatchConfig } from '@/logic/matchConfigs';
-import { getXpAwardAmount } from '@/shared/progression';
+import {
+  HOME_FREDOKA_FONT_FAMILY,
+  HOME_SUPERCELL_FONT_FAMILY,
+  resolveHomeFredokaFontFamily,
+  resolveHomeMagicFontFamily,
+} from '@/src/home/homeTheme';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { useFonts } from 'expo-font';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Image, Platform, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
+import { ImageBackground, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const botWideBackground = require('../../assets/images/bot_bg.png');
-const botMobileBackground = require('../../assets/images/bot_bg_mobile.png');
+const homeWideBackground = require('../../assets/images/home_bg.png');
+const homeMobileBackground = require('../../assets/images/home_bg_mobile.png');
+const quickPlayModePanel = require('../../assets/images/quick_play_mode_panel_cropped.png');
+
+const MODE_PANEL_ART_ASPECT_RATIO = 1113 / 458;
 
 type BotLevelCard = {
   difficulty: BotDifficulty;
@@ -25,12 +33,12 @@ type BotLevelCard = {
   icon: keyof typeof MaterialIcons.glyphMap;
 };
 
-const BOT_LEVELS: BotLevelCard[] = [
+const BOT_LEVELS: readonly BotLevelCard[] = [
   {
     difficulty: 'easy',
     title: 'Easy',
     tagline: 'Current bot',
-    description: 'Plays a random legal move. Good for learning the board and testing lines.',
+    description: 'Random legal moves with no planning. Best for learning the board and testing lines.',
     accent: '#9E6D38',
     icon: 'wb-sunny',
   },
@@ -38,7 +46,7 @@ const BOT_LEVELS: BotLevelCard[] = [
     difficulty: 'medium',
     title: 'Medium',
     tagline: 'Tactical bot',
-    description: 'Looks for captures, rosettes, safer landings, and better short-term progress.',
+    description: 'Values captures, rosettes, safer landings, and better short-term tempo.',
     accent: '#2B7A78',
     icon: 'flare',
   },
@@ -46,7 +54,7 @@ const BOT_LEVELS: BotLevelCard[] = [
     difficulty: 'hard',
     title: 'Hard',
     tagline: 'Lookahead bot',
-    description: 'Searches future rolls and replies to choose stronger long-form plans.',
+    description: 'Searches future rolls and replies to build stronger long-form plans.',
     accent: '#2E6FD8',
     icon: 'psychology',
   },
@@ -54,37 +62,49 @@ const BOT_LEVELS: BotLevelCard[] = [
     difficulty: 'perfect',
     title: 'Perfect',
     tagline: 'Deepest local search',
-    description: 'Uses the strongest solver-style search available in this app for the sharpest local play.',
+    description: 'Uses the strongest local search in the app for the sharpest offline play.',
     accent: '#C8981E',
     icon: 'auto-awesome',
   },
-];
+] as const;
 
 export default function BotSelection() {
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { modeId: rawModeId } = useLocalSearchParams<{ modeId?: string | string[] }>();
   const { startBotGame, startOfflineMatch } = useMatchmaking('bot');
   const [pendingDifficulty, setPendingDifficulty] = React.useState<BotDifficulty | null>(null);
   const [isPreparingLocalPvP, setIsPreparingLocalPvP] = React.useState(false);
-  const isCompactLayout = width < 820;
+  const [fontsLoaded] = useFonts({
+    [HOME_FREDOKA_FONT_FAMILY]: require('../../assets/fonts/Fredoka-VariableFont_wdth,wght.ttf'),
+    [HOME_SUPERCELL_FONT_FAMILY]: require('../../assets/fonts/Supercell-Magic-Regular.ttf'),
+  });
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
+  const isCompactLayout = width < 820;
   const isDesktopViewport = Platform.OS === 'web' && width >= 920;
   const isTightDesktopViewport = isDesktopViewport && height <= 820;
-  const useFourColumnLayout = isDesktopViewport && width >= 1240;
-  const showInlineHeaderEyebrow = Platform.OS !== 'web';
-  const compactCardGap = urTheme.spacing.md;
-  const compactCardSideInset = urTheme.spacing.xs;
-  const compactCardWidth = Math.min(
-    292,
-    Math.max(248, width - urTheme.spacing.md * 2 - compactCardSideInset * 2),
-  );
+  const horizontalPadding = isDesktopViewport ? urTheme.spacing.lg : urTheme.spacing.md;
+  const topPadding = insets.top + (isDesktopViewport ? 12 : 8);
+  const bottomPadding = insets.bottom + (isCompactLayout ? urTheme.spacing.xl : urTheme.spacing.lg);
+  const stageWidth = isDesktopViewport
+    ? Math.min(width - horizontalPadding * 2, 940)
+    : isCompactLayout
+      ? Math.min(width - horizontalPadding * 2, 430)
+      : Math.min(width - horizontalPadding * 2, 780);
+  const titleFontFamily = resolveHomeMagicFontFamily(fontsLoaded);
+  const bodyFontFamily = resolveHomeFredokaFontFamily(fontsLoaded);
   const resolvedModeId = Array.isArray(rawModeId) ? rawModeId[0] : rawModeId;
   const matchConfig = React.useMemo(() => getMatchConfig(resolvedModeId), [resolvedModeId]);
   const isPracticeMode = matchConfig.isPracticeMode;
   const isLocalPvPMode = matchConfig.opponentType === 'human';
-  const headerTitle = isPracticeMode ? 'Game Modes' : 'Local Match';
-  const winRewardXp = matchConfig.allowsXp ? getXpAwardAmount(matchConfig.offlineWinRewardSource) : null;
+  const heroTitle = isLocalPvPMode ? `${matchConfig.displayName} Local Match` : `${matchConfig.displayName} Difficulty`;
+  const heroSubtitle = isLocalPvPMode
+    ? `${matchConfig.selectionSubtitle}. Launch a same-device match where both sides are controlled locally.`
+    : isPracticeMode
+      ? `${matchConfig.selectionSubtitle}. Choose a bot difficulty for this offline practice match.`
+      : 'Choose how sharp your local opponent should be, then jump straight into the board.';
 
   const handleSelect = (difficulty: BotDifficulty) => {
     setPendingDifficulty(difficulty);
@@ -98,241 +118,269 @@ export default function BotSelection() {
     });
   };
 
-  const renderBotCard = (level: BotLevelCard, cardStyle: StyleProp<ViewStyle>) => {
+  const renderBotCard = (level: BotLevelCard) => {
     const isPending = pendingDifficulty === level.difficulty;
 
     return (
-      <View key={level.difficulty} style={[styles.card, cardStyle, { borderColor: `${level.accent}C8` }]}>
-        <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
-        <View style={styles.cardBorder} />
-        {winRewardXp !== null ? <XpRewardBadge amount={winRewardXp} style={styles.rewardBadge} /> : null}
-
-        <View style={styles.cardHeader}>
-          <View style={[styles.iconWrap, { backgroundColor: `${level.accent}26`, borderColor: `${level.accent}88` }]}>
-            <MaterialIcons name={level.icon} size={20} color={level.accent} />
+      <View
+        key={level.difficulty}
+        style={[
+          styles.cardShell,
+          isCompactLayout && styles.cardShellCompact,
+          isDesktopViewport && styles.cardShellDesktop,
+        ]}
+      >
+        <ImageBackground
+          source={quickPlayModePanel}
+          resizeMode="stretch"
+          style={styles.cardPanel}
+          imageStyle={styles.cardPanelImage}
+        >
+          <View style={[styles.cardPanelContent, isCompactLayout && styles.cardPanelContentCompact]}>
+            <View style={styles.cardTitleGroup}>
+              <View style={[styles.iconWrap, { borderColor: `${level.accent}40`, backgroundColor: `${level.accent}18` }]}>
+                <MaterialIcons name={level.icon} size={18} color={level.accent} />
+              </View>
+              <Text style={[styles.cardTitle, { fontFamily: titleFontFamily }]}>{level.title}</Text>
+            </View>
+            <Text style={[styles.cardTagline, { fontFamily: bodyFontFamily }]}>{level.tagline}</Text>
+            <Text
+              numberOfLines={isCompactLayout ? 4 : 3}
+              style={[styles.cardDescription, { fontFamily: bodyFontFamily }]}
+            >
+              {level.description}
+            </Text>
           </View>
-          <View style={styles.copyColumn}>
-            <Text style={styles.cardTitle}>{level.title}</Text>
-            <Text style={styles.cardTagline}>{level.tagline}</Text>
-          </View>
-        </View>
+        </ImageBackground>
 
-        <Text style={styles.cardDescription}>{level.description}</Text>
-        <Button
-          title={isPending ? 'Preparing...' : `Play ${level.title}`}
-          disabled={pendingDifficulty !== null}
-          loading={isPending}
+        <SketchButton
+          label={isPending ? 'Preparing...' : `Play ${level.title}`}
+          accessibilityLabel={isPending ? `Preparing ${level.title}` : `Play ${level.title}`}
           onPress={() => handleSelect(level.difficulty)}
+          wide
+          disabled={pendingDifficulty !== null}
+          fontFamily={bodyFontFamily}
         />
       </View>
     );
   };
 
-  const renderLocalPvPCard = (cardStyle: StyleProp<ViewStyle>) => (
-    <View key="local-pvp" style={[styles.card, cardStyle, { borderColor: '#3E8F87C8' }]}>
-      <Image source={urTextures.goldInlay} resizeMode="repeat" style={styles.cardTexture} />
-      <View style={styles.cardBorder} />
-
-      <View style={styles.cardHeader}>
-        <View style={[styles.iconWrap, { backgroundColor: '#3E8F8726', borderColor: '#3E8F8788' }]}>
-          <MaterialIcons name="people" size={20} color="#75D1C7" />
+  const renderLocalPvPCard = () => (
+    <View
+      key="local-pvp"
+      style={[
+        styles.cardShell,
+        styles.cardShellSingle,
+      ]}
+    >
+      <ImageBackground
+        source={quickPlayModePanel}
+        resizeMode="stretch"
+        style={styles.cardPanel}
+        imageStyle={styles.cardPanelImage}
+      >
+        <View style={[styles.cardPanelContent, isCompactLayout && styles.cardPanelContentCompact]}>
+          <View style={styles.cardTitleGroup}>
+            <View style={[styles.iconWrap, styles.iconWrapLocalPvP]}>
+              <MaterialIcons name="people" size={18} color="#3E8F87" />
+            </View>
+            <Text style={[styles.cardTitle, { fontFamily: titleFontFamily }]}>Same Device</Text>
+          </View>
+          <Text style={[styles.cardTagline, { fontFamily: bodyFontFamily }]}>Two human players</Text>
+          <Text
+            numberOfLines={isCompactLayout ? 4 : 3}
+            style={[styles.cardDescription, { fontFamily: bodyFontFamily }]}
+          >
+            Pass the device back and forth with seven-piece Finkel rules and no bot turns.
+          </Text>
         </View>
-        <View style={styles.copyColumn}>
-          <Text style={styles.cardTitle}>Same Device</Text>
-          <Text style={styles.cardTagline}>Two human players</Text>
-        </View>
-      </View>
+      </ImageBackground>
 
-      <Text style={styles.cardDescription}>
-        Pass the device back and forth. This match stays fully offline, uses seven-piece Finkel rules, and never hands a turn to a bot.
-      </Text>
-      <Button
-        title={isPreparingLocalPvP ? 'Preparing...' : 'Start Local PvP'}
-        disabled={isPreparingLocalPvP}
-        loading={isPreparingLocalPvP}
+      <SketchButton
+        label={isPreparingLocalPvP ? 'Preparing...' : 'Start Local PvP'}
+        accessibilityLabel={isPreparingLocalPvP ? 'Preparing local PvP' : 'Start local PvP'}
         onPress={handleStartLocalPvP}
+        wide
+        disabled={isPreparingLocalPvP}
+        fontFamily={bodyFontFamily}
       />
     </View>
   );
 
   return (
-    <View style={styles.screen}>
-      <Stack.Screen options={{ title: headerTitle }} />
-      <WideScreenBackground
-        source={botWideBackground}
-        visible={showWideBackground}
-        overlayColor="rgba(8, 10, 15, 0.22)"
-      />
-      <MobileBackground
-        source={botMobileBackground}
-        visible={showMobileBackground}
-        overlayColor="rgba(8, 10, 15, 0.22)"
-      />
-      <Image
-        source={urTextures.woodDark}
-        resizeMode="repeat"
-        style={[styles.texture, showWideBackground && styles.textureWide]}
-      />
-      <View style={styles.topGlow} />
-      <View style={styles.bottomShade} />
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.screen}>
+        <WideScreenBackground
+          source={homeWideBackground}
+          visible={showWideBackground}
+          overlayColor="rgba(56, 30, 13, 0.08)"
+        />
+        <MobileBackground
+          source={homeMobileBackground}
+          visible={showMobileBackground}
+          overlayColor="rgba(56, 30, 13, 0.08)"
+        />
+        <View style={styles.backgroundTint} />
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          isDesktopViewport && styles.scrollContentDesktop,
-          isTightDesktopViewport && styles.scrollContentDesktopTight,
-        ]}
-        horizontal={false}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-      >
-        <View style={[styles.hero, isDesktopViewport && styles.heroDesktop, isTightDesktopViewport && styles.heroDesktopTight]}>
-          {showInlineHeaderEyebrow ? <Text style={styles.eyebrow}>{headerTitle}</Text> : null}
-          <Text style={styles.title}>
-            {isLocalPvPMode
-              ? `${matchConfig.displayName} Local Match`
-              : isPracticeMode
-                ? `${matchConfig.displayName} Difficulty`
-                : 'Choose The Court You Want To Face'}
-          </Text>
-          <Text style={styles.subtitle}>
-            {isLocalPvPMode
-              ? `${matchConfig.selectionSubtitle}. Launch a same-device match where both sides are controlled locally.`
-              : isPracticeMode
-              ? `${matchConfig.selectionSubtitle}. Choose a bot difficulty for this offline practice match.`
-              : 'Stronger Ur bots come from better state evaluation and deeper lookahead. Pick your opponent and enter the board.'}
-          </Text>
-          {isPracticeMode ? (
-            <View style={styles.practicePill}>
-              <Text style={styles.practicePillText}>{GAME_MODE_SCREEN_NOTE}</Text>
-            </View>
-          ) : null}
-        </View>
-
-        {isLocalPvPMode ? (
-          <View style={[styles.gridList, isDesktopViewport && styles.gridListDesktop]}>
-            {renderLocalPvPCard([styles.gridCard, isDesktopViewport && styles.cardDesktop])}
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            isDesktopViewport && styles.scrollContentDesktop,
+            isTightDesktopViewport && styles.scrollContentDesktopTight,
+            {
+              minHeight: height,
+              paddingTop: topPadding,
+              paddingBottom: bottomPadding,
+              paddingHorizontal: horizontalPadding,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <View style={styles.topBar}>
+            <SketchButton
+              label="Back"
+              accessibilityLabel="Back"
+              onPress={() => router.back()}
+              iconName="arrow-back"
+              fontFamily={bodyFontFamily}
+            />
           </View>
-        ) : isCompactLayout ? (
-          <ScrollView
-            horizontal
-            decelerationRate="fast"
-            disableIntervalMomentum
-            snapToAlignment="start"
-            snapToInterval={compactCardWidth + compactCardGap}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[
-              styles.compactCardRow,
-              { gap: compactCardGap, paddingHorizontal: compactCardSideInset },
+
+          <View
+            style={[
+              styles.hero,
+              isDesktopViewport && styles.heroDesktop,
+              isTightDesktopViewport && styles.heroDesktopTight,
+              { maxWidth: stageWidth },
             ]}
           >
-            {BOT_LEVELS.map((level) =>
-              renderBotCard(level, [styles.compactCard, { width: compactCardWidth }]),
-            )}
-          </ScrollView>
-        ) : (
-          <View style={[styles.gridList, isDesktopViewport && styles.gridListDesktop, useFourColumnLayout && styles.gridListFourColumn]}>
-            {BOT_LEVELS.map((level) =>
-              renderBotCard(level, [styles.gridCard, isDesktopViewport && styles.cardDesktop, useFourColumnLayout && styles.gridCardFourColumn]),
-            )}
+            <Text
+              style={[
+                styles.title,
+                isCompactLayout ? styles.titleCompact : styles.titleDesktop,
+                { fontFamily: titleFontFamily },
+              ]}
+            >
+              {heroTitle}
+            </Text>
+            <Text
+              style={[
+                styles.subtitle,
+                isCompactLayout ? styles.subtitleCompact : styles.subtitleDesktop,
+                { fontFamily: bodyFontFamily },
+              ]}
+            >
+              {heroSubtitle}
+            </Text>
+            {isPracticeMode ? (
+              <View style={styles.noteCard}>
+                <Text style={[styles.noteText, { fontFamily: bodyFontFamily }]}>{GAME_MODE_SCREEN_NOTE}</Text>
+              </View>
+            ) : null}
           </View>
-        )}
-      </ScrollView>
-    </View>
+
+          <View style={[styles.stage, { width: stageWidth }]}>
+            <View
+              style={[
+                styles.gridList,
+                isLocalPvPMode && styles.gridListSingle,
+                isCompactLayout && styles.gridListCompact,
+                isDesktopViewport && styles.gridListDesktop,
+              ]}
+            >
+              {isLocalPvPMode ? renderLocalPvPCard() : BOT_LEVELS.map(renderBotCard)}
+            </View>
+          </View>
+        </ScrollView>
+      </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: urTheme.colors.night,
+    backgroundColor: '#43250F',
   },
   scrollContent: {
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.lg,
+    alignItems: 'center',
   },
   scrollContentDesktop: {
     justifyContent: 'center',
-    paddingHorizontal: urTheme.spacing.lg,
-    paddingVertical: urTheme.spacing.lg,
   },
   scrollContentDesktopTight: {
-    paddingVertical: urTheme.spacing.md,
+    justifyContent: 'flex-start',
   },
-  texture: {
+  backgroundTint: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.28,
+    backgroundColor: 'rgba(56, 30, 13, 0.08)',
   },
-  textureWide: {
-    opacity: 0.12,
-  },
-  topGlow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '34%',
-    backgroundColor: 'rgba(180, 120, 30, 0.14)',
-  },
-  bottomShade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '48%',
-    backgroundColor: 'rgba(0, 0, 0, 0.24)',
+  topBar: {
+    width: '100%',
+    alignItems: 'flex-start',
+    marginBottom: urTheme.spacing.sm,
   },
   hero: {
     alignItems: 'center',
     marginBottom: urTheme.spacing.lg,
-    paddingTop: urTheme.spacing.md,
   },
   heroDesktop: {
-    marginBottom: urTheme.spacing.md,
-    paddingTop: urTheme.spacing.xs,
+    marginBottom: urTheme.spacing.md + 2,
   },
   heroDesktopTight: {
     marginBottom: urTheme.spacing.sm,
   },
-  eyebrow: {
-    ...urTypography.label,
-    color: urTheme.colors.parchment,
-    fontSize: 11,
-    marginBottom: urTheme.spacing.xs,
-  },
   title: {
-    ...urTypography.title,
-    color: urTheme.colors.ivory,
+    color: '#22160C',
     textAlign: 'center',
+    textShadowColor: 'rgba(255, 244, 221, 0.32)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
+  },
+  titleDesktop: {
     fontSize: 34,
-    lineHeight: 40,
-    maxWidth: 520,
+    lineHeight: 38,
+  },
+  titleCompact: {
+    fontSize: 28,
+    lineHeight: 32,
   },
   subtitle: {
-    marginTop: urTheme.spacing.sm,
-    color: 'rgba(239, 224, 198, 0.84)',
+    color: 'rgba(34, 22, 12, 0.88)',
     textAlign: 'center',
-    lineHeight: 22,
     maxWidth: 560,
   },
-  practicePill: {
+  subtitleDesktop: {
+    fontSize: 16,
+    lineHeight: 22,
+    marginTop: urTheme.spacing.sm,
+  },
+  subtitleCompact: {
+    fontSize: 15,
+    lineHeight: 21,
+    marginTop: urTheme.spacing.xs,
+  },
+  noteCard: {
     marginTop: urTheme.spacing.md,
+    maxWidth: 620,
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.sm,
-    borderRadius: urTheme.radii.pill,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.54)',
-    backgroundColor: 'rgba(13, 15, 18, 0.58)',
-    maxWidth: 620,
+    borderColor: 'rgba(90, 81, 72, 0.24)',
+    backgroundColor: 'rgba(235, 220, 186, 0.78)',
   },
-  practicePillText: {
-    ...urTypography.label,
-    color: urTheme.colors.parchment,
-    fontSize: 11,
+  noteText: {
+    color: 'rgba(61, 46, 31, 0.88)',
+    fontSize: 12,
+    lineHeight: 17,
     textAlign: 'center',
   },
-  compactCardRow: {
-    paddingRight: urTheme.spacing.md,
+  stage: {
+    width: '100%',
+    marginTop: urTheme.spacing.md,
   },
   gridList: {
     flexDirection: 'row',
@@ -340,91 +388,98 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     rowGap: urTheme.spacing.md,
     width: '100%',
-    maxWidth: 720,
     alignSelf: 'center',
   },
+  gridListCompact: {
+    flexDirection: 'column',
+    gap: urTheme.spacing.lg,
+  },
+  gridListSingle: {
+    justifyContent: 'center',
+  },
   gridListDesktop: {
-    maxWidth: 920,
     rowGap: urTheme.spacing.sm,
   },
-  gridListFourColumn: {
-    maxWidth: 1200,
-  },
-  card: {
-    overflow: 'hidden',
-    borderRadius: urTheme.radii.lg,
-    borderWidth: 1.3,
-    backgroundColor: 'rgba(13, 15, 18, 0.66)',
-    padding: urTheme.spacing.lg,
-    ...boxShadow({
-      color: '#000',
-      opacity: 0.24,
-      offset: { width: 0, height: 10 },
-      blurRadius: 14,
-      elevation: 8,
-    }),
-  },
-  compactCard: {
-    minHeight: 248,
-  },
-  cardDesktop: {
-    minHeight: 224,
-    padding: urTheme.spacing.md + 2,
-  },
-  gridCard: {
+  cardShell: {
     width: '48.5%',
-    minHeight: 252,
+    alignItems: 'center',
+    gap: 14,
   },
-  gridCardFourColumn: {
-    width: '24%',
-    minHeight: 216,
+  cardShellCompact: {
+    width: '100%',
   },
-  cardTexture: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.14,
+  cardShellDesktop: {
+    width: '48.75%',
   },
-  cardBorder: {
-    ...StyleSheet.absoluteFillObject,
-    margin: urTheme.spacing.xs,
-    borderRadius: urTheme.radii.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 230, 181, 0.22)',
+  cardShellSingle: {
+    width: '100%',
+    maxWidth: 460,
+    alignSelf: 'center',
   },
-  rewardBadge: {
-    marginBottom: urTheme.spacing.md,
+  cardPanel: {
+    width: '100%',
+    aspectRatio: MODE_PANEL_ART_ASPECT_RATIO,
+    justifyContent: 'center',
+    overflow: 'visible',
   },
-  cardHeader: {
+  cardPanelImage: {
+    width: '100%',
+    height: '100%',
+  },
+  cardPanelContent: {
+    position: 'absolute',
+    top: '17%',
+    left: '16%',
+    right: '16%',
+    bottom: '18%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardPanelContentCompact: {
+    top: '16%',
+    left: '15%',
+    right: '15%',
+    bottom: '17%',
+  },
+  cardTitleGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: urTheme.spacing.sm,
-    marginBottom: urTheme.spacing.sm,
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    marginBottom: 6,
   },
   iconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
+    flexShrink: 0,
   },
-  copyColumn: {
-    flex: 1,
+  iconWrapLocalPvP: {
+    borderColor: 'rgba(62, 143, 135, 0.34)',
+    backgroundColor: 'rgba(62, 143, 135, 0.12)',
   },
   cardTitle: {
-    ...urTypography.title,
-    color: urTheme.colors.ivory,
-    fontSize: 24,
-    lineHeight: 28,
+    color: '#4B2E12',
+    fontSize: 17,
+    lineHeight: 18,
+    textAlign: 'center',
+    flexShrink: 1,
   },
   cardTagline: {
-    ...urTypography.label,
-    color: 'rgba(230, 209, 173, 0.86)',
-    fontSize: 10,
-    marginTop: 2,
+    color: '#8A611B',
+    fontSize: 11,
+    lineHeight: 13,
+    textAlign: 'center',
+    marginBottom: 6,
   },
   cardDescription: {
-    color: 'rgba(239, 224, 198, 0.84)',
-    lineHeight: 21,
-    marginBottom: urTheme.spacing.md,
+    color: '#6B5740',
+    fontSize: 13,
+    lineHeight: 16,
+    textAlign: 'center',
   },
 });
