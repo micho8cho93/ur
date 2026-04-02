@@ -5,6 +5,7 @@ import { EloRatingSummaryCard } from './EloRatingSummaryCard';
 
 const mockUseAuth = jest.fn();
 const mockUseEloRating = jest.fn();
+const mockPush = jest.fn();
 
 jest.mock('@/src/auth/useAuth', () => ({
   useAuth: (...args: unknown[]) => mockUseAuth(...args),
@@ -14,17 +15,10 @@ jest.mock('@/src/elo/useEloRating', () => ({
   useEloRating: (...args: unknown[]) => mockUseEloRating(...args),
 }));
 
-jest.mock('../ui/Button', () => ({
-  Button: ({ title, onPress }: { title: string; onPress?: () => void }) => {
-    const React = jest.requireActual('react');
-    const { Text, TouchableOpacity } = jest.requireActual('react-native');
-
-    return (
-      <TouchableOpacity accessibilityRole="button" onPress={onPress}>
-        <Text>{title}</Text>
-      </TouchableOpacity>
-    );
-  },
+jest.mock('expo-router', () => ({
+  useRouter: () => ({
+    push: mockPush,
+  }),
 }));
 
 describe('EloRatingSummaryCard', () => {
@@ -55,29 +49,42 @@ describe('EloRatingSummaryCard', () => {
       },
       errorMessage: null,
       isLoading: false,
-      isRefreshing: false,
-      refresh: jest.fn(),
     });
   });
 
-  it('opens and closes the Elo explanation modal', () => {
-    render(<EloRatingSummaryCard />);
+  it('shows the titled rating card with the leaderboard CTA', () => {
+    render(<EloRatingSummaryCard fontLoaded />);
 
-    expect(screen.queryByText('View Leaderboard')).toBeNull();
-    expect(screen.queryByText('Rated Games')).toBeNull();
+    expect(screen.getByText('Elo Rating')).toBeTruthy();
+    expect(screen.getByText('1234')).toBeTruthy();
+    expect(screen.getByText('Rank #42')).toBeTruthy();
 
-    expect(screen.queryByText('How Elo Works')).toBeNull();
+    fireEvent.press(screen.getByLabelText('Open leaderboard'));
 
-    fireEvent.press(screen.getByLabelText('Explain the Elo rating system'));
+    expect(mockPush).toHaveBeenCalledWith('/leaderboard');
+  });
 
-    expect(screen.getByText('How Elo Works')).toBeTruthy();
-    expect(screen.getByText('Everyone starts at 1200 Elo.')).toBeTruthy();
-    expect(
-      screen.getByText('Your first 10 rated games are provisional, so your rating moves faster (40 K-factor instead of 24).'),
-    ).toBeTruthy();
+  it('shows the locked state copy for guest users', () => {
+    mockUseAuth.mockReturnValue({
+      user: {
+        provider: 'guest',
+      },
+      isUsernameOnboardingLoading: false,
+      isUsernameOnboardingRequired: false,
+    });
 
-    fireEvent.press(screen.getByRole('button', { name: 'Close' }));
+    render(<EloRatingSummaryCard fontLoaded />);
 
-    expect(screen.queryByText('How Elo Works')).toBeNull();
+    expect(screen.getByText('Locked')).toBeTruthy();
+    expect(screen.getByText('Google sign-in required')).toBeTruthy();
+    expect(screen.getByText('Leaderboard')).toBeTruthy();
+  });
+
+  it('keeps the internal leaderboard CTA visible on compact layouts', () => {
+    render(<EloRatingSummaryCard layoutVariant="compact" fontLoaded />);
+
+    expect(screen.getByText('1234')).toBeTruthy();
+    expect(screen.getByText('Rank #42')).toBeTruthy();
+    expect(screen.getByText('Leaderboard')).toBeTruthy();
   });
 });

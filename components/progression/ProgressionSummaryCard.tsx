@@ -1,143 +1,221 @@
 import React from 'react';
-import { Image, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
-import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import { HomeStatCard } from '@/components/home/HomeStatCard';
 import { useProgression } from '@/src/progression/useProgression';
-import { Button } from '../ui/Button';
-import { ProgressionModal } from './ProgressionModal';
-import { XpProgressBar } from './XpProgressBar';
+import {
+  buildDisplayedProgressionSnapshot,
+  formatProgressionXp,
+} from '@/src/progression/progressionDisplay';
+import {
+  HomeLayoutVariant,
+  resolveHomeFredokaFontFamily,
+} from '@/src/home/homeTheme';
 
 interface ProgressionSummaryCardProps {
   style?: StyleProp<ViewStyle>;
+  layoutVariant?: HomeLayoutVariant;
+  fontLoaded?: boolean;
+  onOpenRank?: () => void;
 }
 
-export const ProgressionSummaryCard: React.FC<ProgressionSummaryCardProps> = ({ style }) => {
-  const { progression, errorMessage, isLoading, isRefreshing, refresh } = useProgression();
-  const [showModal, setShowModal] = React.useState(false);
+export const ProgressionSummaryCard: React.FC<ProgressionSummaryCardProps> = ({
+  style,
+  layoutVariant = 'desktop',
+  fontLoaded = false,
+  onOpenRank,
+}) => {
+  const { progression, errorMessage, isLoading } = useProgression();
+  const isCompact = layoutVariant === 'compact';
+  const fontFamily = resolveHomeFredokaFontFamily(fontLoaded);
+  const snapshot = progression ? buildDisplayedProgressionSnapshot(progression.totalXp) : null;
+  const progressWidth = `${Math.max(0, Math.min(100, snapshot?.progressPercent ?? 0))}%` as ViewStyle['width'];
+
+  let statusLabel = 'Start your climb';
+  if (isLoading) {
+    statusLabel = 'Loading progression';
+  } else if (errorMessage) {
+    statusLabel = 'Progress unavailable';
+  }
+
+  const helperLabel = snapshot
+    ? snapshot.nextRank
+      ? `${formatProgressionXp(snapshot.xpNeededForNextRank)} XP to ${snapshot.nextRank}`
+      : 'Maximum rank reached'
+    : statusLabel;
 
   return (
-    <>
-      <View style={[styles.card, style]}>
-        <Image source={urTextures.lapisMosaic} resizeMode="repeat" style={styles.texture} />
-        <View style={styles.cardGlow} />
-        <View style={styles.cardBorder} />
+    <HomeStatCard
+      title="XP & Rank"
+      ctaLabel="Status"
+      ctaAccessibilityLabel="Open status details"
+      onCtaPress={onOpenRank ?? (() => undefined)}
+      layoutVariant={layoutVariant}
+      fontLoaded={fontLoaded}
+      style={style}
+      contentContainerStyle={isCompact ? styles.contentCompact : styles.contentDesktop}
+    >
+      {snapshot ? (
+        <View
+          accessibilityLabel={`XP progress ${Math.round(snapshot.progressPercent)} percent, rank ${snapshot.currentRank}`}
+          style={styles.metricColumn}
+        >
+          <Text
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.72}
+            style={[
+              styles.rankLabel,
+              isCompact ? styles.rankLabelCompact : styles.rankLabelDesktop,
+              { fontFamily },
+            ]}
+          >
+            {snapshot.currentRank}
+          </Text>
 
-        <Text style={styles.eyebrow}>Rank & XP</Text>
-
-        {progression ? (
-          <XpProgressBar
-            snapshot={progression}
-            compact
-            showInfoButton
-            onInfoPress={() => setShowModal(true)}
-          />
-        ) : isLoading ? (
-          <View style={styles.stateBlock}>
-            <Text style={styles.stateTitle}>Inscribing your record...</Text>
-            <Text style={styles.stateText}>Fetching your latest XP and rank from the royal archive.</Text>
+          <View style={styles.trackShell}>
+            <View style={[styles.trackFill, { width: progressWidth }]}>
+              <View style={styles.trackGloss} />
+            </View>
           </View>
-        ) : errorMessage ? (
-          <View style={styles.stateBlock}>
-            <Text style={styles.stateTitle}>Progression unavailable</Text>
-            <Text style={styles.stateText}>{errorMessage}</Text>
-            <Button
-              title="Retry"
-              variant="outline"
-              onPress={() => {
-                void refresh();
-              }}
-              style={styles.retryButton}
-            />
-          </View>
-        ) : (
-          <View style={styles.stateBlock}>
-            <Text style={styles.stateTitle}>No progression recorded yet</Text>
-            <Text style={styles.stateText}>Your XP and rank will appear here once the server record is available.</Text>
-          </View>
-        )}
 
-        {progression && isRefreshing ? (
-          <Text style={styles.metaText}>Refreshing your latest progression...</Text>
-        ) : null}
-        {progression && errorMessage && !isRefreshing ? (
-          <Text style={styles.metaText}>Showing your most recently synced progression.</Text>
-        ) : null}
-      </View>
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.xpValue,
+              isCompact ? styles.xpValueCompact : styles.xpValueDesktop,
+              { fontFamily },
+            ]}
+          >
+            {formatProgressionXp(snapshot.totalXp)} XP
+          </Text>
 
-      <ProgressionModal
-        visible={showModal}
-        onClose={() => setShowModal(false)}
-        progression={progression}
-      />
-    </>
+          <Text
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.72}
+            style={[
+              styles.helperLabel,
+              isCompact ? styles.helperLabelCompact : styles.helperLabelDesktop,
+              { fontFamily },
+            ]}
+          >
+            {helperLabel}
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.stateContainer}>
+          <Text
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            style={[
+              styles.stateLabel,
+              isCompact ? styles.stateLabelCompact : styles.stateLabelDesktop,
+              { fontFamily },
+            ]}
+          >
+            {statusLabel}
+          </Text>
+        </View>
+      )}
+    </HomeStatCard>
   );
 };
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: urTheme.radii.md,
+  contentDesktop: {
+    paddingTop: 10,
+    paddingBottom: 16,
+  },
+  contentCompact: {
+    paddingTop: 8,
+    paddingBottom: 14,
+  },
+  metricColumn: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 12,
+  },
+  rankLabel: {
+    textAlign: 'center',
+    color: '#533112',
+  },
+  rankLabelDesktop: {
+    fontSize: 21,
+    lineHeight: 24,
+    minHeight: 48,
+  },
+  rankLabelCompact: {
+    fontSize: 20,
+    lineHeight: 23,
+    minHeight: 44,
+  },
+  trackShell: {
+    width: '100%',
+    height: 14,
+    borderRadius: 999,
     overflow: 'hidden',
-    backgroundColor: 'rgba(10, 16, 24, 0.5)',
+    backgroundColor: 'rgba(123, 79, 38, 0.22)',
     borderWidth: 1,
-    borderColor: 'rgba(236, 205, 152, 0.24)',
-    padding: urTheme.spacing.md,
-    gap: urTheme.spacing.sm,
-    ...boxShadow({
-      color: '#000',
-      opacity: 0.16,
-      offset: { width: 0, height: 8 },
-      blurRadius: 14,
-      elevation: 6,
-    }),
+    borderColor: 'rgba(117, 72, 26, 0.28)',
   },
-  texture: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.08,
+  trackFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#D5A72F',
+    overflow: 'hidden',
   },
-  cardGlow: {
+  trackGloss: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: '42%',
-    backgroundColor: 'rgba(90, 144, 220, 0.12)',
+    height: '56%',
+    backgroundColor: 'rgba(255, 244, 210, 0.34)',
   },
-  cardBorder: {
-    ...StyleSheet.absoluteFillObject,
-    margin: urTheme.spacing.xs,
-    borderRadius: urTheme.radii.sm + 2,
-    borderWidth: 1,
-    borderColor: 'rgba(248, 230, 192, 0.12)',
+  xpValue: {
+    textAlign: 'center',
+    color: '#7D3F12',
   },
-  eyebrow: {
-    ...urTypography.label,
-    color: 'rgba(240, 224, 196, 0.68)',
-    fontSize: 10,
+  xpValueDesktop: {
+    fontSize: 24,
+    lineHeight: 28,
   },
-  stateBlock: {
-    gap: 6,
+  xpValueCompact: {
+    fontSize: 23,
+    lineHeight: 27,
   },
-  stateTitle: {
-    ...urTypography.subtitle,
-    color: '#F8ECD6',
-    fontSize: 16,
-    lineHeight: 22,
-    fontWeight: '700',
+  helperLabel: {
+    textAlign: 'center',
+    color: '#76512E',
   },
-  stateText: {
-    color: 'rgba(243, 230, 206, 0.78)',
+  helperLabelDesktop: {
     fontSize: 13,
-    lineHeight: 19,
+    lineHeight: 16,
+    minHeight: 32,
   },
-  retryButton: {
-    marginTop: urTheme.spacing.xs,
-    alignSelf: 'flex-start',
-    minWidth: 120,
-  },
-  metaText: {
-    color: 'rgba(236, 223, 197, 0.62)',
+  helperLabelCompact: {
     fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 15,
+    minHeight: 30,
+  },
+  stateContainer: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  stateLabel: {
+    textAlign: 'center',
+    color: '#6C411E',
+  },
+  stateLabelDesktop: {
+    fontSize: 20,
+    lineHeight: 24,
+  },
+  stateLabelCompact: {
+    fontSize: 18,
+    lineHeight: 22,
   },
 });

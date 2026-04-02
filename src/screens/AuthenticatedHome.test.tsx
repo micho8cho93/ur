@@ -1,18 +1,49 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import React from 'react';
+import * as ReactNative from 'react-native';
+
 import AuthenticatedHome from './AuthenticatedHome';
+import { buildProgressionSnapshot } from '@/shared/progression';
+import { CHALLENGE_DEFINITIONS, createDefaultUserChallengeProgressSnapshot } from '@/shared/challenges';
 
 const mockUseAuth = jest.fn();
+const mockUseProgression = jest.fn();
+const mockUseEloRating = jest.fn();
+const mockUseChallenges = jest.fn();
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 const mockRunScreenTransition = jest.fn();
+
+const originalPlatform = ReactNative.Platform.OS;
+
+const setPlatform = (platform: typeof ReactNative.Platform.OS) => {
+  (ReactNative.Platform as { OS: typeof ReactNative.Platform.OS }).OS = platform;
+};
+
+jest.mock('expo-font', () => ({
+  useFonts: () => [true],
+}));
 
 jest.mock('@/src/auth/useAuth', () => ({
   useAuth: (...args: unknown[]) => mockUseAuth(...args),
 }));
 
+jest.mock('@/src/progression/useProgression', () => ({
+  useProgression: (...args: unknown[]) => mockUseProgression(...args),
+}));
+
+jest.mock('@/src/elo/useEloRating', () => ({
+  useEloRating: (...args: unknown[]) => mockUseEloRating(...args),
+}));
+
+jest.mock('@/src/challenges/useChallenges', () => ({
+  useChallenges: (...args: unknown[]) => mockUseChallenges(...args),
+}));
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     push: mockPush,
+    replace: mockReplace,
   }),
 }));
 
@@ -29,29 +60,13 @@ jest.mock('@expo/vector-icons/MaterialIcons', () => {
   };
 });
 
-jest.mock('@/components/progression/ProgressionSummaryCard', () => ({
-  ProgressionSummaryCard: () => null,
-}));
-
-jest.mock('@/components/elo/EloRatingSummaryCard', () => ({
-  EloRatingSummaryCard: () => null,
-}));
-
-jest.mock('@/components/challenges/ChallengeSummaryCard', () => ({
-  ChallengeSummaryCard: () => null,
-}));
-
-jest.mock('@/components/ui/MobileBackground', () => ({
-  MobileBackground: () => null,
-  useMobileBackground: () => false,
-}));
-
-jest.mock('@/components/ui/WideScreenBackground', () => ({
-  MIN_WIDE_WEB_BACKGROUND_WIDTH: 768,
-  WideScreenBackground: () => null,
-}));
-
 jest.mock('react-native-safe-area-context', () => ({
+  SafeAreaView: ({ children }: { children: React.ReactNode }) => {
+    const React = jest.requireActual('react');
+    const { View } = jest.requireActual('react-native');
+
+    return <View>{children}</View>;
+  },
   useSafeAreaInsets: () => ({
     top: 0,
     right: 0,
@@ -60,46 +75,20 @@ jest.mock('react-native-safe-area-context', () => ({
   }),
 }));
 
-jest.mock('@/components/ui/Button', () => ({
-  Button: ({ title, onPress }: { title: string; onPress?: () => void }) => {
-    const React = jest.requireActual('react');
-    const { Text, TouchableOpacity } = jest.requireActual('react-native');
-    return (
-      <TouchableOpacity onPress={onPress}>
-        <Text>{title}</Text>
-      </TouchableOpacity>
-    );
-  },
-}));
-
 describe('AuthenticatedHome', () => {
+  let useWindowDimensionsSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    setPlatform('web');
+    useWindowDimensionsSpy = jest.spyOn(ReactNative, 'useWindowDimensions');
+    useWindowDimensionsSpy.mockReturnValue({ width: 1440, height: 900, scale: 1, fontScale: 1 });
+
     mockRunScreenTransition.mockImplementation(async (request: { action?: () => void | Promise<void> }) => {
       await request.action?.();
       return true;
     });
-  });
 
-  it('does not render a logout button for guest users', () => {
-    mockUseAuth.mockReturnValue({
-      user: {
-        id: 'guest_1',
-        username: 'Guest',
-        email: null,
-        avatarUrl: null,
-        provider: 'guest',
-        createdAt: '2026-03-15T12:00:00.000Z',
-      },
-      logout: jest.fn(),
-    });
-
-    const view = render(<AuthenticatedHome />);
-
-    expect(view.queryByText('Logout')).toBeNull();
-  });
-
-  it('renders a logout button for authenticated providers', () => {
     mockUseAuth.mockReturnValue({
       user: {
         id: 'google_1',
@@ -112,36 +101,87 @@ describe('AuthenticatedHome', () => {
       logout: jest.fn(),
     });
 
-    const view = render(<AuthenticatedHome />);
-
-    expect(view.getByText('Logout')).toBeTruthy();
-  });
-
-  it('shows the new single play tutorial entry point', () => {
-    mockUseAuth.mockReturnValue({
-      user: {
-        id: 'guest_1',
-        username: 'Guest',
-        email: null,
-        avatarUrl: null,
-        provider: 'guest',
-        createdAt: '2026-03-15T12:00:00.000Z',
-      },
-      logout: jest.fn(),
+    mockUseProgression.mockReturnValue({
+      progression: buildProgressionSnapshot(300),
+      errorMessage: null,
+      isLoading: false,
     });
 
+    mockUseEloRating.mockReturnValue({
+      ratingProfile: {
+        leaderboardId: 'elo_global',
+        userId: 'google_1',
+        usernameDisplay: 'Michel',
+        eloRating: 1422,
+        ratedGames: 18,
+        ratedWins: 11,
+        ratedLosses: 7,
+        provisional: false,
+        rank: 18,
+        lastRatedMatchId: 'match-1',
+        lastRatedAt: '2026-03-21T10:00:00.000Z',
+      },
+      errorMessage: null,
+      isLoading: false,
+    });
+
+    const progress = createDefaultUserChallengeProgressSnapshot('2026-03-21T12:00:00.000Z');
+    progress.totalCompleted = 24;
+    mockUseChallenges.mockReturnValue({
+      definitions: CHALLENGE_DEFINITIONS,
+      progress,
+      errorMessage: null,
+      isLoading: false,
+    });
+  });
+
+  afterEach(() => {
+    useWindowDimensionsSpy.mockRestore();
+  });
+
+  afterAll(() => {
+    setPlatform(originalPlatform);
+  });
+
+  it('renders the desktop home with unified cards, internal CTAs, and external actions', async () => {
     const view = render(<AuthenticatedHome />);
 
+    expect(view.getByText('Michel')).toBeTruthy();
+    expect(view.getByText('ROYAL CHALLENGER')).toBeTruthy();
+    expect(view.getByText('Logout')).toBeTruthy();
+    expect(view.getByText('XP & Rank')).toBeTruthy();
+    expect(view.getByText('Elo Rating')).toBeTruthy();
+    expect(view.getAllByText('Challenges')).toHaveLength(2);
+    expect(view.getByText('1422')).toBeTruthy();
+    expect(view.getByText('Rank #18')).toBeTruthy();
+    expect(view.getByText('24/40')).toBeTruthy();
     expect(view.getByText('Quick Play')).toBeTruthy();
     expect(view.getByText('Play Online')).toBeTruthy();
+    expect(view.getByText('Tutorial')).toBeTruthy();
+    expect(view.getByText('Status')).toBeTruthy();
     expect(view.getByText('Leaderboard')).toBeTruthy();
-    expect(view.getByText('Play Tutorial')).toBeTruthy();
-    expect(view.queryByText('Game Modes')).toBeNull();
-    expect(view.queryByText('Watch Extended Tutorial')).toBeNull();
-    expect(view.queryByText('5 Step Tutorial')).toBeNull();
+
+    fireEvent.press(view.getByLabelText('Open status details'));
+    expect(view.getByText('XP & Ranks')).toBeTruthy();
+
+    fireEvent.press(view.getByLabelText('Open leaderboard'));
+    fireEvent.press(view.getByLabelText('Open challenges page'));
+    fireEvent.press(view.getByText('Quick Play'));
+    fireEvent.press(view.getByText('Play Online'));
+    fireEvent.press(view.getByText('Tutorial'));
+
+    expect(mockPush).toHaveBeenCalledWith('/leaderboard');
+    expect(mockPush).toHaveBeenCalledWith('/challenges');
+    expect(mockPush).toHaveBeenCalledWith('/(game)/game-modes');
+    expect(mockPush).toHaveBeenCalledWith('/(game)/lobby?mode=online');
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('/match/local-'));
+    });
   });
 
-  it('routes quick play to game modes and exposes leaderboard from the home actions', () => {
+  it('renders the guest layout with the locked Elo card and back control', async () => {
+    const logout = jest.fn().mockResolvedValue(undefined);
+
     mockUseAuth.mockReturnValue({
       user: {
         id: 'guest_1',
@@ -151,15 +191,38 @@ describe('AuthenticatedHome', () => {
         provider: 'guest',
         createdAt: '2026-03-15T12:00:00.000Z',
       },
-      logout: jest.fn(),
+      logout,
     });
 
     const view = render(<AuthenticatedHome />);
 
-    fireEvent.press(view.getByText('Quick Play'));
-    fireEvent.press(view.getByText('Leaderboard'));
+    expect(view.getByText('Guest')).toBeTruthy();
+    expect(view.queryByText('ROYAL CHALLENGER')).toBeNull();
+    expect(view.getByText('Back')).toBeTruthy();
+    expect(view.queryByText('Logout')).toBeNull();
+    expect(view.getByText('Locked')).toBeTruthy();
+    expect(view.getByText('Google sign-in required')).toBeTruthy();
 
-    expect(mockPush).toHaveBeenCalledWith('/(game)/game-modes');
-    expect(mockPush).toHaveBeenCalledWith('/leaderboard');
+    fireEvent.press(view.getByText('Back'));
+
+    await waitFor(() => {
+      expect(logout).toHaveBeenCalled();
+      expect(mockReplace).toHaveBeenCalledWith('/(auth)/login');
+    });
+  });
+
+  it('renders the stacked compact layout on narrow screens', () => {
+    useWindowDimensionsSpy.mockReturnValue({ width: 430, height: 932, scale: 1, fontScale: 1 });
+
+    const view = render(<AuthenticatedHome />);
+
+    expect(view.getByText('XP & Rank')).toBeTruthy();
+    expect(view.getByText('Elo Rating')).toBeTruthy();
+    expect(view.getAllByText('Challenges')).toHaveLength(2);
+    expect(view.getByText('Status')).toBeTruthy();
+    expect(view.getByText('Leaderboard')).toBeTruthy();
+    expect(view.getByText('Quick Play')).toBeTruthy();
+    expect(view.getByText('Play Online')).toBeTruthy();
+    expect(view.getByText('Tutorial')).toBeTruthy();
   });
 });

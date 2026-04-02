@@ -2,132 +2,117 @@ import React from 'react';
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTypography } from '@/constants/urTheme';
+import { HomeStatCard } from '@/components/home/HomeStatCard';
+import { CHALLENGE_DEFINITIONS } from '@/shared/challenges';
 import { useChallenges } from '@/src/challenges/useChallenges';
-import { Button } from '../ui/Button';
+import {
+  HomeLayoutVariant,
+  resolveHomeFredokaFontFamily,
+} from '@/src/home/homeTheme';
 
 interface ChallengeSummaryCardProps {
   style?: StyleProp<ViewStyle>;
+  layoutVariant?: HomeLayoutVariant;
+  fontLoaded?: boolean;
 }
 
-export const ChallengeSummaryCard: React.FC<ChallengeSummaryCardProps> = ({ style }) => {
+export const ChallengeSummaryCard: React.FC<ChallengeSummaryCardProps> = ({
+  style,
+  layoutVariant = 'desktop',
+  fontLoaded = false,
+}) => {
   const router = useRouter();
-  const { definitions, progress, errorMessage, isLoading, isRefreshing, refresh } = useChallenges();
+  const { definitions, progress, errorMessage, isLoading } = useChallenges();
+  const isCompact = layoutVariant === 'compact';
+  const fontFamily = resolveHomeFredokaFontFamily(fontLoaded);
 
-  const challengeCount = definitions.length;
-  const completedCount = progress?.totalCompleted ?? 0;
+  const challengeCount = definitions.length || CHALLENGE_DEFINITIONS.length;
+  const completedCount = progress?.totalCompleted;
+  const completedLabel =
+    isLoading && completedCount == null
+      ? '--'
+      : errorMessage && completedCount == null
+        ? '--'
+        : String(completedCount ?? 0);
 
   return (
-    <View style={[styles.card, style]}>
-      <Text style={styles.eyebrow}>Permanent Challenges</Text>
+    <HomeStatCard
+      title="Challenges"
+      ctaLabel="Challenges"
+      ctaAccessibilityLabel="Open challenges page"
+      onCtaPress={() => router.push('/challenges')}
+      layoutVariant={layoutVariant}
+      fontLoaded={fontLoaded}
+      style={style}
+      contentContainerStyle={isCompact ? styles.contentCompact : styles.contentDesktop}
+    >
+      <View style={styles.metricColumn}>
+        <Text
+          accessibilityLabel={`Challenges completed ${completedLabel} of ${challengeCount}`}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+          style={[
+            styles.ratioLabel,
+            isCompact ? styles.ratioLabelCompact : styles.ratioLabelDesktop,
+            { fontFamily },
+          ]}
+        >
+          {completedLabel}/{challengeCount}
+        </Text>
 
-      {isLoading ? (
-        <View style={styles.copyBlock}>
-          <Text style={styles.title}>Opening the archive…</Text>
-          <Text style={styles.body}>Fetching your available challenges and confirmed completion record.</Text>
-        </View>
-      ) : errorMessage && definitions.length === 0 ? (
-        <View style={styles.copyBlock}>
-          <Text style={styles.title}>Challenges unavailable</Text>
-          <Text style={styles.body}>{errorMessage}</Text>
-          <Button title="Retry" variant="outline" onPress={() => void refresh()} style={styles.retryButton} />
-        </View>
-      ) : (
-        <>
-          <View style={styles.statsRow}>
-            <View style={styles.statPill}>
-              <Text style={styles.statValue}>{completedCount}</Text>
-              <Text style={styles.statLabel}>Completed</Text>
-            </View>
-            <View style={styles.statPill}>
-              <Text style={styles.statValue}>{challengeCount}</Text>
-              <Text style={styles.statLabel}>Total</Text>
-            </View>
-          </View>
-
-          {isRefreshing ? <Text style={styles.metaText}>Refreshing your latest challenge record…</Text> : null}
-          {errorMessage && definitions.length > 0 ? (
-            <Text style={styles.metaText}>Showing the most recently synced challenge archive.</Text>
-          ) : null}
-
-          <Button title="View Challenges" variant="outline" onPress={() => router.push('/challenges')} />
-        </>
-      )}
-    </View>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.helperLabel,
+            isCompact ? styles.helperLabelCompact : styles.helperLabelDesktop,
+            { fontFamily },
+          ]}
+        >
+          Completed
+        </Text>
+      </View>
+    </HomeStatCard>
   );
 };
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: urTheme.radii.md,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(10, 16, 24, 0.5)',
-    borderWidth: 1,
-    borderColor: 'rgba(236, 205, 152, 0.24)',
-    padding: urTheme.spacing.md,
-    gap: urTheme.spacing.sm,
-    ...boxShadow({
-      color: '#000',
-      opacity: 0.16,
-      offset: { width: 0, height: 8 },
-      blurRadius: 14,
-      elevation: 6,
-    }),
+  contentDesktop: {
+    paddingTop: 10,
+    paddingBottom: 22,
   },
-  eyebrow: {
-    ...urTypography.label,
-    color: 'rgba(240, 224, 196, 0.68)',
-    fontSize: 10,
+  contentCompact: {
+    paddingTop: 8,
+    paddingBottom: 18,
   },
-  copyBlock: {
-    gap: 6,
+  metricColumn: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
   },
-  title: {
-    ...urTypography.subtitle,
-    color: '#F8ECD6',
+  ratioLabel: {
+    textAlign: 'center',
+    color: '#6B3A13',
+  },
+  ratioLabelDesktop: {
+    fontSize: 32,
+    lineHeight: 36,
+  },
+  ratioLabelCompact: {
+    fontSize: 28,
+    lineHeight: 32,
+  },
+  helperLabel: {
+    textAlign: 'center',
+    color: '#7A552E',
+  },
+  helperLabelDesktop: {
     fontSize: 16,
-    lineHeight: 22,
-    fontWeight: '700',
-  },
-  body: {
-    color: 'rgba(243, 230, 206, 0.78)',
-    fontSize: 13,
     lineHeight: 19,
   },
-  retryButton: {
-    marginTop: urTheme.spacing.xs,
-    alignSelf: 'flex-start',
-    minWidth: 120,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: urTheme.spacing.sm,
-  },
-  statPill: {
-    flex: 1,
-    borderRadius: urTheme.radii.md,
-    paddingVertical: urTheme.spacing.sm,
-    paddingHorizontal: urTheme.spacing.sm,
-    backgroundColor: 'rgba(22, 29, 39, 0.62)',
-    borderWidth: 1,
-    borderColor: 'rgba(130, 167, 220, 0.2)',
-    gap: 4,
-  },
-  statValue: {
-    ...urTypography.title,
-    color: '#F7E9D2',
-    fontSize: 24,
-    lineHeight: 28,
-  },
-  statLabel: {
-    ...urTypography.label,
-    color: 'rgba(232, 210, 176, 0.74)',
-    fontSize: 10,
-  },
-  metaText: {
-    color: 'rgba(236, 223, 197, 0.62)',
-    fontSize: 12,
-    lineHeight: 17,
+  helperLabelCompact: {
+    fontSize: 15,
+    lineHeight: 18,
   },
 });

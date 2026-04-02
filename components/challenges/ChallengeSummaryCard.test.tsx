@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
 import { ChallengeSummaryCard } from './ChallengeSummaryCard';
@@ -17,55 +17,49 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
-jest.mock('../ui/Button', () => ({
-  Button: ({ title }: { title: string }) => {
-    const React = jest.requireActual('react');
-    const { Text } = jest.requireActual('react-native');
-    return <Text>{title}</Text>;
-  },
-}));
-
 describe('ChallengeSummaryCard', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('shows summary stats without the completed challenge preview list', () => {
+  it('shows the titled challenge card with completed progress and CTA', () => {
     const definitions = CHALLENGE_DEFINITIONS.slice(0, 3);
     const progress = createDefaultUserChallengeProgressSnapshot('2026-03-21T12:00:00.000Z');
-
     progress.totalCompleted = 2;
-    progress.challenges[definitions[0].id] = {
-      ...progress.challenges[definitions[0].id],
-      completed: true,
-      completedAt: '2026-03-20T10:00:00.000Z',
-      completedMatchId: 'match-1',
-    };
-    progress.challenges[definitions[1].id] = {
-      ...progress.challenges[definitions[1].id],
-      completed: true,
-      completedAt: '2026-03-21T09:30:00.000Z',
-      completedMatchId: 'match-2',
-    };
 
     mockUseChallenges.mockReturnValue({
       definitions,
       progress,
       errorMessage: null,
       isLoading: false,
-      isRefreshing: false,
-      refresh: jest.fn(),
     });
 
-    const view = render(<ChallengeSummaryCard />);
+    render(<ChallengeSummaryCard fontLoaded />);
 
-    expect(view.getByText('Completed')).toBeTruthy();
-    expect(view.getByText('Total')).toBeTruthy();
-    expect(view.getByText('View Challenges')).toBeTruthy();
-    expect(view.queryByText('Completed Challenges')).toBeNull();
-    expect(view.queryByText(definitions[0].name)).toBeNull();
-    expect(view.queryByText(definitions[1].name)).toBeNull();
-    expect(view.queryByText(definitions[2].name)).toBeNull();
-    expect(view.queryByText(`You have completed 2 of ${definitions.length} permanent challenges.`)).toBeNull();
+    expect(screen.getAllByText('Challenges')).toHaveLength(2);
+    expect(screen.getByText('2/3')).toBeTruthy();
+    expect(screen.getByText('Completed')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Open challenges page'));
+
+    expect(mockPush).toHaveBeenCalledWith('/challenges');
+  });
+
+  it('keeps the internal CTA visible on compact layouts', () => {
+    const definitions = CHALLENGE_DEFINITIONS.slice(0, 3);
+    const progress = createDefaultUserChallengeProgressSnapshot('2026-03-21T12:00:00.000Z');
+    progress.totalCompleted = 2;
+
+    mockUseChallenges.mockReturnValue({
+      definitions,
+      progress,
+      errorMessage: null,
+      isLoading: false,
+    });
+
+    render(<ChallengeSummaryCard layoutVariant="compact" fontLoaded />);
+
+    expect(screen.getByText('2/3')).toBeTruthy();
+    expect(screen.getAllByText('Challenges')).toHaveLength(2);
   });
 });
