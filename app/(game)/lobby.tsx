@@ -34,7 +34,7 @@ import { useFonts } from 'expo-font';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ImageBackground,
+  Image,
   Platform,
   ScrollView,
   Share,
@@ -75,16 +75,19 @@ function OnlineActionPanel({
   children,
 }: OnlineActionPanelProps) {
   return (
-    <ImageBackground
-      source={onlineActionCard}
-      resizeMode="stretch"
+    <View
       style={[
         styles.modePanel,
         compact ? styles.modePanelCompact : styles.modePanelDesktop,
         style,
       ]}
-      imageStyle={styles.modePanelImage}
     >
+      <Image
+        pointerEvents="none"
+        source={onlineActionCard}
+        resizeMode="stretch"
+        style={styles.modePanelImage}
+      />
       {typeof rewardAmount === 'number' ? (
         <XpRewardBadge
           amount={rewardAmount}
@@ -118,7 +121,7 @@ function OnlineActionPanel({
 
         <View style={styles.modePanelBody}>{children}</View>
       </View>
-    </ImageBackground>
+    </View>
   );
 }
 
@@ -314,7 +317,7 @@ export default function Lobby() {
           visible={showMobileBackground}
           overlayColor={urPanelColors.sceneOverlay}
         />
-        <View style={styles.backgroundTint} />
+        <View pointerEvents="none" style={styles.backgroundTint} />
 
         <ScrollView
           contentContainerStyle={[
@@ -510,7 +513,11 @@ export default function Lobby() {
                       size={isCompactLayout ? 'compact' : 'regular'}
                       loading={isFindingOpponent}
                       disabled={isCreatingPrivateGame || isJoiningPrivateGame}
-                      style={[styles.primaryActionButton, { maxWidth: findOpponentButtonMaxWidth }]}
+                      style={[
+                        styles.primaryActionButton,
+                        styles.containedLightButton,
+                        { maxWidth: findOpponentButtonMaxWidth },
+                      ]}
                       onPress={handleStart}
                     />
                   </OnlineActionPanel>
@@ -578,7 +585,7 @@ export default function Lobby() {
                               onPress={() => void handleCopyPrivateCode()}
                               fontLoaded={fontsLoaded}
                               size="compact"
-                              style={styles.actionRowButton}
+                              style={[styles.actionRowButton, styles.containedLightButton]}
                             />
                           </View>
                           <View style={styles.actionRowCell}>
@@ -586,7 +593,7 @@ export default function Lobby() {
                               label="Start Game"
                               fontLoaded={fontsLoaded}
                               size="compact"
-                              style={styles.actionRowButton}
+                              style={[styles.actionRowButton, styles.containedLightButton]}
                               onPress={startCreatedPrivateMatch}
                             />
                           </View>
@@ -599,7 +606,7 @@ export default function Lobby() {
                             onPress={clearCreatedPrivateMatch}
                             fontLoaded={fontsLoaded}
                             size="compact"
-                            style={styles.secondaryActionButton}
+                            style={[styles.secondaryActionButton, styles.containedLightButton]}
                           />
                         </View>
                       </>
@@ -611,7 +618,7 @@ export default function Lobby() {
                               label={option.label}
                               fontLoaded={fontsLoaded}
                               size={isCompactLayout ? 'compact' : 'regular'}
-                              style={styles.primaryActionButton}
+                              style={[styles.primaryActionButton, styles.containedLightButton]}
                               loading={
                                 isCreatingPrivateGame &&
                                 pendingPrivateMode === option.modeId
@@ -675,7 +682,7 @@ export default function Lobby() {
                       size={isCompactLayout ? 'compact' : 'regular'}
                       loading={isJoiningPrivateGame}
                       disabled={!canJoinPrivateGame}
-                      style={styles.primaryActionButton}
+                      style={[styles.primaryActionButton, styles.containedLightButton]}
                       onPress={() => void handleJoinPrivateGame()}
                     />
                   </OnlineActionPanel>
@@ -859,6 +866,7 @@ const styles = StyleSheet.create({
   modePanel: {
     width: '100%',
     aspectRatio: ONLINE_ACTION_CARD_ASPECT_RATIO,
+    position: 'relative',
     overflow: 'visible',
     justifyContent: 'center',
   },
@@ -871,8 +879,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   modePanelImage: {
-    width: '100%',
-    height: '100%',
+    ...StyleSheet.absoluteFillObject,
   },
   modeRewardBadge: {
     position: 'absolute',
@@ -880,6 +887,7 @@ const styles = StyleSheet.create({
     right: 8,
     minWidth: 78,
     transform: [{ scale: 0.86 }],
+    zIndex: 2,
   },
   modeRewardBadgeCompact: {
     top: 8,
@@ -895,6 +903,7 @@ const styles = StyleSheet.create({
     bottom: '14%',
     alignItems: 'center',
     justifyContent: 'flex-start',
+    zIndex: 1,
   },
   modePanelContentDesktop: {
     top: '13%',
@@ -941,6 +950,9 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 196,
     alignSelf: 'center',
+  },
+  containedLightButton: {
+    overflow: 'hidden',
   },
   primaryActionField: {
     width: '100%',
