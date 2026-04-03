@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
   fill: {
     height: '100%',
     borderRadius: urTheme.radii.pill,
-    backgroundColor: '#2F6CC8',
+    backgroundColor: '#9B533D',
     overflow: 'hidden',
   },
   fillMax: {
@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '54%',
-    backgroundColor: 'rgba(255, 239, 203, 0.2)',
+    backgroundColor: 'rgba(255, 223, 202, 0.2)',
   },
   fillEdge: {
     position: 'absolute',
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     width: 10,
-    backgroundColor: 'rgba(247, 230, 195, 0.12)',
+    backgroundColor: 'rgba(255, 210, 186, 0.14)',
   },
   progressLabel: {
     color: 'rgba(250, 238, 214, 0.94)',

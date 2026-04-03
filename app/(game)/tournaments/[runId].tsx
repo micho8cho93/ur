@@ -9,13 +9,14 @@ import { useChallenges } from '@/src/challenges/useChallenges';
 import { useEloRating } from '@/src/elo/useEloRating';
 import { useProgression } from '@/src/progression/useProgression';
 import {
-  buildTournamentPrizeSummary,
+  buildTournamentRewardSummary,
   formatTournamentDateTime,
   getTournamentChipState,
   getTournamentDetailPrimaryState,
   getTournamentModeLabel,
   isTournamentPlayerLaunchReady,
   isTournamentPreStartWaitingRoomVisible,
+  shouldShowTournamentDescription,
 } from '@/src/tournaments/presentation';
 import { useTournamentDetail } from '@/src/tournaments/useTournamentDetail';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -77,6 +78,7 @@ export default function TournamentDetailScreen() {
   const primary = tournament ? getTournamentDetailPrimaryState(tournament) : null;
   const showStartWaitingRoom = tournament ? isTournamentPreStartWaitingRoomVisible(tournament) : false;
   const playerLaunchReady = tournament ? isTournamentPlayerLaunchReady(tournament) : false;
+  const showDescription = shouldShowTournamentDescription(tournament?.description);
   const primaryButtonTitle =
     primary?.intent === 'join' && isJoinConfirmationArmed ? 'Confirm' : primary?.label ?? 'Join';
 
@@ -201,7 +203,7 @@ export default function TournamentDetailScreen() {
             <View style={styles.heroHeader}>
               <View style={styles.heroTitleWrap}>
                 <Text style={styles.heroTitle}>{tournament.name}</Text>
-                <Text style={styles.heroDescription}>{tournament.description}</Text>
+                {showDescription ? <Text style={styles.heroDescription}>{tournament.description}</Text> : null}
               </View>
               {chip ? (
                 <View
@@ -296,8 +298,8 @@ export default function TournamentDetailScreen() {
               <Text style={styles.summaryValue}>{tournament.region}</Text>
             </View>
             <View style={styles.summaryCell}>
-              <Text style={styles.summaryLabel}>Buy-in / Prize</Text>
-              <Text style={styles.summaryValue}>{buildTournamentPrizeSummary(tournament)}</Text>
+              <Text style={styles.summaryLabel}>XP Rewards</Text>
+              <Text style={styles.summaryValue}>{buildTournamentRewardSummary(tournament)}</Text>
             </View>
           </View>
 

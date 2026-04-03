@@ -368,6 +368,26 @@ var FINKEL_RULES_MATCH_CONFIG = {
     message: "This variant keeps the classic full-length duel:\n\n\u2022 Each side plays with 7 pieces.\n\u2022 Standard captures are allowed, except the shared middle rosette stays protected.\n\u2022 Rosettes still grant extra rolls, rewarding precise tempo play."
   }
 };
+var LOCAL_PVP_MATCH_CONFIG = {
+  modeId: "gameMode_pvp",
+  displayName: "PvP",
+  pieceCountPerSide: 7,
+  rulesVariant: "standard",
+  allowsXp: false,
+  allowsOnline: false,
+  allowsChallenges: false,
+  allowsCoins: false,
+  allowsRankedStats: false,
+  offlineWinRewardSource: "practice_finkel_rules_win",
+  opponentType: "human",
+  pathVariant: "default",
+  isPracticeMode: true,
+  selectionSubtitle: "Two human players on one device using seven-piece Finkel rules offline.",
+  rulesIntro: {
+    title: "PvP",
+    message: "This local mode uses the classic full-length duel with two human players on one device:\n\n\u2022 Each side plays with 7 pieces.\n\u2022 Standard captures are allowed, except the shared middle rosette stays protected.\n\u2022 Every roll and move is taken by a human locally, with no bot turns and no online connection."
+  }
+};
 var CAPTURE_MATCH_CONFIG = {
   modeId: "gameMode_capture",
   displayName: "Capture",
@@ -414,19 +434,33 @@ var MATCH_CONFIGS = {
   gameMode_3_pieces: RACE_MATCH_CONFIG,
   gameMode_5_pieces: LEGACY_FIVE_PIECE_MATCH_CONFIG,
   gameMode_finkel_rules: FINKEL_RULES_MATCH_CONFIG,
+  gameMode_pvp: LOCAL_PVP_MATCH_CONFIG,
   gameMode_capture: CAPTURE_MATCH_CONFIG,
   gameMode_full_path: EXTENDED_PATH_MATCH_CONFIG
 };
 var DEFAULT_MATCH_CONFIG = STANDARD_MATCH_CONFIG;
 var MATCH_MODE_SELECTION_IDS = [
   "standard",
-  "gameMode_1_piece",
   "gameMode_3_pieces",
-  "gameMode_finkel_rules",
   "gameMode_capture",
-  "gameMode_full_path"
+  "gameMode_finkel_rules",
+  "gameMode_pvp"
 ];
 var MATCH_MODE_SELECTION_OPTIONS = MATCH_MODE_SELECTION_IDS.map((modeId) => {
+  var _a;
+  const config = MATCH_CONFIGS[modeId];
+  return {
+    modeId,
+    label: config.displayName,
+    description: (_a = config.selectionSubtitle) != null ? _a : config.displayName
+  };
+});
+var PRIVATE_MATCH_SELECTION_IDS = [
+  "gameMode_3_pieces",
+  "gameMode_capture",
+  "gameMode_finkel_rules"
+];
+var PRIVATE_MATCH_OPTIONS = PRIVATE_MATCH_SELECTION_IDS.map((modeId) => {
   var _a;
   const config = MATCH_CONFIGS[modeId];
   return {
@@ -3946,6 +3980,7 @@ var MatchOpCode = {
   MOVE_REQUEST: 2,
   EMOJI_REACTION: 3,
   PIECE_SELECTION: 4,
+  REMATCH_RESPONSE: 5,
   STATE_SNAPSHOT: 100,
   SERVER_ERROR: 101,
   PROGRESSION_AWARD: 102,
@@ -3980,6 +4015,7 @@ var isRollRequestPayload = (value) => isRecord(value) && value.type === "roll_re
 var isMoveRequestPayload = (value) => isRecord(value) && value.type === "move_request" && isMoveAction(value.move);
 var isEmojiReactionRequestPayload = (value) => isRecord(value) && value.type === "emoji_reaction" && isEmojiReactionKey(value.emoji);
 var isPieceSelectionRequestPayload = (value) => isRecord(value) && value.type === "piece_selection" && (typeof value.pieceId === "string" || value.pieceId === null);
+var isRematchResponsePayload = (value) => isRecord(value) && value.type === "rematch_response" && typeof value.accepted === "boolean";
 var encodePayload = (payload) => JSON.stringify(payload);
 var decodePayload = (raw) => {
   try {
@@ -8782,6 +8818,7 @@ var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
   const createdAt = run.createdAt;
   const resolvedMembership = resolveMembershipForRun(run, membership);
   const participation = buildPublicParticipationState(run, resolvedMembership);
+  const rewardSettings = resolveTournamentXpRewardSettings(metadata);
   return {
     runId: run.runId,
     tournamentId: run.tournamentId,
@@ -8804,6 +8841,8 @@ var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
     region: (_e = readStringField6(metadata, ["region"])) != null ? _e : "Global",
     buyInLabel: (_f = readStringField6(metadata, ["buyIn", "buy_in"])) != null ? _f : "Free",
     prizeLabel: formatPrizeLabel(metadata),
+    xpPerMatchWin: rewardSettings.xpPerMatchWin,
+    xpForTournamentChampion: rewardSettings.xpForTournamentChampion,
     bots: buildTournamentBotSummary(run.metadata, getRunBotUserIds2(run)),
     isLocked: hasTournamentBracketStarted(run.bracket),
     currentRound: (_g = participation.currentRound) != null ? _g : getTournamentBracketCurrentRound(run.bracket),
@@ -9238,6 +9277,7 @@ var ONLINE_TURN_DURATION_MS = 1e4;
 var ONLINE_AFK_FORFEIT_MS = ONLINE_TURN_DURATION_MS * 2;
 var ONLINE_DISCONNECT_GRACE_MS = 15e3;
 var ONLINE_RECONNECT_RESUME_MS = 5e3;
+var REMATCH_WINDOW_MS = 1e4;
 var BOT_TURN_DELAY_MS = 850;
 var SYSTEM_USER_ID4 = "00000000-0000-0000-0000-000000000000";
 var RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
@@ -9621,6 +9661,20 @@ var createPrivateMatchCodeRecord = (nk, modeId, matchId, creatorUserId, code) =>
   writePrivateMatchCodeRecord(nk, record, "*");
   return record;
 };
+var createReservedPrivateMatchCodeRecord = (nk, modeId, matchId, creatorUserId, joinedUserId, code) => {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const record = {
+    code,
+    matchId,
+    modeId,
+    creatorUserId,
+    joinedUserId,
+    createdAt: now,
+    updatedAt: now
+  };
+  writePrivateMatchCodeRecord(nk, record, "*");
+  return record;
+};
 var claimPrivateMatchCode = (nk, code, userId) => {
   var _a;
   const normalizedCode = normalizePrivateMatchCodeInput(code);
@@ -9661,6 +9715,21 @@ var syncPrivateMatchReservation = (nk, state) => {
   state.privateCreatorUserId = record.creatorUserId;
   state.privateGuestUserId = record.joinedUserId;
 };
+var createMatchRematchState = () => ({
+  status: "idle",
+  deadlineMs: null,
+  acceptedByUserId: {},
+  nextMatchId: null,
+  nextPrivateCode: null
+});
+var getRematchAcceptedUserIds = (state) => Object.entries(state.rematch.acceptedByUserId).filter(([, accepted]) => accepted === true).map(([userId]) => userId);
+var buildSnapshotRematch = (state) => ({
+  status: state.rematch.status,
+  deadlineMs: state.rematch.deadlineMs,
+  acceptedUserIds: getRematchAcceptedUserIds(state),
+  nextMatchId: state.rematch.nextMatchId,
+  nextPrivateCode: state.rematch.nextPrivateCode
+});
 var canUserJoinPrivateMatch = (state, userId) => {
   if (!state.privateMatch) {
     return true;
@@ -9765,6 +9834,50 @@ var getAssignedHumanUserIdForColor = (state, color) => {
     return null;
   }
   return userId;
+};
+var getOrderedRematchHumanUserIds = (state) => {
+  const lightUserId = getAssignedHumanUserIdForColor(state, "light");
+  const darkUserId = getAssignedHumanUserIdForColor(state, "dark");
+  if (!lightUserId || !darkUserId) {
+    return null;
+  }
+  return [lightUserId, darkUserId];
+};
+var canOpenRematchWindow = (state) => state.resultRecorded && state.gameState.winner !== null && state.opponentType === "human" && !state.classification.bot && !state.tournamentContext && getOrderedRematchHumanUserIds(state) !== null;
+var openRematchWindow = (state, nowMs) => {
+  const rematchPlayerIds = getOrderedRematchHumanUserIds(state);
+  if (!canOpenRematchWindow(state) || state.rematch.status !== "idle" || !rematchPlayerIds) {
+    return false;
+  }
+  state.rematch = {
+    status: "pending",
+    deadlineMs: nowMs + REMATCH_WINDOW_MS,
+    acceptedByUserId: rematchPlayerIds.reduce(
+      (entries, userId) => {
+        entries[userId] = false;
+        return entries;
+      },
+      {}
+    ),
+    nextMatchId: null,
+    nextPrivateCode: null
+  };
+  state.revision += 1;
+  return true;
+};
+var expireRematchWindow = (state) => {
+  if (state.rematch.status !== "pending") {
+    return false;
+  }
+  state.rematch.status = "expired";
+  state.revision += 1;
+  return true;
+};
+var haveAllRematchPlayersAccepted = (state) => {
+  const rematchPlayerIds = getOrderedRematchHumanUserIds(state);
+  return Boolean(
+    rematchPlayerIds && rematchPlayerIds.every((userId) => state.rematch.acceptedByUserId[userId] === true)
+  );
 };
 var getDisconnectedAssignedColors = (state) => ["light", "dark"].filter((color) => {
   const userId = getAssignedHumanUserIdForColor(state, color);
@@ -9936,6 +10049,80 @@ var syncCompletedMatchEnd = (state) => {
     return;
   }
   state.matchEnd = buildMatchEndPayload(state, "completed", state.gameState.winner);
+};
+var buildRematchMatchParams = (state, privateCode) => {
+  const rematchPlayerIds = getOrderedRematchHumanUserIds(state);
+  if (!rematchPlayerIds) {
+    throw new Error("Rematch requires two human players.");
+  }
+  const [lightUserId, darkUserId] = rematchPlayerIds;
+  const params = {
+    playerIds: [lightUserId, darkUserId],
+    modeId: state.modeId,
+    rankedMatch: state.classification.ranked,
+    casualMatch: state.classification.casual,
+    botMatch: false,
+    privateMatch: state.privateMatch,
+    winRewardSource: state.winRewardSource,
+    allowsChallengeRewards: state.allowsChallengeRewards
+  };
+  if (state.privateMatch) {
+    if (!privateCode || !state.privateCreatorUserId || !state.privateGuestUserId) {
+      throw new Error("Private rematch requires preserved creator, guest, and private code.");
+    }
+    params.privateCode = privateCode;
+    params.privateCreatorUserId = state.privateCreatorUserId;
+    params.privateGuestUserId = state.privateGuestUserId;
+  }
+  return params;
+};
+var maybeCreateRematchMatch = (logger, nk, state, currentMatchId) => {
+  if (state.rematch.status !== "pending" || state.rematch.nextMatchId !== null || !haveAllRematchPlayersAccepted(state)) {
+    return false;
+  }
+  let nextPrivateCode = null;
+  if (state.privateMatch) {
+    syncPrivateMatchReservation(nk, state);
+    nextPrivateCode = createAvailablePrivateMatchCode(nk);
+  }
+  const nextMatchId = nk.matchCreate(MATCH_HANDLER, buildRematchMatchParams(state, nextPrivateCode));
+  state.rematch.status = "matched";
+  state.rematch.nextMatchId = nextMatchId;
+  state.rematch.nextPrivateCode = nextPrivateCode;
+  state.revision += 1;
+  if (state.privateMatch && nextPrivateCode && state.privateCreatorUserId && state.privateGuestUserId) {
+    try {
+      createReservedPrivateMatchCodeRecord(
+        nk,
+        state.modeId,
+        nextMatchId,
+        state.privateCreatorUserId,
+        state.privateGuestUserId,
+        nextPrivateCode
+      );
+    } catch (error) {
+      logger.warn(
+        "Created private rematch %s from match %s but failed to persist private code reservation: %s",
+        nextMatchId,
+        currentMatchId,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+  logger.info("Created authoritative rematch %s from completed match %s.", nextMatchId, currentMatchId);
+  return true;
+};
+var syncRematchState = (logger, nk, dispatcher, state, matchId, nowMs) => {
+  let didChange = false;
+  didChange = openRematchWindow(state, nowMs) || didChange;
+  if (state.rematch.status === "pending" && state.rematch.deadlineMs !== null && nowMs >= state.rematch.deadlineMs) {
+    didChange = expireRematchWindow(state) || didChange;
+  } else if (state.rematch.status === "pending") {
+    didChange = maybeCreateRematchMatch(logger, nk, state, matchId) || didChange;
+  }
+  if (didChange) {
+    broadcastSnapshot(dispatcher, state, matchId);
+  }
 };
 var finalizeCompletedMatch = (logger, nk, dispatcher, state, matchId) => {
   var _a, _b;
@@ -10331,6 +10518,7 @@ function matchInit(_ctx, _logger, nk, params) {
   const privateMatch = classification.private;
   const privateCode = typeof params.privateCode === "string" ? normalizePrivateMatchCodeInput(params.privateCode) : "";
   const privateCreatorUserId = typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
+  const privateGuestUserId = typeof params.privateGuestUserId === "string" ? params.privateGuestUserId : null;
   const botUserId = readStringField9(params, ["botUserId", "bot_user_id"]);
   const botDifficultyValue = readStringField9(params, ["botDifficulty", "bot_difficulty"]);
   const botDifficulty = botDifficultyValue && isBotDifficulty(botDifficultyValue) ? botDifficultyValue : DEFAULT_BOT_DIFFICULTY;
@@ -10377,7 +10565,7 @@ function matchInit(_ctx, _logger, nk, params) {
     privateMatch,
     privateCode: isPrivateMatchCode(privateCode) ? privateCode : null,
     privateCreatorUserId,
-    privateGuestUserId: null,
+    privateGuestUserId,
     winRewardSource,
     allowsChallengeRewards,
     tournamentContext: resolveTournamentMatchContextFromParams(params),
@@ -10395,6 +10583,7 @@ function matchInit(_ctx, _logger, nk, params) {
       dark: createPlayerDisconnectState()
     },
     matchEnd: null,
+    rematch: createMatchRematchState(),
     resultRecorded: false
   };
   return { state, tickRate: TICK_RATE, label: MATCH_HANDLER };
@@ -10470,6 +10659,13 @@ function matchLeave(ctx, logger, nk, dispatcher, _tick, state, presences) {
       finalizeCompletedMatch(logger, nk, dispatcher, state, getMatchId(ctx));
     } catch (error) {
       logMatchLoopError(logger, getMatchId(ctx), state, "leave_result_processing", error);
+    }
+  }
+  if (state.gameState.winner && state.resultRecorded) {
+    try {
+      syncRematchState(logger, nk, dispatcher, state, getMatchId(ctx), nowMs);
+    } catch (error) {
+      logMatchLoopError(logger, getMatchId(ctx), state, "leave_rematch_processing", error);
     }
   }
   if (state.gameState.winner && state.resultRecorded) {
@@ -10581,6 +10777,14 @@ function matchLoop(ctx, logger, nk, dispatcher, _tick, state, messages) {
         applyPieceSelectionRequest(dispatcher, state, senderUserId, senderColor, decodedPayload);
         return;
       }
+      if (opCode === MatchOpCode.REMATCH_RESPONSE) {
+        if (!isRematchResponsePayload(decodedPayload)) {
+          sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Rematch payload is invalid.");
+          return;
+        }
+        applyRematchResponse(dispatcher, state, senderUserId, decodedPayload, matchId);
+        return;
+      }
       sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", `Unsupported opcode ${opCode}.`);
     } catch (error) {
       logMatchLoopError(logger, matchId, state, "message_processing", error);
@@ -10612,6 +10816,16 @@ function matchLoop(ctx, logger, nk, dispatcher, _tick, state, messages) {
       logMatchLoopError(logger, matchId, state, "result_processing", error);
     }
   }
+  try {
+    syncRematchState(logger, nk, dispatcher, state, matchId, Date.now());
+  } catch (error) {
+    logMatchLoopError(logger, matchId, state, "rematch_processing", error);
+    try {
+      broadcastSnapshot(dispatcher, state, matchId);
+    } catch (snapshotError) {
+      logMatchLoopError(logger, matchId, state, "rematch_recovery_snapshot", snapshotError);
+    }
+  }
   return { state };
 }
 function matchTerminate(ctx, logger, nk, dispatcher, _tick, state, _graceSeconds) {
@@ -10620,6 +10834,13 @@ function matchTerminate(ctx, logger, nk, dispatcher, _tick, state, _graceSeconds
       finalizeCompletedMatch(logger, nk, dispatcher, state, getMatchId(ctx));
     } catch (error) {
       logMatchLoopError(logger, getMatchId(ctx), state, "terminate_result_processing", error);
+    }
+  }
+  if (state.gameState.winner && state.resultRecorded) {
+    try {
+      syncRematchState(logger, nk, dispatcher, state, getMatchId(ctx), Date.now());
+    } catch (error) {
+      logMatchLoopError(logger, getMatchId(ctx), state, "terminate_rematch_processing", error);
     }
   }
   if (state.gameState.winner && state.resultRecorded) {
@@ -10996,6 +11217,26 @@ function broadcastPieceSelection(dispatcher, state, userId, playerColor, pieceId
     targets
   );
 }
+function applyRematchResponse(dispatcher, state, userId, payload, matchId) {
+  if (state.rematch.status !== "pending") {
+    return;
+  }
+  if (!(userId in state.rematch.acceptedByUserId)) {
+    return;
+  }
+  if (state.rematch.deadlineMs !== null && Date.now() >= state.rematch.deadlineMs) {
+    if (expireRematchWindow(state)) {
+      broadcastSnapshot(dispatcher, state, matchId);
+    }
+    return;
+  }
+  if (state.rematch.acceptedByUserId[userId] === payload.accepted) {
+    return;
+  }
+  state.rematch.acceptedByUserId[userId] = payload.accepted;
+  state.revision += 1;
+  broadcastSnapshot(dispatcher, state, matchId);
+}
 function processCompletedMatchRatings(logger, nk, dispatcher, state, matchId) {
   const winnerColor = state.gameState.winner;
   if (!winnerColor) {
@@ -11361,7 +11602,8 @@ function broadcastSnapshot(dispatcher, state, matchId) {
     reconnectGraceDurationMs: reconnectGraceState ? ONLINE_DISCONNECT_GRACE_MS : null,
     reconnectDeadlineMs: (_c = reconnectGraceState == null ? void 0 : reconnectGraceState.reconnectDeadlineMs) != null ? _c : null,
     reconnectRemainingMs: (_d = reconnectGraceState == null ? void 0 : reconnectGraceState.reconnectRemainingMs) != null ? _d : null,
-    matchEnd: state.matchEnd
+    matchEnd: state.matchEnd,
+    rematch: buildSnapshotRematch(state)
   };
   dispatcher.broadcastMessage(MatchOpCode.STATE_SNAPSHOT, encodePayload(payload));
 }

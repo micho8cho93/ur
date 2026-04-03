@@ -610,8 +610,8 @@ export default function Lobby() {
                             <HomeLightButton
                               label={option.label}
                               fontLoaded={fontsLoaded}
-                              size="small"
-                              style={styles.optionActionButton}
+                              size={isCompactLayout ? 'compact' : 'regular'}
+                              style={styles.primaryActionButton}
                               loading={
                                 isCreatingPrivateGame &&
                                 pendingPrivateMode === option.modeId
@@ -877,13 +877,15 @@ const styles = StyleSheet.create({
   modeRewardBadge: {
     position: 'absolute',
     top: 8,
-    right: -20,
-    minWidth: 82,
+    right: 8,
+    minWidth: 78,
+    transform: [{ scale: 0.86 }],
   },
   modeRewardBadgeCompact: {
-    top: -10,
-    right: -30,
-    transform: [{ scale: 0.9 }],
+    top: 8,
+    right: 8,
+    minWidth: 78,
+    transform: [{ scale: 0.86 }],
   },
   modePanelContent: {
     position: 'absolute',
@@ -947,8 +949,6 @@ const styles = StyleSheet.create({
   },
   optionActionButton: {
     width: '100%',
-    maxWidth: 138,
-    alignSelf: 'center',
   },
   statusText: {
     maxWidth: '94%',
@@ -1042,16 +1042,13 @@ const styles = StyleSheet.create({
   },
   optionGrid: {
     width: '100%',
-    maxWidth: 270,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 10,
+    maxWidth: 196,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 12,
   },
   optionCell: {
-    minWidth: 116,
-    maxWidth: 130,
-    flexGrow: 1,
+    width: '100%',
   },
   codeInput: {
     width: '100%',

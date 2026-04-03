@@ -7,6 +7,7 @@ import { getTournamentBotStatusLabel } from '@/shared/tournamentBots';
 import type { PublicTournamentSummary } from '@/src/tournaments/types';
 
 export type TournamentChipTone = 'neutral' | 'info' | 'success' | 'warning';
+const TOURNAMENT_DESCRIPTION_PLACEHOLDER = 'No description configured.';
 
 export type TournamentChipState = {
   label: 'Open' | 'Starting soon' | 'Full' | 'Locked' | 'In Progress';
@@ -210,8 +211,31 @@ export const formatTournamentDateTime = (value: string | null): string => {
   }).format(new Date(value));
 };
 
-export const buildTournamentPrizeSummary = (tournament: Pick<PublicTournamentSummary, 'buyInLabel' | 'prizeLabel'>): string =>
-  `${tournament.buyInLabel} • ${tournament.prizeLabel}`;
+export const shouldShowTournamentDescription = (description: string | null | undefined): boolean => {
+  const normalized = description?.trim();
+  return Boolean(normalized && normalized !== TOURNAMENT_DESCRIPTION_PLACEHOLDER);
+};
+
+export const isTournamentJoinable = (
+  tournament: Pick<PublicTournamentSummary, 'lifecycle' | 'endAt' | 'isLocked' | 'entrants' | 'maxEntrants'>,
+  now = Date.now(),
+): boolean => isTournamentVisibleForPlay(tournament, now) && !isTournamentLocked(tournament) && !isTournamentFull(tournament);
+
+export const getTournamentJoinStatusLabel = (
+  tournament: Pick<PublicTournamentSummary, 'lifecycle' | 'endAt' | 'isLocked' | 'entrants' | 'maxEntrants'>,
+  now = Date.now(),
+): 'Open' | 'Closed' => (isTournamentJoinable(tournament, now) ? 'Open' : 'Closed');
+
+export const buildTournamentRewardSummary = (
+  tournament: Pick<PublicTournamentSummary, 'xpPerMatchWin' | 'xpForTournamentChampion'>,
+): string => {
+  const xpPerMatchWin = Math.max(0, Math.floor(tournament.xpPerMatchWin ?? 0));
+  const xpForTournamentChampion = Math.max(0, Math.floor(tournament.xpForTournamentChampion ?? 0));
+
+  return `XP per win: ${xpPerMatchWin} / XP for champion: ${xpForTournamentChampion}`;
+};
+
+export const buildTournamentPrizeSummary = buildTournamentRewardSummary;
 
 export const buildTournamentBotSummary = (tournament: Pick<PublicTournamentSummary, 'bots'>): string =>
   getTournamentBotStatusLabel(tournament.bots);

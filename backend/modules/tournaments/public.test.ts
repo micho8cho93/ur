@@ -275,6 +275,8 @@ describe('public tournament rpc flow', () => {
       expect.objectContaining({
         runId: 'run-1',
         entrants: 0,
+        xpPerMatchWin: 180,
+        xpForTournamentChampion: 420,
         isLocked: false,
         currentRound: null,
         membership: {

@@ -101,21 +101,18 @@ export default function PublicTournamentBrowseScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={[styles.stage, { width: stageWidth }]}>
-            <View style={styles.topBar}>
-              <SketchButton
-                label="Back"
-                accessibilityLabel="Back to online play"
-                onPress={() => router.replace('/(game)/lobby?mode=online')}
-                iconName="arrow-back"
-                fontFamily={buttonFontFamily}
-              />
-            </View>
+          <View style={styles.topBar}>
+            <SketchButton
+              label="Back"
+              accessibilityLabel="Back to online play"
+              onPress={() => router.replace('/(game)/lobby?mode=online')}
+              iconName="arrow-back"
+              fontFamily={buttonFontFamily}
+            />
+          </View>
 
+          <View style={[styles.stage, { width: stageWidth }]}>
             <View style={styles.hero}>
-              <Text style={[styles.pageEyebrow, { fontFamily: bodyFontFamily }]}>
-                Public Tournament Board
-              </Text>
               <Text
                 style={[
                   styles.pageTitle,
@@ -124,9 +121,6 @@ export default function PublicTournamentBrowseScreen() {
                 ]}
               >
                 Public Tournaments
-              </Text>
-              <Text style={[styles.pageSubtitle, { fontFamily: bodyFontFamily }]}>
-                Browse every open tournament run, inspect the standings first, then join or launch from the panel without losing any of the existing tournament logic.
               </Text>
             </View>
 
@@ -244,39 +238,25 @@ const styles = StyleSheet.create({
   topBar: {
     width: '100%',
     alignItems: 'flex-start',
+    marginBottom: urTheme.spacing.sm,
   },
   hero: {
     width: '100%',
     alignItems: 'center',
-    gap: 6,
-  },
-  pageEyebrow: {
-    color: urTextColors.captionOnPanel,
-    fontSize: 12,
-    lineHeight: 14,
-    ...urTextVariants.caption,
-    textAlign: 'center',
+    gap: urTheme.spacing.sm,
   },
   pageTitle: {
-    color: urTextColors.titleOnPanel,
+    color: urTextColors.titleOnScene,
     textAlign: 'center',
     ...urTextVariants.displayTitle,
   },
   pageTitleDesktop: {
-    fontSize: 36,
-    lineHeight: 40,
+    fontSize: 30,
+    lineHeight: 34,
   },
   pageTitleCompact: {
-    fontSize: 29,
-    lineHeight: 33,
-  },
-  pageSubtitle: {
-    maxWidth: 760,
-    color: urTextColors.bodyOnPanel,
-    fontSize: 15,
-    lineHeight: 21,
-    textAlign: 'center',
-    ...urTextVariants.body,
+    fontSize: 30,
+    lineHeight: 34,
   },
   errorBanner: {
     width: '100%',

@@ -102,6 +102,8 @@ type PublicTournamentResponse = {
   region: string;
   buyInLabel: string;
   prizeLabel: string;
+  xpPerMatchWin: number;
+  xpForTournamentChampion: number;
   bots: ReturnType<typeof buildTournamentBotSummary>;
   isLocked: boolean;
   currentRound: number | null;
@@ -635,6 +637,7 @@ const buildPublicTournamentResponse = (
   const createdAt = run.createdAt;
   const resolvedMembership = resolveMembershipForRun(run, membership);
   const participation = buildPublicParticipationState(run, resolvedMembership);
+  const rewardSettings = resolveTournamentXpRewardSettings(metadata);
 
   return {
     runId: run.runId,
@@ -659,6 +662,8 @@ const buildPublicTournamentResponse = (
     region: readStringField(metadata, ["region"]) ?? "Global",
     buyInLabel: readStringField(metadata, ["buyIn", "buy_in"]) ?? "Free",
     prizeLabel: formatPrizeLabel(metadata),
+    xpPerMatchWin: rewardSettings.xpPerMatchWin,
+    xpForTournamentChampion: rewardSettings.xpForTournamentChampion,
     bots: buildTournamentBotSummary(run.metadata, getRunBotUserIds(run)),
     isLocked: hasTournamentBracketStarted(run.bracket),
     currentRound: participation.currentRound ?? getTournamentBracketCurrentRound(run.bracket),

@@ -1,13 +1,16 @@
 import {
   buildTournamentBotSummary,
+  buildTournamentRewardSummary,
   getTournamentCardPrimaryState,
   getTournamentDetailPrimaryState,
   getTournamentChipState,
+  getTournamentJoinStatusLabel,
   getTournamentLobbyCountdownLabel,
   hasTournamentEnded,
   isTournamentPlayerLaunchReady,
   isTournamentPreStartWaitingRoomVisible,
   isTournamentVisibleForPlay,
+  shouldShowTournamentDescription,
 } from '@/src/tournaments/presentation';
 import type { PublicTournamentSummary } from '@/src/tournaments/types';
 
@@ -26,6 +29,8 @@ const baseTournament: PublicTournamentSummary = {
   region: 'Global',
   buyInLabel: 'Free',
   prizeLabel: 'No prize listed',
+  xpPerMatchWin: 180,
+  xpForTournamentChampion: 420,
   bots: {
     autoAdd: false,
     difficulty: null,
@@ -351,5 +356,34 @@ describe('tournament presentation helpers', () => {
         },
       }),
     ).toBe('Includes 2 hard bots');
+  });
+
+  it('formats join status, reward summaries, and description visibility for the card UI', () => {
+    const now = Date.parse('2026-03-27T12:00:00.000Z');
+
+    expect(getTournamentJoinStatusLabel(baseTournament, now)).toBe('Open');
+    expect(
+      getTournamentJoinStatusLabel(
+        {
+          ...baseTournament,
+          entrants: 16,
+          maxEntrants: 16,
+        },
+        now,
+      ),
+    ).toBe('Closed');
+    expect(
+      getTournamentJoinStatusLabel(
+        {
+          ...baseTournament,
+          isLocked: true,
+        },
+        now,
+      ),
+    ).toBe('Closed');
+
+    expect(buildTournamentRewardSummary(baseTournament)).toBe('XP per win: 180 / XP for champion: 420');
+    expect(shouldShowTournamentDescription(baseTournament.description)).toBe(true);
+    expect(shouldShowTournamentDescription('No description configured.')).toBe(false);
   });
 });

@@ -10,13 +10,14 @@ import {
 } from '@/src/home/homeTheme';
 import {
   buildTournamentBotSummary,
-  buildTournamentPrizeSummary,
+  buildTournamentRewardSummary,
   formatTournamentDateTime,
   getTournamentCardPrimaryState,
-  getTournamentChipState,
+  getTournamentJoinStatusLabel,
   getTournamentLobbyCountdownLabel,
   getTournamentLobbyCountdownMs,
   getTournamentModeLabel,
+  shouldShowTournamentDescription,
 } from '@/src/tournaments/presentation';
 import type { PublicTournamentSummary } from '@/src/tournaments/types';
 import React, { useEffect, useState } from 'react';
@@ -39,29 +40,6 @@ type TournamentCardProps = {
   onViewStandings: (tournament: PublicTournamentSummary) => void;
 };
 
-const chipToneStyles = {
-  neutral: {
-    backgroundColor: 'rgba(255, 239, 196, 0.68)',
-    borderColor: 'rgba(184, 134, 11, 0.24)',
-    color: '#6A4822',
-  },
-  info: {
-    backgroundColor: 'rgba(45, 156, 219, 0.16)',
-    borderColor: 'rgba(45, 156, 219, 0.26)',
-    color: '#1E5E84',
-  },
-  success: {
-    backgroundColor: 'rgba(127, 191, 62, 0.16)',
-    borderColor: 'rgba(127, 191, 62, 0.26)',
-    color: '#486A21',
-  },
-  warning: {
-    backgroundColor: 'rgba(244, 197, 66, 0.18)',
-    borderColor: 'rgba(184, 134, 11, 0.26)',
-    color: '#7A4E16',
-  },
-} as const;
-
 const tournamentPanelArt = require('../../assets/images/tournament_large_panel_cropped.png');
 
 export const TournamentCard: React.FC<TournamentCardProps> = ({
@@ -76,18 +54,21 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
 }) => {
   const { width } = useWindowDimensions();
   const [now, setNow] = useState(() => Date.now());
-  const chip = getTournamentChipState(tournament);
   const primary = getTournamentCardPrimaryState(tournament);
   const resolvedPrimaryTitle = primaryTitle ?? primary.label;
   const lobbyCountdownMs = getTournamentLobbyCountdownMs(tournament, now);
   const lobbyCountdownLabel = getTournamentLobbyCountdownLabel(tournament, now);
   const shouldTickCountdown = lobbyCountdownMs !== null && lobbyCountdownMs > 0;
   const botSummary = buildTournamentBotSummary(tournament);
+  const rewardSummary = buildTournamentRewardSummary(tournament);
+  const joinStatusLabel = getTournamentJoinStatusLabel(tournament, now);
+  const showDescription = shouldShowTournamentDescription(tournament.description);
   const countdownLabelTitle = tournament.bots.autoAdd ? 'Bot Fill Starts In' : 'Lobby Autofinalizes In';
   const titleFontFamily = resolveHomeMagicFontFamily(fontLoaded);
   const bodyFontFamily = resolveHomeFredokaFontFamily(fontLoaded);
   const isCompact = width < 760;
   const useStackedButtons = width < 560;
+  const useInlineCountdownRow = Boolean(lobbyCountdownLabel) && !useStackedButtons;
 
   useEffect(() => {
     setNow(Date.now());
@@ -120,22 +101,6 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
           ]}
         >
           <View style={styles.headerBlock}>
-            <View
-              style={[
-                styles.chip,
-                {
-                  backgroundColor: chipToneStyles[chip.tone].backgroundColor,
-                  borderColor: chipToneStyles[chip.tone].borderColor,
-                },
-              ]}
-            >
-              <Text style={[styles.chipText, { color: chipToneStyles[chip.tone].color, fontFamily: bodyFontFamily }]}>
-                {chip.label}
-              </Text>
-            </View>
-
-            <Text style={[styles.kicker, { fontFamily: bodyFontFamily }]}>Public Tournament</Text>
-
             <Text
               numberOfLines={isCompact ? 2 : 1}
               adjustsFontSizeToFit
@@ -149,16 +114,18 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
               {tournament.name}
             </Text>
 
-            <Text
-              numberOfLines={isCompact ? 3 : 2}
-              style={[
-                styles.description,
-                isCompact ? styles.descriptionCompact : styles.descriptionDesktop,
-                { fontFamily: bodyFontFamily },
-              ]}
-            >
-              {tournament.description}
-            </Text>
+            {showDescription ? (
+              <Text
+                numberOfLines={isCompact ? 3 : 2}
+                style={[
+                  styles.description,
+                  isCompact ? styles.descriptionCompact : styles.descriptionDesktop,
+                  { fontFamily: bodyFontFamily },
+                ]}
+              >
+                {tournament.description}
+              </Text>
+            ) : null}
           </View>
 
           <View style={styles.metaGrid}>
@@ -181,9 +148,9 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
               </Text>
             </View>
             <View style={styles.metaCell}>
-              <Text style={[styles.metaLabel, { fontFamily: bodyFontFamily }]}>Region</Text>
+              <Text style={[styles.metaLabel, { fontFamily: bodyFontFamily }]}>Status</Text>
               <Text style={[styles.metaValue, { fontFamily: bodyFontFamily }]}>
-                {tournament.region}
+                {joinStatusLabel}
               </Text>
             </View>
           </View>
@@ -193,14 +160,14 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
               numberOfLines={2}
               style={[styles.summaryLine, styles.summaryLineGold, { fontFamily: bodyFontFamily }]}
             >
-              {buildTournamentPrizeSummary(tournament)}
+              {rewardSummary}
             </Text>
             <Text numberOfLines={2} style={[styles.summaryLine, { fontFamily: bodyFontFamily }]}>
               {botSummary}
             </Text>
           </View>
 
-          {lobbyCountdownLabel ? (
+          {lobbyCountdownLabel && !useInlineCountdownRow ? (
             <View style={styles.countdownPanel}>
               <Text style={[styles.countdownLabel, { fontFamily: bodyFontFamily }]}>
                 {countdownLabelTitle}
@@ -211,39 +178,85 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
             </View>
           ) : null}
 
-          <View style={[styles.buttonRow, useStackedButtons && styles.buttonRowStacked]}>
-            <View style={[styles.buttonSlot, useStackedButtons && styles.buttonSlotStacked]}>
-              <HomeActionButton
-                title="View Standings"
-                tone="stone"
-                size={isCompact ? 'small' : 'regular'}
-                compact={isCompact}
-                fontLoaded={fontLoaded}
-                onPress={() => onViewStandings(tournament)}
-              />
-            </View>
-            <View style={[styles.buttonSlot, useStackedButtons && styles.buttonSlotStacked]}>
-              <HomeActionButton
-                title={resolvedPrimaryTitle}
-                tone="gold"
-                size={isCompact ? 'small' : 'regular'}
-                compact={isCompact}
-                fontLoaded={fontLoaded}
-                loading={primary.loading || joining || launching}
-                disabled={primary.disabled || joining || launching}
-                onPress={() => {
-                  if (primary.intent === 'join') {
-                    onJoin(tournament);
-                    return;
-                  }
+          {useInlineCountdownRow ? (
+            <View style={styles.actionRow}>
+              <View style={styles.actionButtonSlot}>
+                <HomeActionButton
+                  title="View Standings"
+                  tone="gold"
+                  size={isCompact ? 'small' : 'regular'}
+                  compact={isCompact}
+                  fontLoaded={fontLoaded}
+                  onPress={() => onViewStandings(tournament)}
+                />
+              </View>
+              <View style={styles.actionCountdownSlot}>
+                <View style={[styles.countdownPanel, styles.countdownPanelInline]}>
+                  <Text style={[styles.countdownLabel, { fontFamily: bodyFontFamily }]}>
+                    {countdownLabelTitle}
+                  </Text>
+                  <Text style={[styles.countdownValue, { fontFamily: titleFontFamily }]}>
+                    {lobbyCountdownLabel}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.actionButtonSlot}>
+                <HomeActionButton
+                  title={resolvedPrimaryTitle}
+                  tone="gold"
+                  size={isCompact ? 'small' : 'regular'}
+                  compact={isCompact}
+                  fontLoaded={fontLoaded}
+                  loading={primary.loading || joining || launching}
+                  disabled={primary.disabled || joining || launching}
+                  onPress={() => {
+                    if (primary.intent === 'join') {
+                      onJoin(tournament);
+                      return;
+                    }
 
-                  if (primary.intent === 'play') {
-                    onLaunch(tournament);
-                  }
-                }}
-              />
+                    if (primary.intent === 'play') {
+                      onLaunch(tournament);
+                    }
+                  }}
+                />
+              </View>
             </View>
-          </View>
+          ) : (
+            <View style={[styles.buttonRow, useStackedButtons && styles.buttonRowStacked]}>
+              <View style={[styles.buttonSlot, useStackedButtons && styles.buttonSlotStacked]}>
+                <HomeActionButton
+                  title="View Standings"
+                  tone="gold"
+                  size={isCompact ? 'small' : 'regular'}
+                  compact={isCompact}
+                  fontLoaded={fontLoaded}
+                  onPress={() => onViewStandings(tournament)}
+                />
+              </View>
+              <View style={[styles.buttonSlot, useStackedButtons && styles.buttonSlotStacked]}>
+                <HomeActionButton
+                  title={resolvedPrimaryTitle}
+                  tone="gold"
+                  size={isCompact ? 'small' : 'regular'}
+                  compact={isCompact}
+                  fontLoaded={fontLoaded}
+                  loading={primary.loading || joining || launching}
+                  disabled={primary.disabled || joining || launching}
+                  onPress={() => {
+                    if (primary.intent === 'join') {
+                      onJoin(tournament);
+                      return;
+                    }
+
+                    if (primary.intent === 'play') {
+                      onLaunch(tournament);
+                    }
+                  }}
+                />
+              </View>
+            </View>
+          )}
         </View>
       </ImageBackground>
     </View>
@@ -290,27 +303,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
     marginBottom: 14,
-  },
-  chip: {
-    alignSelf: 'center',
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    marginBottom: 8,
-  },
-  chipText: {
-    fontSize: 12,
-    lineHeight: 14,
-    textAlign: 'center',
-  },
-  kicker: {
-    color: urTextColors.captionOnPanel,
-    fontSize: 12,
-    lineHeight: 15,
-    ...urTextVariants.caption,
-    textAlign: 'center',
-    marginBottom: 6,
   },
   title: {
     color: urTextColors.titleOnPanel,
@@ -403,6 +395,11 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: 14,
   },
+  countdownPanelInline: {
+    minWidth: 0,
+    width: '100%',
+    marginBottom: 0,
+  },
   countdownLabel: {
     color: urTextColors.captionOnPanel,
     fontSize: 11,
@@ -416,6 +413,25 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     textAlign: 'center',
     ...urTextVariants.cardTitle,
+  },
+  actionRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  actionButtonSlot: {
+    flex: 1,
+    maxWidth: 248,
+    justifyContent: 'center',
+  },
+  actionCountdownSlot: {
+    flexBasis: 210,
+    maxWidth: 238,
+    minWidth: 190,
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   buttonRow: {
     width: '100%',

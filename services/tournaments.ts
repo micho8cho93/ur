@@ -241,6 +241,28 @@ const normalizePublicTournament = (value: unknown): PublicTournamentDetail => {
     region: readStringField(record, ['region']) ?? 'Global',
     buyInLabel: readStringField(record, ['buyInLabel', 'buy_in_label']) ?? 'Free',
     prizeLabel: readStringField(record, ['prizeLabel', 'prize_label']) ?? 'No prize listed',
+    xpPerMatchWin: Math.max(
+      0,
+      Math.floor(
+        readNumberField(record, [
+          'xpPerMatchWin',
+          'xp_per_match_win',
+          'tournamentMatchWinXp',
+          'tournament_match_win_xp',
+        ]) ?? 0,
+      ),
+    ),
+    xpForTournamentChampion: Math.max(
+      0,
+      Math.floor(
+        readNumberField(record, [
+          'xpForTournamentChampion',
+          'xp_for_tournament_champion',
+          'tournamentChampionXp',
+          'tournament_champion_xp',
+        ]) ?? 0,
+      ),
+    ),
     bots: normalizeTournamentBots(record.bots),
     isLocked: record.isLocked === true,
     currentRound: readNumberField(record, ['currentRound', 'current_round']),

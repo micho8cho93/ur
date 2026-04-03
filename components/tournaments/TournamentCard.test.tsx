@@ -33,6 +33,8 @@ const tournament: PublicTournamentSummary = {
   region: 'Global',
   buyInLabel: 'Free',
   prizeLabel: 'No prize listed',
+  xpPerMatchWin: 180,
+  xpForTournamentChampion: 420,
   bots: {
     autoAdd: false,
     difficulty: null,
@@ -104,5 +106,26 @@ describe('TournamentCard', () => {
 
     expect(screen.getByText('Bot fill enabled · easy')).toBeTruthy();
     expect(screen.getByText('Bot Fill Starts In')).toBeTruthy();
+  });
+
+  it('shows the public status and XP rewards while hiding the old placeholder copy', () => {
+    render(
+      <TournamentCard
+        tournament={{
+          ...tournament,
+          description: 'No description configured.',
+        }}
+        onJoin={jest.fn()}
+        onLaunch={jest.fn()}
+        onViewStandings={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Status')).toBeTruthy();
+    expect(screen.getByText('Open')).toBeTruthy();
+    expect(screen.getByText('XP per win: 180 / XP for champion: 420')).toBeTruthy();
+    expect(screen.queryByText('Starting soon')).toBeNull();
+    expect(screen.queryByText('Public Tournament')).toBeNull();
+    expect(screen.queryByText('No description configured.')).toBeNull();
   });
 });

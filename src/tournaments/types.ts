@@ -31,6 +31,8 @@ export type PublicTournamentSummary = {
   region: string;
   buyInLabel: string;
   prizeLabel: string;
+  xpPerMatchWin?: number | null;
+  xpForTournamentChampion?: number | null;
   bots: {
     autoAdd: boolean;
     difficulty: BotDifficulty | null;
