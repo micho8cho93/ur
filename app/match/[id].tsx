@@ -191,6 +191,8 @@ const MOBILE_WEB_REEL_BOX_SCALE = 1.55;
 const MOBILE_WEB_REEL_DICE_SIZE_SCALE = 1.2;
 const MOBILE_WEB_REEL_DICE_IMAGE_SCALE = MOBILE_WEB_REEL_DICE_SIZE_SCALE / MOBILE_WEB_REEL_BOX_SCALE;
 const MOBILE_WEB_ROLL_BUTTON_SCALE = 1.2;
+const MOBILE_WEB_TOP_CHROME_SIZE_SCALE = 0.8;
+const MOBILE_WEB_BOARD_SIZE_SCALE = 1.22705;
 const MATCH_CUE_FONT_FAMILY = 'CinzelDecorativeBold';
 const HOURGLASS_HEIGHT_RATIO = 156 / 100;
 const LOCAL_MOVE_HISTORY_RE = /^(light|dark) moved to \d+\. Rosette: (true|false)$/;
@@ -4466,7 +4468,7 @@ export function GameRoom() {
   const stageGap = viewportHeight < 760 ? urTheme.spacing.xs : urTheme.spacing.sm;
   const viewportTopPadding = 0;
   const viewportBottomPadding = Math.max(insets.bottom, urTheme.spacing.xs);
-  const topChromeHeight = isMobileWebLayout ? 46 : 36;
+  const topChromeHeight = isMobileWebLayout ? Math.round(46 * MOBILE_WEB_TOP_CHROME_SIZE_SCALE) : 36;
   const webTopChromeTopInset = Math.max(insets.top, urTheme.spacing.xs);
   const mobileTopChromeOffset = 0;
   const topChromeTop = isWebLayout && boardTargetFrame
@@ -4540,6 +4542,10 @@ export function GameRoom() {
     isMobileLayout,
     isMobileWebLayout,
   });
+  const mobileWebTopChromeShift = isMobileWebLayout ? Math.max(8, Math.round(topChromeHeight * 0.28)) : 0;
+  const mobileWebTopChromeExtraLift = isMobileWebLayout ? Math.max(4, Math.round(topChromeHeight * 0.14)) : 0;
+  const mobileScoreRowRenderLift = mobileHeaderLift + mobileWebTopChromeShift;
+  const mobileTopChromeRenderLift = mobileScoreRowRenderLift + mobileWebTopChromeExtraLift;
   const mobileChromeToScoreGap = isMobileLayout
     ? Math.max(4, Math.round(viewportHeight * 0.005))
     : 0;
@@ -4549,7 +4555,9 @@ export function GameRoom() {
   const baseMobileBoardOffsetTop = isMobileLayout
     ? baseMobileScoreOverlayTop + mobileStatusRowHeight + mobileBoardTopGap - mobileWebBoardLift
     : 0;
-  const mobileScoreRowInset = Math.max(urTheme.spacing.xs, Math.round(viewportWidth / 65));
+  const mobileScoreRowInset = isMobileWebLayout && useMobileSideReserveRails
+    ? urTheme.spacing.xs
+    : Math.max(urTheme.spacing.xs, Math.round(viewportWidth / 65));
   const mobileDarkScoreNudge = isMobileLayout
     ? Math.max(4, Math.round(viewportWidth * 0.012))
     : 0;
@@ -4624,14 +4632,22 @@ export function GameRoom() {
       (viewportBoardWidthLimitByHeight / Math.max(boardBaseWidth, 1)) * mobileBoardScaleBoost,
     ),
   );
-  const boardScale = isMobileLayout
-    ? Math.min(layoutBoardScale, viewportFitBoardScale)
+  const adjustedLayoutBoardScale = isMobileWebLayout
+    ? layoutBoardScale * MOBILE_WEB_BOARD_SIZE_SCALE
     : layoutBoardScale;
+  const boardScale = isMobileLayout
+    ? Math.min(adjustedLayoutBoardScale, viewportFitBoardScale)
+    : adjustedLayoutBoardScale;
   const reservePiecePixelSize = useMemo(
     () => getBoardPiecePixelSize({ viewportWidth, boardScale, orientation: 'vertical' }),
     [boardScale, viewportWidth],
   );
-  const compactReservePieceScale = viewportWidth < 760 ? 0.864 : tabletPortraitTuning.reservePieceScale;
+  const compactReservePieceScale =
+    isMobileWebLayout && useMobileSideReserveRails
+      ? 1
+      : viewportWidth < 760
+        ? 0.864
+        : tabletPortraitTuning.reservePieceScale;
   const scaledReservePiecePixelSize = compactSupportUi
     ? Math.max(12, Math.round(reservePiecePixelSize * compactReservePieceScale))
     : reservePiecePixelSize;
@@ -4691,13 +4707,17 @@ export function GameRoom() {
     return {
       diceFrame: {
         x: Math.round(lightTrayFrame.x),
-        y: mobileBoardGapLayout.diceFrame.y,
+        y: Math.round(
+          lightTrayFrame.y + Math.max(0, lightTrayFrame.height - mobileBoardGapLayout.diceFrame.height) / 2,
+        ),
         width: Math.round(lightTrayFrame.width),
         height: mobileBoardGapLayout.diceFrame.height,
       },
       rollFrame: {
         x: Math.round(darkTrayFrame.x),
-        y: mobileBoardGapLayout.rollFrame.y,
+        y: Math.round(
+          darkTrayFrame.y + Math.max(0, darkTrayFrame.height - mobileBoardGapLayout.rollFrame.height) / 2,
+        ),
         width: Math.round(darkTrayFrame.width),
         height: mobileBoardGapLayout.rollFrame.height,
       },
@@ -5546,7 +5566,7 @@ export function GameRoom() {
           styles.topChrome,
           useInlineTopChromeLayout && styles.topChromeMobile,
           isMobileWebLayout && styles.topChromeCompact,
-          { top: topChromeTop - mobileHeaderLift },
+          { top: topChromeTop - mobileTopChromeRenderLift },
         ]}
       >
         <View
@@ -5562,12 +5582,14 @@ export function GameRoom() {
               accessibilityLabel="Back"
               onPress={handleExit}
               iconName="arrow-back"
+              sizeScale={isMobileWebLayout ? MOBILE_WEB_TOP_CHROME_SIZE_SCALE : 1}
               style={styles.topChromeBackButton}
             />
           ) : (
             <View
               style={[
                 styles.topChromeBackButtonSpacer,
+                isMobileWebLayout && styles.topChromeBackButtonSpacerCompact,
                 styles.topChromeExitSpacer,
               ]}
             />
@@ -5599,6 +5621,7 @@ export function GameRoom() {
             iconName="more-vert"
             iconSize={compactTopChromeIconSize}
             iconOnly
+            sizeScale={isMobileWebLayout ? MOBILE_WEB_TOP_CHROME_SIZE_SCALE : 1}
             style={[
               styles.topChromeMenuButton,
               isMobileWebLayout && styles.topChromeMenuButtonCompact,
@@ -5669,7 +5692,7 @@ export function GameRoom() {
             isTournamentMatch ? styles.onlineStatusPillTournament : null,
             !isPrivateMatch && hasOpponentJoined ? styles.onlineStatusPillReady : null,
             {
-              top: mobileScoreOverlayTop - mobileHeaderLift + measuredScoreRowHeight + urTheme.spacing.xs,
+              top: mobileScoreOverlayTop - mobileScoreRowRenderLift + measuredScoreRowHeight + urTheme.spacing.xs,
               left: mobileScoreRowInset,
               right: mobileScoreRowInset,
             },
@@ -5722,7 +5745,7 @@ export function GameRoom() {
               styles.scoreRow,
               styles.scoreRowOverlay,
               isMobileLayout && isTurnTimerVisible && styles.mobileScoreRow,
-              { top: mobileScoreOverlayTop - mobileHeaderLift },
+              { top: mobileScoreOverlayTop - mobileScoreRowRenderLift },
               isMobileLayout && styles.scoreRowOverlayMobile,
               isMobileLayout && { left: mobileScoreRowInset, right: mobileScoreRowInset },
             ]}
@@ -6024,6 +6047,7 @@ export function GameRoom() {
               <View
                 style={[
                   styles.mobileBoardStageRow,
+                  useMobileSideReserveRails && { paddingHorizontal: mobileScoreRowInset },
                   useMobileSideReserveRails && { gap: boardClusterGap },
                 ]}
               >
@@ -6616,7 +6640,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   topChromeLeftCompact: {
-    gap: 4,
+    gap: 3,
   },
   topChromeBackButton: {
     flexShrink: 0,
@@ -6626,6 +6650,11 @@ const styles = StyleSheet.create({
     minWidth: 104,
     height: 40,
     flexShrink: 0,
+  },
+  topChromeBackButtonSpacerCompact: {
+    width: 84,
+    minWidth: 84,
+    height: 37,
   },
   topChromeTitleStack: {
     flex: 1,
@@ -6649,8 +6678,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   topChromeMenuButtonCompact: {
-    width: 46,
-    minWidth: 46,
+    width: 37,
+    minWidth: 37,
   },
   topChromeIconButton: {
     width: 34,
@@ -6707,9 +6736,9 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   topChromeTitleCompact: {
-    fontSize: 11,
-    lineHeight: 14,
-    letterSpacing: 0.25,
+    fontSize: 14,
+    lineHeight: 16,
+    letterSpacing: 0.3,
   },
   scoreRow: {
     width: '100%',

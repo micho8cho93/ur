@@ -214,6 +214,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   const isMobileWeb = Platform.OS === 'web' && isMobile;
   const isVertical = orientation === 'vertical';
   const isMobileWebVerticalRail = isVertical && isMobileWeb;
+  const isTraylessMobileWebVerticalRail = isMobileWebVerticalRail && !showTrayArt;
   const isCompactVerticalRail = isVertical && isMobile;
   const isLargeWebHorizontalRail = Platform.OS === 'web' && width >= 1200 && !isVertical;
   const isTabletPortrait = width >= 760 && width <= 1024 && height > width;
@@ -255,7 +256,9 @@ export const PieceRail: React.FC<PieceRailProps> = ({
     Math.round(
       (piecePixelSize ?? DEFAULT_RESERVE_PIECE_SIZE) *
       RESERVE_PIECE_SIZE_BOOST *
-      (isCompactVerticalRail
+      (isTraylessMobileWebVerticalRail
+        ? 1
+        : isCompactVerticalRail
         ? MOBILE_VERTICAL_RESERVE_PIECE_FIT * (isMobileWebVerticalRail ? MOBILE_WEB_VERTICAL_RESERVE_PIECE_SCALE : 1)
         : isMobileWeb ? 0.85 : 1),
     ),
@@ -583,7 +586,8 @@ export const PieceRail: React.FC<PieceRailProps> = ({
             isVertical && styles.pieceStackVertical,
             isVertical
               ? {
-                paddingLeft: isMobileWebVerticalRail ? MOBILE_WEB_VERTICAL_STACK_SHIFT_X : 0,
+                paddingLeft:
+                  isMobileWebVerticalRail && showTrayArt ? MOBILE_WEB_VERTICAL_STACK_SHIFT_X : 0,
                 paddingVertical: showTrayArt ? pieceLayout.inset : 0,
                 justifyContent: 'flex-start',
               }

@@ -269,4 +269,34 @@ describe('PieceRail', () => {
     expect(rootStyle.paddingBottom).toBe(0);
     expect(stackStyle.paddingVertical).toBe(0);
   });
+
+  it('keeps trayless mobile web side pieces at the same size requested by the board layout', () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+
+    render(
+      <PieceRail
+        color="light"
+        orientation="vertical"
+        showTrayArt={false}
+        piecePixelSize={40}
+        reserveCount={7}
+        totalCount={7}
+      />,
+    );
+
+    const stackStyle = StyleSheet.flatten(screen.getByTestId('piece-rail-stack').props.style) as {
+      paddingLeft?: number;
+    };
+    const slotStyle = StyleSheet.flatten(screen.getByTestId('piece-rail-slot-0').props.style) as {
+      height: number;
+      width: number;
+    };
+
+    expect(stackStyle.paddingLeft).toBe(0);
+    expect(slotStyle.width).toBe(40);
+    expect(slotStyle.height).toBe(40);
+  });
 });

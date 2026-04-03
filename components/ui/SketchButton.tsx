@@ -23,6 +23,7 @@ type SketchButtonProps = {
   wide?: boolean;
   disabled?: boolean;
   fontFamily?: string;
+  sizeScale?: number;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -36,8 +37,26 @@ export function SketchButton({
   wide = false,
   disabled = false,
   fontFamily = HOME_GROBOLD_FONT_FAMILY,
+  sizeScale = 1,
   style,
 }: SketchButtonProps) {
+  const resolvedSizeScale = Math.max(0.5, sizeScale);
+  const scaledIconSize = Math.round(iconSize * resolvedSizeScale);
+  const iconOnlySize = Math.round(46 * resolvedSizeScale);
+  const compactMinWidth = Math.round(104 * resolvedSizeScale);
+  const surfaceCompactMinWidth = Math.round(116 * resolvedSizeScale);
+  const surfaceCompactMinHeight = Math.round(48 * resolvedSizeScale);
+  const wideBodyMinHeight = Math.round(48 * resolvedSizeScale);
+  const surfaceBodyMinHeight = Math.round((wide ? 48 : iconOnly ? 42 : 44) * resolvedSizeScale);
+  const contentMinHeight = Math.round((wide ? 48 : iconOnly ? 42 : 44) * resolvedSizeScale);
+  const contentGap = Math.round(6 * resolvedSizeScale);
+  const contentHorizontalPadding = Math.round((wide ? 20 : 16) * resolvedSizeScale);
+  const contentVerticalPadding = Math.round((wide ? 10 : 8) * resolvedSizeScale);
+  const compactLabelFontSize = Math.round(17 * resolvedSizeScale);
+  const compactLabelLineHeight = Math.round(19 * resolvedSizeScale);
+  const wideLabelFontSize = Math.round(18 * resolvedSizeScale);
+  const wideLabelLineHeight = Math.round(20 * resolvedSizeScale);
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -48,6 +67,17 @@ export function SketchButton({
       style={({ pressed, hovered }) => [
         styles.pressable,
         iconOnly ? styles.pressableIconOnly : wide ? styles.pressableWide : styles.pressableCompact,
+        iconOnly
+          ? {
+              width: iconOnlySize,
+              minWidth: iconOnlySize,
+              height: iconOnlySize,
+            }
+          : wide
+            ? null
+            : {
+                minWidth: compactMinWidth,
+              },
         style,
         hovered && !disabled ? styles.pressableHovered : null,
         pressed && !disabled ? styles.pressablePressed : null,
@@ -60,22 +90,49 @@ export function SketchButton({
           hovered={hovered && !disabled}
           focused={focused && !disabled}
           disabled={disabled}
-          outerRadius={iconOnly ? 23 : 20}
-          innerRadius={iconOnly ? 20 : 17}
+          outerRadius={Math.round((iconOnly ? 23 : 20) * resolvedSizeScale)}
+          innerRadius={Math.round((iconOnly ? 20 : 17) * resolvedSizeScale)}
           shellStyle={[
             styles.surface,
             iconOnly ? styles.surfaceIconOnly : wide ? styles.surfaceWide : styles.surfaceCompact,
+            iconOnly
+              ? {
+                  width: iconOnlySize,
+                  minWidth: iconOnlySize,
+                  minHeight: iconOnlySize,
+                }
+              : wide
+                ? {
+                    minHeight: Math.round(52 * resolvedSizeScale),
+                  }
+                : {
+                    minWidth: surfaceCompactMinWidth,
+                    minHeight: surfaceCompactMinHeight,
+                  },
           ]}
           bodyStyle={[
             iconOnly ? styles.surfaceBodyIconOnly : styles.surfaceBody,
             wide ? styles.surfaceBodyWide : null,
+            {
+              minHeight: wide ? wideBodyMinHeight : surfaceBodyMinHeight,
+            },
           ]}
           contentStyle={[
             iconOnly ? styles.contentIconOnly : styles.content,
             wide ? styles.contentWide : null,
+            iconOnly
+              ? {
+                  minHeight: Math.round(42 * resolvedSizeScale),
+                }
+              : {
+                  minHeight: contentMinHeight,
+                  gap: contentGap,
+                  paddingHorizontal: contentHorizontalPadding,
+                  paddingVertical: contentVerticalPadding,
+                },
           ]}
         >
-          {iconName ? <MaterialIcons name={iconName} size={iconSize} color="#FFFFFF" /> : null}
+          {iconName ? <MaterialIcons name={iconName} size={scaledIconSize} color="#FFFFFF" /> : null}
           {!iconOnly ? (
             <Text
               numberOfLines={1}
@@ -85,6 +142,8 @@ export function SketchButton({
                 {
                   color: '#FFFFFF',
                   fontFamily,
+                  fontSize: wide ? wideLabelFontSize : compactLabelFontSize,
+                  lineHeight: wide ? wideLabelLineHeight : compactLabelLineHeight,
                 },
               ]}
             >
