@@ -35,7 +35,7 @@ type FormState = {
 const initialState: FormState = {
   runId: '',
   name: '',
-  gameMode: 'standard',
+  gameMode: 'gameMode_3_pieces',
   entrants: '16',
   startAt: '',
   autoAddBots: false,
