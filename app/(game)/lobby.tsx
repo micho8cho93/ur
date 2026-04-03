@@ -1,4 +1,4 @@
-import { HomeActionButton } from '@/components/home/HomeActionButton';
+import { HomeLightButton } from '@/components/home/HomeLightButton';
 import { XpRewardBadge } from '@/components/progression/XpRewardBadge';
 import { TournamentCard } from '@/components/tournaments/TournamentCard';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
@@ -7,7 +7,12 @@ import {
   MIN_WIDE_WEB_BACKGROUND_WIDTH,
   WideScreenBackground,
 } from '@/components/ui/WideScreenBackground';
-import { urTheme } from '@/constants/urTheme';
+import {
+  urPanelColors,
+  urTextColors,
+  urTextVariants,
+  urTheme,
+} from '@/constants/urTheme';
 import { LobbyMode, useMatchmaking } from '@/hooks/useMatchmaking';
 import { PRIVATE_MATCH_OPTIONS } from '@/logic/matchConfigs';
 import { getXpAwardAmount } from '@/shared/progression';
@@ -18,7 +23,9 @@ import {
 } from '@/shared/privateMatchCode';
 import {
   HOME_FREDOKA_FONT_FAMILY,
+  HOME_GROBOLD_FONT_FAMILY,
   HOME_SUPERCELL_FONT_FAMILY,
+  resolveHomeButtonFontFamily,
   resolveHomeFredokaFontFamily,
   resolveHomeMagicFontFamily,
 } from '@/src/home/homeTheme';
@@ -41,9 +48,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const homeWideBackground = require('../../assets/images/home_bg.png');
-const homeMobileBackground = require('../../assets/images/home_bg_mobile.png');
-const quickPlayModePanel = require('../../assets/images/quick_play_mode_panel_cropped.png');
+const homeWideBackground = require('../../assets/images/bg_online.png');
+const homeMobileBackground = require('../../assets/images/bg_online_mobile.png');
+const onlineActionCard = require('../../assets/images/home_stat_card.png');
+const ONLINE_ACTION_CARD_ASPECT_RATIO = 626 / 732;
 
 type OnlineActionPanelProps = {
   title: string;
@@ -68,7 +76,7 @@ function OnlineActionPanel({
 }: OnlineActionPanelProps) {
   return (
     <ImageBackground
-      source={quickPlayModePanel}
+      source={onlineActionCard}
       resizeMode="stretch"
       style={[
         styles.modePanel,
@@ -146,7 +154,8 @@ export default function Lobby() {
     launchingRunId,
   } = useTournamentList({ featured: true, limit: 12 });
   const [fontsLoaded] = useFonts({
-    [HOME_FREDOKA_FONT_FAMILY]: require('../../assets/fonts/Fredoka-VariableFont_wdth,wght.ttf'),
+    [HOME_FREDOKA_FONT_FAMILY]: require('../../assets/fonts/LilitaOne-Regular.ttf'),
+    [HOME_GROBOLD_FONT_FAMILY]: require('../../assets/fonts/LilitaOne-Regular.ttf'),
     [HOME_SUPERCELL_FONT_FAMILY]: require('../../assets/fonts/Supercell-Magic-Regular.ttf'),
   });
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
@@ -166,6 +175,7 @@ export default function Lobby() {
         : Math.min(width - horizontalPadding * 2, 820);
   const titleFontFamily = resolveHomeMagicFontFamily(fontsLoaded);
   const bodyFontFamily = resolveHomeFredokaFontFamily(fontsLoaded);
+  const buttonFontFamily = resolveHomeButtonFontFamily(fontsLoaded);
 
   useEffect(() => {
     if (mode === 'bot') {
@@ -249,6 +259,10 @@ export default function Lobby() {
 
     return 'Find Opponent';
   })();
+  const findOpponentButtonMaxWidth = Math.min(
+    isCompactLayout ? 252 : 244,
+    Math.max(196, 112 + buttonTitle.length * 8),
+  );
 
   const statusLabel = (() => {
     if (status === 'connecting' && activeAction === 'find_opponent') {
@@ -293,12 +307,12 @@ export default function Lobby() {
         <WideScreenBackground
           source={homeWideBackground}
           visible={showWideBackground}
-          overlayColor="rgba(56, 30, 13, 0.08)"
+          overlayColor={urPanelColors.sceneOverlay}
         />
         <MobileBackground
           source={homeMobileBackground}
           visible={showMobileBackground}
-          overlayColor="rgba(56, 30, 13, 0.08)"
+          overlayColor={urPanelColors.sceneOverlay}
         />
         <View style={styles.backgroundTint} />
 
@@ -322,7 +336,7 @@ export default function Lobby() {
               accessibilityLabel="Back"
               onPress={() => router.back()}
               iconName="arrow-back"
-              fontFamily={bodyFontFamily}
+              fontFamily={buttonFontFamily}
             />
           </View>
 
@@ -337,9 +351,6 @@ export default function Lobby() {
                 ]}
               >
                 Play Online
-              </Text>
-              <Text style={[styles.pageSubtitle, { fontFamily: bodyFontFamily }]}>
-                Match publicly, set up a private room, or jump into a tournament run without leaving the new home-page stage.
               </Text>
 
               <View style={styles.onlineCountBadge}>
@@ -366,25 +377,17 @@ export default function Lobby() {
             </View>
 
             <View style={styles.featuredSection}>
-              <View style={styles.featuredHeader}>
-                <Text style={[styles.featuredEyebrow, { fontFamily: bodyFontFamily }]}>
-                  Featured Tournaments
-                </Text>
-                <Text style={[styles.featuredTitle, { fontFamily: titleFontFamily }]}>
-                  Open public runs staged like the new quick-play panels
-                </Text>
-                <Text style={[styles.featuredSubtitle, { fontFamily: bodyFontFamily }]}>
-                  Inspect the standings before you commit, then join or launch the next tournament match from the framed tournament panel itself.
-                </Text>
+              {featuredTournaments.length > 0 ? (
                 <View style={styles.featuredHeaderAction}>
                   <SketchButton
                     label="See All Tournaments"
                     accessibilityLabel="See all tournaments"
                     onPress={() => router.push('/tournaments' as never)}
-                    fontFamily={bodyFontFamily}
+                    fontFamily={buttonFontFamily}
+                    style={styles.featuredHeaderButton}
                   />
                 </View>
-              </View>
+              ) : null}
 
               {tournamentErrorMessage ? (
                 <View style={styles.errorBanner}>
@@ -411,6 +414,15 @@ export default function Lobby() {
                   <Text style={[styles.featuredStateText, { fontFamily: bodyFontFamily }]}>
                     Public tournament runs will appear here as soon as operators open them for play.
                   </Text>
+                  <View style={styles.featuredStateAction}>
+                    <SketchButton
+                      label="See All Tournaments"
+                      accessibilityLabel="See all tournaments"
+                      onPress={() => router.push('/tournaments' as never)}
+                      fontFamily={buttonFontFamily}
+                      style={styles.featuredStateButton}
+                    />
+                  </View>
                 </View>
               ) : (
                 <View style={styles.featuredList}>
@@ -467,9 +479,6 @@ export default function Lobby() {
             </View>
 
             <View style={styles.actionsSection}>
-              <Text style={[styles.actionsEyebrow, { fontFamily: bodyFontFamily }]}>
-                Matchmaking Options
-              </Text>
               <Text style={[styles.actionsTitle, { fontFamily: titleFontFamily }]}>
                 Choose how you want to enter the court
               </Text>
@@ -495,14 +504,13 @@ export default function Lobby() {
                       </Text>
                     ) : null}
 
-                    <HomeActionButton
-                      title={buttonTitle}
-                      tone="gold"
-                      compact
+                    <HomeLightButton
+                      label={buttonTitle}
                       fontLoaded={fontsLoaded}
+                      size={isCompactLayout ? 'compact' : 'regular'}
                       loading={isFindingOpponent}
                       disabled={isCreatingPrivateGame || isJoiningPrivateGame}
-                      style={styles.primaryActionButton}
+                      style={[styles.primaryActionButton, { maxWidth: findOpponentButtonMaxWidth }]}
                       onPress={handleStart}
                     />
                   </OnlineActionPanel>
@@ -517,7 +525,7 @@ export default function Lobby() {
                 >
                   <OnlineActionPanel
                     title="Create Private Game"
-                    subtitle={`Make a shareable room code for a friend. Private match wins award +${privateWinRewardXp} XP and count toward permanent challenge progress.`}
+                    subtitle="Make a shareable room code for a friend."
                     titleFontFamily={titleFontFamily}
                     bodyFontFamily={bodyFontFamily}
                     compact={isCompactLayout}
@@ -564,35 +572,34 @@ export default function Lobby() {
 
                         <View style={styles.actionRow}>
                           <View style={styles.actionRowCell}>
-                            <SketchButton
+                            <HomeLightButton
                               label="Copy Code"
                               accessibilityLabel="Copy code"
                               onPress={() => void handleCopyPrivateCode()}
-                              fontFamily={bodyFontFamily}
-                              wide
-                              style={styles.sketchWideButton}
+                              fontLoaded={fontsLoaded}
+                              size="compact"
+                              style={styles.actionRowButton}
                             />
                           </View>
                           <View style={styles.actionRowCell}>
-                            <HomeActionButton
-                              title="Start Game"
-                              tone="gold"
-                              compact
+                            <HomeLightButton
+                              label="Start Game"
                               fontLoaded={fontsLoaded}
-                              style={styles.primaryActionButton}
+                              size="compact"
+                              style={styles.actionRowButton}
                               onPress={startCreatedPrivateMatch}
                             />
                           </View>
                         </View>
 
                         <View style={styles.secondaryActionWrap}>
-                          <SketchButton
+                          <HomeLightButton
                             label="Pick Another Ruleset"
                             accessibilityLabel="Pick another ruleset"
                             onPress={clearCreatedPrivateMatch}
-                            fontFamily={bodyFontFamily}
-                            wide
-                            style={styles.sketchWideButton}
+                            fontLoaded={fontsLoaded}
+                            size="compact"
+                            style={styles.secondaryActionButton}
                           />
                         </View>
                       </>
@@ -600,12 +607,10 @@ export default function Lobby() {
                       <View style={styles.optionGrid}>
                         {PRIVATE_MATCH_OPTIONS.map((option) => (
                           <View key={option.modeId} style={styles.optionCell}>
-                            <HomeActionButton
-                              title={option.label}
-                              tone="stone"
-                              size="small"
-                              compact
+                            <HomeLightButton
+                              label={option.label}
                               fontLoaded={fontsLoaded}
+                              size="small"
                               style={styles.optionActionButton}
                               loading={
                                 isCreatingPrivateGame &&
@@ -632,7 +637,7 @@ export default function Lobby() {
                 >
                   <OnlineActionPanel
                     title="Enter Private Code"
-                    subtitle={`Paste the short code your friend sent you to enter their private table and play for the +${privateWinRewardXp} XP private-match reward.`}
+                    subtitle="Paste the short code your friend sent you to enter their private table."
                     titleFontFamily={titleFontFamily}
                     bodyFontFamily={bodyFontFamily}
                     compact={isCompactLayout}
@@ -664,11 +669,10 @@ export default function Lobby() {
                       style={[styles.codeInput, styles.primaryActionField, { fontFamily: bodyFontFamily }]}
                     />
 
-                    <HomeActionButton
-                      title={isJoiningPrivateGame ? 'Joining...' : 'Join Game'}
-                      tone="gold"
-                      compact
+                    <HomeLightButton
+                      label={isJoiningPrivateGame ? 'Joining...' : 'Join Game'}
                       fontLoaded={fontsLoaded}
+                      size={isCompactLayout ? 'compact' : 'regular'}
                       loading={isJoiningPrivateGame}
                       disabled={!canJoinPrivateGame}
                       style={styles.primaryActionButton}
@@ -692,7 +696,7 @@ const styles = StyleSheet.create({
   },
   backgroundTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(56, 30, 13, 0.08)',
+    backgroundColor: urPanelColors.sceneOverlay,
   },
   scrollContent: {
     alignItems: 'center',
@@ -713,26 +717,17 @@ const styles = StyleSheet.create({
     gap: urTheme.spacing.sm,
   },
   pageTitle: {
-    color: '#22160C',
+    color: urTextColors.titleOnScene,
     textAlign: 'center',
-    textShadowColor: 'rgba(255, 244, 221, 0.32)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
+    ...urTextVariants.displayTitle,
   },
   pageTitleDesktop: {
-    fontSize: 36,
-    lineHeight: 40,
+    fontSize: 30,
+    lineHeight: 34,
   },
   pageTitleCompact: {
-    fontSize: 29,
-    lineHeight: 33,
-  },
-  pageSubtitle: {
-    maxWidth: 680,
-    color: 'rgba(34, 22, 12, 0.88)',
-    fontSize: 16,
-    lineHeight: 22,
-    textAlign: 'center',
+    fontSize: 30,
+    lineHeight: 34,
   },
   onlineCountBadge: {
     flexDirection: 'row',
@@ -744,8 +739,8 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(114, 82, 35, 0.18)',
-    backgroundColor: 'rgba(255, 247, 228, 0.52)',
+    borderColor: urPanelColors.parchmentBorder,
+    backgroundColor: urPanelColors.parchmentSurface,
   },
   onlineDot: {
     width: 9,
@@ -760,10 +755,11 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   onlineCountText: {
-    color: '#5B3E1B',
+    color: urTextColors.bodyOnPanel,
     fontSize: 14,
     lineHeight: 16,
     textAlign: 'center',
+    ...urTextVariants.body,
   },
   errorBanner: {
     width: '100%',
@@ -772,11 +768,11 @@ const styles = StyleSheet.create({
     paddingVertical: urTheme.spacing.sm,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(143, 52, 41, 0.22)',
-    backgroundColor: 'rgba(255, 235, 226, 0.76)',
+    borderColor: 'rgba(184, 79, 65, 0.24)',
+    backgroundColor: 'rgba(255, 236, 226, 0.82)',
   },
   errorBannerText: {
-    color: '#8F3429',
+    color: '#9B4438',
     fontSize: 12,
     lineHeight: 17,
     textAlign: 'center',
@@ -785,34 +781,11 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: urTheme.spacing.md,
   },
-  featuredHeader: {
-    alignItems: 'center',
-    gap: 6,
-  },
-  featuredEyebrow: {
-    color: '#7A571F',
-    fontSize: 12,
-    lineHeight: 14,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    textAlign: 'center',
-  },
-  featuredTitle: {
-    color: '#22160C',
-    fontSize: 30,
-    lineHeight: 34,
-    textAlign: 'center',
-    maxWidth: 720,
-  },
-  featuredSubtitle: {
-    maxWidth: 820,
-    color: 'rgba(58, 37, 17, 0.88)',
-    fontSize: 15,
-    lineHeight: 21,
-    textAlign: 'center',
-  },
   featuredHeaderAction: {
-    marginTop: 4,
+    alignItems: 'center',
+  },
+  featuredHeaderButton: {
+    alignSelf: 'center',
   },
   featuredStateCard: {
     alignItems: 'center',
@@ -821,21 +794,31 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: 'rgba(126, 93, 42, 0.18)',
-    backgroundColor: 'rgba(255, 248, 232, 0.5)',
+    borderColor: urPanelColors.parchmentBorder,
+    backgroundColor: urPanelColors.parchmentSurface,
   },
   featuredStateTitle: {
-    color: '#3B2412',
+    color: urTextColors.titleOnPanel,
     fontSize: 24,
     lineHeight: 28,
     textAlign: 'center',
+    ...urTextVariants.sectionTitle,
   },
   featuredStateText: {
     maxWidth: 620,
-    color: 'rgba(73, 48, 26, 0.88)',
+    color: urTextColors.bodyOnPanel,
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
+    ...urTextVariants.body,
+  },
+  featuredStateAction: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  featuredStateButton: {
+    alignSelf: 'center',
   },
   featuredList: {
     width: '100%',
@@ -846,23 +829,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: urTheme.spacing.md,
   },
-  actionsEyebrow: {
-    color: '#7A571F',
-    fontSize: 12,
-    lineHeight: 14,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    textAlign: 'center',
-  },
   actionsTitle: {
-    color: '#FFF5DE',
+    color: urTextColors.titleOnScene,
     fontSize: 30,
     lineHeight: 34,
     textAlign: 'center',
     maxWidth: 640,
-    textShadowColor: 'rgba(72, 31, 10, 0.52)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 2,
+    ...urTextVariants.displayTitle,
   },
   actionGrid: {
     width: '100%',
@@ -885,14 +858,17 @@ const styles = StyleSheet.create({
   },
   modePanel: {
     width: '100%',
+    aspectRatio: ONLINE_ACTION_CARD_ASPECT_RATIO,
     overflow: 'visible',
     justifyContent: 'center',
   },
   modePanelDesktop: {
-    minHeight: 430,
+    maxWidth: 390,
+    alignSelf: 'center',
   },
   modePanelCompact: {
-    minHeight: 460,
+    maxWidth: 420,
+    alignSelf: 'center',
   },
   modePanelImage: {
     width: '100%',
@@ -900,58 +876,68 @@ const styles = StyleSheet.create({
   },
   modeRewardBadge: {
     position: 'absolute',
-    top: 16,
-    right: 16,
+    top: 8,
+    right: -20,
     minWidth: 82,
   },
   modeRewardBadgeCompact: {
-    top: 12,
-    right: 12,
+    top: -10,
+    right: -30,
     transform: [{ scale: 0.9 }],
   },
   modePanelContent: {
-    paddingTop: 78,
-    paddingBottom: 60,
-    paddingHorizontal: 42,
+    position: 'absolute',
+    top: '12%',
+    left: '13%',
+    right: '13%',
+    bottom: '14%',
     alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   modePanelContentDesktop: {
+    top: '13%',
+    bottom: '15.5%',
     gap: 10,
   },
   modePanelContentCompact: {
-    paddingTop: 72,
-    paddingBottom: 52,
-    paddingHorizontal: 34,
+    top: '12%',
+    bottom: '14.5%',
     gap: 9,
   },
   modePanelTitle: {
-    color: '#4B2E12',
+    color: urTextColors.titleOnPanel,
     textAlign: 'center',
-    maxWidth: '72%',
+    maxWidth: '82%',
+    ...urTextVariants.cardTitle,
   },
   modePanelTitleDesktop: {
-    fontSize: 22,
-    lineHeight: 25,
+    fontSize: 20,
+    lineHeight: 23,
   },
   modePanelTitleCompact: {
-    fontSize: 19,
-    lineHeight: 22,
+    fontSize: 18,
+    lineHeight: 21,
   },
   modePanelSubtitle: {
-    color: '#6B5740',
-    fontSize: 14,
-    lineHeight: 19,
+    color: urTextColors.bodyOnPanel,
+    maxWidth: '90%',
+    fontSize: 13,
+    lineHeight: 18,
     textAlign: 'center',
+    ...urTextVariants.body,
   },
   modePanelBody: {
+    flex: 1,
     width: '100%',
-    marginTop: 6,
-    gap: 12,
+    marginTop: 8,
+    paddingBottom: 10,
+    gap: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   primaryActionButton: {
     width: '100%',
-    maxWidth: 216,
+    maxWidth: 196,
     alignSelf: 'center',
   },
   primaryActionField: {
@@ -961,14 +947,16 @@ const styles = StyleSheet.create({
   },
   optionActionButton: {
     width: '100%',
-    maxWidth: 148,
+    maxWidth: 138,
     alignSelf: 'center',
   },
   statusText: {
-    color: '#5E4630',
+    maxWidth: '94%',
+    color: urTextColors.bodyOnPanel,
     fontSize: 13,
     lineHeight: 18,
     textAlign: 'center',
+    ...urTextVariants.body,
   },
   privateCodePanel: {
     width: '100%',
@@ -976,25 +964,25 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(126, 93, 42, 0.18)',
-    backgroundColor: 'rgba(255, 248, 232, 0.62)',
+    borderColor: urPanelColors.parchmentBorder,
+    backgroundColor: urPanelColors.parchmentSurfaceStrong,
     alignItems: 'center',
     gap: 8,
   },
   privateCodeEyebrow: {
-    color: '#7A571F',
+    color: urTextColors.captionOnPanel,
     fontSize: 12,
     lineHeight: 14,
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
+    ...urTextVariants.caption,
     textAlign: 'center',
   },
   privateCodeValue: {
-    color: '#3B2412',
+    color: urTextColors.titleOnPanel,
     fontSize: 28,
     lineHeight: 30,
     letterSpacing: 2.2,
     textAlign: 'center',
+    ...urTextVariants.sectionTitle,
   },
   privatePresenceRow: {
     flexDirection: 'row',
@@ -1006,7 +994,7 @@ const styles = StyleSheet.create({
     width: 9,
     height: 9,
     borderRadius: 999,
-    backgroundColor: 'rgba(196, 142, 43, 0.55)',
+    backgroundColor: 'rgba(184, 134, 11, 0.62)',
   },
   privatePresenceDotReady: {
     backgroundColor: '#5DB11F',
@@ -1015,16 +1003,18 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   privatePresenceText: {
-    color: '#5E4630',
+    color: urTextColors.bodyOnPanel,
     fontSize: 13,
     lineHeight: 16,
     textAlign: 'center',
+    ...urTextVariants.body,
   },
   copyFeedbackText: {
-    color: '#385D2C',
+    color: '#4C6F28',
     fontSize: 12,
     lineHeight: 16,
     textAlign: 'center',
+    ...urTextVariants.body,
   },
   actionRow: {
     width: '100%',
@@ -1041,10 +1031,13 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     marginTop: 2,
-    maxWidth: 232,
+    maxWidth: 208,
     alignSelf: 'center',
   },
-  sketchWideButton: {
+  secondaryActionButton: {
+    width: '100%',
+  },
+  actionRowButton: {
     width: '100%',
   },
   optionGrid: {
@@ -1065,9 +1058,9 @@ const styles = StyleSheet.create({
     minHeight: 56,
     borderRadius: 22,
     borderWidth: 1.5,
-    borderColor: 'rgba(123, 95, 47, 0.24)',
-    backgroundColor: 'rgba(255, 249, 235, 0.72)',
-    color: '#4B2E12',
+    borderColor: urPanelColors.parchmentBorder,
+    backgroundColor: urPanelColors.parchmentSurfaceStrong,
+    color: urTextColors.titleOnPanel,
     textAlign: 'center',
     fontSize: 22,
     lineHeight: 26,

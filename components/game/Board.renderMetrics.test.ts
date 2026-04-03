@@ -15,8 +15,7 @@ describe('getBoardPieceRenderMetrics', () => {
 
       expect(metrics.pixelSize).toBeGreaterThanOrEqual(18);
       expect(metrics.artScale * PIECE_ART_VISIBLE_COVERAGE).toBeCloseTo(0.75, 5);
-      expect(metrics.artOffsetY).toBeCloseTo(metrics.pixelSize * metrics.artScale * 0.02, 2);
-      expect(metrics.artOffsetY).toBeGreaterThan(0);
+      expect(metrics.artOffsetY).toBe(0);
     },
   );
 

@@ -1,9 +1,9 @@
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTypography } from '@/constants/urTheme';
+import { urTheme } from '@/constants/urTheme';
 import { useAuth } from '@/src/auth/useAuth';
-import { useFonts } from 'expo-font';
+import { HOME_GROBOLD_FONT_FAMILY } from '@/src/home/homeTheme';
 import React from 'react';
 import {
   ActivityIndicator,
@@ -22,10 +22,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 type PendingAction = 'guest' | 'google' | null;
 type ButtonTone = 'guest' | 'google';
 
-const SUPER_CELL_MAGIC_FONT_FAMILY = 'SupercellMagicRegular';
 const BUTTON_PANEL_ASPECT_RATIO = 1214 / 536;
-const DESKTOP_BACKGROUND = require('../../assets/images/login_bg_desert.png');
-const MOBILE_BACKGROUND = require('../../assets/images/login_bg_mobile_desert.png');
+const DESKTOP_BACKGROUND = require('../../assets/images/bg_login.png');
+const MOBILE_BACKGROUND = require('../../assets/images/bg_login_mobile.png');
 const BUTTON_PANEL_ART = require('../../assets/images/login_large_panel_trimmed.png');
 const LOGO_ART = require('../../assets/images/login_logo_legacy.png');
 
@@ -69,7 +68,6 @@ type LoginActionButtonProps = {
   disabled: boolean;
   loading: boolean;
   width: number;
-  fontLoaded: boolean;
   compact: boolean;
   mobileWeb?: boolean;
   accessibilityLabel: string;
@@ -82,7 +80,6 @@ function LoginActionButton({
   disabled,
   loading,
   width,
-  fontLoaded,
   compact,
   mobileWeb = false,
   accessibilityLabel,
@@ -93,7 +90,7 @@ function LoginActionButton({
     styles.actionLabel,
     compact ? styles.actionLabelCompact : styles.actionLabelRegular,
     mobileWeb && styles.actionLabelMobileWeb,
-    fontLoaded ? styles.actionLabelMagic : styles.actionLabelFallback,
+    styles.actionLabelGrobold,
     { color: palette.text },
     disabled && styles.actionLabelDisabled,
   ];
@@ -165,9 +162,6 @@ export default function LoginScreen() {
     isCompactLayout && styles.buttonPanelInnerCompact,
     isMobileWeb && styles.buttonPanelInnerMobileWeb,
   ];
-  const [fontLoaded] = useFonts({
-    [SUPER_CELL_MAGIC_FONT_FAMILY]: require('../../assets/fonts/Supercell-Magic-Regular.ttf'),
-  });
   const [pendingAction, setPendingAction] = React.useState<PendingAction>(null);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
@@ -251,7 +245,6 @@ export default function LoginScreen() {
                   disabled={pendingAction !== null}
                   loading={pendingAction === 'guest'}
                   width={buttonWidth}
-                  fontLoaded={fontLoaded}
                   compact={isCompactLayout}
                   mobileWeb={isMobileWeb}
                   tone="guest"
@@ -263,7 +256,6 @@ export default function LoginScreen() {
                   disabled={pendingAction !== null}
                   loading={pendingAction === 'google'}
                   width={buttonWidth}
-                  fontLoaded={fontLoaded}
                   compact={isCompactLayout}
                   mobileWeb={isMobileWeb}
                   tone="google"
@@ -451,12 +443,8 @@ const styles = StyleSheet.create({
   actionLabelMobileWeb: {
     fontSize: 11,
   },
-  actionLabelMagic: {
-    fontFamily: SUPER_CELL_MAGIC_FONT_FAMILY,
-    letterSpacing: 0.2,
-  },
-  actionLabelFallback: {
-    ...urTypography.title,
+  actionLabelGrobold: {
+    fontFamily: HOME_GROBOLD_FONT_FAMILY,
     letterSpacing: 0.8,
   },
   actionLabelDisabled: {

@@ -147,6 +147,7 @@ describe('AuthenticatedHome', () => {
     const view = render(<AuthenticatedHome />);
 
     expect(view.getByText('Michel')).toBeTruthy();
+    expect(view.getByLabelText('Current progression rank badge: Apprentice Scribe')).toBeTruthy();
     expect(view.getByText('Logout')).toBeTruthy();
     expect(view.getByText('XP & Rank')).toBeTruthy();
     expect(view.getByText('Elo Rating')).toBeTruthy();
@@ -196,6 +197,7 @@ describe('AuthenticatedHome', () => {
     const view = render(<AuthenticatedHome />);
 
     expect(view.getByText('Guest')).toBeTruthy();
+    expect(view.getByLabelText('Current progression rank badge: Laborer')).toBeTruthy();
     expect(view.getByText('Back')).toBeTruthy();
     expect(view.queryByText('Logout')).toBeNull();
     expect(view.getByText('Locked')).toBeTruthy();

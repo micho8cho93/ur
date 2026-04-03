@@ -3,25 +3,26 @@ import { ChallengeSummaryCard } from '@/components/challenges/ChallengeSummaryCa
 import { EloRatingSummaryCard } from '@/components/elo/EloRatingSummaryCard';
 import { ProgressionModal } from '@/components/progression/ProgressionModal';
 import { ProgressionSummaryCard } from '@/components/progression/ProgressionSummaryCard';
+import { SketchButton } from '@/components/ui/SketchButton';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH } from '@/components/ui/WideScreenBackground';
 import { urTheme } from '@/constants/urTheme';
 import { useAuth } from '@/src/auth/useAuth';
 import { useProgression } from '@/src/progression/useProgression';
 import {
   HOME_FREDOKA_FONT_FAMILY,
+  HOME_GROBOLD_FONT_FAMILY,
   HOME_SUPERCELL_FONT_FAMILY,
   HomeLayoutVariant,
+  resolveHomeButtonFontFamily,
   resolveHomeUsernameFontFamily,
 } from '@/src/home/homeTheme';
 import { useScreenTransition } from '@/src/transitions/ScreenTransitionContext';
 import { useFonts } from 'expo-font';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import {
   Image,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -34,11 +35,6 @@ const homeWideBackground = require('../../assets/images/home_bg.png');
 const homeMobileBackground = require('../../assets/images/home_bg_mobile.png');
 const logoArt = require('../../assets/images/login_logo_legacy.png');
 const HOME_LOGO_VISIBLE_ASPECT_RATIO = 708 / 662;
-const HOME_UTILITY_BUTTON_ROTATION = '-1.2deg';
-const HOME_SECONDARY_BUTTON_BACKGROUND = '#B9B4AC';
-const HOME_SECONDARY_BUTTON_BORDER = '#5A5148';
-const HOME_SECONDARY_BUTTON_TEXT = '#3D362F';
-const HOME_SECONDARY_BUTTON_SKETCH = 'rgba(74, 66, 58, 0.18)';
 
 export default function AuthenticatedHome() {
   const { width, height } = useWindowDimensions();
@@ -50,7 +46,8 @@ export default function AuthenticatedHome() {
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const [isProgressionModalOpen, setIsProgressionModalOpen] = React.useState(false);
   const [fontsLoaded] = useFonts({
-    [HOME_FREDOKA_FONT_FAMILY]: require('../../assets/fonts/Fredoka-VariableFont_wdth,wght.ttf'),
+    [HOME_FREDOKA_FONT_FAMILY]: require('../../assets/fonts/LilitaOne-Regular.ttf'),
+    [HOME_GROBOLD_FONT_FAMILY]: require('../../assets/fonts/LilitaOne-Regular.ttf'),
     [HOME_SUPERCELL_FONT_FAMILY]: require('../../assets/fonts/Supercell-Magic-Regular.ttf'),
   });
 
@@ -70,6 +67,7 @@ export default function AuthenticatedHome() {
   const logoPanelWidth = isDesktopLayout ? logoWidth * 0.62 : logoWidth * 0.76;
   const logoPanelHeight = logoPanelWidth / HOME_LOGO_VISIBLE_ASPECT_RATIO;
   const usernameFontFamily = resolveHomeUsernameFontFamily(fontsLoaded);
+  const buttonFontFamily = resolveHomeButtonFontFamily(fontsLoaded);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -113,30 +111,17 @@ export default function AuthenticatedHome() {
     label: string;
     accessibilityLabel: string;
     onPress: () => void;
-    iconName?: React.ComponentProps<typeof MaterialIcons>['name'];
+    iconName?: React.ComponentProps<typeof SketchButton>['iconName'];
     disabled?: boolean;
   }) => (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed, hovered, focused }) => [
-        styles.utilitySketchButton,
-        hovered && !disabled && styles.utilitySketchButtonHovered,
-        focused && !disabled && styles.utilitySketchButtonFocused,
-        pressed && !disabled && styles.utilitySketchButtonPressed,
-        disabled && styles.utilitySketchButtonDisabled,
-      ]}
+    <SketchButton
+      label={label}
       accessibilityLabel={accessibilityLabel}
-    >
-      <View pointerEvents="none" style={styles.utilitySketchLineTopLeft} />
-      <View pointerEvents="none" style={styles.utilitySketchLineTopRight} />
-      <View pointerEvents="none" style={styles.utilitySketchLineBottomLeft} />
-      <View pointerEvents="none" style={styles.utilitySketchLineBottomRight} />
-      {iconName ? <MaterialIcons name={iconName} size={18} color={HOME_SECONDARY_BUTTON_TEXT} /> : null}
-      <Text style={[styles.utilitySketchLabel, { fontFamily: usernameFontFamily }]}>
-        {label}
-      </Text>
-    </Pressable>
+      onPress={onPress}
+      iconName={iconName}
+      disabled={disabled}
+      fontFamily={buttonFontFamily}
+    />
   );
 
   const renderUtilityControl = () => {
@@ -379,116 +364,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    minHeight: 38,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 42,
   },
   utilitySpacer: {
     width: 88,
-    height: 38,
-  },
-  utilitySketchButton: {
-    minWidth: 92,
-    minHeight: 38,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 2,
-    borderColor: HOME_SECONDARY_BUTTON_BORDER,
-    backgroundColor: HOME_SECONDARY_BUTTON_BACKGROUND,
-    alignSelf: 'flex-start',
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 20,
-    borderBottomRightRadius: 28,
-    borderBottomLeftRadius: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    position: 'relative',
-    transform: [{ rotate: HOME_UTILITY_BUTTON_ROTATION }],
-    ...(Platform.OS === 'web'
-      ? {
-          cursor: 'pointer',
-          transitionDuration: '235ms',
-          transitionProperty: 'transform, box-shadow',
-          userSelect: 'none',
-          willChange: 'transform, box-shadow',
-          borderTopLeftRadius: '255px 15px',
-          borderTopRightRadius: '15px 225px',
-          borderBottomRightRadius: '225px 15px',
-          borderBottomLeftRadius: '15px 255px',
-          boxShadow: [
-            {
-              color: 'rgba(0, 0, 0, 0.2)',
-              offsetX: 15,
-              offsetY: 28,
-              blurRadius: 25,
-              spreadDistance: -18,
-            },
-          ],
-        }
-      : {}),
-  },
-  utilitySketchButtonHovered: {
-    transform: [{ rotate: HOME_UTILITY_BUTTON_ROTATION }, { translateY: 2 }],
-    ...(Platform.OS === 'web'
-      ? {
-          boxShadow: [
-            {
-              color: 'rgba(0, 0, 0, 0.3)',
-              offsetX: 2,
-              offsetY: 8,
-              blurRadius: 8,
-              spreadDistance: -5,
-            },
-          ],
-        }
-      : {}),
-  },
-  utilitySketchButtonFocused: {
-    ...(Platform.OS === 'web'
-      ? {
-          boxShadow: [
-            {
-              color: 'rgba(0, 0, 0, 0.3)',
-              offsetX: 2,
-              offsetY: 8,
-              blurRadius: 4,
-              spreadDistance: -6,
-            },
-          ],
-        }
-      : {}),
-  },
-  utilitySketchButtonPressed: {
-    transform: [{ rotate: HOME_UTILITY_BUTTON_ROTATION }, { translateY: 3 }],
-    ...(Platform.OS === 'web'
-      ? {
-          boxShadow: [
-            {
-              color: 'rgba(0, 0, 0, 0.22)',
-              offsetX: 1,
-              offsetY: 5,
-              blurRadius: 5,
-              spreadDistance: -5,
-            },
-          ],
-        }
-      : {}),
-  },
-  utilitySketchButtonDisabled: {
-    opacity: 0.62,
-  },
-  utilitySketchLabel: {
-    color: HOME_SECONDARY_BUTTON_TEXT,
-    fontSize: 16,
-    lineHeight: 18,
-    textAlign: 'center',
-    zIndex: 1,
+    height: 42,
   },
   utilityUsername: {
     color: '#FFF5DE',
     textShadowColor: 'rgba(72, 31, 10, 0.54)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 2,
+    flexShrink: 1,
   },
   utilityUsernameDesktop: {
     fontSize: 26,
@@ -565,45 +454,5 @@ const styles = StyleSheet.create({
   },
   stageActionButtonCompact: {
     width: '82%',
-  },
-  utilitySketchLineTopLeft: {
-    position: 'absolute',
-    top: 7,
-    left: 14,
-    width: 18,
-    height: 1.5,
-    borderRadius: 999,
-    backgroundColor: HOME_SECONDARY_BUTTON_SKETCH,
-    transform: [{ rotate: '-5deg' }],
-  },
-  utilitySketchLineTopRight: {
-    position: 'absolute',
-    top: 8,
-    right: 16,
-    width: 22,
-    height: 1.5,
-    borderRadius: 999,
-    backgroundColor: HOME_SECONDARY_BUTTON_SKETCH,
-    transform: [{ rotate: '4deg' }],
-  },
-  utilitySketchLineBottomLeft: {
-    position: 'absolute',
-    bottom: 8,
-    left: 12,
-    width: 20,
-    height: 1.5,
-    borderRadius: 999,
-    backgroundColor: HOME_SECONDARY_BUTTON_SKETCH,
-    transform: [{ rotate: '3deg' }],
-  },
-  utilitySketchLineBottomRight: {
-    position: 'absolute',
-    right: 14,
-    bottom: 7,
-    width: 16,
-    height: 1.5,
-    borderRadius: 999,
-    backgroundColor: HOME_SECONDARY_BUTTON_SKETCH,
-    transform: [{ rotate: '-6deg' }],
   },
 });

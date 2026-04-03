@@ -6,10 +6,17 @@ import {
   MIN_WIDE_WEB_BACKGROUND_WIDTH,
   WideScreenBackground,
 } from '@/components/ui/WideScreenBackground';
-import { urTheme } from '@/constants/urTheme';
+import {
+  urPanelColors,
+  urTextColors,
+  urTextVariants,
+  urTheme,
+} from '@/constants/urTheme';
 import {
   HOME_FREDOKA_FONT_FAMILY,
+  HOME_GROBOLD_FONT_FAMILY,
   HOME_SUPERCELL_FONT_FAMILY,
+  resolveHomeButtonFontFamily,
   resolveHomeFredokaFontFamily,
   resolveHomeMagicFontFamily,
 } from '@/src/home/homeTheme';
@@ -48,11 +55,13 @@ export default function PublicTournamentBrowseScreen() {
       ? Math.min(width - horizontalPadding * 2, 430)
       : Math.min(width - horizontalPadding * 2, 820);
   const [fontsLoaded] = useFonts({
-    [HOME_FREDOKA_FONT_FAMILY]: require('../../../assets/fonts/Fredoka-VariableFont_wdth,wght.ttf'),
+    [HOME_FREDOKA_FONT_FAMILY]: require('../../../assets/fonts/LilitaOne-Regular.ttf'),
+    [HOME_GROBOLD_FONT_FAMILY]: require('../../../assets/fonts/LilitaOne-Regular.ttf'),
     [HOME_SUPERCELL_FONT_FAMILY]: require('../../../assets/fonts/Supercell-Magic-Regular.ttf'),
   });
   const titleFontFamily = resolveHomeMagicFontFamily(fontsLoaded);
   const bodyFontFamily = resolveHomeFredokaFontFamily(fontsLoaded);
+  const buttonFontFamily = resolveHomeButtonFontFamily(fontsLoaded);
   const {
     tournaments,
     isLoading,
@@ -70,12 +79,12 @@ export default function PublicTournamentBrowseScreen() {
         <WideScreenBackground
           source={homeWideBackground}
           visible={showWideBackground}
-          overlayColor="rgba(56, 30, 13, 0.08)"
+          overlayColor={urPanelColors.sceneOverlay}
         />
         <MobileBackground
           source={homeMobileBackground}
           visible={showMobileBackground}
-          overlayColor="rgba(56, 30, 13, 0.08)"
+          overlayColor={urPanelColors.sceneOverlay}
         />
         <View style={styles.backgroundTint} />
 
@@ -99,7 +108,7 @@ export default function PublicTournamentBrowseScreen() {
                 accessibilityLabel="Back to online play"
                 onPress={() => router.replace('/(game)/lobby?mode=online')}
                 iconName="arrow-back"
-                fontFamily={bodyFontFamily}
+                fontFamily={buttonFontFamily}
               />
             </View>
 
@@ -222,7 +231,7 @@ const styles = StyleSheet.create({
   },
   backgroundTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(56, 30, 13, 0.08)',
+    backgroundColor: urPanelColors.sceneOverlay,
   },
   scrollContent: {
     alignItems: 'center',
@@ -242,19 +251,16 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   pageEyebrow: {
-    color: '#7A571F',
+    color: urTextColors.captionOnPanel,
     fontSize: 12,
     lineHeight: 14,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+    ...urTextVariants.caption,
     textAlign: 'center',
   },
   pageTitle: {
-    color: '#22160C',
+    color: urTextColors.titleOnPanel,
     textAlign: 'center',
-    textShadowColor: 'rgba(255, 244, 221, 0.32)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
+    ...urTextVariants.displayTitle,
   },
   pageTitleDesktop: {
     fontSize: 36,
@@ -266,10 +272,11 @@ const styles = StyleSheet.create({
   },
   pageSubtitle: {
     maxWidth: 760,
-    color: 'rgba(34, 22, 12, 0.88)',
+    color: urTextColors.bodyOnPanel,
     fontSize: 15,
     lineHeight: 21,
     textAlign: 'center',
+    ...urTextVariants.body,
   },
   errorBanner: {
     width: '100%',
@@ -277,11 +284,11 @@ const styles = StyleSheet.create({
     paddingVertical: urTheme.spacing.sm,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(143, 52, 41, 0.22)',
-    backgroundColor: 'rgba(255, 235, 226, 0.76)',
+    borderColor: 'rgba(184, 79, 65, 0.24)',
+    backgroundColor: 'rgba(255, 236, 226, 0.82)',
   },
   errorBannerText: {
-    color: '#8F3429',
+    color: '#9B4438',
     fontSize: 12,
     lineHeight: 17,
     textAlign: 'center',
@@ -294,21 +301,23 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: 'rgba(126, 93, 42, 0.18)',
-    backgroundColor: 'rgba(255, 248, 232, 0.5)',
+    borderColor: urPanelColors.parchmentBorder,
+    backgroundColor: urPanelColors.parchmentSurface,
   },
   stateTitle: {
-    color: '#3B2412',
+    color: urTextColors.titleOnPanel,
     fontSize: 24,
     lineHeight: 28,
     textAlign: 'center',
+    ...urTextVariants.sectionTitle,
   },
   stateText: {
-    color: 'rgba(73, 48, 26, 0.88)',
+    color: urTextColors.bodyOnPanel,
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
     maxWidth: 620,
+    ...urTextVariants.body,
   },
   stateAction: {
     width: '100%',

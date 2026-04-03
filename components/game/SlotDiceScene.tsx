@@ -1,3 +1,4 @@
+import { boxShadow } from '@/constants/styleEffects';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -7,6 +8,14 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import Svg, {
+  Defs,
+  Ellipse,
+  LinearGradient,
+  RadialGradient,
+  Rect,
+  Stop,
+} from 'react-native-svg';
 import {
   buildJackpotPulseOrder,
   buildSlotDiceFaces,
@@ -42,6 +51,7 @@ const SPIN_PHASE_TRIM_MS = scaleDuration(96);
 const CONTINUOUS_SPIN_BUFFER_MS = scaleDuration(140);
 const STOP_COMPLETION_BUFFER_MS = scaleDuration(140);
 const MIN_REEL_BOX_SIZE = 28;
+const FRAME_MIN_PADDING = 6;
 const JACKPOT_PULSE_LEAD_MS = scaleDuration(72);
 const JACKPOT_PULSE_STAGGER_MS = scaleDuration(124);
 const JACKPOT_PULSE_RISE_MS = scaleDuration(168);
@@ -73,6 +83,8 @@ type SlotReelProps = {
   targetMarked: boolean;
   variant: SlotDiceVariant;
 };
+
+const getStripAlignmentOffset = (viewportInset: number) => -viewportInset;
 
 const clearTimer = (timer: ReturnType<typeof setTimeout> | null) => {
   if (timer !== null) {
@@ -122,7 +134,10 @@ const SlotReel: React.FC<SlotReelProps> = ({
   variant,
 }) => {
   const spinSeedMarked = (playbackId + index) % 2 === 0;
-  const reelBorderRadius = Math.max(13, boxSize * 0.24);
+  const reelBorderRadius = Math.max(14, boxSize * 0.28);
+  const reelViewportInset = Math.max(3, Math.round(boxSize * 0.08));
+  const reelViewportRadius = Math.max(10, reelBorderRadius - reelViewportInset * 1.28);
+  const stripAlignmentOffset = getStripAlignmentOffset(reelViewportInset);
   const spinTravelSteps = useMemo(
     () => getContinuousSpinTravelSteps(durationMs, index),
     [durationMs, index],
@@ -131,7 +146,9 @@ const SlotReel: React.FC<SlotReelProps> = ({
   const initialStripStep =
     variant === 'start' ? 0 : getSettledStripStep(targetMarked, spinSeedMarked);
   const initialStripOffset =
-    variant === 'start' ? 0 : getSettledStripOffset(targetMarked, spinSeedMarked, boxSize);
+    variant === 'start'
+      ? stripAlignmentOffset
+      : getSettledStripOffset(targetMarked, spinSeedMarked, boxSize) + stripAlignmentOffset;
   const spinOffset = useRef(new Animated.Value(initialStripOffset)).current;
   const jackpotGlow = useRef(new Animated.Value(0)).current;
   const spinOffsetValueRef = useRef(initialStripOffset);
@@ -163,6 +180,21 @@ const SlotReel: React.FC<SlotReelProps> = ({
         getStripMarkedForStep(faceIndex, spinSeedMarked),
       ),
     [spinSeedMarked, spinStripFaceCount],
+  );
+
+  const dieArtStyle = useMemo(
+    () => ({
+      height: imageSize,
+      width: imageSize,
+      ...boxShadow({
+        color: '#000000',
+        opacity: presentation === 'stage' ? 0.3 : 0.22,
+        offset: { width: 0, height: Math.max(2, Math.round(imageSize * 0.05)) },
+        blurRadius: Math.max(4, Math.round(imageSize * 0.14)),
+        elevation: 3,
+      }),
+    }),
+    [boxSize, imageSize, presentation],
   );
 
   const clearSpinStateTimer = useCallback(() => {
@@ -213,12 +245,12 @@ const SlotReel: React.FC<SlotReelProps> = ({
       setCurrentStripStep(nextStep);
       const nextOffset =
         nextVariant === 'start'
-          ? 0
-          : -nextStep * boxSize;
+          ? stripAlignmentOffset
+          : -nextStep * boxSize + stripAlignmentOffset;
       spinOffset.setValue(nextOffset);
       spinOffsetValueRef.current = nextOffset;
     },
-    [boxSize, spinOffset, spinSeedMarked, stopAllAnimations],
+    [boxSize, spinOffset, spinSeedMarked, stopAllAnimations, stripAlignmentOffset],
   );
 
   const startSpinLoop = useCallback(() => {
@@ -227,9 +259,9 @@ const SlotReel: React.FC<SlotReelProps> = ({
     setVisibleMarked(false);
     settledStripStepRef.current = null;
     setCurrentStripStep(SPIN_STRIP_START_STEP);
-    const startOffset = -SPIN_STRIP_START_STEP * boxSize;
+    const startOffset = -SPIN_STRIP_START_STEP * boxSize + stripAlignmentOffset;
     const stepDuration = getSpinStepDuration(index);
-    const loopEndOffset = -(SPIN_STRIP_START_STEP + spinTravelSteps) * boxSize;
+    const loopEndOffset = -(SPIN_STRIP_START_STEP + spinTravelSteps) * boxSize + stripAlignmentOffset;
     spinOffset.setValue(startOffset);
     spinOffsetValueRef.current = startOffset;
 
@@ -256,14 +288,18 @@ const SlotReel: React.FC<SlotReelProps> = ({
     spinOffset,
     spinSeedMarked,
     stopSettleAnimation,
+    stripAlignmentOffset,
   ]);
 
   const getMarkedFaceForOffset = useCallback(
     (offset: number) => {
-      const normalizedStep = Math.max(0, Math.round(-offset / Math.max(boxSize, 1)));
+      const normalizedStep = Math.max(
+        0,
+        Math.round(-(offset - stripAlignmentOffset) / Math.max(boxSize, 1)),
+      );
       return getStripMarkedForStep(normalizedStep, spinSeedMarked);
     },
-    [boxSize, spinSeedMarked],
+    [boxSize, spinSeedMarked, stripAlignmentOffset],
   );
 
   const settleFromSpin = useCallback(
@@ -277,7 +313,10 @@ const SlotReel: React.FC<SlotReelProps> = ({
       spinOffset.setValue(currentOffset);
       spinOffsetValueRef.current = currentOffset;
 
-      const currentPosition = Math.max(0, -currentOffset / Math.max(boxSize, 1));
+      const currentPosition = Math.max(
+        0,
+        -(currentOffset - stripAlignmentOffset) / Math.max(boxSize, 1),
+      );
       const canonicalFinalStep = getSettledStripStep(nextMarked, spinSeedMarked);
       const maxFinalStep =
         spinStripFaceCount - 1 - ((spinStripFaceCount - 1 - canonicalFinalStep) % 2);
@@ -290,16 +329,15 @@ const SlotReel: React.FC<SlotReelProps> = ({
       finalStep = Math.min(finalStep, maxFinalStep);
       settledStripStepRef.current = finalStep;
       setCurrentStripStep(finalStep);
-      const finalOffset = -finalStep * boxSize;
+      const finalOffset = -finalStep * boxSize + stripAlignmentOffset;
       const dropPeakStep = Math.min(
         spinStripFaceCount - 1,
         Math.max(finalStep + LANDING_DROP_STEP_OFFSET, currentPosition + 0.72),
       );
-      const dropPeakOffset = -dropPeakStep * boxSize;
+      const dropPeakOffset = -dropPeakStep * boxSize + stripAlignmentOffset;
       const decelerationDurationMs = Math.max(
         140,
-        SLOT_DICE_STOP_SETTLE_MS -
-          LANDING_DROP_DURATION_MS,
+        SLOT_DICE_STOP_SETTLE_MS - LANDING_DROP_DURATION_MS,
       );
       const settleAnimation = Animated.sequence([
         Animated.timing(spinOffset, {
@@ -340,6 +378,7 @@ const SlotReel: React.FC<SlotReelProps> = ({
       spinOffset,
       spinSeedMarked,
       stopSettleAnimation,
+      stripAlignmentOffset,
     ],
   );
 
@@ -424,7 +463,14 @@ const SlotReel: React.FC<SlotReelProps> = ({
 
     return stopJackpotAnimation;
   }, [jackpotGlow, jackpotPulseDelayMs, jackpotPulseToken, stopJackpotAnimation]);
+
   const accessibilityText = visibleMarked ? 'marked' : 'unmarked';
+  const interiorBaseGradientId = `slot-die-base-${index}`;
+  const interiorCenterGradientId = `slot-die-center-${index}`;
+  const interiorSideGradientId = `slot-die-side-${index}`;
+  const topMaskGradientId = `slot-die-top-mask-${index}`;
+  const bottomMaskGradientId = `slot-die-bottom-mask-${index}`;
+  const sheenGradientId = `slot-die-sheen-${index}`;
 
   return (
     <Animated.View
@@ -447,20 +493,18 @@ const SlotReel: React.FC<SlotReelProps> = ({
       ]}
       testID={`slot-die-${index}`}
     >
-      <View style={styles.reelMaskTop} />
-      <View style={styles.reelMaskBottom} />
       <Animated.View
         pointerEvents="none"
         style={[
           styles.jackpotOuterGlowAura,
           {
-            borderRadius: reelBorderRadius + 2,
+            borderRadius: reelBorderRadius + 4,
             opacity: jackpotGlow,
             transform: [
               {
                 scale: jackpotGlow.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [1, 1.05],
+                  outputRange: [1, 1.06],
                 }),
               },
             ],
@@ -473,7 +517,7 @@ const SlotReel: React.FC<SlotReelProps> = ({
         style={[
           styles.jackpotOuterGlowRing,
           {
-            borderRadius: reelBorderRadius + 1,
+            borderRadius: reelBorderRadius + 2,
             opacity: jackpotGlow.interpolate({
               inputRange: [0, 1],
               outputRange: [0, 0.98],
@@ -482,7 +526,7 @@ const SlotReel: React.FC<SlotReelProps> = ({
               {
                 scale: jackpotGlow.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [1, 1.03],
+                  outputRange: [1, 1.04],
                 }),
               },
             ],
@@ -491,99 +535,197 @@ const SlotReel: React.FC<SlotReelProps> = ({
       />
       <View
         style={[
-          styles.reelClipShell,
-          presentation === 'stage' ? styles.reelWindowStage : styles.reelWindowEmbedded,
+          styles.reelWindowShell,
+          presentation === 'stage' ? styles.reelWindowShellStage : styles.reelWindowShellEmbedded,
           {
             borderRadius: reelBorderRadius,
           },
         ]}
+        testID={`slot-die-window-shell-${index}`}
       >
-        <View style={styles.reelInset} />
+        <View style={[styles.reelWindowStone, { borderRadius: reelBorderRadius }]} />
+        <View style={[styles.reelWindowStoneShade, { borderRadius: reelBorderRadius }]} />
+        <View style={[styles.reelWindowStoneHighlight, { borderRadius: reelBorderRadius - 1 }]} />
+        <View style={[styles.reelWindowGoldRim, { borderRadius: reelBorderRadius - 1 }]} />
         <View
           pointerEvents="none"
-          renderToHardwareTextureAndroid
-          shouldRasterizeIOS
-          style={styles.reelViewport}
-          testID={`slot-die-viewport-${index}`}
+          style={[
+            styles.reelWindowInsetShadow,
+            {
+              top: reelViewportInset - 1,
+              right: reelViewportInset - 1,
+              bottom: reelViewportInset - 1,
+              left: reelViewportInset - 1,
+              borderRadius: reelViewportRadius + 2,
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.reelViewportShell,
+            {
+              top: reelViewportInset,
+              right: reelViewportInset,
+              bottom: reelViewportInset,
+              left: reelViewportInset,
+              borderRadius: reelViewportRadius,
+            },
+          ]}
+          testID={`slot-die-viewport-shell-${index}`}
         >
-          {variant === 'start' ? (
-            <View pointerEvents="none" style={styles.reelFace} testID={`slot-die-face-${index}`}>
-              <Image
-                source={DICE_UNMARKED}
-                style={[styles.dieImage, { height: imageSize, width: imageSize }]}
-                resizeMode="contain"
-                testID={`slot-die-image-${index}`}
-              />
-            </View>
-          ) : (
-            <Animated.View
-              pointerEvents="none"
-              renderToHardwareTextureAndroid
-              shouldRasterizeIOS
-              testID={`slot-die-strip-${index}`}
-              style={[
-                styles.spinStrip,
-                {
-                  height: boxSize * spinStripFaces.length,
-                  transform: [{ translateY: spinOffset }],
-                },
-              ]}
-            >
-              {spinStripFaces.map((faceMarked, faceIndex) => (
-                <View
-                  key={`${index}-${faceIndex}-${faceMarked ? 'marked' : 'unmarked'}`}
-                  style={[styles.spinStripCell, { height: boxSize }]}
-                  testID={`slot-die-strip-cell-${index}-${faceIndex}`}
-                >
+          <Svg
+            height="100%"
+            pointerEvents="none"
+            preserveAspectRatio="none"
+            style={styles.reelInteriorArt}
+            testID={`slot-die-interior-${index}`}
+            viewBox="0 0 100 100"
+            width="100%"
+          >
+            <Defs>
+              <LinearGradient id={interiorBaseGradientId} x1="0" x2="0" y1="0" y2="1">
+                <Stop offset="0%" stopColor="#160F08" />
+                <Stop offset="46%" stopColor="#2A1E12" />
+                <Stop offset="100%" stopColor="#120B06" />
+              </LinearGradient>
+              <RadialGradient id={interiorCenterGradientId} cx="50%" cy="48%" fx="50%" fy="48%" r="70%">
+                <Stop offset="0%" stopColor="rgba(255, 214, 146, 0.3)" />
+                <Stop offset="38%" stopColor="rgba(124, 82, 38, 0.18)" />
+                <Stop offset="100%" stopColor="rgba(0, 0, 0, 0)" />
+              </RadialGradient>
+              <LinearGradient id={interiorSideGradientId} x1="0" x2="1" y1="0" y2="0">
+                <Stop offset="0%" stopColor="rgba(4, 2, 1, 0.34)" />
+                <Stop offset="18%" stopColor="rgba(4, 2, 1, 0.04)" />
+                <Stop offset="82%" stopColor="rgba(4, 2, 1, 0.04)" />
+                <Stop offset="100%" stopColor="rgba(4, 2, 1, 0.34)" />
+              </LinearGradient>
+            </Defs>
+            <Rect fill={`url(#${interiorBaseGradientId})`} height="100" width="100" x="0" y="0" />
+            <Rect fill={`url(#${interiorCenterGradientId})`} height="100" width="100" x="0" y="0" />
+            <Rect fill={`url(#${interiorSideGradientId})`} height="100" width="100" x="0" y="0" />
+          </Svg>
+          <View
+            pointerEvents="none"
+            renderToHardwareTextureAndroid
+            shouldRasterizeIOS
+            style={styles.reelViewport}
+            testID={`slot-die-viewport-${index}`}
+          >
+            {variant === 'start' ? (
+              <View pointerEvents="none" style={styles.reelFace} testID={`slot-die-face-${index}`}>
+                <View style={[styles.dieArtWrap, dieArtStyle]}>
                   <Image
-                    source={faceMarked ? DICE_MARKED : DICE_UNMARKED}
+                    source={DICE_UNMARKED}
                     style={[styles.dieImage, { height: imageSize, width: imageSize }]}
                     resizeMode="contain"
-                    testID={`slot-die-strip-image-${index}-${faceIndex}`}
+                    testID={`slot-die-image-${index}`}
                   />
                 </View>
-              ))}
-            </Animated.View>
-          )}
+              </View>
+            ) : (
+              <Animated.View
+                pointerEvents="none"
+                renderToHardwareTextureAndroid
+                shouldRasterizeIOS
+                testID={`slot-die-strip-${index}`}
+                style={[
+                  styles.spinStrip,
+                  {
+                    height: boxSize * spinStripFaces.length,
+                    transform: [{ translateY: spinOffset }],
+                  },
+                ]}
+              >
+                {spinStripFaces.map((faceMarked, faceIndex) => (
+                  <View
+                    key={`${index}-${faceIndex}-${faceMarked ? 'marked' : 'unmarked'}`}
+                    style={[styles.spinStripCell, { height: boxSize }]}
+                    testID={`slot-die-strip-cell-${index}-${faceIndex}`}
+                  >
+                    <View style={[styles.dieArtWrap, dieArtStyle]}>
+                      <Image
+                        source={faceMarked ? DICE_MARKED : DICE_UNMARKED}
+                        style={[styles.dieImage, { height: imageSize, width: imageSize }]}
+                        resizeMode="contain"
+                        testID={`slot-die-strip-image-${index}-${faceIndex}`}
+                      />
+                    </View>
+                  </View>
+                ))}
+              </Animated.View>
+            )}
+          </View>
+          <Svg
+            height="100%"
+            pointerEvents="none"
+            preserveAspectRatio="none"
+            style={styles.reelOverlayArt}
+            testID={`slot-die-sheen-${index}`}
+            viewBox="0 0 100 100"
+            width="100%"
+          >
+            <Defs>
+              <LinearGradient id={topMaskGradientId} x1="0" x2="0" y1="0" y2="1">
+                <Stop offset="0%" stopColor="rgba(6, 4, 2, 0.86)" />
+                <Stop offset="100%" stopColor="rgba(6, 4, 2, 0)" />
+              </LinearGradient>
+              <LinearGradient id={bottomMaskGradientId} x1="0" x2="0" y1="0" y2="1">
+                <Stop offset="0%" stopColor="rgba(6, 4, 2, 0)" />
+                <Stop offset="100%" stopColor="rgba(6, 4, 2, 0.88)" />
+              </LinearGradient>
+              <LinearGradient id={sheenGradientId} x1="0" x2="1" y1="0" y2="1">
+                <Stop offset="0%" stopColor="rgba(255, 255, 255, 0)" />
+                <Stop offset="48%" stopColor="rgba(255, 247, 218, 0.26)" />
+                <Stop offset="100%" stopColor="rgba(255, 255, 255, 0)" />
+              </LinearGradient>
+            </Defs>
+            <Rect fill={`url(#${topMaskGradientId})`} height="28" width="100" x="0" y="0" />
+            <Rect fill={`url(#${bottomMaskGradientId})`} height="30" width="100" x="0" y="70" />
+            <Ellipse
+              cx="22"
+              cy="24"
+              fill={`url(#${sheenGradientId})`}
+              rx="34"
+              ry="18"
+              transform="rotate(-18 22 24)"
+            />
+          </Svg>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.jackpotInnerGlowRing,
+              {
+                borderRadius: Math.max(10, reelViewportRadius - 1),
+                opacity: jackpotGlow.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 1],
+                }),
+                transform: [
+                  {
+                    scale: jackpotGlow.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 1.03],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          />
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.jackpotInnerEdgeGlow,
+              {
+                borderRadius: Math.max(8, reelViewportRadius - 4),
+                opacity: jackpotGlow.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 1],
+                }),
+              },
+            ]}
+          />
+          <View style={[styles.reelViewportBorder, { borderRadius: reelViewportRadius }]} />
         </View>
-        <View style={styles.reelMaskTop} />
-        <View style={styles.reelMaskBottom} />
-        <View style={styles.reelHighlight} />
-        <Animated.View
-          pointerEvents="none"
-          style={[
-          styles.jackpotInnerGlowRing,
-          {
-            borderRadius: Math.max(10, reelBorderRadius - 1),
-            opacity: jackpotGlow.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, 1],
-              }),
-              transform: [
-                {
-                  scale: jackpotGlow.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [1, 1.03],
-                  }),
-                },
-              ],
-            },
-          ]}
-        />
-        <Animated.View
-          pointerEvents="none"
-          style={[
-          styles.jackpotInnerEdgeGlow,
-          {
-            borderRadius: Math.max(8, reelBorderRadius - 4),
-            opacity: jackpotGlow.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, 1],
-              }),
-            },
-          ]}
-        />
-        <View style={styles.reelBorder} />
       </View>
     </Animated.View>
   );
@@ -759,82 +901,173 @@ export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
   const baseHeight = orientation === 'vertical' ? defaultSceneWidth : defaultSceneHeight;
   const availableWidth = layout.width > 0 ? layout.width : baseWidth;
   const availableHeight = layout.height > 0 ? layout.height : baseHeight;
-  const rowHorizontalPadding = Math.max(0, Math.round(availableWidth * 0.004));
-  const rowVerticalPadding = Math.max(2, Math.round(availableHeight * 0.02));
-  const reelGap = Math.max(
-    2,
-    Math.round((orientation === 'vertical' ? availableHeight : availableWidth) * 0.012),
+  const framePaddingBase = Math.max(
+    FRAME_MIN_PADDING,
+    Math.round(Math.min(availableWidth, availableHeight) * 0.08),
   );
+  const framePaddingHorizontal = Math.max(
+    FRAME_MIN_PADDING,
+    Math.round(framePaddingBase * (orientation === 'vertical' ? 0.95 : 1.08)),
+  );
+  const framePaddingVertical = Math.max(FRAME_MIN_PADDING, Math.round(framePaddingBase * 0.88));
+  const reelGap = Math.max(3, Math.round(framePaddingBase * 0.55));
   const boxSize = Math.max(
     MIN_REEL_BOX_SIZE,
     Math.min(
       orientation === 'vertical'
-        ? availableWidth - rowHorizontalPadding * 2
-        : (availableWidth - rowHorizontalPadding * 2 - reelGap * (SLOT_DICE_COUNT - 1)) /
+        ? availableWidth - framePaddingHorizontal * 2
+        : (availableWidth - framePaddingHorizontal * 2 - reelGap * (SLOT_DICE_COUNT - 1)) /
             SLOT_DICE_COUNT,
       orientation === 'vertical'
-        ? (availableHeight - rowVerticalPadding * 2 - reelGap * (SLOT_DICE_COUNT - 1)) /
+        ? (availableHeight - framePaddingVertical * 2 - reelGap * (SLOT_DICE_COUNT - 1)) /
             SLOT_DICE_COUNT
-        : availableHeight - rowVerticalPadding * 2,
+        : availableHeight - framePaddingVertical * 2,
     ),
   );
-  const defaultImageSize = presentation === 'stage' ? 80 : 72;
+  const imageScaleBase = presentation === 'stage' ? 0.92 : 0.88;
+  const defaultImageSize = presentation === 'stage' ? 76 : 68;
   const imageSize = Math.max(
-    38,
-    Math.min(defaultImageSize, Math.round(boxSize * 1.22 * diceImageScale)),
+    34,
+    Math.min(defaultImageSize, Math.round(boxSize * imageScaleBase * diceImageScale)),
   );
-  const rowWidth =
+  const trackWidth =
     orientation === 'vertical'
-      ? Math.min(availableWidth, boxSize + rowHorizontalPadding * 2)
-      : Math.min(
-          availableWidth,
-          boxSize * SLOT_DICE_COUNT + reelGap * (SLOT_DICE_COUNT - 1) + rowHorizontalPadding * 2,
-        );
-  const rowHeight =
+      ? boxSize
+      : boxSize * SLOT_DICE_COUNT + reelGap * (SLOT_DICE_COUNT - 1);
+  const trackHeight =
     orientation === 'vertical'
-      ? Math.min(
-          availableHeight,
-          boxSize * SLOT_DICE_COUNT + reelGap * (SLOT_DICE_COUNT - 1) + rowVerticalPadding * 2,
-        )
-      : Math.min(availableHeight, boxSize + rowVerticalPadding * 2);
+      ? boxSize * SLOT_DICE_COUNT + reelGap * (SLOT_DICE_COUNT - 1)
+      : boxSize;
+  const rowWidth = Math.min(availableWidth, trackWidth + framePaddingHorizontal * 2);
+  const rowHeight = Math.min(availableHeight, trackHeight + framePaddingVertical * 2);
+  const frameRadius = Math.max(
+    18,
+    Math.round(Math.min(rowWidth, rowHeight) * (presentation === 'stage' ? 0.22 : 0.2)),
+  );
+  const frameGoldInset = Math.max(2, Math.round(framePaddingBase * 0.28));
+  const frameCarveInsetX = Math.max(frameGoldInset + 1, Math.round(framePaddingHorizontal * 0.48));
+  const frameCarveInsetY = Math.max(frameGoldInset + 1, Math.round(framePaddingVertical * 0.44));
+
   return (
     <View testID="slot-dice-scene-root" onLayout={handleLayout} pointerEvents="none" style={styles.root}>
       <View
         style={[
           styles.reelRowFrame,
           {
+            borderRadius: frameRadius,
             height: rowHeight,
             width: rowWidth,
-            paddingHorizontal: rowHorizontalPadding,
-            paddingVertical: rowVerticalPadding,
           },
         ]}
+        testID="slot-dice-scene-frame"
       >
         <View
-          testID="slot-dice-scene-reel-stack"
           style={[
-            styles.reelRow,
-            orientation === 'vertical' && styles.reelColumn,
-            { gap: reelGap },
+            styles.machineFrameShell,
+            presentation === 'stage' ? styles.machineFrameShellStage : styles.machineFrameShellEmbedded,
+            {
+              borderRadius: frameRadius,
+            },
+          ]}
+          testID="slot-dice-scene-frame-shell"
+        >
+          <View style={[styles.machineStoneFace, { borderRadius: frameRadius }]} />
+          <View style={[styles.machineStoneHighlight, { borderRadius: frameRadius - 1 }]} />
+          <View
+            style={[
+              styles.machineGoldTrim,
+              {
+                top: frameGoldInset,
+                right: frameGoldInset,
+                bottom: frameGoldInset,
+                left: frameGoldInset,
+                borderRadius: Math.max(14, frameRadius - frameGoldInset),
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.machineGoldEdge,
+              {
+                top: frameGoldInset + 1,
+                right: frameGoldInset + 1,
+                bottom: frameGoldInset + 1,
+                left: frameGoldInset + 1,
+                borderRadius: Math.max(12, frameRadius - frameGoldInset - 1),
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.machineCarvedInset,
+              {
+                top: frameCarveInsetY,
+                right: frameCarveInsetX,
+                bottom: frameCarveInsetY,
+                left: frameCarveInsetX,
+                borderRadius: Math.max(12, frameRadius - Math.max(frameCarveInsetX, frameCarveInsetY)),
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.machineCarvedInsetShade,
+              {
+                top: frameCarveInsetY,
+                right: frameCarveInsetX,
+                bottom: frameCarveInsetY,
+                left: frameCarveInsetX,
+                borderRadius: Math.max(12, frameRadius - Math.max(frameCarveInsetX, frameCarveInsetY)),
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.machineFrameSheen,
+              {
+                borderRadius: Math.max(12, frameRadius - frameGoldInset - 1),
+              },
+            ]}
+          />
+        </View>
+
+        <View
+          style={[
+            styles.reelTrack,
+            {
+              paddingHorizontal: framePaddingHorizontal,
+              paddingVertical: framePaddingVertical,
+            },
           ]}
         >
-          {Array.from({ length: SLOT_DICE_COUNT }, (_, index) => (
-            <SlotReel
-              key={`${playbackId}-${index}`}
-              boxSize={boxSize}
-              durationMs={durationMs}
-              imageSize={imageSize}
-              index={index}
-              jackpotPulseDelayMs={jackpotPulseDelayByReel[index] ?? JACKPOT_PULSE_LEAD_MS}
-              jackpotPulseToken={jackpotPulseToken}
-              onStopComplete={handleReelStopComplete}
-              playbackId={playbackId}
-              presentation={presentation}
-              spinning={variant === 'animated' ? spinningReels[index] : false}
-              targetMarked={variant === 'start' ? false : targetFaces[index]}
-              variant={variant}
-            />
-          ))}
+          <View style={[styles.reelTrackInner, { height: trackHeight, width: trackWidth }]}>
+            <View
+              testID="slot-dice-scene-reel-stack"
+              style={[
+                styles.reelRow,
+                orientation === 'vertical' && styles.reelColumn,
+                { gap: reelGap },
+              ]}
+            >
+              {Array.from({ length: SLOT_DICE_COUNT }, (_, index) => (
+                <SlotReel
+                  key={`${playbackId}-${index}`}
+                  boxSize={boxSize}
+                  durationMs={durationMs}
+                  imageSize={imageSize}
+                  index={index}
+                  jackpotPulseDelayMs={jackpotPulseDelayByReel[index] ?? JACKPOT_PULSE_LEAD_MS}
+                  jackpotPulseToken={jackpotPulseToken}
+                  onStopComplete={handleReelStopComplete}
+                  playbackId={playbackId}
+                  presentation={presentation}
+                  spinning={variant === 'animated' ? spinningReels[index] : false}
+                  targetMarked={variant === 'start' ? false : targetFaces[index]}
+                  variant={variant}
+                />
+              ))}
+            </View>
+          </View>
         </View>
       </View>
     </View>
@@ -848,6 +1081,87 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reelRowFrame: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
+  },
+  machineFrameShell: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  machineFrameShellStage: {
+    ...boxShadow({
+      color: '#201307',
+      opacity: 0.28,
+      offset: { width: 0, height: 8 },
+      blurRadius: 16,
+      elevation: 8,
+    }),
+  },
+  machineFrameShellEmbedded: {
+    ...boxShadow({
+      color: '#201307',
+      opacity: 0.2,
+      offset: { width: 0, height: 6 },
+      blurRadius: 12,
+      elevation: 5,
+    }),
+  },
+  machineStoneFace: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#6A5A49',
+    borderWidth: 3,
+    borderColor: '#3B2716',
+  },
+  machineStoneHighlight: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    left: 0,
+    height: '45%',
+    backgroundColor: 'rgba(255, 245, 221, 0.08)',
+  },
+  machineGoldTrim: {
+    position: 'absolute',
+    borderWidth: 3,
+    borderColor: '#D3A74D',
+    backgroundColor: 'rgba(178, 120, 34, 0.14)',
+  },
+  machineGoldEdge: {
+    position: 'absolute',
+    borderWidth: 1.4,
+    borderColor: 'rgba(255, 229, 155, 0.32)',
+  },
+  machineCarvedInset: {
+    position: 'absolute',
+    backgroundColor: 'rgba(52, 36, 21, 0.7)',
+    borderWidth: 1.2,
+    borderColor: 'rgba(244, 206, 121, 0.16)',
+  },
+  machineCarvedInsetShade: {
+    position: 'absolute',
+    top: '40%',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(16, 10, 6, 0.2)',
+  },
+  machineFrameSheen: {
+    position: 'absolute',
+    top: 2,
+    left: 6,
+    right: 6,
+    height: '42%',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  reelTrack: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reelTrackInner: {
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -855,34 +1169,87 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1,
   },
   reelColumn: {
     flexDirection: 'column',
   },
   reelWindow: {
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3.2,
     backgroundColor: 'transparent',
     overflow: 'visible',
   },
-  reelClipShell: {
+  reelWindowShell: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  reelWindowEmbedded: {
-    borderColor: '#86562A',
-    backgroundColor: 'transparent',
+  reelWindowShellStage: {
+    ...boxShadow({
+      color: '#241308',
+      opacity: 0.18,
+      offset: { width: 0, height: 3 },
+      blurRadius: 7,
+      elevation: 4,
+    }),
   },
-  reelWindowStage: {
-    borderColor: '#75481F',
-    backgroundColor: 'transparent',
+  reelWindowShellEmbedded: {
+    ...boxShadow({
+      color: '#241308',
+      opacity: 0.14,
+      offset: { width: 0, height: 2 },
+      blurRadius: 5,
+      elevation: 2,
+    }),
   },
-  reelInset: {
+  reelWindowStone: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
+    backgroundColor: '#64503A',
+    borderWidth: 1.8,
+    borderColor: '#3B2919',
+  },
+  reelWindowStoneShade: {
+    position: 'absolute',
+    top: '42%',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(12, 7, 4, 0.18)',
+  },
+  reelWindowStoneHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '42%',
+    backgroundColor: 'rgba(255, 244, 219, 0.06)',
+  },
+  reelWindowGoldRim: {
+    position: 'absolute',
+    top: 1,
+    right: 1,
+    bottom: 1,
+    left: 1,
+    borderWidth: 1.8,
+    borderColor: 'rgba(228, 188, 92, 0.9)',
+  },
+  reelWindowInsetShadow: {
+    position: 'absolute',
+    borderWidth: 1.4,
+    borderColor: 'rgba(27, 16, 8, 0.45)',
+    opacity: 0.9,
+  },
+  reelViewportShell: {
+    position: 'absolute',
+    overflow: 'hidden',
+    backgroundColor: '#140C05',
+  },
+  reelInteriorArt: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  reelOverlayArt: {
+    ...StyleSheet.absoluteFillObject,
   },
   reelViewport: {
     ...StyleSheet.absoluteFillObject,
@@ -906,42 +1273,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
   },
-  reelMaskTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '20%',
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  dieArtWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  reelMaskBottom: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '20%',
-    backgroundColor: 'rgba(29, 18, 9, 0.08)',
-  },
-  reelHighlight: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '34%',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  reelBorder: {
+  reelViewportBorder: {
     ...StyleSheet.absoluteFillObject,
-    borderWidth: 2,
-    borderColor: 'rgba(84, 51, 24, 0.26)',
+    borderWidth: 1.2,
+    borderColor: 'rgba(255, 229, 178, 0.16)',
   },
   jackpotOuterGlowAura: {
     position: 'absolute',
-    top: -2,
-    right: -2,
-    bottom: -2,
-    left: -2,
-    borderWidth: 2.8,
+    top: -4,
+    right: -4,
+    bottom: -4,
+    left: -4,
+    borderWidth: 3,
     borderColor: 'rgba(236, 206, 78, 0.96)',
     backgroundColor: 'transparent',
     shadowColor: '#E8BF42',
@@ -952,10 +1299,10 @@ const styles = StyleSheet.create({
   },
   jackpotOuterGlowRing: {
     position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
+    top: -1,
+    right: -1,
+    bottom: -1,
+    left: -1,
     borderWidth: 2.4,
     borderColor: 'rgba(246, 222, 120, 0.98)',
     backgroundColor: 'transparent',
@@ -971,7 +1318,7 @@ const styles = StyleSheet.create({
     right: 2,
     bottom: 2,
     left: 2,
-    borderWidth: 2.1,
+    borderWidth: 2,
     borderColor: 'rgba(234, 194, 72, 1)',
     backgroundColor: 'transparent',
     shadowColor: '#E4B84A',
@@ -986,7 +1333,7 @@ const styles = StyleSheet.create({
     right: 5,
     bottom: 5,
     left: 5,
-    borderWidth: 1.3,
+    borderWidth: 1.2,
     borderColor: 'rgba(246, 228, 164, 0.96)',
     backgroundColor: 'transparent',
   },

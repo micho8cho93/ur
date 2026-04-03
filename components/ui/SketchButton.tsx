@@ -1,18 +1,25 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React from 'react';
-import { Platform, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  StyleProp,
+  StyleSheet,
+  Text,
+  ViewStyle,
+} from 'react-native';
 
-const SKETCH_BUTTON_ROTATION = '-1.2deg';
-const SKETCH_BUTTON_BACKGROUND = '#B9B4AC';
-const SKETCH_BUTTON_BORDER = '#5A5148';
-const SKETCH_BUTTON_TEXT = '#3D362F';
-const SKETCH_BUTTON_LINE = 'rgba(74, 66, 58, 0.18)';
+import { urTextVariants } from '@/constants/urTheme';
+import { HOME_GROBOLD_FONT_FAMILY } from '@/src/home/homeTheme';
+import { RoyalPrimaryButtonFrame } from '@/components/ui/RoyalPrimaryButtonFrame';
 
 type SketchButtonProps = {
   label: string;
   accessibilityLabel: string;
   onPress: () => void;
   iconName?: React.ComponentProps<typeof MaterialIcons>['name'];
+  iconSize?: number;
+  iconOnly?: boolean;
   wide?: boolean;
   disabled?: boolean;
   fontFamily?: string;
@@ -24,9 +31,11 @@ export function SketchButton({
   accessibilityLabel,
   onPress,
   iconName,
+  iconSize = 18,
+  iconOnly = false,
   wide = false,
   disabled = false,
-  fontFamily,
+  fontFamily = HOME_GROBOLD_FONT_FAMILY,
   style,
 }: SketchButtonProps) {
   return (
@@ -37,172 +46,148 @@ export function SketchButton({
       disabled={disabled}
       onPress={onPress}
       style={({ pressed, hovered }) => [
-        styles.sketchButton,
-        wide ? styles.sketchButtonWide : styles.sketchButtonCompact,
+        styles.pressable,
+        iconOnly ? styles.pressableIconOnly : wide ? styles.pressableWide : styles.pressableCompact,
         style,
-        hovered && !disabled && styles.sketchButtonHovered,
-        pressed && !disabled && styles.sketchButtonPressed,
-        disabled && styles.sketchButtonDisabled,
+        hovered && !disabled ? styles.pressableHovered : null,
+        pressed && !disabled ? styles.pressablePressed : null,
+        disabled ? styles.pressableDisabled : null,
       ]}
     >
-      <View pointerEvents="none" style={styles.sketchLineTopLeft} />
-      <View pointerEvents="none" style={styles.sketchLineTopRight} />
-      <View pointerEvents="none" style={styles.sketchLineBottomLeft} />
-      <View pointerEvents="none" style={styles.sketchLineBottomRight} />
-      {iconName ? <MaterialIcons name={iconName} size={18} color={SKETCH_BUTTON_TEXT} /> : null}
-      <Text
-        numberOfLines={1}
-        style={[
-          styles.sketchButtonLabel,
-          wide ? styles.sketchButtonLabelWide : styles.sketchButtonLabelCompact,
-          fontFamily ? { fontFamily } : null,
-        ]}
-      >
-        {label}
-      </Text>
+      {({ pressed, hovered, focused }) => (
+        <RoyalPrimaryButtonFrame
+          pressed={pressed && !disabled}
+          hovered={hovered && !disabled}
+          focused={focused && !disabled}
+          disabled={disabled}
+          outerRadius={iconOnly ? 23 : 20}
+          innerRadius={iconOnly ? 20 : 17}
+          shellStyle={[
+            styles.surface,
+            iconOnly ? styles.surfaceIconOnly : wide ? styles.surfaceWide : styles.surfaceCompact,
+          ]}
+          bodyStyle={[
+            iconOnly ? styles.surfaceBodyIconOnly : styles.surfaceBody,
+            wide ? styles.surfaceBodyWide : null,
+          ]}
+          contentStyle={[
+            iconOnly ? styles.contentIconOnly : styles.content,
+            wide ? styles.contentWide : null,
+          ]}
+        >
+          {iconName ? <MaterialIcons name={iconName} size={iconSize} color="#FFFFFF" /> : null}
+          {!iconOnly ? (
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.label,
+                wide ? styles.labelWide : styles.labelCompact,
+                {
+                  color: '#FFFFFF',
+                  fontFamily,
+                },
+              ]}
+            >
+              {label}
+            </Text>
+          ) : null}
+        </RoyalPrimaryButtonFrame>
+      )}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  sketchButton: {
-    minHeight: 38,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 2,
-    borderColor: SKETCH_BUTTON_BORDER,
-    backgroundColor: SKETCH_BUTTON_BACKGROUND,
+  pressable: {
     alignSelf: 'flex-start',
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 20,
-    borderBottomRightRadius: 28,
-    borderBottomLeftRadius: 18,
+    ...(Platform.OS === 'web'
+      ? {
+          cursor: 'pointer',
+          transitionDuration: '160ms',
+          transitionProperty: 'transform, opacity',
+          userSelect: 'none',
+          willChange: 'transform',
+        }
+      : {}),
+  },
+  pressableCompact: {
+    minWidth: 104,
+  },
+  pressableIconOnly: {
+    width: 46,
+    minWidth: 46,
+    height: 46,
+  },
+  pressableWide: {
+    width: '84%',
+    alignSelf: 'center',
+  },
+  pressableHovered: {
+    transform: [{ translateY: -1 }],
+  },
+  pressablePressed: {
+    transform: [{ translateY: 2 }],
+  },
+  pressableDisabled: {
+    opacity: 0.54,
+  },
+  surface: {
+    width: '100%',
+  },
+  surfaceCompact: {
+    minWidth: 116,
+    minHeight: 48,
+  },
+  surfaceIconOnly: {
+    width: 46,
+    minWidth: 46,
+    minHeight: 46,
+  },
+  surfaceBody: {
+    minHeight: 44,
+  },
+  surfaceBodyIconOnly: {
+    minHeight: 42,
+  },
+  surfaceBodyWide: {
+    minHeight: 48,
+  },
+  content: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    position: 'relative',
-    transform: [{ rotate: SKETCH_BUTTON_ROTATION }],
-    ...(Platform.OS === 'web'
-      ? {
-          cursor: 'pointer',
-          transitionDuration: '235ms',
-          transitionProperty: 'transform, box-shadow, opacity',
-          userSelect: 'none',
-          willChange: 'transform, box-shadow, opacity',
-          borderTopLeftRadius: '255px 15px',
-          borderTopRightRadius: '15px 225px',
-          borderBottomRightRadius: '225px 15px',
-          borderBottomLeftRadius: '15px 255px',
-          boxShadow: [
-            {
-              color: 'rgba(0, 0, 0, 0.2)',
-              offsetX: 15,
-              offsetY: 28,
-              blurRadius: 25,
-              spreadDistance: -18,
-            },
-          ],
-        }
-      : {}),
-  },
-  sketchButtonCompact: {
-    minWidth: 92,
-  },
-  sketchButtonWide: {
-    width: '84%',
-    minHeight: 42,
     paddingHorizontal: 16,
-    paddingVertical: 9,
-    alignSelf: 'center',
-    marginTop: -2,
+    paddingVertical: 8,
   },
-  sketchButtonHovered: {
-    transform: [{ rotate: SKETCH_BUTTON_ROTATION }, { translateY: 2 }],
-    ...(Platform.OS === 'web'
-      ? {
-          boxShadow: [
-            {
-              color: 'rgba(0, 0, 0, 0.3)',
-              offsetX: 2,
-              offsetY: 8,
-              blurRadius: 8,
-              spreadDistance: -5,
-            },
-          ],
-        }
-      : {}),
+  contentIconOnly: {
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
-  sketchButtonPressed: {
-    transform: [{ rotate: SKETCH_BUTTON_ROTATION }, { translateY: 3 }],
-    ...(Platform.OS === 'web'
-      ? {
-          boxShadow: [
-            {
-              color: 'rgba(0, 0, 0, 0.22)',
-              offsetX: 1,
-              offsetY: 5,
-              blurRadius: 5,
-              spreadDistance: -5,
-            },
-          ],
-        }
-      : {}),
+  contentWide: {
+    minHeight: 48,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
   },
-  sketchButtonDisabled: {
-    opacity: 0.62,
+  surfaceWide: {
+    width: '100%',
+    minHeight: 52,
   },
-  sketchButtonLabel: {
-    color: SKETCH_BUTTON_TEXT,
+  label: {
+    ...urTextVariants.buttonLabel,
     textAlign: 'center',
-    zIndex: 1,
+    letterSpacing: 0.3,
   },
-  sketchButtonLabelCompact: {
-    fontSize: 16,
-    lineHeight: 18,
+  labelCompact: {
+    fontSize: 17,
+    lineHeight: 19,
   },
-  sketchButtonLabelWide: {
+  labelWide: {
     fontSize: 18,
     lineHeight: 20,
-  },
-  sketchLineTopLeft: {
-    position: 'absolute',
-    top: 7,
-    left: 14,
-    width: 18,
-    height: 1.5,
-    borderRadius: 999,
-    backgroundColor: SKETCH_BUTTON_LINE,
-    transform: [{ rotate: '-5deg' }],
-  },
-  sketchLineTopRight: {
-    position: 'absolute',
-    top: 8,
-    right: 16,
-    width: 22,
-    height: 1.5,
-    borderRadius: 999,
-    backgroundColor: SKETCH_BUTTON_LINE,
-    transform: [{ rotate: '4deg' }],
-  },
-  sketchLineBottomLeft: {
-    position: 'absolute',
-    bottom: 8,
-    left: 12,
-    width: 20,
-    height: 1.5,
-    borderRadius: 999,
-    backgroundColor: SKETCH_BUTTON_LINE,
-    transform: [{ rotate: '3deg' }],
-  },
-  sketchLineBottomRight: {
-    position: 'absolute',
-    right: 14,
-    bottom: 7,
-    width: 16,
-    height: 1.5,
-    borderRadius: 999,
-    backgroundColor: SKETCH_BUTTON_LINE,
-    transform: [{ rotate: '-6deg' }],
   },
 });

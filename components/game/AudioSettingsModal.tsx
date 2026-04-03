@@ -2,6 +2,10 @@ import { Button } from '@/components/ui/Button';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import {
+  HOME_FREDOKA_FONT_FAMILY,
+  HOME_SUPERCELL_FONT_FAMILY,
+} from '@/src/home/homeTheme';
+import {
   DEFAULT_MATCH_PREFERENCES,
   TURN_TIMER_SECONDS_OPTIONS,
   type DiceAnimationSpeed,
@@ -451,9 +455,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(252, 225, 177, 0.33)',
   },
   title: {
-    ...urTypography.title,
+    fontFamily: HOME_SUPERCELL_FONT_FAMILY,
     color: urTheme.colors.parchment,
     fontSize: 28,
+    lineHeight: 34,
+    letterSpacing: 0.9,
     textAlign: 'center',
   },
   subtitle: {
@@ -461,6 +467,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
     marginTop: urTheme.spacing.xs,
     marginBottom: urTheme.spacing.md,
   },
@@ -500,6 +507,7 @@ const styles = StyleSheet.create({
   optionTitle: {
     ...urTypography.label,
     color: urTheme.colors.parchment,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
     fontSize: 12,
     letterSpacing: 0.9,
   },
@@ -507,11 +515,13 @@ const styles = StyleSheet.create({
     color: 'rgba(247, 229, 203, 0.76)',
     fontSize: 12,
     lineHeight: 16,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
     marginTop: 2,
   },
   optionValue: {
     color: urTheme.colors.goldBright,
     fontSize: 12,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
@@ -545,6 +555,7 @@ const styles = StyleSheet.create({
   choiceLabel: {
     color: 'rgba(247, 229, 203, 0.8)',
     fontSize: 12,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
     fontWeight: '600',
   },
   choiceLabelSelected: {

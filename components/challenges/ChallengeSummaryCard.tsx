@@ -3,6 +3,7 @@ import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { HomeStatCard } from '@/components/home/HomeStatCard';
+import { urTextColors, urTextVariants } from '@/constants/urTheme';
 import { CHALLENGE_DEFINITIONS } from '@/shared/challenges';
 import { useChallenges } from '@/src/challenges/useChallenges';
 import {
@@ -78,41 +79,49 @@ export const ChallengeSummaryCard: React.FC<ChallengeSummaryCardProps> = ({
 
 const styles = StyleSheet.create({
   contentDesktop: {
+    justifyContent: 'flex-start',
     paddingTop: 10,
-    paddingBottom: 22,
+    paddingBottom: 10,
   },
   contentCompact: {
+    justifyContent: 'flex-start',
     paddingTop: 8,
-    paddingBottom: 18,
+    paddingBottom: 8,
   },
   metricColumn: {
     width: '100%',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 14,
+    justifyContent: 'flex-start',
+    gap: 8,
   },
   ratioLabel: {
     textAlign: 'center',
-    color: '#6B3A13',
+    color: urTextColors.titleOnPanel,
+    ...urTextVariants.cardTitle,
   },
   ratioLabelDesktop: {
     fontSize: 32,
     lineHeight: 36,
+    marginTop: 34,
   },
   ratioLabelCompact: {
     fontSize: 28,
     lineHeight: 32,
+    marginTop: 28,
   },
   helperLabel: {
     textAlign: 'center',
-    color: '#7A552E',
+    color: urTextColors.captionOnPanel,
+    ...urTextVariants.caption,
   },
   helperLabelDesktop: {
     fontSize: 16,
     lineHeight: 19,
+    marginTop: 2,
   },
   helperLabelCompact: {
     fontSize: 15,
     lineHeight: 18,
+    marginTop: 2,
   },
 });

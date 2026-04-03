@@ -2,7 +2,13 @@ import React from 'react';
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTypography } from '@/constants/urTheme';
+import {
+  urPanelColors,
+  urTextColors,
+  urTextVariants,
+  urTheme,
+  urTypography,
+} from '@/constants/urTheme';
 import type { ProgressionSnapshot } from '@/shared/progression';
 import { formatProgressionXp, getProgressionDisplayTitle } from '@/src/progression/progressionDisplay';
 
@@ -66,15 +72,15 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: urTheme.radii.md,
     padding: urTheme.spacing.md,
-    backgroundColor: 'rgba(8, 16, 28, 0.56)',
+    backgroundColor: urPanelColors.darkSurfaceSoft,
     borderWidth: 1,
-    borderColor: 'rgba(167, 207, 255, 0.28)',
+    borderColor: urPanelColors.darkBorder,
     gap: urTheme.spacing.xs,
     ...boxShadow({
-      color: '#000',
-      opacity: 0.18,
-      offset: { width: 0, height: 8 },
-      blurRadius: 14,
+      color: urTheme.colors.deepShadow,
+      opacity: 0.24,
+      offset: { width: 0, height: 10 },
+      blurRadius: 16,
       elevation: 6,
     }),
   },
@@ -90,23 +96,23 @@ const styles = StyleSheet.create({
     borderRadius: urTheme.radii.pill,
     paddingHorizontal: urTheme.spacing.sm,
     paddingVertical: 4,
-    backgroundColor: 'rgba(57, 110, 183, 0.28)',
+    backgroundColor: 'rgba(45, 156, 219, 0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(167, 207, 255, 0.3)',
+    borderColor: 'rgba(45, 156, 219, 0.28)',
   },
   badgeLabel: {
     ...urTypography.label,
-    color: '#D7EBFF',
+    color: urTextColors.titleOnScene,
     fontSize: 10,
   },
   title: {
-    ...urTypography.label,
-    color: 'rgba(232, 210, 176, 0.74)',
+    ...urTextVariants.caption,
+    color: urTextColors.captionOnScene,
     fontSize: 10,
   },
   totalXp: {
-    ...urTypography.title,
-    color: '#F7E9D2',
+    ...urTextVariants.sectionTitle,
+    color: urTextColors.titleOnScene,
     fontSize: 28,
     lineHeight: 34,
   },
@@ -115,14 +121,15 @@ const styles = StyleSheet.create({
     lineHeight: 30,
   },
   subtitle: {
-    ...urTypography.subtitle,
-    color: '#A8D2FF',
+    ...urTextVariants.cardTitle,
+    color: urTextColors.jewel,
     fontSize: 16,
     lineHeight: 22,
   },
   metaText: {
-    color: 'rgba(235, 224, 206, 0.76)',
+    color: 'rgba(230, 211, 163, 0.78)',
     fontSize: 13,
     lineHeight: 18,
+    ...urTextVariants.body,
   },
 });

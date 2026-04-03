@@ -4,6 +4,12 @@ import { ChallengesProvider } from '@/src/challenges/ChallengesContext';
 import { EloRatingProvider } from '@/src/elo/EloContext';
 import { ProgressionProvider } from '@/src/progression/ProgressionContext';
 import { ScreenTransitionProvider } from '@/src/transitions/ScreenTransitionContext';
+import {
+  HOME_FREDOKA_FONT_FAMILY,
+  HOME_GROBOLD_FONT_FAMILY,
+  HOME_SUPERCELL_FONT_FAMILY,
+} from '@/src/home/homeTheme';
+import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
 import { LogBox, Platform, View } from 'react-native';
@@ -28,7 +34,7 @@ function RootNavigator() {
           headerTintColor: urTheme.colors.parchment,
           headerShadowVisible: false,
           headerTitleStyle: {
-            fontFamily: 'serif',
+            fontFamily: HOME_FREDOKA_FONT_FAMILY,
             fontWeight: '700',
           },
           contentStyle: { backgroundColor: 'transparent' },
@@ -60,6 +66,16 @@ function RootNavigator() {
 }
 
 export default function Layout() {
+  const [fontsLoaded] = useFonts({
+    [HOME_FREDOKA_FONT_FAMILY]: require('../assets/fonts/LilitaOne-Regular.ttf'),
+    [HOME_GROBOLD_FONT_FAMILY]: require('../assets/fonts/LilitaOne-Regular.ttf'),
+    [HOME_SUPERCELL_FONT_FAMILY]: require('../assets/fonts/Supercell-Magic-Regular.ttf'),
+  });
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <StatusBar style="light" translucent backgroundColor="transparent" />

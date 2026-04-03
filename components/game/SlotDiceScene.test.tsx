@@ -29,6 +29,11 @@ const getStripStep = (index: number) => {
   const reelStyle = StyleSheet.flatten(reelNode.props.style) as {
     height: number;
   };
+  const viewportShellStyle = StyleSheet.flatten(
+    screen.getByTestId(`slot-die-viewport-shell-${index}`).props.style,
+  ) as {
+    top?: number;
+  };
   const translateYValue = stripStyle.transform?.find(
     (transform) => 'translateY' in transform,
   )?.translateY;
@@ -39,7 +44,7 @@ const getStripStep = (index: number) => {
         ? translateYValue.__getValue()
         : 0;
 
-  return -translateY / reelStyle.height;
+  return -(translateY + (viewportShellStyle.top ?? 0)) / reelStyle.height;
 };
 
 describe('SlotDiceScene', () => {
@@ -261,7 +266,7 @@ describe('SlotDiceScene', () => {
     expect(stripCellStyle.width).toBe('100%');
   });
 
-  it('keeps the reel window transparent while enlarging the die art and border treatment', () => {
+  it('renders a shared fantasy frame with inset reel windows and restrained die sizing', () => {
     render(
       <SlotDiceScene
         playbackId={22}
@@ -271,9 +276,12 @@ describe('SlotDiceScene', () => {
       />,
     );
 
+    const frameStyle = StyleSheet.flatten(screen.getByTestId('slot-dice-scene-frame').props.style) as {
+      height: number;
+      width: number;
+    };
     const reelStyle = StyleSheet.flatten(screen.getByTestId('slot-die-0').props.style) as {
       backgroundColor?: string;
-      borderWidth?: number;
       height: number;
       width: number;
     };
@@ -282,12 +290,58 @@ describe('SlotDiceScene', () => {
       width: number;
     };
 
+    expect(frameStyle.width).toBeGreaterThan(reelStyle.width * 4);
+    expect(frameStyle.height).toBeGreaterThan(reelStyle.height);
     expect(reelStyle.backgroundColor).toBe('transparent');
-    expect(reelStyle.borderWidth).toBe(3.2);
-    expect(reelStyle.height).toBeGreaterThan(56);
-    expect(reelStyle.width).toBeGreaterThan(56);
-    expect(imageStyle.height).toBe(72);
-    expect(imageStyle.width).toBe(72);
+    expect(reelStyle.height).toBeGreaterThan(48);
+    expect(reelStyle.width).toBeGreaterThan(48);
+    expect(imageStyle.height).toBeLessThan(reelStyle.height);
+    expect(imageStyle.width).toBeLessThan(reelStyle.width);
+    expect(imageStyle.height).toBeGreaterThan(40);
+    expect(screen.getByTestId('slot-dice-scene-frame-shell')).toBeTruthy();
+    expect(screen.getByTestId('slot-die-window-shell-0')).toBeTruthy();
+    expect(screen.getByTestId('slot-die-interior-0')).toBeTruthy();
+    expect(screen.getByTestId('slot-die-sheen-0')).toBeTruthy();
+    expect(screen.queryByTestId('slot-dice-scene-separator-0')).toBeNull();
+  });
+
+  it('keeps landed strip faces aligned with the centered viewport instead of dropping low', () => {
+    render(
+      <SlotDiceScene
+        playbackId={31}
+        durationMs={720}
+        rollValue={2}
+        variant="settled"
+      />,
+    );
+
+    const reelStyle = StyleSheet.flatten(screen.getByTestId('slot-die-0').props.style) as {
+      height: number;
+    };
+    const stripStyle = StyleSheet.flatten(screen.getByTestId('slot-die-strip-0').props.style) as {
+      transform?: { translateY?: number | { __getValue?: () => number } }[];
+    };
+    const viewportShellStyle = StyleSheet.flatten(
+      screen.getByTestId('slot-die-viewport-shell-0').props.style,
+    ) as {
+      top?: number;
+    };
+    const translateYValue = stripStyle.transform?.find(
+      (transform) => 'translateY' in transform,
+    )?.translateY;
+    const translateY =
+      typeof translateYValue === 'number'
+        ? translateYValue
+        : typeof translateYValue?.__getValue === 'function'
+          ? translateYValue.__getValue()
+          : 0;
+    const settledStep = screen.getByTestId('slot-die-0').props.accessibilityValue?.now;
+
+    expect(typeof settledStep).toBe('number');
+    expect(translateY).toBeCloseTo(
+      -((settledStep as number) * reelStyle.height) - (viewportShellStyle.top ?? 0),
+      5,
+    );
   });
 
   it('scales the stage reels down to fit a narrow board-gap lane', () => {

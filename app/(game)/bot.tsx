@@ -1,13 +1,21 @@
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
+import { PressablePanelCard } from '@/components/ui/PressablePanelCard';
 import { SketchButton } from '@/components/ui/SketchButton';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
-import { urTheme } from '@/constants/urTheme';
+import {
+  urPanelColors,
+  urTextColors,
+  urTextVariants,
+  urTheme,
+} from '@/constants/urTheme';
 import { useMatchmaking } from '@/hooks/useMatchmaking';
 import { BotDifficulty } from '@/logic/bot/types';
-import { GAME_MODE_SCREEN_NOTE, getMatchConfig } from '@/logic/matchConfigs';
+import { getMatchConfig } from '@/logic/matchConfigs';
 import {
   HOME_FREDOKA_FONT_FAMILY,
+  HOME_GROBOLD_FONT_FAMILY,
   HOME_SUPERCELL_FONT_FAMILY,
+  resolveHomeButtonFontFamily,
   resolveHomeFredokaFontFamily,
   resolveHomeMagicFontFamily,
 } from '@/src/home/homeTheme';
@@ -15,7 +23,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useFonts } from 'expo-font';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { ImageBackground, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const homeWideBackground = require('../../assets/images/home_bg.png');
@@ -27,7 +35,6 @@ const MODE_PANEL_ART_ASPECT_RATIO = 1113 / 458;
 type BotLevelCard = {
   difficulty: BotDifficulty;
   title: string;
-  tagline: string;
   description: string;
   accent: string;
   icon: keyof typeof MaterialIcons.glyphMap;
@@ -37,7 +44,6 @@ const BOT_LEVELS: readonly BotLevelCard[] = [
   {
     difficulty: 'easy',
     title: 'Easy',
-    tagline: 'Current bot',
     description: 'Random legal moves with no planning. Best for learning the board and testing lines.',
     accent: '#9E6D38',
     icon: 'wb-sunny',
@@ -45,7 +51,6 @@ const BOT_LEVELS: readonly BotLevelCard[] = [
   {
     difficulty: 'medium',
     title: 'Medium',
-    tagline: 'Tactical bot',
     description: 'Values captures, rosettes, safer landings, and better short-term tempo.',
     accent: '#2B7A78',
     icon: 'flare',
@@ -53,7 +58,6 @@ const BOT_LEVELS: readonly BotLevelCard[] = [
   {
     difficulty: 'hard',
     title: 'Hard',
-    tagline: 'Lookahead bot',
     description: 'Searches future rolls and replies to build stronger long-form plans.',
     accent: '#2E6FD8',
     icon: 'psychology',
@@ -61,7 +65,6 @@ const BOT_LEVELS: readonly BotLevelCard[] = [
   {
     difficulty: 'perfect',
     title: 'Perfect',
-    tagline: 'Deepest local search',
     description: 'Uses the strongest local search in the app for the sharpest offline play.',
     accent: '#C8981E',
     icon: 'auto-awesome',
@@ -77,7 +80,8 @@ export default function BotSelection() {
   const [pendingDifficulty, setPendingDifficulty] = React.useState<BotDifficulty | null>(null);
   const [isPreparingLocalPvP, setIsPreparingLocalPvP] = React.useState(false);
   const [fontsLoaded] = useFonts({
-    [HOME_FREDOKA_FONT_FAMILY]: require('../../assets/fonts/Fredoka-VariableFont_wdth,wght.ttf'),
+    [HOME_FREDOKA_FONT_FAMILY]: require('../../assets/fonts/LilitaOne-Regular.ttf'),
+    [HOME_GROBOLD_FONT_FAMILY]: require('../../assets/fonts/LilitaOne-Regular.ttf'),
     [HOME_SUPERCELL_FONT_FAMILY]: require('../../assets/fonts/Supercell-Magic-Regular.ttf'),
   });
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
@@ -95,6 +99,7 @@ export default function BotSelection() {
       : Math.min(width - horizontalPadding * 2, 780);
   const titleFontFamily = resolveHomeMagicFontFamily(fontsLoaded);
   const bodyFontFamily = resolveHomeFredokaFontFamily(fontsLoaded);
+  const buttonFontFamily = resolveHomeButtonFontFamily(fontsLoaded);
   const resolvedModeId = Array.isArray(rawModeId) ? rawModeId[0] : rawModeId;
   const matchConfig = React.useMemo(() => getMatchConfig(resolvedModeId), [resolvedModeId]);
   const isPracticeMode = matchConfig.isPracticeMode;
@@ -120,6 +125,7 @@ export default function BotSelection() {
 
   const renderBotCard = (level: BotLevelCard) => {
     const isPending = pendingDifficulty === level.difficulty;
+    const isDisabled = pendingDifficulty !== null;
 
     return (
       <View
@@ -130,10 +136,13 @@ export default function BotSelection() {
           isDesktopViewport && styles.cardShellDesktop,
         ]}
       >
-        <ImageBackground
+        <PressablePanelCard
+          accessibilityLabel={isPending ? `Preparing ${level.title}` : `Play ${level.title}`}
+          disabled={isDisabled}
+          dimmed={!isPending && isDisabled}
+          onPress={() => handleSelect(level.difficulty)}
+          panelStyle={styles.cardPanel}
           source={quickPlayModePanel}
-          resizeMode="stretch"
-          style={styles.cardPanel}
           imageStyle={styles.cardPanelImage}
         >
           <View style={[styles.cardPanelContent, isCompactLayout && styles.cardPanelContentCompact]}>
@@ -141,26 +150,16 @@ export default function BotSelection() {
               <View style={[styles.iconWrap, { borderColor: `${level.accent}40`, backgroundColor: `${level.accent}18` }]}>
                 <MaterialIcons name={level.icon} size={18} color={level.accent} />
               </View>
-              <Text style={[styles.cardTitle, { fontFamily: titleFontFamily }]}>{level.title}</Text>
+              <Text style={[styles.cardTitle, { fontFamily: buttonFontFamily }]}>{level.title}</Text>
             </View>
-            <Text style={[styles.cardTagline, { fontFamily: bodyFontFamily }]}>{level.tagline}</Text>
             <Text
               numberOfLines={isCompactLayout ? 4 : 3}
               style={[styles.cardDescription, { fontFamily: bodyFontFamily }]}
             >
-              {level.description}
+              {isPending ? 'Launching your offline game with this difficulty.' : level.description}
             </Text>
           </View>
-        </ImageBackground>
-
-        <SketchButton
-          label={isPending ? 'Preparing...' : `Play ${level.title}`}
-          accessibilityLabel={isPending ? `Preparing ${level.title}` : `Play ${level.title}`}
-          onPress={() => handleSelect(level.difficulty)}
-          wide
-          disabled={pendingDifficulty !== null}
-          fontFamily={bodyFontFamily}
-        />
+        </PressablePanelCard>
       </View>
     );
   };
@@ -173,10 +172,13 @@ export default function BotSelection() {
         styles.cardShellSingle,
       ]}
     >
-      <ImageBackground
+      <PressablePanelCard
+        accessibilityLabel={isPreparingLocalPvP ? 'Preparing local PvP' : 'Start local PvP'}
+        disabled={isPreparingLocalPvP}
+        dimmed={false}
+        onPress={handleStartLocalPvP}
+        panelStyle={styles.cardPanel}
         source={quickPlayModePanel}
-        resizeMode="stretch"
-        style={styles.cardPanel}
         imageStyle={styles.cardPanelImage}
       >
         <View style={[styles.cardPanelContent, isCompactLayout && styles.cardPanelContentCompact]}>
@@ -184,26 +186,21 @@ export default function BotSelection() {
             <View style={[styles.iconWrap, styles.iconWrapLocalPvP]}>
               <MaterialIcons name="people" size={18} color="#3E8F87" />
             </View>
-            <Text style={[styles.cardTitle, { fontFamily: titleFontFamily }]}>Same Device</Text>
+            <Text style={[styles.cardTitle, { fontFamily: buttonFontFamily }]}>Same Device</Text>
           </View>
-          <Text style={[styles.cardTagline, { fontFamily: bodyFontFamily }]}>Two human players</Text>
+          <Text style={[styles.cardTagline, { fontFamily: bodyFontFamily }]}>
+            {isPreparingLocalPvP ? 'Preparing match...' : 'Two human players'}
+          </Text>
           <Text
             numberOfLines={isCompactLayout ? 4 : 3}
             style={[styles.cardDescription, { fontFamily: bodyFontFamily }]}
           >
-            Pass the device back and forth with seven-piece Finkel rules and no bot turns.
+            {isPreparingLocalPvP
+              ? 'Launching a same-device match with no bot turns.'
+              : 'Pass the device back and forth with seven-piece Finkel rules and no bot turns.'}
           </Text>
         </View>
-      </ImageBackground>
-
-      <SketchButton
-        label={isPreparingLocalPvP ? 'Preparing...' : 'Start Local PvP'}
-        accessibilityLabel={isPreparingLocalPvP ? 'Preparing local PvP' : 'Start local PvP'}
-        onPress={handleStartLocalPvP}
-        wide
-        disabled={isPreparingLocalPvP}
-        fontFamily={bodyFontFamily}
-      />
+      </PressablePanelCard>
     </View>
   );
 
@@ -214,12 +211,12 @@ export default function BotSelection() {
         <WideScreenBackground
           source={homeWideBackground}
           visible={showWideBackground}
-          overlayColor="rgba(56, 30, 13, 0.08)"
+          overlayColor={urPanelColors.sceneOverlay}
         />
         <MobileBackground
           source={homeMobileBackground}
           visible={showMobileBackground}
-          overlayColor="rgba(56, 30, 13, 0.08)"
+          overlayColor={urPanelColors.sceneOverlay}
         />
         <View style={styles.backgroundTint} />
 
@@ -244,7 +241,7 @@ export default function BotSelection() {
               accessibilityLabel="Back"
               onPress={() => router.back()}
               iconName="arrow-back"
-              fontFamily={bodyFontFamily}
+              fontFamily={buttonFontFamily}
             />
           </View>
 
@@ -256,15 +253,17 @@ export default function BotSelection() {
               { maxWidth: stageWidth },
             ]}
           >
-            <Text
-              style={[
-                styles.title,
-                isCompactLayout ? styles.titleCompact : styles.titleDesktop,
-                { fontFamily: titleFontFamily },
-              ]}
-            >
-              {heroTitle}
-            </Text>
+            <View style={styles.titleWrap}>
+              <Text
+                style={[
+                  styles.title,
+                  isCompactLayout ? styles.titleCompact : styles.titleDesktop,
+                  { fontFamily: titleFontFamily },
+                ]}
+              >
+                {heroTitle}
+              </Text>
+            </View>
             <Text
               style={[
                 styles.subtitle,
@@ -274,11 +273,6 @@ export default function BotSelection() {
             >
               {heroSubtitle}
             </Text>
-            {isPracticeMode ? (
-              <View style={styles.noteCard}>
-                <Text style={[styles.noteText, { fontFamily: bodyFontFamily }]}>{GAME_MODE_SCREEN_NOTE}</Text>
-              </View>
-            ) : null}
           </View>
 
           <View style={[styles.stage, { width: stageWidth }]}>
@@ -315,7 +309,7 @@ const styles = StyleSheet.create({
   },
   backgroundTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(56, 30, 13, 0.08)',
+    backgroundColor: urPanelColors.sceneOverlay,
   },
   topBar: {
     width: '100%',
@@ -332,51 +326,36 @@ const styles = StyleSheet.create({
   heroDesktopTight: {
     marginBottom: urTheme.spacing.sm,
   },
+  titleWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: {
-    color: '#22160C',
+    color: urTextColors.titleOnScene,
     textAlign: 'center',
-    textShadowColor: 'rgba(255, 244, 221, 0.32)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
+    ...urTextVariants.displayTitle,
   },
   titleDesktop: {
-    fontSize: 34,
-    lineHeight: 38,
+    fontSize: 36,
+    lineHeight: 40,
   },
   titleCompact: {
-    fontSize: 28,
-    lineHeight: 32,
+    fontSize: 30,
+    lineHeight: 34,
   },
   subtitle: {
-    color: 'rgba(34, 22, 12, 0.88)',
+    color: urTextColors.bodyOnPanel,
     textAlign: 'center',
-    maxWidth: 560,
-  },
-  subtitleDesktop: {
+    maxWidth: 680,
     fontSize: 16,
     lineHeight: 22,
+    ...urTextVariants.body,
+  },
+  subtitleDesktop: {
     marginTop: urTheme.spacing.sm,
   },
   subtitleCompact: {
-    fontSize: 15,
-    lineHeight: 21,
     marginTop: urTheme.spacing.xs,
-  },
-  noteCard: {
-    marginTop: urTheme.spacing.md,
-    maxWidth: 620,
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.sm,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(90, 81, 72, 0.24)',
-    backgroundColor: 'rgba(235, 220, 186, 0.78)',
-  },
-  noteText: {
-    color: 'rgba(61, 46, 31, 0.88)',
-    fontSize: 12,
-    lineHeight: 17,
-    textAlign: 'center',
   },
   stage: {
     width: '100%',
@@ -403,7 +382,6 @@ const styles = StyleSheet.create({
   cardShell: {
     width: '48.5%',
     alignItems: 'center',
-    gap: 14,
   },
   cardShellCompact: {
     width: '100%',
@@ -429,16 +407,16 @@ const styles = StyleSheet.create({
   cardPanelContent: {
     position: 'absolute',
     top: '17%',
-    left: '16%',
-    right: '16%',
+    left: '13.6%',
+    right: '13.6%',
     bottom: '18%',
     alignItems: 'center',
     justifyContent: 'center',
   },
   cardPanelContentCompact: {
     top: '16%',
-    left: '15%',
-    right: '15%',
+    left: '12.75%',
+    right: '12.75%',
     bottom: '17%',
   },
   cardTitleGroup: {
@@ -447,7 +425,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     width: '100%',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   iconWrap: {
     width: 30,
@@ -459,27 +437,25 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   iconWrapLocalPvP: {
-    borderColor: 'rgba(62, 143, 135, 0.34)',
-    backgroundColor: 'rgba(62, 143, 135, 0.12)',
+    borderColor: 'rgba(45, 156, 219, 0.24)',
+    backgroundColor: 'rgba(45, 156, 219, 0.14)',
   },
   cardTitle: {
-    color: '#4B2E12',
+    color: urTextColors.titleOnPanel,
     fontSize: 17,
     lineHeight: 18,
     textAlign: 'center',
     flexShrink: 1,
-  },
-  cardTagline: {
-    color: '#8A611B',
-    fontSize: 11,
-    lineHeight: 13,
-    textAlign: 'center',
-    marginBottom: 6,
+    ...urTextVariants.cardTitle,
   },
   cardDescription: {
-    color: '#6B5740',
+    color: urTextColors.bodyOnPanel,
     fontSize: 13,
-    lineHeight: 16,
+    lineHeight: 17,
     textAlign: 'center',
+    width: '84%',
+    minHeight: 34,
+    alignSelf: 'center',
+    ...urTextVariants.body,
   },
 });

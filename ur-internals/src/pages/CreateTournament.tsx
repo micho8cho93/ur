@@ -7,6 +7,7 @@ import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
 import {
   getTournamentStructureDescription,
+  getTournamentStructureLabel,
   TOURNAMENT_STRUCTURE_OPTIONS,
 } from '../tournamentStructure'
 import {
@@ -140,9 +141,7 @@ export function CreateTournamentPage() {
   const roundLabel =
     roundCount > 0 ? formatSingleEliminationRoundLabel(roundCount) : 'Unsupported bracket size'
   const awardsXp = Number(form.xpPerMatchWin) > 0 || Number(form.xpForTournamentChampion) > 0
-  const structureLabel =
-    TOURNAMENT_STRUCTURE_OPTIONS.find((option) => option.value === form.gameMode)?.label ??
-    form.gameMode
+  const structureLabel = getTournamentStructureLabel(form.gameMode)
   const botSummary = form.autoAddBots ? `Bot fill enabled · ${form.botDifficulty}` : 'Bots off'
 
   return (

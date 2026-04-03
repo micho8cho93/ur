@@ -2,7 +2,13 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTypography } from '@/constants/urTheme';
+import {
+  urPanelColors,
+  urTextColors,
+  urTextVariants,
+  urTheme,
+  urTypography,
+} from '@/constants/urTheme';
 import type { ChallengeViewModel } from '@/src/challenges/challengeUi';
 
 interface ChallengeCardProps {
@@ -53,25 +59,25 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: urTheme.radii.md,
     padding: urTheme.spacing.md,
-    backgroundColor: 'rgba(9, 14, 20, 0.52)',
+    backgroundColor: urPanelColors.darkSurfaceSoft,
     borderWidth: 1,
-    borderColor: 'rgba(225, 190, 123, 0.2)',
+    borderColor: urPanelColors.darkBorder,
     gap: urTheme.spacing.sm,
     ...boxShadow({
-      color: '#000',
-      opacity: 0.15,
-      offset: { width: 0, height: 6 },
-      blurRadius: 12,
-      elevation: 4,
+      color: urTheme.colors.deepShadow,
+      opacity: 0.22,
+      offset: { width: 0, height: 10 },
+      blurRadius: 16,
+      elevation: 6,
     }),
   },
   cardCompleted: {
-    backgroundColor: 'rgba(32, 51, 28, 0.62)',
-    borderColor: 'rgba(159, 214, 119, 0.34)',
+    backgroundColor: 'rgba(44, 56, 27, 0.7)',
+    borderColor: 'rgba(127, 191, 62, 0.34)',
   },
   cardHighlight: {
-    borderColor: 'rgba(255, 219, 140, 0.78)',
-    backgroundColor: 'rgba(83, 57, 19, 0.72)',
+    borderColor: 'rgba(255, 226, 122, 0.72)',
+    backgroundColor: 'rgba(82, 53, 20, 0.82)',
   },
   headerRow: {
     flexDirection: 'row',
@@ -83,32 +89,32 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   title: {
-    ...urTypography.subtitle,
-    color: '#F8ECD6',
+    ...urTextVariants.cardTitle,
+    color: urTextColors.titleOnScene,
     fontSize: 17,
     lineHeight: 22,
-    fontWeight: '700',
   },
   description: {
-    color: 'rgba(242, 230, 209, 0.78)',
+    color: 'rgba(230, 211, 163, 0.9)',
     fontSize: 13,
     lineHeight: 19,
+    ...urTextVariants.body,
   },
   statusBadge: {
     borderRadius: urTheme.radii.pill,
     paddingHorizontal: urTheme.spacing.sm,
     paddingVertical: 5,
-    backgroundColor: 'rgba(47, 73, 108, 0.42)',
+    backgroundColor: 'rgba(45, 156, 219, 0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(155, 195, 255, 0.28)',
+    borderColor: 'rgba(45, 156, 219, 0.26)',
   },
   statusBadgeCompleted: {
-    backgroundColor: 'rgba(78, 120, 46, 0.46)',
-    borderColor: 'rgba(182, 224, 144, 0.34)',
+    backgroundColor: 'rgba(127, 191, 62, 0.18)',
+    borderColor: 'rgba(127, 191, 62, 0.26)',
   },
   statusLabel: {
     ...urTypography.label,
-    color: '#E9F6FF',
+    color: urTextColors.titleOnScene,
     fontSize: 10,
   },
   footerRow: {
@@ -118,15 +124,16 @@ const styles = StyleSheet.create({
     gap: urTheme.spacing.sm,
   },
   rewardText: {
-    ...urTypography.label,
+    ...urTextVariants.caption,
     color: urTheme.colors.goldBright,
     fontSize: 12,
   },
   metaText: {
-    color: 'rgba(236, 223, 197, 0.66)',
+    color: 'rgba(230, 211, 163, 0.74)',
     fontSize: 12,
     lineHeight: 16,
     flexShrink: 1,
     textAlign: 'right',
+    ...urTextVariants.body,
   },
 });

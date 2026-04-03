@@ -1,4 +1,5 @@
 import { boxShadow, textShadow } from '@/constants/styleEffects';
+import { ProgressionRankIcon } from '@/components/progression/ProgressionRankIcon';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import React, { useCallback } from 'react';
 import { Image, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
@@ -15,6 +16,7 @@ import { AnimatedScoreValue } from './AnimatedScoreValue';
 interface EdgeScoreProps {
   side: 'light' | 'dark';
   title?: string;
+  rankTitle?: string | null;
   score: number;
   maxScore: number;
   active?: boolean;
@@ -44,6 +46,7 @@ const SIDE_ACCENTS = {
 export const EdgeScore: React.FC<EdgeScoreProps> = ({
   side,
   title,
+  rankTitle = null,
   score,
   maxScore,
   active = false,
@@ -58,6 +61,18 @@ export const EdgeScore: React.FC<EdgeScoreProps> = ({
   const defaultTitle = side.toUpperCase();
   const resolvedTitle = title?.trim() || defaultTitle;
   const usesCustomTitle = resolvedTitle !== defaultTitle;
+  const rankIconSize = isMobile ? 22 : 28;
+  const rankIconOffset = isMobile ? 2 : 4;
+  const contentRankOffsetStyle = rankTitle
+    ? isRightAligned
+      ? { paddingLeft: rankIconSize - 2 }
+      : { paddingRight: rankIconSize - 2 }
+    : null;
+  const rankIconSlotStyle = rankTitle
+    ? isRightAligned
+      ? { left: rankIconOffset, top: rankIconOffset }
+      : { right: rankIconOffset, top: rankIconOffset }
+    : null;
 
   const triggerCelebration = useCallback(() => {
     cancelAnimation(celebration);
@@ -122,8 +137,17 @@ export const EdgeScore: React.FC<EdgeScoreProps> = ({
       <View style={styles.topGlow} />
       <View style={[styles.edgeAccent, isRightAligned ? styles.rightAccent : styles.leftAccent, { backgroundColor: accent.accent }]} />
       <View style={[styles.innerBorder, isMobile && styles.mobileInnerBorder]} />
+      {rankTitle ? (
+        <View pointerEvents="none" style={[styles.rankIconSlot, rankIconSlotStyle]}>
+          <ProgressionRankIcon
+            title={rankTitle}
+            size={rankIconSize}
+            accessibilityLabel={`${resolvedTitle} rank badge: ${rankTitle}`}
+          />
+        </View>
+      ) : null}
 
-      <View style={[styles.content, isRightAligned && styles.rightContent]}>
+      <View style={[styles.content, isRightAligned && styles.rightContent, contentRankOffsetStyle]}>
         <Text
           adjustsFontSizeToFit
           numberOfLines={1}
@@ -229,6 +253,10 @@ const styles = StyleSheet.create({
   },
   content: {
     alignItems: 'flex-start',
+  },
+  rankIconSlot: {
+    position: 'absolute',
+    zIndex: 2,
   },
   rightContent: {
     alignItems: 'flex-end',

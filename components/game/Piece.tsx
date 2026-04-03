@@ -46,6 +46,11 @@ const PIECE_ART_SOURCES: Record<PieceVariant, ImageSourcePropType> = {
 
 // The visible token body occupies about 62.5% of the exported PNG frame.
 export const PIECE_ART_VISIBLE_COVERAGE = 0.625;
+// Per-asset center-of-mass correction so the rendered disk sits on the gameplay center point.
+const PIECE_ART_VISUAL_CENTER_OFFSET_Y_RATIOS = {
+  light: 0.01,
+  dark: -0.031,
+} as const;
 
 export const Piece: React.FC<PieceProps> = ({
   color,
@@ -156,6 +161,13 @@ export const Piece: React.FC<PieceProps> = ({
   }, [pixelSize, size]);
 
   const artSizePx = useMemo(() => Math.max(1, sizePx * artScale), [artScale, sizePx]);
+  const resolvedArtSourceVariant = resolvedVariant === 'reserve' ? color : resolvedVariant;
+  const resolvedArtOffsetY = useMemo(
+    () =>
+      artOffsetY +
+      artSizePx * (PIECE_ART_VISUAL_CENTER_OFFSET_Y_RATIOS[resolvedArtSourceVariant] ?? 0),
+    [artOffsetY, artSizePx, resolvedArtSourceVariant],
+  );
   const glowSizes = useMemo(
     () =>
       highlightTone === 'deepBlue'
@@ -266,7 +278,7 @@ export const Piece: React.FC<PieceProps> = ({
               height: artSizePx,
               transform: [
                 { translateX: artOffsetX },
-                { translateY: artOffsetY },
+                { translateY: resolvedArtOffsetY },
               ],
             },
           ]}

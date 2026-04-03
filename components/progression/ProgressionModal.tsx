@@ -1,6 +1,10 @@
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
 import type { ProgressionSnapshot } from '@/shared/progression';
+import {
+  HOME_FREDOKA_FONT_FAMILY,
+  HOME_SUPERCELL_FONT_FAMILY,
+} from '@/src/home/homeTheme';
 import React from 'react';
 import { Image, Modal as RNModal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -260,15 +264,17 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   title: {
-    ...urTypography.title,
+    fontFamily: HOME_SUPERCELL_FONT_FAMILY,
     color: urTheme.colors.parchment,
     fontSize: 28,
     lineHeight: 34,
+    letterSpacing: 0.9,
   },
   subtitle: {
     color: 'rgba(246, 231, 203, 0.82)',
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
   },
   closeButton: {
     width: 34,
@@ -287,6 +293,7 @@ const styles = StyleSheet.create({
     color: urTheme.colors.parchment,
     fontSize: 16,
     lineHeight: 18,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
     fontWeight: '700',
   },
   scroll: {
@@ -308,11 +315,13 @@ const styles = StyleSheet.create({
   summaryEyebrow: {
     ...urTypography.label,
     color: 'rgba(240, 224, 196, 0.68)',
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
     fontSize: 10,
   },
   summaryValue: {
     ...urTypography.title,
     color: '#FAEDD7',
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
     fontSize: 24,
     lineHeight: 28,
   },
@@ -320,6 +329,7 @@ const styles = StyleSheet.create({
     color: 'rgba(246, 231, 203, 0.84)',
     fontSize: 13,
     lineHeight: 19,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
   },
   copySection: {
     gap: 8,
@@ -327,6 +337,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...urTypography.subtitle,
     color: '#F3DFBE',
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
     fontSize: 18,
     lineHeight: 24,
     fontWeight: '700',
@@ -335,6 +346,7 @@ const styles = StyleSheet.create({
     color: 'rgba(247, 229, 203, 0.94)',
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
   },
   rankRow: {
     flexDirection: 'row',
@@ -364,6 +376,7 @@ const styles = StyleSheet.create({
     color: '#FAEDD7',
     fontSize: 14,
     lineHeight: 19,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
     fontWeight: '700',
   },
   rankRowTitleUpcoming: {
@@ -373,6 +386,7 @@ const styles = StyleSheet.create({
     color: 'rgba(242, 227, 199, 0.7)',
     fontSize: 12,
     lineHeight: 17,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
   },
   rankStateBadge: {
     minWidth: 72,
@@ -396,6 +410,7 @@ const styles = StyleSheet.create({
   rankStateBadgeLabel: {
     ...urTypography.label,
     color: '#F8ECD6',
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
     fontSize: 10,
   },
   footer: {

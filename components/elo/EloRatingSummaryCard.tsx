@@ -3,6 +3,7 @@ import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { HomeStatCard } from '@/components/home/HomeStatCard';
+import { urTextColors, urTextVariants } from '@/constants/urTheme';
 import { useAuth } from '@/src/auth/useAuth';
 import { useEloRating } from '@/src/elo/useEloRating';
 import {
@@ -88,48 +89,56 @@ export const EloRatingSummaryCard: React.FC<EloRatingSummaryCardProps> = ({
 
 const styles = StyleSheet.create({
   contentDesktop: {
+    justifyContent: 'flex-start',
     paddingTop: 10,
-    paddingBottom: 22,
+    paddingBottom: 10,
   },
   contentCompact: {
+    justifyContent: 'flex-start',
     paddingTop: 8,
-    paddingBottom: 18,
+    paddingBottom: 8,
   },
   metricColumn: {
     width: '100%',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
+    justifyContent: 'flex-start',
+    gap: 8,
   },
   valueLabel: {
     textAlign: 'center',
-    color: '#82511E',
+    color: urTextColors.titleOnPanel,
+    ...urTextVariants.cardTitle,
   },
   valueLabelDesktop: {
     fontSize: 34,
     lineHeight: 38,
-    minHeight: 72,
+    minHeight: 54,
+    marginTop: 30,
   },
   valueLabelCompact: {
     fontSize: 30,
     lineHeight: 34,
-    minHeight: 64,
+    minHeight: 48,
+    marginTop: 24,
   },
   valueLabelLocked: {
-    color: '#75563A',
+    color: '#7B5B35',
   },
   helperLabel: {
     textAlign: 'center',
-    color: '#6B4926',
+    color: urTextColors.bodyMutedOnPanel,
+    ...urTextVariants.body,
   },
   helperLabelDesktop: {
     fontSize: 15,
     lineHeight: 18,
     minHeight: 36,
+    marginTop: 2,
   },
   helperLabelCompact: {
     fontSize: 14,
     lineHeight: 17,
     minHeight: 34,
+    marginTop: 2,
   },
 });

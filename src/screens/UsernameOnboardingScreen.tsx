@@ -1,6 +1,13 @@
 import { Button } from '@/components/ui/Button';
 import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import {
+  urPanelColors,
+  urTextColors,
+  urTextVariants,
+  urTheme,
+  urTextures,
+  urTypography,
+} from '@/constants/urTheme';
 import { validateUsername } from '@/shared/usernameOnboarding';
 import { useAuth } from '@/src/auth/useAuth';
 import { useOnboardingStatus } from '@/src/onboarding/useOnboardingStatus';
@@ -163,7 +170,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '34%',
-    backgroundColor: 'rgba(180, 120, 30, 0.12)',
+    backgroundColor: urPanelColors.topGlow,
   },
   bottomShade: {
     position: 'absolute',
@@ -178,13 +185,13 @@ const styles = StyleSheet.create({
     maxWidth: 460,
     borderRadius: urTheme.radii.lg,
     borderWidth: 1.4,
-    borderColor: 'rgba(217, 164, 65, 0.72)',
+    borderColor: urPanelColors.darkBorderStrong,
     padding: urTheme.spacing.lg,
     overflow: 'hidden',
-    backgroundColor: 'rgba(13, 15, 18, 0.7)',
+    backgroundColor: urPanelColors.darkSurface,
     ...boxShadow({
-      color: '#000',
-      opacity: 0.28,
+      color: urTheme.colors.deepShadow,
+      opacity: 0.32,
       offset: { width: 0, height: 12 },
       blurRadius: 16,
       elevation: 10,
@@ -199,28 +206,29 @@ const styles = StyleSheet.create({
     margin: urTheme.spacing.xs,
     borderRadius: urTheme.radii.md,
     borderWidth: 1,
-    borderColor: 'rgba(255, 231, 192, 0.24)',
+    borderColor: urPanelColors.darkBorder,
   },
   eyebrow: {
     ...urTypography.label,
     fontSize: 11,
-    color: urTheme.colors.parchment,
+    color: urTextColors.captionOnScene,
     marginBottom: urTheme.spacing.xs,
     textAlign: 'center',
   },
   title: {
-    ...urTypography.title,
-    color: urTheme.colors.ivory,
+    ...urTextVariants.displayTitle,
+    color: urTextColors.titleOnScene,
     textAlign: 'center',
     fontSize: 34,
     lineHeight: 40,
   },
   subtitle: {
-    color: 'rgba(239, 224, 198, 0.82)',
+    color: 'rgba(230, 211, 163, 0.84)',
     textAlign: 'center',
     lineHeight: 22,
     marginTop: urTheme.spacing.sm,
     marginBottom: urTheme.spacing.lg,
+    ...urTextVariants.body,
   },
   inputSection: {
     gap: urTheme.spacing.xs,
@@ -228,15 +236,15 @@ const styles = StyleSheet.create({
   },
   label: {
     ...urTypography.label,
-    color: urTheme.colors.parchment,
+    color: urTextColors.captionOnScene,
     fontSize: 12,
   },
   input: {
     borderRadius: urTheme.radii.md,
     borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.42)',
+    borderColor: urPanelColors.darkBorderStrong,
     backgroundColor: 'rgba(8, 11, 15, 0.76)',
-    color: urTheme.colors.ivory,
+    color: urTextColors.titleOnScene,
     paddingHorizontal: urTheme.spacing.md,
     paddingVertical: urTheme.spacing.sm + 2,
     fontSize: 18,
@@ -246,13 +254,15 @@ const styles = StyleSheet.create({
     borderColor: '#F6AAA2',
   },
   helperText: {
-    color: 'rgba(239, 224, 198, 0.66)',
+    color: 'rgba(230, 211, 163, 0.72)',
     lineHeight: 20,
+    ...urTextVariants.body,
   },
   metaText: {
-    color: 'rgba(239, 224, 198, 0.66)',
+    color: 'rgba(230, 211, 163, 0.72)',
     fontSize: 12,
     lineHeight: 18,
+    ...urTextVariants.body,
   },
   errorText: {
     color: '#F6AAA2',

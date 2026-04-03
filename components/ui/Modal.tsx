@@ -1,4 +1,10 @@
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import {
+  urPanelColors,
+  urTextColors,
+  urTextVariants,
+  urTheme,
+  urTextures,
+} from '@/constants/urTheme';
 import { boxShadow } from '@/constants/styleEffects';
 import React from 'react';
 import {
@@ -11,6 +17,10 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import {
+  HOME_FREDOKA_FONT_FAMILY,
+  HOME_SUPERCELL_FONT_FAMILY,
+} from '@/src/home/homeTheme';
 import { Button } from './Button';
 
 interface ModalProps {
@@ -23,6 +33,108 @@ interface ModalProps {
   children?: React.ReactNode;
   maxWidth?: number;
 }
+
+type MessageBlock =
+  | { type: 'paragraph'; text: string }
+  | { type: 'bullets'; items: string[] };
+
+const BULLET_PREFIX = /^[•*-]\s+/;
+
+const buildMessageBlocks = (message: string): MessageBlock[] => {
+  const blocks: MessageBlock[] = [];
+  const paragraphLines: string[] = [];
+  const bulletItems: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraphLines.length === 0) {
+      return;
+    }
+
+    blocks.push({ type: 'paragraph', text: paragraphLines.join(' ').trim() });
+    paragraphLines.length = 0;
+  };
+
+  const flushBullets = () => {
+    if (bulletItems.length === 0) {
+      return;
+    }
+
+    blocks.push({ type: 'bullets', items: [...bulletItems] });
+    bulletItems.length = 0;
+  };
+
+  for (const line of message.split('\n')) {
+    const trimmedLine = line.trim();
+
+    if (trimmedLine.length === 0) {
+      flushParagraph();
+      flushBullets();
+      continue;
+    }
+
+    if (BULLET_PREFIX.test(trimmedLine)) {
+      flushParagraph();
+      bulletItems.push(trimmedLine.replace(BULLET_PREFIX, '').trim());
+      continue;
+    }
+
+    flushBullets();
+    paragraphLines.push(trimmedLine);
+  }
+
+  flushParagraph();
+  flushBullets();
+
+  if (blocks.length === 0) {
+    const trimmedMessage = message.trim();
+    return trimmedMessage.length > 0 ? [{ type: 'paragraph', text: trimmedMessage }] : [];
+  }
+
+  return blocks;
+};
+
+const renderMessageBlocks = (message: string) => {
+  const blocks = buildMessageBlocks(message);
+
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.messageWrap}>
+      {blocks.map((block, blockIndex) => {
+        if (block.type === 'paragraph') {
+          return (
+            <Text
+              key={`paragraph-${blockIndex}`}
+              style={[styles.messageText, blockIndex > 0 && styles.messageBlockSpacing]}
+            >
+              {block.text}
+            </Text>
+          );
+        }
+
+        return (
+          <View
+            key={`bullets-${blockIndex}`}
+            testID="shared-modal-bullet-list"
+            style={[styles.bulletList, blockIndex > 0 && styles.messageBlockSpacing]}
+          >
+            {block.items.map((item, itemIndex) => (
+              <View
+                key={`${blockIndex}-${itemIndex}`}
+                style={[styles.bulletRow, itemIndex > 0 && styles.bulletRowSpacing]}
+              >
+                <Text style={styles.bulletGlyph}>•</Text>
+                <Text style={styles.bulletText}>{item}</Text>
+              </View>
+            ))}
+          </View>
+        );
+      })}
+    </View>
+  );
+};
 
 export const Modal: React.FC<ModalProps> = ({
   visible,
@@ -59,7 +171,7 @@ export const Modal: React.FC<ModalProps> = ({
         >
           <View style={styles.contentStack}>
             <Text style={styles.title}>{title}</Text>
-            {message ? <Text style={styles.message}>{message}</Text> : null}
+            {message ? renderMessageBlocks(message) : null}
             {children}
           </View>
         </ScrollView>
@@ -115,9 +227,9 @@ const styles = StyleSheet.create({
     maxWidth: 380,
     borderRadius: urTheme.radii.lg,
     overflow: 'hidden',
-    backgroundColor: '#3B2416',
+    backgroundColor: urTheme.colors.tableWalnut,
     borderWidth: 1.5,
-    borderColor: 'rgba(217, 164, 65, 0.7)',
+    borderColor: urPanelColors.darkBorderStrong,
     padding: urTheme.spacing.lg,
     alignItems: 'center',
     ...boxShadow({
@@ -147,28 +259,65 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '40%',
-    backgroundColor: 'rgba(255, 219, 164, 0.16)',
+    backgroundColor: urPanelColors.topGlow,
   },
   border: {
     ...StyleSheet.absoluteFillObject,
     margin: urTheme.spacing.xs,
     borderRadius: urTheme.radii.md,
     borderWidth: 1,
-    borderColor: 'rgba(252, 225, 177, 0.33)',
+    borderColor: urPanelColors.darkBorder,
   },
   title: {
-    ...urTypography.title,
-    color: urTheme.colors.parchment,
+    ...urTextVariants.sectionTitle,
+    color: urTextColors.titleOnScene,
+    fontFamily: HOME_SUPERCELL_FONT_FAMILY,
     fontSize: 30,
     textAlign: 'center',
     marginBottom: urTheme.spacing.sm,
   },
-  message: {
-    color: 'rgba(247, 229, 203, 0.92)',
+  messageWrap: {
+    alignSelf: 'stretch',
+    marginBottom: urTheme.spacing.lg,
+  },
+  messageText: {
+    color: 'rgba(230, 211, 163, 0.92)',
     textAlign: 'center',
     fontSize: 15,
     lineHeight: 21,
-    marginBottom: urTheme.spacing.lg,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
+    ...urTextVariants.body,
+  },
+  messageBlockSpacing: {
+    marginTop: urTheme.spacing.sm,
+  },
+  bulletList: {
+    alignSelf: 'stretch',
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  bulletRowSpacing: {
+    marginTop: urTheme.spacing.xs,
+  },
+  bulletGlyph: {
+    width: 18,
+    color: 'rgba(230, 211, 163, 0.92)',
+    textAlign: 'center',
+    fontSize: 15,
+    lineHeight: 21,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
+    ...urTextVariants.body,
+  },
+  bulletText: {
+    flex: 1,
+    color: 'rgba(230, 211, 163, 0.92)',
+    textAlign: 'left',
+    fontSize: 15,
+    lineHeight: 21,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
+    ...urTextVariants.body,
   },
   contentScroll: {
     width: '100%',

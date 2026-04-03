@@ -1,5 +1,7 @@
 import {
+  MATCH_CONFIGS,
   MATCH_MODE_SELECTION_OPTIONS,
+  isMatchModeId,
   type MatchModeId,
 } from '../../logic/matchConfigs'
 
@@ -24,10 +26,22 @@ export function getTournamentStructureLabel(value: string | null | undefined) {
     return match.label
   }
 
+  if (value && isMatchModeId(value)) {
+    return MATCH_CONFIGS[value].displayName
+  }
+
   return value?.trim() || 'Quick Play'
 }
 
 export function getTournamentStructureDescription(value: string | null | undefined) {
   const match = TOURNAMENT_STRUCTURE_OPTIONS.find((option) => option.value === value)
-  return match?.description ?? 'Classic seven-piece rules.'
+  if (match) {
+    return match.description
+  }
+
+  if (value && isMatchModeId(value)) {
+    return MATCH_CONFIGS[value].selectionSubtitle ?? MATCH_CONFIGS[value].displayName
+  }
+
+  return 'Classic seven-piece rules.'
 }

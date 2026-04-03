@@ -17,12 +17,27 @@ jest.mock('@/src/tournaments/useTournamentList', () => ({
 }));
 
 jest.mock('expo-router', () => ({
+  Stack: {
+    Screen: () => null,
+  },
   useLocalSearchParams: () => ({ mode: 'online' }),
   useRouter: () => ({
+    back: jest.fn(),
     replace: mockReplace,
     push: mockPush,
   }),
 }));
+
+jest.mock('expo-font', () => ({
+  useFonts: () => [true],
+}));
+
+jest.mock('@expo/vector-icons/MaterialIcons', () => {
+  const React = jest.requireActual('react');
+  const { Text } = jest.requireActual('react-native');
+
+  return ({ name }: { name: string }) => <Text>{name}</Text>;
+});
 
 jest.mock('@/components/ui/MobileBackground', () => ({
   MobileBackground: () => null,
@@ -32,6 +47,15 @@ jest.mock('@/components/ui/MobileBackground', () => ({
 jest.mock('@/components/ui/WideScreenBackground', () => ({
   MIN_WIDE_WEB_BACKGROUND_WIDTH: 768,
   WideScreenBackground: () => null,
+}));
+
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  }),
 }));
 
 jest.mock('@/components/ui/Button', () => ({
@@ -123,7 +147,7 @@ describe('Lobby private game join input', () => {
     const view = render(<Lobby />);
 
     const input = view.getByPlaceholderText('Enter code');
-    const joinButton = view.getByText('Join Private Game');
+    const joinButton = view.getByText('Join Game');
 
     fireEvent.press(joinButton);
 
@@ -151,12 +175,32 @@ describe('Lobby private game join input', () => {
   it('renders featured tournaments above the existing matchmaking cards', () => {
     const view = render(<Lobby />);
 
-    expect(view.getByText('Featured Tournaments')).toBeTruthy();
+    expect(view.getByLabelText('See all tournaments')).toBeTruthy();
     expect(view.getByText('Spring Open')).toBeTruthy();
     expect(view.getAllByText('Find Opponent').length).toBeGreaterThan(0);
     expect(view.getByText('Create Private Game')).toBeTruthy();
     expect(view.getByText('Capture')).toBeTruthy();
-    expect(view.getByText('Enter Private Game Code')).toBeTruthy();
+    expect(view.getByText('Enter Private Code')).toBeTruthy();
+  });
+
+  it('renders the tournaments button inside the empty featured state card', () => {
+    mockUseTournamentList.mockReturnValue({
+      tournaments: [],
+      isLoading: false,
+      errorMessage: null,
+      joinTournament: jest.fn(),
+      launchMatch: jest.fn(),
+      joiningRunId: null,
+      launchingRunId: null,
+    });
+
+    const view = render(<Lobby />);
+
+    expect(view.getByText('No featured tournaments yet')).toBeTruthy();
+    expect(
+      view.getByText('Public tournament runs will appear here as soon as operators open them for play.'),
+    ).toBeTruthy();
+    expect(view.getByLabelText('See all tournaments')).toBeTruthy();
   });
 
   it('shows a waiting state for joined tournaments until the lobby fills', () => {
@@ -209,6 +253,6 @@ describe('Lobby private game join input', () => {
 
     const view = render(<Lobby />);
 
-    expect(view.getByText('Waiting for lobby to fill')).toBeTruthy();
+    expect(view.getAllByText('Waiting for lobby to fill').length).toBeGreaterThan(0);
   });
 });

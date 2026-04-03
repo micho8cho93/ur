@@ -2,6 +2,9 @@ import React from 'react';
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 import { HomeStatCard } from '@/components/home/HomeStatCard';
+import { ProgressionRankIcon } from '@/components/progression/ProgressionRankIcon';
+import { urRoyalButtonColors, urTextColors, urTextVariants } from '@/constants/urTheme';
+import { useAuth } from '@/src/auth/useAuth';
 import { useProgression } from '@/src/progression/useProgression';
 import {
   buildDisplayedProgressionSnapshot,
@@ -25,10 +28,16 @@ export const ProgressionSummaryCard: React.FC<ProgressionSummaryCardProps> = ({
   fontLoaded = false,
   onOpenRank,
 }) => {
+  const { user } = useAuth();
   const { progression, errorMessage, isLoading } = useProgression();
   const isCompact = layoutVariant === 'compact';
   const fontFamily = resolveHomeFredokaFontFamily(fontLoaded);
-  const snapshot = progression ? buildDisplayedProgressionSnapshot(progression.totalXp) : null;
+  const snapshot =
+    user?.provider === 'guest'
+      ? buildDisplayedProgressionSnapshot(0)
+      : progression
+        ? buildDisplayedProgressionSnapshot(progression.totalXp)
+        : null;
   const progressWidth = `${Math.max(0, Math.min(100, snapshot?.progressPercent ?? 0))}%` as ViewStyle['width'];
 
   let statusLabel = 'Start your climb';
@@ -54,24 +63,35 @@ export const ProgressionSummaryCard: React.FC<ProgressionSummaryCardProps> = ({
       fontLoaded={fontLoaded}
       style={style}
       contentContainerStyle={isCompact ? styles.contentCompact : styles.contentDesktop}
+      ctaStyle={isCompact ? styles.progressionCtaCompact : styles.progressionCtaDesktop}
     >
       {snapshot ? (
         <View
           accessibilityLabel={`XP progress ${Math.round(snapshot.progressPercent)} percent, rank ${snapshot.currentRank}`}
           style={styles.metricColumn}
         >
-          <Text
-            numberOfLines={2}
-            adjustsFontSizeToFit
-            minimumFontScale={0.72}
-            style={[
-              styles.rankLabel,
-              isCompact ? styles.rankLabelCompact : styles.rankLabelDesktop,
-              { fontFamily },
-            ]}
-          >
-            {snapshot.currentRank}
-          </Text>
+          <View style={styles.rankRow}>
+            <Text
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
+              style={[
+                styles.rankLabel,
+                isCompact ? styles.rankLabelCompact : styles.rankLabelDesktop,
+                { fontFamily },
+              ]}
+            >
+              {snapshot.currentRank}
+            </Text>
+
+            <ProgressionRankIcon
+              title={snapshot.currentRank}
+              size={isCompact ? 54 : 60}
+              accessibilityLabel={`Current progression rank badge: ${snapshot.currentRank}`}
+              testID="progression-summary-rank-icon"
+              style={styles.rankIcon}
+            />
+          </View>
 
           <View style={styles.trackShell}>
             <View style={[styles.trackFill, { width: progressWidth }]}>
@@ -125,31 +145,53 @@ export const ProgressionSummaryCard: React.FC<ProgressionSummaryCardProps> = ({
 
 const styles = StyleSheet.create({
   contentDesktop: {
-    paddingTop: 10,
-    paddingBottom: 16,
+    justifyContent: 'flex-start',
+    paddingTop: 4,
+    paddingBottom: 4,
   },
   contentCompact: {
-    paddingTop: 8,
-    paddingBottom: 14,
+    justifyContent: 'flex-start',
+    paddingTop: 2,
+    paddingBottom: 2,
+  },
+  progressionCtaDesktop: {
+    top: -6,
+  },
+  progressionCtaCompact: {
+    top: -16,
   },
   metricColumn: {
     width: '100%',
     alignItems: 'center',
-    gap: 12,
+    gap: 6,
+  },
+  rankRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  rankIcon: {
+    flexShrink: 0,
   },
   rankLabel: {
-    textAlign: 'center',
-    color: '#533112',
+    textAlign: 'right',
+    color: urTextColors.titleOnPanel,
+    ...urTextVariants.cardTitle,
+    flexShrink: 1,
   },
   rankLabelDesktop: {
     fontSize: 21,
     lineHeight: 24,
-    minHeight: 48,
+    minHeight: 0,
+    maxWidth: '58%',
   },
   rankLabelCompact: {
     fontSize: 20,
     lineHeight: 23,
-    minHeight: 44,
+    minHeight: 0,
+    maxWidth: '56%',
   },
   trackShell: {
     width: '100%',
@@ -158,12 +200,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: 'rgba(123, 79, 38, 0.22)',
     borderWidth: 1,
-    borderColor: 'rgba(117, 72, 26, 0.28)',
+    borderColor: 'rgba(184, 134, 11, 0.26)',
+    marginTop: -2,
   },
   trackFill: {
     height: '100%',
     borderRadius: 999,
-    backgroundColor: '#D5A72F',
+    backgroundColor: urRoyalButtonColors.mainFace,
     overflow: 'hidden',
   },
   trackGloss: {
@@ -172,23 +215,27 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '56%',
-    backgroundColor: 'rgba(255, 244, 210, 0.34)',
+    backgroundColor: urRoyalButtonColors.capGloss,
   },
   xpValue: {
     textAlign: 'center',
-    color: '#7D3F12',
+    color: urTextColors.titleOnPanel,
+    ...urTextVariants.cardTitle,
   },
   xpValueDesktop: {
     fontSize: 24,
     lineHeight: 28,
+    marginTop: -2,
   },
   xpValueCompact: {
     fontSize: 23,
     lineHeight: 27,
+    marginTop: -2,
   },
   helperLabel: {
     textAlign: 'center',
-    color: '#76512E',
+    color: urTextColors.bodyMutedOnPanel,
+    ...urTextVariants.body,
   },
   helperLabelDesktop: {
     fontSize: 13,
@@ -208,7 +255,8 @@ const styles = StyleSheet.create({
   },
   stateLabel: {
     textAlign: 'center',
-    color: '#6C411E',
+    color: urTextColors.titleOnPanel,
+    ...urTextVariants.cardTitle,
   },
   stateLabelDesktop: {
     fontSize: 20,

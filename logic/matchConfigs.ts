@@ -217,12 +217,10 @@ const EXTENDED_PATH_MATCH_CONFIG: MatchConfig = {
 };
 
 const GAME_MODE_MATCH_CONFIGS: readonly MatchConfig[] = [
-  PURE_LUCK_MATCH_CONFIG,
   RACE_MATCH_CONFIG,
+  CAPTURE_MATCH_CONFIG,
   FINKEL_RULES_MATCH_CONFIG,
   LOCAL_PVP_MATCH_CONFIG,
-  CAPTURE_MATCH_CONFIG,
-  EXTENDED_PATH_MATCH_CONFIG,
 ] as const;
 
 export const MATCH_CONFIGS: Readonly<Record<MatchModeId, MatchConfig>> = {
@@ -240,15 +238,13 @@ export const DEFAULT_MATCH_CONFIG = STANDARD_MATCH_CONFIG;
 export const GAME_MODE_CONFIGS = GAME_MODE_MATCH_CONFIGS;
 const MATCH_MODE_SELECTION_IDS: readonly MatchModeId[] = [
   'standard',
-  'gameMode_1_piece',
   'gameMode_3_pieces',
+  'gameMode_capture',
   'gameMode_finkel_rules',
   'gameMode_pvp',
-  'gameMode_capture',
-  'gameMode_full_path',
 ] as const;
 
-export const MATCH_MODE_SELECTION_OPTIONS: ReadonlyArray<MatchModeOption> = MATCH_MODE_SELECTION_IDS.map((modeId) => {
+export const MATCH_MODE_SELECTION_OPTIONS: readonly MatchModeOption[] = MATCH_MODE_SELECTION_IDS.map((modeId) => {
   const config = MATCH_CONFIGS[modeId];
 
   return {
@@ -259,14 +255,12 @@ export const MATCH_MODE_SELECTION_OPTIONS: ReadonlyArray<MatchModeOption> = MATC
 });
 
 const PRIVATE_MATCH_SELECTION_IDS: readonly MatchModeId[] = [
-  'gameMode_1_piece',
   'gameMode_3_pieces',
-  'gameMode_finkel_rules',
   'gameMode_capture',
-  'gameMode_full_path',
+  'gameMode_finkel_rules',
 ] as const;
 
-export const PRIVATE_MATCH_OPTIONS: ReadonlyArray<PrivateMatchOption> = PRIVATE_MATCH_SELECTION_IDS.map((modeId) => {
+export const PRIVATE_MATCH_OPTIONS: readonly PrivateMatchOption[] = PRIVATE_MATCH_SELECTION_IDS.map((modeId) => {
   const config = MATCH_CONFIGS[modeId];
 
   return {
@@ -278,9 +272,6 @@ export const PRIVATE_MATCH_OPTIONS: ReadonlyArray<PrivateMatchOption> = PRIVATE_
 
 export const getPracticeModeRewardLabel = (config: MatchConfig): string | null =>
   config.allowsXp ? `Practice Mode Win Reward: +${getXpAwardAmount(config.offlineWinRewardSource)} XP` : null;
-
-export const GAME_MODE_SCREEN_NOTE =
-  'Game Modes stay fully offline. Most variants seat you against a local bot with reduced signed-in XP rewards, while PvP is a same-device two-player ruleset with no bot turns or online rewards.';
 
 export const isMatchModeId = (value: unknown): value is MatchModeId =>
   typeof value === 'string' && value in MATCH_CONFIGS;

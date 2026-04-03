@@ -1,5 +1,10 @@
 import { HomeActionButton } from '@/components/home/HomeActionButton';
 import {
+  urPanelColors,
+  urTextColors,
+  urTextVariants,
+} from '@/constants/urTheme';
+import {
   resolveHomeFredokaFontFamily,
   resolveHomeMagicFontFamily,
 } from '@/src/home/homeTheme';
@@ -36,24 +41,24 @@ type TournamentCardProps = {
 
 const chipToneStyles = {
   neutral: {
-    backgroundColor: 'rgba(97, 70, 33, 0.13)',
-    borderColor: 'rgba(123, 95, 47, 0.22)',
-    color: '#5A3E1C',
+    backgroundColor: 'rgba(255, 239, 196, 0.68)',
+    borderColor: 'rgba(184, 134, 11, 0.24)',
+    color: '#6A4822',
   },
   info: {
-    backgroundColor: 'rgba(66, 118, 196, 0.16)',
-    borderColor: 'rgba(97, 153, 232, 0.28)',
-    color: '#234C79',
+    backgroundColor: 'rgba(45, 156, 219, 0.16)',
+    borderColor: 'rgba(45, 156, 219, 0.26)',
+    color: '#1E5E84',
   },
   success: {
-    backgroundColor: 'rgba(94, 150, 66, 0.15)',
-    borderColor: 'rgba(107, 173, 74, 0.28)',
-    color: '#375B22',
+    backgroundColor: 'rgba(127, 191, 62, 0.16)',
+    borderColor: 'rgba(127, 191, 62, 0.26)',
+    color: '#486A21',
   },
   warning: {
-    backgroundColor: 'rgba(181, 116, 31, 0.14)',
-    borderColor: 'rgba(193, 130, 49, 0.28)',
-    color: '#6B4312',
+    backgroundColor: 'rgba(244, 197, 66, 0.18)',
+    borderColor: 'rgba(184, 134, 11, 0.26)',
+    color: '#7A4E16',
   },
 } as const;
 
@@ -300,20 +305,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   kicker: {
-    color: 'rgba(107, 76, 30, 0.92)',
+    color: urTextColors.captionOnPanel,
     fontSize: 12,
     lineHeight: 15,
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
+    ...urTextVariants.caption,
     textAlign: 'center',
     marginBottom: 6,
   },
   title: {
-    color: '#3D230D',
+    color: urTextColors.titleOnPanel,
     textAlign: 'center',
-    textShadowColor: 'rgba(255, 245, 220, 0.34)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
+    ...urTextVariants.cardTitle,
     width: '100%',
   },
   titleDesktop: {
@@ -325,8 +327,9 @@ const styles = StyleSheet.create({
     lineHeight: 27,
   },
   description: {
-    color: 'rgba(70, 49, 23, 0.92)',
+    color: urTextColors.bodyOnPanel,
     textAlign: 'center',
+    ...urTextVariants.body,
     maxWidth: 740,
   },
   descriptionDesktop: {
@@ -353,25 +356,25 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(123, 95, 47, 0.18)',
-    backgroundColor: 'rgba(255, 249, 235, 0.52)',
+    borderColor: urPanelColors.parchmentBorder,
+    backgroundColor: urPanelColors.parchmentSurface,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
   metaLabel: {
-    color: 'rgba(115, 83, 35, 0.88)',
+    color: urTextColors.captionOnPanel,
     fontSize: 10,
     lineHeight: 12,
     textAlign: 'center',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    ...urTextVariants.caption,
     marginBottom: 3,
   },
   metaValue: {
-    color: '#49301A',
+    color: urTextColors.bodyOnPanel,
     fontSize: 13,
     lineHeight: 16,
     textAlign: 'center',
+    ...urTextVariants.body,
   },
   summaryStack: {
     width: '100%',
@@ -379,20 +382,21 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   summaryLine: {
-    color: 'rgba(73, 48, 26, 0.92)',
+    color: urTextColors.bodyOnPanel,
     fontSize: 13,
     lineHeight: 17,
     textAlign: 'center',
+    ...urTextVariants.body,
   },
   summaryLineGold: {
-    color: '#7A571F',
+    color: urTextColors.captionOnPanel,
   },
   countdownPanel: {
     minWidth: 210,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(187, 136, 56, 0.26)',
-    backgroundColor: 'rgba(255, 247, 225, 0.62)',
+    borderColor: urPanelColors.parchmentBorder,
+    backgroundColor: urPanelColors.parchmentSurfaceStrong,
     paddingHorizontal: 18,
     paddingVertical: 10,
     alignItems: 'center',
@@ -400,18 +404,18 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   countdownLabel: {
-    color: '#7A571F',
+    color: urTextColors.captionOnPanel,
     fontSize: 11,
     lineHeight: 13,
     textAlign: 'center',
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
+    ...urTextVariants.caption,
   },
   countdownValue: {
-    color: '#3B2412',
+    color: urTextColors.titleOnPanel,
     fontSize: 22,
     lineHeight: 24,
     textAlign: 'center',
+    ...urTextVariants.cardTitle,
   },
   buttonRow: {
     width: '100%',

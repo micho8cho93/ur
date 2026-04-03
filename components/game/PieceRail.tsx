@@ -73,6 +73,7 @@ interface PieceRailProps {
   color: 'light' | 'dark';
   tokenVariant?: 'light' | 'dark' | 'reserve';
   orientation?: 'horizontal' | 'vertical';
+  showTrayArt?: boolean;
   piecePixelSize?: number;
   trayScale?: number;
   reserveCount: number;
@@ -195,6 +196,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   color,
   tokenVariant,
   orientation = 'horizontal',
+  showTrayArt = true,
   piecePixelSize,
   trayScale = 1,
   reserveCount,
@@ -284,7 +286,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
   );
 
   const horizontalTrayInteriorBounds = useMemo(() => {
-    if (isVertical || railSize.width <= 0 || railSize.height <= 0) {
+    if (isVertical || !showTrayArt || railSize.width <= 0 || railSize.height <= 0) {
       return null;
     }
 
@@ -309,7 +311,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
       width: Math.max(reservePieceSize, right - left),
       height: Math.max(reservePieceSize, bottom - top),
     };
-  }, [isVertical, railSize.height, railSize.width, reservePieceSize, trayArtScale]);
+  }, [isVertical, railSize.height, railSize.width, reservePieceSize, showTrayArt, trayArtScale]);
   const stackMainAxisSize = isVertical
     ? railMainAxisSize
     : horizontalTrayInteriorBounds?.width ?? railMainAxisSize;
@@ -419,7 +421,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
     // Horizontal trays begin with a provisional fallback stack position before the tray art
     // bounds are resolved. Only report coordinates once the final tray-well geometry exists so
     // intro animations land on the same coordinates the reserve pieces will actually occupy.
-    if (!isVertical && !horizontalTrayInteriorBounds) {
+    if (!isVertical && showTrayArt && !horizontalTrayInteriorBounds) {
       return;
     }
 
@@ -460,7 +462,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
         });
       });
     });
-  }, [color, horizontalTrayInteriorBounds, isVertical, onReserveSlotsLayout, shownCount, visibleSlotIndices]);
+  }, [color, horizontalTrayInteriorBounds, isVertical, onReserveSlotsLayout, showTrayArt, shownCount, visibleSlotIndices]);
 
   const reportRailFrame = useCallback(() => {
     if (!onRailFrameLayout || !railRef.current) {
@@ -521,8 +523,8 @@ export const PieceRail: React.FC<PieceRailProps> = ({
           {
             minHeight: railMinHeight,
             paddingHorizontal: isVertical ? 0 : railHorizontalPadding,
-            paddingTop: isVertical ? railHorizontalPadding : 0,
-            paddingBottom: isVertical ? railHorizontalPadding : horizontalBottomInset,
+            paddingTop: isVertical ? (showTrayArt ? railHorizontalPadding : 0) : 0,
+            paddingBottom: isVertical ? (showTrayArt ? railHorizontalPadding : 0) : horizontalBottomInset,
             justifyContent: isVertical ? 'center' : 'flex-end',
           },
         ]}
@@ -545,36 +547,33 @@ export const PieceRail: React.FC<PieceRailProps> = ({
           reportRailFrame();
         }}
       >
-        {/*
-          Reserve tray artwork is rendered as a background PNG.
-          Horizontal reserve stacks align to a safe lane derived from the tray art
-          so pieces stay inside the recessed tray well instead of drifting onto the rim.
-        */}
-        <View
-          pointerEvents="none"
-          style={[
-            styles.trayArtLayer,
-            isVertical && {
-              transform: [{ translateY: verticalTrayOffsetY }],
-            },
-          ]}
-        >
-          <Image
-            source={TRAY_ASSETS[color]}
-            resizeMode="contain"
+        {showTrayArt ? (
+          <View
+            pointerEvents="none"
             style={[
-              styles.trayArt,
-              {
-                transform: [
-                  ...(isVertical ? [{ rotate: '90deg' as const }] : []),
-                  { translateX: TRAY_ART_FIT.offsetX },
-                  { translateY: TRAY_ART_FIT.offsetY },
-                  { scale: trayArtScale },
-                ],
+              styles.trayArtLayer,
+              isVertical && {
+                transform: [{ translateY: verticalTrayOffsetY }],
               },
             ]}
-          />
-        </View>
+          >
+            <Image
+              source={TRAY_ASSETS[color]}
+              resizeMode="contain"
+              style={[
+                styles.trayArt,
+                {
+                  transform: [
+                    ...(isVertical ? [{ rotate: '90deg' as const }] : []),
+                    { translateX: TRAY_ART_FIT.offsetX },
+                    { translateY: TRAY_ART_FIT.offsetY },
+                    { scale: trayArtScale },
+                  ],
+                },
+              ]}
+            />
+          </View>
+        ) : null}
         <Animated.View style={[styles.activeGlow, glowStyle]} />
 
         <View
@@ -585,7 +584,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
             isVertical
               ? {
                 paddingLeft: isMobileWebVerticalRail ? MOBILE_WEB_VERTICAL_STACK_SHIFT_X : 0,
-                paddingVertical: pieceLayout.inset,
+                paddingVertical: showTrayArt ? pieceLayout.inset : 0,
                 justifyContent: 'flex-start',
               }
               : horizontalTrayInteriorBounds

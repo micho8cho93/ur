@@ -1,6 +1,17 @@
 import { Button } from '@/components/ui/Button';
 import { boxShadow } from '@/constants/styleEffects';
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import {
+  urPanelColors,
+  urTextColors,
+  urTextVariants,
+  urTheme,
+  urTextures,
+  urTypography,
+} from '@/constants/urTheme';
+import {
+  HOME_FREDOKA_FONT_FAMILY,
+  HOME_SUPERCELL_FONT_FAMILY,
+} from '@/src/home/homeTheme';
 import React from 'react';
 import { Image, Modal as RNModal, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
@@ -94,9 +105,9 @@ const styles = StyleSheet.create({
     maxWidth: 440,
     borderRadius: urTheme.radii.lg,
     overflow: 'hidden',
-    backgroundColor: '#3B2416',
+    backgroundColor: urTheme.colors.tableWalnut,
     borderWidth: 1.5,
-    borderColor: 'rgba(217, 164, 65, 0.7)',
+    borderColor: urPanelColors.darkBorderStrong,
     padding: urTheme.spacing.lg,
     gap: urTheme.spacing.sm,
     ...boxShadow({
@@ -125,18 +136,19 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '38%',
-    backgroundColor: 'rgba(255, 219, 164, 0.14)',
+    backgroundColor: urPanelColors.topGlow,
   },
   border: {
     ...StyleSheet.absoluteFillObject,
     margin: urTheme.spacing.xs,
     borderRadius: urTheme.radii.md,
     borderWidth: 1,
-    borderColor: 'rgba(252, 225, 177, 0.28)',
+    borderColor: urPanelColors.darkBorder,
   },
   eyebrow: {
     ...urTypography.label,
-    color: '#F3D9A6',
+    color: urTextColors.captionOnScene,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
     fontSize: 11,
   },
   contentScroll: {
@@ -148,15 +160,18 @@ const styles = StyleSheet.create({
     gap: urTheme.spacing.sm,
   },
   title: {
-    ...urTypography.title,
-    color: urTheme.colors.parchment,
+    ...urTextVariants.sectionTitle,
+    color: urTextColors.titleOnScene,
+    fontFamily: HOME_SUPERCELL_FONT_FAMILY,
     fontSize: 26,
     lineHeight: 32,
   },
   body: {
-    color: 'rgba(247, 229, 203, 0.94)',
+    color: 'rgba(230, 211, 163, 0.94)',
     fontSize: 15,
     lineHeight: 22,
     marginBottom: urTheme.spacing.xs,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
+    ...urTextVariants.body,
   },
 });

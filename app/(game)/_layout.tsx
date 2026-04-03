@@ -1,5 +1,6 @@
 import { ProtectedRoute } from '@/src/screens/ProtectedRoute';
 import { urTheme } from '@/constants/urTheme';
+import { HOME_FREDOKA_FONT_FAMILY } from '@/src/home/homeTheme';
 import { Stack } from 'expo-router';
 
 export default function GameLayout() {
@@ -13,7 +14,7 @@ export default function GameLayout() {
           headerTintColor: urTheme.colors.parchment,
           headerShadowVisible: false,
           headerTitleStyle: {
-            fontFamily: 'serif',
+            fontFamily: HOME_FREDOKA_FONT_FAMILY,
             fontWeight: '700',
           },
           contentStyle: { backgroundColor: 'transparent' },

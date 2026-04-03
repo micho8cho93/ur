@@ -10,8 +10,9 @@ import {
   ViewStyle,
 } from 'react-native';
 
-import { urTheme } from '@/constants/urTheme';
-import { resolveHomeMagicFontFamily } from '@/src/home/homeTheme';
+import { urTextVariants, urTheme } from '@/constants/urTheme';
+import { resolveHomeButtonFontFamily } from '@/src/home/homeTheme';
+import { RoyalPrimaryButtonFrame } from '@/components/ui/RoyalPrimaryButtonFrame';
 
 type HomeActionButtonTone = 'teal' | 'gold' | 'stone' | 'green' | 'ember';
 type HomeActionButtonSize = 'regular' | 'small';
@@ -54,44 +55,44 @@ type HomeActionWebStyle = ViewStyle & {
 
 const TONES: Record<HomeActionButtonTone, ToneConfig> = {
   teal: {
-    lip: '#0A7B86',
-    face: '#18C7D8',
-    border: '#8CF4FB',
-    gloss: 'rgba(255, 255, 255, 0.22)',
-    text: '#F7FFFF',
-    accent: '#3C4FE0',
+    lip: '#1D5F72',
+    face: '#2D9CDB',
+    border: '#BCEBFF',
+    gloss: 'rgba(224, 247, 255, 0.28)',
+    text: urTheme.colors.ivory,
+    accent: 'rgba(45, 156, 219, 0.86)',
   },
   gold: {
-    lip: '#9D6615',
-    face: '#E2B038',
-    border: '#FFF2BF',
-    gloss: 'rgba(255, 248, 220, 0.24)',
-    text: '#FFFFFF',
-    accent: '#FFFFFF',
+    lip: '#A86D12',
+    face: urTheme.colors.gold,
+    border: urTheme.colors.goldBright,
+    gloss: 'rgba(255, 245, 197, 0.38)',
+    text: urTheme.colors.ivory,
+    accent: 'rgba(255, 226, 122, 0.72)',
   },
   stone: {
-    lip: '#40362D',
-    face: '#7E7A70',
-    border: '#E4CB8B',
-    gloss: 'rgba(255, 255, 255, 0.18)',
-    text: '#F8F0DE',
-    accent: '#B78C2B',
+    lip: '#6A4822',
+    face: '#C59450',
+    border: '#F4D58E',
+    gloss: 'rgba(255, 243, 196, 0.24)',
+    text: urTheme.colors.cedar,
+    accent: 'rgba(244, 197, 66, 0.62)',
   },
   green: {
-    lip: '#3B8B10',
-    face: '#73D300',
-    border: '#CCFF79',
-    gloss: 'rgba(255, 255, 255, 0.18)',
-    text: '#F8FFF0',
-    accent: '#5D9317',
+    lip: '#537622',
+    face: '#7FBF3E',
+    border: '#D9F2AA',
+    gloss: 'rgba(246, 255, 224, 0.24)',
+    text: urTheme.colors.ivory,
+    accent: 'rgba(181, 226, 103, 0.72)',
   },
   ember: {
-    lip: '#7A2D08',
-    face: '#D9771B',
+    lip: '#8A3D13',
+    face: urTheme.colors.ember,
     border: '#FFD18A',
-    gloss: 'rgba(255, 237, 193, 0.24)',
-    text: '#FFF7E8',
-    accent: '#A65010',
+    gloss: 'rgba(255, 234, 196, 0.28)',
+    text: urTheme.colors.ivory,
+    accent: 'rgba(255, 190, 106, 0.72)',
   },
 };
 
@@ -111,23 +112,23 @@ const getActionDefaultShadow = (accent: string) =>
   ({
     boxShadow: [
       {
-        color: 'rgba(45, 35, 66, 0.4)',
+        color: 'rgba(59, 38, 15, 0.38)',
         offsetX: 0,
-        offsetY: 2,
-        blurRadius: 4,
+        offsetY: 4,
+        blurRadius: 6,
         spreadDistance: 0,
       },
       {
-        color: 'rgba(45, 35, 66, 0.3)',
+        color: 'rgba(59, 38, 15, 0.24)',
         offsetX: 0,
-        offsetY: 7,
-        blurRadius: 13,
-        spreadDistance: -3,
+        offsetY: 10,
+        blurRadius: 14,
+        spreadDistance: -4,
       },
       {
         color: accent,
         offsetX: 0,
-        offsetY: -3,
+        offsetY: -2,
         blurRadius: 0,
         spreadDistance: 0,
         inset: true,
@@ -139,23 +140,23 @@ const getActionHoverShadow = (accent: string) =>
   ({
     boxShadow: [
       {
-        color: 'rgba(45, 35, 66, 0.4)',
+        color: 'rgba(59, 38, 15, 0.34)',
         offsetX: 0,
-        offsetY: 4,
-        blurRadius: 8,
+        offsetY: 6,
+        blurRadius: 10,
         spreadDistance: 0,
       },
       {
-        color: 'rgba(45, 35, 66, 0.3)',
+        color: 'rgba(59, 38, 15, 0.22)',
         offsetX: 0,
-        offsetY: 7,
-        blurRadius: 13,
-        spreadDistance: -3,
+        offsetY: 12,
+        blurRadius: 16,
+        spreadDistance: -4,
       },
       {
         color: accent,
         offsetX: 0,
-        offsetY: -3,
+        offsetY: -2,
         blurRadius: 0,
         spreadDistance: 0,
         inset: true,
@@ -169,8 +170,8 @@ const getActionActiveShadow = (accent: string) =>
       {
         color: accent,
         offsetX: 0,
-        offsetY: 3,
-        blurRadius: 7,
+        offsetY: 2,
+        blurRadius: 6,
         spreadDistance: 0,
         inset: true,
       },
@@ -239,9 +240,19 @@ export function HomeActionButton({
   style,
   accessibilityLabel,
 }: HomeActionButtonProps) {
-  const palette = TONES[tone];
-  const labelFontFamily = resolveHomeMagicFontFamily(fontLoaded);
   const isDisabled = disabled || loading;
+  const isRoyalTone = tone === 'gold';
+  const palette = isDisabled
+    ? {
+        lip: '#6B5A43',
+        face: '#9D8A6E',
+        border: 'rgba(255, 226, 122, 0.28)',
+        gloss: 'rgba(255, 248, 226, 0.16)',
+        text: 'rgba(255, 243, 196, 0.72)',
+        accent: 'rgba(255, 226, 122, 0.18)',
+      }
+    : TONES[tone];
+  const labelFontFamily = resolveHomeButtonFontFamily(fontLoaded);
 
   return (
     <Pressable
@@ -264,54 +275,109 @@ export function HomeActionButton({
         style,
       ]}
     >
-      {(state) => (
-        <View
-          style={[
-            styles.base,
-            getBaseInteractionStyle(state, palette.accent),
-            { backgroundColor: palette.lip },
-          ]}
-        >
-          <View style={[styles.face, { backgroundColor: palette.face, borderColor: palette.border }]}>
-            <View style={[styles.gloss, { backgroundColor: palette.gloss }]} />
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.label,
-                loading && styles.labelHidden,
-                compact ? styles.labelCompact : styles.labelRegular,
-                size === 'small' && styles.labelSmall,
-                {
-                  color: palette.text,
-                  fontFamily: labelFontFamily,
-                },
-              ]}
+      {(state) => {
+        if (isRoyalTone) {
+          return (
+            <RoyalPrimaryButtonFrame
+              pressed={state.pressed && !isDisabled}
+              hovered={state.hovered && !isDisabled}
+              focused={state.focused && !isDisabled}
+              disabled={isDisabled}
+              outerRadius={20}
+              innerRadius={18}
+              shellStyle={styles.baseRoyal}
+              bodyStyle={styles.faceRoyal}
+              contentStyle={styles.royalContent}
             >
-              {title}
-            </Text>
-            {loading ? (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="small" color={palette.text} />
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.label,
-                    styles.loadingLabel,
-                    compact ? styles.labelCompact : styles.labelRegular,
-                    size === 'small' && styles.labelSmall,
-                    {
-                      color: palette.text,
-                      fontFamily: labelFontFamily,
-                    },
-                  ]}
-                >
-                  {title}
-                </Text>
-              </View>
-            ) : null}
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.label,
+                  loading && styles.labelHidden,
+                  compact ? styles.labelCompact : styles.labelRegular,
+                  size === 'small' && styles.labelSmall,
+                  {
+                    color: palette.text,
+                    fontFamily: labelFontFamily,
+                  },
+                ]}
+              >
+                {title}
+              </Text>
+              {loading ? (
+                <View style={styles.loadingOverlay}>
+                  <ActivityIndicator size="small" color={palette.text} />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.label,
+                      styles.loadingLabel,
+                      compact ? styles.labelCompact : styles.labelRegular,
+                      size === 'small' && styles.labelSmall,
+                      {
+                        color: palette.text,
+                        fontFamily: labelFontFamily,
+                      },
+                    ]}
+                  >
+                    {title}
+                  </Text>
+                </View>
+              ) : null}
+            </RoyalPrimaryButtonFrame>
+          );
+        }
+
+        return (
+          <View
+            style={[
+              styles.base,
+              !isDisabled ? getBaseInteractionStyle(state, palette.accent) : styles.baseDisabled,
+              { backgroundColor: palette.lip },
+            ]}
+          >
+            <View style={[styles.face, { backgroundColor: palette.face, borderColor: palette.border }]}>
+              <View style={[styles.gloss, { backgroundColor: palette.gloss }]} />
+              <View style={styles.glossBottom} />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.label,
+                  loading && styles.labelHidden,
+                  compact ? styles.labelCompact : styles.labelRegular,
+                  size === 'small' && styles.labelSmall,
+                  {
+                    color: palette.text,
+                    fontFamily: labelFontFamily,
+                  },
+                ]}
+              >
+                {title}
+              </Text>
+              {loading ? (
+                <View style={styles.loadingOverlay}>
+                  <ActivityIndicator size="small" color={palette.text} />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.label,
+                      styles.loadingLabel,
+                      compact ? styles.labelCompact : styles.labelRegular,
+                      size === 'small' && styles.labelSmall,
+                      {
+                        color: palette.text,
+                        fontFamily: labelFontFamily,
+                      },
+                    ]}
+                  >
+                    {title}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           </View>
-        </View>
-      )}
+        );
+      }}
     </Pressable>
   );
 }
@@ -323,51 +389,80 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   regularHeight: {
-    height: 58,
+    height: 62,
   },
   compactHeight: {
-    height: 52,
+    height: 56,
   },
   smallHeight: {
-    height: 46,
+    height: 50,
   },
   smallCompactHeight: {
-    height: 40,
+    height: 44,
   },
   base: {
     width: '100%',
     height: '100%',
-    borderRadius: 18,
-    paddingBottom: 6,
+    borderRadius: 20,
+    paddingBottom: 7,
+  },
+  baseRoyal: {
+    width: '100%',
+    height: '100%',
+  },
+  baseDisabled: {
+    ...Platform.select<ViewStyle>({
+      web: {
+        boxShadow: [
+          {
+            color: 'rgba(59, 38, 15, 0.12)',
+            offsetX: 0,
+            offsetY: 5,
+            blurRadius: 8,
+            spreadDistance: -3,
+          },
+        ],
+      },
+      default: {},
+    }),
   },
   face: {
     flex: 1,
-    borderRadius: 16,
-    borderWidth: 2,
+    borderRadius: 18,
+    borderWidth: 1.8,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    paddingHorizontal: urTheme.spacing.md,
+    paddingHorizontal: urTheme.spacing.lg,
+  },
+  faceRoyal: {
+    flex: 1,
+    minHeight: 0,
   },
   gloss: {
     position: 'absolute',
     top: 0,
-    left: 3,
-    right: 3,
-    height: '58%',
-    borderRadius: 15,
+    left: 4,
+    right: 4,
+    height: '48%',
+    borderRadius: 17,
+  },
+  glossBottom: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '40%',
+    backgroundColor: 'rgba(59, 38, 15, 0.12)',
   },
   label: {
+    ...urTextVariants.buttonLabel,
     textAlign: 'center',
-    textShadowColor: 'rgba(57, 30, 12, 0.2)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
     width: '96%',
   },
   labelRegular: {
-    fontSize: 18,
-    lineHeight: 20,
-    letterSpacing: 0.2,
+    fontSize: 17,
+    lineHeight: 19,
   },
   labelCompact: {
     fontSize: 14,
@@ -385,6 +480,12 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: 'transparent',
   },
+  royalContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: urTheme.spacing.lg,
+  },
   loadingLabel: {
     width: 'auto',
   },
@@ -392,7 +493,7 @@ const styles = StyleSheet.create({
     opacity: 0,
   },
   pressed: {
-    transform: [{ translateY: 2 }],
+    transform: [{ translateY: 3 }],
   },
   hovered: {
     transform: [{ translateY: -2 }],

@@ -50,4 +50,20 @@ describe('Modal', () => {
     expect(screen.getByTestId('shared-modal-sheet')).toBeTruthy();
     expect(screen.getByTestId('shared-modal-scroll')).toBeTruthy();
   });
+
+  it('renders bullet copy as a dedicated list block', () => {
+    render(
+      <Modal
+        visible
+        title="Pure Luck"
+        message={'This variant keeps the race short.\n\n• Each side plays with 3 pieces.\n• Captures are disabled everywhere.'}
+        actionLabel="Close"
+        onAction={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('shared-modal-bullet-list')).toBeTruthy();
+    expect(screen.getByText('Each side plays with 3 pieces.')).toBeTruthy();
+    expect(screen.getByText('Captures are disabled everywhere.')).toBeTruthy();
+  });
 });

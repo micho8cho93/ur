@@ -239,4 +239,34 @@ describe('PieceRail', () => {
     expect(webSlotStyle.width).toBeLessThan(nativeSlotStyle.width);
     expect(webSlotStyle.height).toBeLessThan(nativeSlotStyle.height);
   });
+
+  it('drops tray padding for the mobile web vertical stack when tray art is hidden', () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+
+    render(
+      <PieceRail
+        color="light"
+        orientation="vertical"
+        showTrayArt={false}
+        piecePixelSize={40}
+        reserveCount={7}
+        totalCount={7}
+      />,
+    );
+
+    const rootStyle = StyleSheet.flatten(screen.getByTestId('piece-rail-root').props.style) as {
+      paddingBottom?: number;
+      paddingTop?: number;
+    };
+    const stackStyle = StyleSheet.flatten(screen.getByTestId('piece-rail-stack').props.style) as {
+      paddingVertical?: number;
+    };
+
+    expect(rootStyle.paddingTop).toBe(0);
+    expect(rootStyle.paddingBottom).toBe(0);
+    expect(stackStyle.paddingVertical).toBe(0);
+  });
 });

@@ -30,6 +30,7 @@ import { DEFAULT_DICE_ROLL_DURATION_MS } from '@/components/game/slotDiceShared'
 import { TournamentWaitingRoom } from '@/components/tournaments/TournamentWaitingRoom';
 import { PlayTutorialCoachModal } from '@/components/tutorial/PlayTutorialCoachModal';
 import { Modal } from '@/components/ui/Modal';
+import { SketchButton } from '@/components/ui/SketchButton';
 import { boxShadow, textShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
 import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
@@ -91,6 +92,7 @@ import {
   getPlayerColorForUserId,
   getSnapshotScoreTitle,
 } from '@/src/match/playerTitles';
+import { resolveMatchScoreRankTitles } from '@/src/match/scoreRankTitles';
 import { isTournamentBotUserId } from '@/shared/tournamentBots';
 import { getAppendedHistoryEntries } from '@/shared/historyWindow';
 import { useGameStore } from '@/store/useGameStore';
@@ -809,6 +811,7 @@ export function GameRoom() {
   const offlineBotRewardMode: CompletedBotMatchRewardMode | undefined =
     isPlaythroughTutorialMatch ? 'base_win_only' : undefined;
   const authenticatedUserId = userId ?? user?.nakamaUserId ?? user?.id ?? null;
+  const playerRankTitle = user?.provider === 'guest' ? 'Laborer' : progression?.currentRank ?? null;
   const effectiveHistoryCount = isOffline
     ? gameState.history.length
     : Math.max(authoritativeHistoryCount, gameState.history.length);
@@ -846,6 +849,18 @@ export function GameRoom() {
         (resolvedPlayerColor === 'dark' ? humanScoreTitle : 'DARK'),
     };
   }, [authoritativePlayers, humanScoreTitle, isOffline, isOfflineLocalPvPMatch, resolvedBotDifficulty, resolvedPlayerColor]);
+  const scoreRankTitles = useMemo<Record<PlayerColor, string | null>>(
+    () =>
+      resolveMatchScoreRankTitles({
+        isOffline,
+        isOfflineLocalPvPMatch,
+        humanScoreTitle,
+        playerRankTitle,
+        resolvedPlayerColor,
+        scoreTitles,
+      }),
+    [humanScoreTitle, isOffline, isOfflineLocalPvPMatch, playerRankTitle, resolvedPlayerColor, scoreTitles],
+  );
   const practiceModeRewardLabel = isPracticeModeMatch ? getPracticeModeRewardLabel(effectiveMatchConfig) : null;
   const hasAssignedColor = resolvedPlayerColor === 'light' || resolvedPlayerColor === 'dark';
   const canSyncOfflineBotRewards =
@@ -4373,6 +4388,7 @@ export function GameRoom() {
   const showMobileWebStatusInfoButton = isMobileWebLayout && Boolean(onlineMatchStatusPillText);
   const showInlineMatchStatusPopover = showMobileWebStatusInfoButton && showMatchStatusInfo;
   const useMobileSideReserveRails = matchStageViewportMode.useMobileSideReserveRails;
+  const useTraylessMobileWebReserveRails = isMobileWebLayout && useMobileSideReserveRails;
   const showWebSideDiceVisual = Platform.OS === 'web' && useSideColumns;
   const reserveTrayScale = resolveMatchStageReserveTrayScale({
     defaultTrayScale: tabletPortraitTuning.trayScale,
@@ -4387,15 +4403,18 @@ export function GameRoom() {
     })
     : 0;
   const mobileReserveColumnWidth = useMobileSideReserveRails
-    ? Math.max(
-      tabletPortraitTuning.reserveColumnMinWidth,
-      Math.min(
-        tabletPortraitTuning.reserveColumnMaxWidth,
-        Math.round(stageContentWidth * tabletPortraitTuning.reserveColumnWidthRatio),
-      ),
-    )
+    ? useTraylessMobileWebReserveRails
+      ? Math.max(36, Math.min(48, Math.round(stageContentWidth * 0.1)))
+      : Math.max(
+        tabletPortraitTuning.reserveColumnMinWidth,
+        Math.min(
+          tabletPortraitTuning.reserveColumnMaxWidth,
+          Math.round(stageContentWidth * tabletPortraitTuning.reserveColumnWidthRatio),
+        ),
+      )
     : 0;
-  const mobileWebBoardTrayAlignmentBaseLift = isMobileWebLayout && useMobileSideReserveRails
+  const mobileWebBoardTrayAlignmentBaseLift =
+    isMobileWebLayout && useMobileSideReserveRails && !useTraylessMobileWebReserveRails
     ? Math.max(8, Math.round(mobileReserveColumnWidth))
     : 0;
   const mobileWebBoardTrayAlignmentLift =
@@ -4440,22 +4459,14 @@ export function GameRoom() {
     0.24,
     Math.min(mobileBoardScaleCap, (targetBoardWidth / Math.max(boardBaseWidth, 1)) * mobileBoardScaleBoost),
   );
-  const boardScale = useMobileSideReserveRails
+  const layoutBoardScale = useMobileSideReserveRails
     ? baseBoardScale * tabletPortraitTuning.mobileSideBoardScaleMultiplier
     : baseBoardScale;
-  const reservePiecePixelSize = useMemo(
-    () => getBoardPiecePixelSize({ viewportWidth, boardScale, orientation: 'vertical' }),
-    [boardScale, viewportWidth],
-  );
   const compactSupportUi = viewportWidth <= 1024;
-  const compactReservePieceScale = viewportWidth < 760 ? 0.864 : tabletPortraitTuning.reservePieceScale;
-  const scaledReservePiecePixelSize = compactSupportUi
-    ? Math.max(12, Math.round(reservePiecePixelSize * compactReservePieceScale))
-    : reservePiecePixelSize;
   const stageGap = viewportHeight < 760 ? urTheme.spacing.xs : urTheme.spacing.sm;
   const viewportTopPadding = 0;
   const viewportBottomPadding = Math.max(insets.bottom, urTheme.spacing.xs);
-  const topChromeHeight = isMobileWebLayout ? 30 : 36;
+  const topChromeHeight = isMobileWebLayout ? 46 : 36;
   const webTopChromeTopInset = Math.max(insets.top, urTheme.spacing.xs);
   const mobileTopChromeOffset = 0;
   const topChromeTop = isWebLayout && boardTargetFrame
@@ -4575,14 +4586,55 @@ export function GameRoom() {
   const mobileDiceDockWidth = useMobileSideReserveRails
     ? mobileWebRollButtonArtSize
     : Math.min(Math.max(Math.round(stageContentWidth * 0.46), 176), 248);
-  const mobileReserveRailTopOffset = resolveMobileReserveRailTopOffset({
-    isMobileWebLayout,
-    isOnlineMatch: !isOffline,
-    reserveColumnWidth: mobileReserveColumnWidth,
-    useMobileSideReserveRails,
-  });
-  const mobileReserveRailAlignedTopOffset =
-    mobileReserveRailTopOffset + mobileWebBoardTrayAlignmentLift;
+  const mobileReserveRailTopOffset = useTraylessMobileWebReserveRails
+    ? 0
+    : resolveMobileReserveRailTopOffset({
+      isMobileWebLayout,
+      isOnlineMatch: !isOffline,
+      reserveColumnWidth: mobileReserveColumnWidth,
+      useMobileSideReserveRails,
+    });
+  const mobileReserveRailAlignedTopOffset = useTraylessMobileWebReserveRails
+    ? 0
+    : mobileReserveRailTopOffset + mobileWebBoardTrayAlignmentLift;
+  const mobileWebUnderBoardControlReserve =
+    isMobileWebLayout && useMobileSideReserveRails
+      ? mobileWebRollButtonArtSize + urTheme.spacing.sm
+      : 0;
+  const mobileBoardViewportHeightBudget = isMobileLayout
+    ? Math.max(
+      220,
+      viewportHeight -
+        baseMobileBoardOffsetTop -
+        viewportBottomPadding -
+        mobileWebUnderBoardControlReserve -
+        urTheme.spacing.xs,
+    )
+    : boardSlotHeight;
+  const viewportBoardWidthLimitByHeight = Math.min(
+    urTheme.layout.boardMax,
+    boardOuterPadding +
+      (Math.max(0, mobileBoardViewportHeightBudget - boardOuterPadding - verticalBoardGapTotal) * verticalBoardCols) /
+        verticalBoardRows,
+  );
+  const viewportFitBoardScale = Math.max(
+    0.24,
+    Math.min(
+      mobileBoardScaleCap,
+      (viewportBoardWidthLimitByHeight / Math.max(boardBaseWidth, 1)) * mobileBoardScaleBoost,
+    ),
+  );
+  const boardScale = isMobileLayout
+    ? Math.min(layoutBoardScale, viewportFitBoardScale)
+    : layoutBoardScale;
+  const reservePiecePixelSize = useMemo(
+    () => getBoardPiecePixelSize({ viewportWidth, boardScale, orientation: 'vertical' }),
+    [boardScale, viewportWidth],
+  );
+  const compactReservePieceScale = viewportWidth < 760 ? 0.864 : tabletPortraitTuning.reservePieceScale;
+  const scaledReservePiecePixelSize = compactSupportUi
+    ? Math.max(12, Math.round(reservePiecePixelSize * compactReservePieceScale))
+    : reservePiecePixelSize;
   const mobileWebUnderBoardDiceFrame = useMemo(() => {
     if (!useMobileSideReserveRails || !boardTargetFrame) {
       return null;
@@ -4759,7 +4811,7 @@ export function GameRoom() {
     useMobileSideReserveRails,
   ]);
   useEffect(() => {
-    if (!isMobileWebLayout || !useMobileSideReserveRails) {
+    if (!isMobileWebLayout || !useMobileSideReserveRails || useTraylessMobileWebReserveRails) {
       setMobileBoardTrayAlignmentCorrection((current) => (current === 0 ? current : 0));
       return;
     }
@@ -4780,6 +4832,7 @@ export function GameRoom() {
     isMobileWebLayout,
     lightTrayFrame,
     useMobileSideReserveRails,
+    useTraylessMobileWebReserveRails,
   ]);
   const mobileContentShiftSettled =
     !isMobileLayout ||
@@ -4829,6 +4882,27 @@ export function GameRoom() {
 
     setShowMatchStatusInfo(false);
   }, [showMobileWebStatusInfoButton]);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined' || !isMobileWebLayout) {
+      return;
+    }
+
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = html.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyOverscrollBehavior = body.style.overscrollBehavior;
+
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    body.style.overscrollBehavior = 'none';
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+      body.style.overscrollBehavior = previousBodyOverscrollBehavior;
+    };
+  }, [isMobileWebLayout]);
 
   useEffect(() => {
     syncBoardTargetFrame();
@@ -4938,7 +5012,8 @@ export function GameRoom() {
     useMobileWebVerticalDiceReels &&
     showMobileRollResult &&
     displayedRollValue !== null;
-  const showMobileWebDetachedDarkScore = useMobileSideReserveRails && darkTrayFrame !== null;
+  const showMobileWebDetachedDarkScore =
+    useMobileSideReserveRails && darkTrayFrame !== null && !useTraylessMobileWebReserveRails;
   const mobileWebDetachedDarkScoreFrame = useMemo(() => {
     if (!useMobileSideReserveRails || !darkTrayFrame) {
       return null;
@@ -5176,6 +5251,7 @@ export function GameRoom() {
           ? {
             height: viewportHeight,
             maxHeight: viewportHeight,
+            overflow: 'hidden',
           }
           : null,
       ]}
@@ -5309,6 +5385,7 @@ export function GameRoom() {
           <EdgeScore
             side="dark"
             title={scoreTitles.dark}
+            rankTitle={scoreRankTitles.dark}
             score={gameState.dark.finishedCount}
             maxScore={pieceCountPerSide}
             active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'dark'}
@@ -5480,29 +5557,17 @@ export function GameRoom() {
           ]}
         >
           {canUseTopExit ? (
-            <Pressable
+            <SketchButton
+              label="Back"
+              accessibilityLabel="Back"
               onPress={handleExit}
-              accessibilityRole="button"
-              accessibilityLabel="Exit game"
-              style={({ pressed }) => [
-                styles.topChromeIconButton,
-                isWebLayout && styles.topChromeIconButtonWeb,
-                isMobileLayout && styles.topChromeIconButtonMobile,
-                isMobileWebLayout && styles.topChromeIconButtonCompact,
-                pressed && styles.headerHelpButtonPressed,
-              ]}
-            >
-              <MaterialIcons
-                name="arrow-back"
-                size={compactTopChromeIconSize}
-                color={isMobileLayout || isWebLayout ? urTheme.colors.ivory : TOP_CHROME_ACCENT}
-              />
-            </Pressable>
+              iconName="arrow-back"
+              style={styles.topChromeBackButton}
+            />
           ) : (
             <View
               style={[
-                styles.topChromeIconButton,
-                isMobileWebLayout && styles.topChromeIconButtonCompact,
+                styles.topChromeBackButtonSpacer,
                 styles.topChromeExitSpacer,
               ]}
             />
@@ -5523,28 +5588,22 @@ export function GameRoom() {
         </View>
 
         <View style={[styles.topChromeRight, isMobileLayout && styles.topChromeRightMobile]}>
-          <Pressable
+          <SketchButton
+            label=""
+            accessibilityLabel="Open match menu"
             onPress={() => {
               resumeAnnouncementCuesFromInteraction();
               setShowMatchStatusInfo(false);
               setShowTopMenu((current) => !current);
             }}
-            accessibilityRole="button"
-            accessibilityLabel="Open match menu"
-            style={({ pressed }) => [
-              styles.topChromeIconButton,
-              isWebLayout && styles.topChromeIconButtonWeb,
-              isMobileLayout && styles.headerHelpButtonMobile,
-              isMobileWebLayout && styles.topChromeIconButtonCompact,
-              pressed && styles.headerHelpButtonPressed,
+            iconName="more-vert"
+            iconSize={compactTopChromeIconSize}
+            iconOnly
+            style={[
+              styles.topChromeMenuButton,
+              isMobileWebLayout && styles.topChromeMenuButtonCompact,
             ]}
-          >
-            <MaterialIcons
-              name="more-vert"
-              size={compactTopChromeIconSize}
-              color={isMobileLayout || isWebLayout ? urTheme.colors.ivory : TOP_CHROME_ACCENT}
-            />
-          </Pressable>
+          />
 
           {showTopMenu && (
             <View style={styles.topMenu}>
@@ -5676,6 +5735,7 @@ export function GameRoom() {
               <EdgeScore
                 side="light"
                 title={scoreTitles.light}
+                rankTitle={scoreRankTitles.light}
                 score={gameState.light.finishedCount}
                 maxScore={pieceCountPerSide}
                 active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'light'}
@@ -5744,6 +5804,7 @@ export function GameRoom() {
                 <EdgeScore
                   side="dark"
                   title={scoreTitles.dark}
+                  rankTitle={scoreRankTitles.dark}
                   score={gameState.dark.finishedCount}
                   maxScore={pieceCountPerSide}
                   active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'dark'}
@@ -5757,6 +5818,7 @@ export function GameRoom() {
                 <EdgeScore
                   side="dark"
                   title={scoreTitles.dark}
+                  rankTitle={scoreRankTitles.dark}
                   score={gameState.dark.finishedCount}
                   maxScore={pieceCountPerSide}
                   active={introsComplete && !shouldFreezeForfeitMotion && activeTurnColor === 'dark'}
@@ -5977,6 +6039,7 @@ export function GameRoom() {
                       color="light"
                       tokenVariant="light"
                       orientation="vertical"
+                      showTrayArt={!useTraylessMobileWebReserveRails}
                       piecePixelSize={scaledReservePiecePixelSize}
                       trayScale={reserveTrayScale}
                       reserveCount={lightReserve}
@@ -5993,7 +6056,7 @@ export function GameRoom() {
                   style={styles.boardCenterColumn}
                 >
                   <View
-                    style={[styles.boardViewport]}
+                    style={[styles.boardViewport, { maxHeight: mobileBoardViewportHeightBudget }]}
                     onLayout={(event) => {
                       const { width: slotWidth, height: slotHeight } = event.nativeEvent.layout;
                       setBoardSlotSize((prev) =>
@@ -6021,6 +6084,7 @@ export function GameRoom() {
                       color="dark"
                       tokenVariant="dark"
                       orientation="vertical"
+                      showTrayArt={!useTraylessMobileWebReserveRails}
                       piecePixelSize={scaledReservePiecePixelSize}
                       trayScale={reserveTrayScale}
                       reserveCount={darkReserve}
@@ -6554,6 +6618,15 @@ const styles = StyleSheet.create({
   topChromeLeftCompact: {
     gap: 4,
   },
+  topChromeBackButton: {
+    flexShrink: 0,
+  },
+  topChromeBackButtonSpacer: {
+    width: 104,
+    minWidth: 104,
+    height: 40,
+    flexShrink: 0,
+  },
   topChromeTitleStack: {
     flex: 1,
     minWidth: 0,
@@ -6571,6 +6644,13 @@ const styles = StyleSheet.create({
   },
   topChromeRightMobile: {
     alignSelf: 'center',
+  },
+  topChromeMenuButton: {
+    flexShrink: 0,
+  },
+  topChromeMenuButtonCompact: {
+    width: 46,
+    minWidth: 46,
   },
   topChromeIconButton: {
     width: 34,
@@ -6610,8 +6690,9 @@ const styles = StyleSheet.create({
   topChromeTitle: {
     ...urTypography.label,
     color: TOP_CHROME_ACCENT,
-    fontSize: 13,
-    letterSpacing: 0.35,
+    fontSize: 17,
+    lineHeight: 19,
+    letterSpacing: 0.3,
     ...textShadow({
       color: 'rgba(0, 0, 0, 0.45)',
       offset: { width: 0, height: 1 },
