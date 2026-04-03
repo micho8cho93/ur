@@ -26,6 +26,17 @@ export type BoardGapControlLayout = {
   laneWidth: number;
 };
 
+export type MobileBoardGapControlMetrics = {
+  diceImageScale: number;
+  diceOffsetX: number;
+  diceOrientation: 'horizontal' | 'vertical';
+  diceTranslateY: number;
+  diceViewportHeight: number;
+  diceViewportWidth: number;
+  rollArtSize: number;
+  rollTranslateY: number;
+};
+
 export const STAGE_MARGIN = 16;
 export const BOARD_CLEARANCE = 12;
 export const COMPACT_STAGE_LEFT_NUDGE = 16;
@@ -41,6 +52,8 @@ export const VERTICAL_BOARD_ART_INSETS = {
   bottom: 0.018,
   left: 0.36,
 } as const;
+
+const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
 
 export const computeLandingZone = ({
   boardFrame,
@@ -127,5 +140,111 @@ export const computeBoardGapControlLayout = ({
     },
     laneWidth: Math.round(laneWidth),
     laneHeight: Math.round(laneHeight),
+  };
+};
+
+export const computeMobileWebTrayColumnControlLayout = ({
+  boardFrame,
+  diceRailFrame,
+  referenceLayout,
+  rollRailFrame,
+}: {
+  boardFrame: BoardFrame;
+  diceRailFrame: BoardFrame;
+  referenceLayout: BoardGapControlLayout;
+  rollRailFrame: BoardFrame;
+}): BoardGapControlLayout => {
+  const resolveRailControlFrame = (
+    railFrame: BoardFrame,
+    referenceFrame: BoardGapControlFrame,
+  ): BoardGapControlFrame => {
+    const controlHeight = Math.round(referenceFrame.height);
+    const minY = Math.round(railFrame.y);
+    const maxY = Math.max(minY, Math.round(railFrame.y + railFrame.height - controlHeight));
+    const anchoredY = Math.round(boardFrame.y + boardFrame.height - controlHeight);
+
+    return {
+      x: Math.round(railFrame.x),
+      y: clamp(anchoredY, minY, maxY),
+      width: Math.round(railFrame.width),
+      height: controlHeight,
+    };
+  };
+
+  return {
+    diceFrame: resolveRailControlFrame(diceRailFrame, referenceLayout.diceFrame),
+    rollFrame: resolveRailControlFrame(rollRailFrame, referenceLayout.rollFrame),
+    laneWidth: referenceLayout.laneWidth,
+    laneHeight: referenceLayout.laneHeight,
+  };
+};
+
+export const computeMobileBoardGapControlMetrics = ({
+  boardGapControlScale,
+  controlLayout,
+  reelBoxScale,
+  reelDiceImageScale,
+  reelRightShiftRatio,
+  rollButtonScale,
+  rollButtonSizeBoost,
+  useMobileWebVerticalDiceReels,
+}: {
+  boardGapControlScale: number;
+  controlLayout: BoardGapControlLayout;
+  reelBoxScale: number;
+  reelDiceImageScale: number;
+  reelRightShiftRatio: number;
+  rollButtonScale: number;
+  rollButtonSizeBoost: number;
+  useMobileWebVerticalDiceReels: boolean;
+}): MobileBoardGapControlMetrics => {
+  const diceInset = Math.max(
+    4,
+    Math.round(Math.min(controlLayout.diceFrame.width, controlLayout.diceFrame.height) * 0.08),
+  );
+  const diceViewportHeight = Math.round(
+    Math.max(
+      0,
+      (useMobileWebVerticalDiceReels ? controlLayout.diceFrame.height : controlLayout.diceFrame.width) -
+        diceInset * 2,
+    ) *
+      boardGapControlScale *
+      (useMobileWebVerticalDiceReels ? reelBoxScale : 1),
+  );
+  const diceViewportWidth = Math.round(
+    Math.max(
+      0,
+      (useMobileWebVerticalDiceReels ? controlLayout.diceFrame.width : controlLayout.diceFrame.height) -
+        diceInset * 2,
+    ) *
+      boardGapControlScale *
+      (useMobileWebVerticalDiceReels ? reelBoxScale : 1),
+  );
+  const rollArtSize = Math.max(
+    44,
+    Math.round(
+      Math.min(controlLayout.rollFrame.width, controlLayout.rollFrame.height) *
+        0.82 *
+        boardGapControlScale *
+        (useMobileWebVerticalDiceReels ? rollButtonScale : 1) *
+        rollButtonSizeBoost,
+    ),
+  );
+
+  return {
+    diceViewportHeight,
+    diceViewportWidth,
+    diceImageScale: useMobileWebVerticalDiceReels ? reelDiceImageScale : 1,
+    diceOrientation: useMobileWebVerticalDiceReels ? 'vertical' : 'horizontal',
+    diceOffsetX: useMobileWebVerticalDiceReels
+      ? Math.max(8, Math.round(controlLayout.diceFrame.width * reelRightShiftRatio))
+      : 0,
+    diceTranslateY: useMobileWebVerticalDiceReels
+      ? Math.round((controlLayout.diceFrame.height - diceViewportHeight) / 2)
+      : 0,
+    rollArtSize,
+    rollTranslateY: useMobileWebVerticalDiceReels
+      ? Math.max(0, Math.round((controlLayout.rollFrame.height - rollArtSize) / 2))
+      : 0,
   };
 };

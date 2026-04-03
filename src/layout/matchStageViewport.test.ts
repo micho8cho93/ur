@@ -1,4 +1,7 @@
 import {
+  resolveMatchStageBoardScale,
+  resolveMobileBoardRowInset,
+  resolveMobileBoardViewportSafetyInsets,
   resolveMobileReserveRailTopOffset,
   resolveMobileWebHeaderLift,
   resolveMobileWebBoardTrayAlignmentCorrection,
@@ -178,6 +181,82 @@ describe('resolveMobileReserveRailTopOffset', () => {
         useMobileSideReserveRails: true,
       }),
     ).toBe(16);
+  });
+});
+
+describe('resolveMobileBoardRowInset', () => {
+  it('keeps the compact mobile web side-rail inset locked to the tight edge padding', () => {
+    expect(
+      resolveMobileBoardRowInset({
+        isMobileWebLayout: true,
+        useMobileSideReserveRails: true,
+        viewportWidth: 390,
+      }),
+    ).toBe(6);
+  });
+
+  it('scales the inset with viewport width outside the compact mobile web rail layout', () => {
+    expect(
+      resolveMobileBoardRowInset({
+        isMobileWebLayout: false,
+        useMobileSideReserveRails: false,
+        viewportWidth: 520,
+      }),
+    ).toBe(8);
+  });
+});
+
+describe('resolveMobileBoardViewportSafetyInsets', () => {
+  it('adds extra mobile web breathing room so board art and controls stay inside the viewport', () => {
+    expect(
+      resolveMobileBoardViewportSafetyInsets({
+        isMobileLayout: true,
+        isMobileWebLayout: true,
+        viewportHeight: 844,
+        viewportWidth: 390,
+      }),
+    ).toEqual({
+      horizontal: 8,
+      vertical: 12,
+    });
+  });
+
+  it('stays disabled for non-mobile layouts', () => {
+    expect(
+      resolveMobileBoardViewportSafetyInsets({
+        isMobileLayout: false,
+        isMobileWebLayout: false,
+        viewportHeight: 900,
+        viewportWidth: 1440,
+      }),
+    ).toEqual({
+      horizontal: 0,
+      vertical: 0,
+    });
+  });
+});
+
+describe('resolveMatchStageBoardScale', () => {
+  it('reduces the mobile web board multiplier by 10 percent before the viewport clamp', () => {
+    expect(
+      resolveMatchStageBoardScale({
+        isMobileLayout: true,
+        isMobileWebLayout: true,
+        layoutBoardScale: 1,
+        viewportFitBoardScale: 2,
+      }),
+    ).toBeCloseTo(1.104345, 6);
+  });
+
+  it('still honors the viewport fit cap on mobile layouts', () => {
+    expect(
+      resolveMatchStageBoardScale({
+        isMobileLayout: true,
+        isMobileWebLayout: true,
+        layoutBoardScale: 1,
+        viewportFitBoardScale: 1.02,
+      }),
+    ).toBe(1.02);
   });
 });
 

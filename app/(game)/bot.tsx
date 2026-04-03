@@ -448,6 +448,14 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     ...urTextVariants.cardTitle,
   },
+  cardTagline: {
+    color: urTextColors.bodyOnPanel,
+    fontSize: 12,
+    lineHeight: 14,
+    textAlign: 'center',
+    marginBottom: 6,
+    ...urTextVariants.body,
+  },
   cardDescription: {
     color: urTextColors.bodyOnPanel,
     fontSize: 13,

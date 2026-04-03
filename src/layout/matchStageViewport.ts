@@ -8,6 +8,7 @@ const TABLET_LANDSCAPE_SIDE_COLUMN_SCALE = 0.9;
 const TABLET_LANDSCAPE_RESERVE_TRAY_SCALE = 0.68;
 const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_RATIO = 0.11;
 const TABLET_LANDSCAPE_VIEWPORT_HORIZONTAL_PADDING_MIN = 32;
+const MOBILE_WEB_BOARD_SIZE_SCALE = 1.22705 * 0.9;
 
 export interface MatchStageViewportMode {
   isMobileHandset: boolean;
@@ -41,6 +42,18 @@ export interface MatchStageTabletPortraitTuning {
 
 export interface MatchStageTopAlignedFrame {
   y: number;
+}
+
+export interface MatchStageBoardScaleInput {
+  isMobileLayout: boolean;
+  isMobileWebLayout: boolean;
+  layoutBoardScale: number;
+  viewportFitBoardScale: number;
+}
+
+export interface MatchStageBoardViewportSafetyInsets {
+  horizontal: number;
+  vertical: number;
 }
 
 export const resolveMobileWebHeaderLift = ({
@@ -85,6 +98,62 @@ export const resolveMobileReserveRailTopOffset = ({
   }
 
   return baseOffset + Math.max(8, Math.round(reserveColumnWidth * 0.12));
+};
+
+export const resolveMobileBoardRowInset = ({
+  isMobileWebLayout,
+  useMobileSideReserveRails,
+  viewportWidth,
+}: {
+  isMobileWebLayout: boolean;
+  useMobileSideReserveRails: boolean;
+  viewportWidth: number;
+}): number =>
+  isMobileWebLayout && useMobileSideReserveRails
+    ? 6
+    : Math.max(6, Math.round(Math.max(0, viewportWidth) / 65));
+
+export const resolveMobileBoardViewportSafetyInsets = ({
+  isMobileLayout,
+  isMobileWebLayout,
+  viewportHeight,
+  viewportWidth,
+}: {
+  isMobileLayout: boolean;
+  isMobileWebLayout: boolean;
+  viewportHeight: number;
+  viewportWidth: number;
+}): MatchStageBoardViewportSafetyInsets => {
+  if (!isMobileLayout) {
+    return {
+      horizontal: 0,
+      vertical: 0,
+    };
+  }
+
+  const mobileWebInsetBoost = isMobileWebLayout ? 2 : 0;
+
+  return {
+    horizontal: Math.max(6, Math.round(Math.max(0, viewportWidth) * 0.015)) + mobileWebInsetBoost,
+    vertical: Math.max(6, Math.round(Math.max(0, viewportHeight) * 0.012)) + mobileWebInsetBoost,
+  };
+};
+
+export const resolveMatchStageBoardScale = ({
+  isMobileLayout,
+  isMobileWebLayout,
+  layoutBoardScale,
+  viewportFitBoardScale,
+}: MatchStageBoardScaleInput): number => {
+  const adjustedLayoutBoardScale = isMobileWebLayout
+    ? layoutBoardScale * MOBILE_WEB_BOARD_SIZE_SCALE
+    : layoutBoardScale;
+
+  if (!isMobileLayout) {
+    return adjustedLayoutBoardScale;
+  }
+
+  return Math.min(adjustedLayoutBoardScale, viewportFitBoardScale);
 };
 
 export const resolveMatchStageViewportMode = ({

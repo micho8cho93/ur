@@ -129,4 +129,65 @@ describe('useMatchmaking', () => {
       },
     });
   });
+
+  it('reapplies the host private match session before opening a created private table', async () => {
+    mockCreatePrivateMatch.mockResolvedValue({
+      matchId: 'match-private-host-1',
+      modeId: 'gameMode_capture',
+      code: 'CAPTURE1',
+      session: { user_id: 'host-1' },
+      userId: 'host-1',
+    });
+
+    const { result } = renderHook(() => useMatchmaking('online'));
+
+    await act(async () => {
+      await flush();
+    });
+
+    await act(async () => {
+      await result.current.startPrivateMatch('gameMode_capture');
+    });
+
+    expect(result.current.createdPrivateMatch).toEqual(
+      expect.objectContaining({
+        matchId: 'match-private-host-1',
+        modeId: 'gameMode_capture',
+        code: 'CAPTURE1',
+        hasGuestJoined: false,
+      }),
+    );
+
+    act(() => {
+      useGameStore.getState().setOnlineMode('offline');
+      useGameStore.getState().setNakamaSession(null);
+      useGameStore.getState().setUserId(null);
+    });
+
+    await act(async () => {
+      result.current.startCreatedPrivateMatch();
+      await flush();
+    });
+
+    expect(mockRunScreenTransition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Opening Private Table',
+        message: 'Laying out the private board and seating both players.',
+        action: expect.any(Function),
+      }),
+    );
+    expect(useGameStore.getState().onlineMode).toBe('nakama');
+    expect(useGameStore.getState().nakamaSession).toEqual(expect.objectContaining({ user_id: 'host-1' }));
+    expect(useGameStore.getState().userId).toBe('host-1');
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/match/[id]',
+      params: {
+        id: 'match-private-host-1',
+        modeId: 'gameMode_capture',
+        privateMatch: '1',
+        privateHost: '1',
+        privateCode: 'CAPTURE1',
+      },
+    });
+  });
 });

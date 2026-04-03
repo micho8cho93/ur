@@ -100,6 +100,15 @@ interface BoardTileLandingOffsetOptions {
   row: number;
 }
 
+export interface BoardTileFocusFrame {
+  centerX: number;
+  centerY: number;
+  height: number;
+  left: number;
+  top: number;
+  width: number;
+}
+
 interface BoardRenderLayout {
   cellSize: number;
   gridWidth: number;
@@ -153,21 +162,40 @@ const MOVE_SLIDE_STEP_DURATION_MS = 110;
 const MOVE_SLIDE_MAX_DURATION_MS = 640;
 const AUTO_COMMIT_SELECTED_MOVE_MS = 180;
 const SHOW_BOARD_ALIGNMENT_DEBUG = false;
-const VERTICAL_BOARD_ROW_LANDING_OFFSET_Y_RATIOS = [
-  0.008,
-  0.014,
-  0.02,
-  0.026,
-  0.03,
-  0.018,
-  0.002,
-  -0.03,
+// Keep these as normalized tile ratios so board landing anchors scale with every
+// board size we render on mobile web, native mobile, and desktop web.
+const VERTICAL_BOARD_ROW_FOCUS_CENTER_Y_RATIOS = [
+  0.512,
+  0.516,
+  0.518,
+  0.514,
+  0.504,
+  0.5,
+  0.494,
+  0.488,
 ] as const;
-const VERTICAL_BOARD_COLUMN_LANDING_OFFSET_X_RATIOS = [
-  0.008,
-  0,
-  -0.008,
+const VERTICAL_BOARD_ROW_FOCUS_HEIGHT_RATIOS = [
+  0.7,
+  0.72,
+  0.73,
+  0.75,
+  0.76,
+  0.75,
+  0.72,
+  0.7,
 ] as const;
+const VERTICAL_BOARD_COLUMN_FOCUS_CENTER_X_RATIOS = [
+  0.508,
+  0.5,
+  0.492,
+] as const;
+const VERTICAL_BOARD_COLUMN_FOCUS_WIDTH_RATIOS = [
+  0.72,
+  0.7,
+  0.72,
+] as const;
+
+const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
 
 interface BoardPiecePixelSizeOptions {
   viewportWidth: number;
@@ -203,24 +231,62 @@ export const getBoardPieceRenderMetrics = ({
 export const getBoardPiecePixelSize = (options: BoardPiecePixelSizeOptions): number =>
   getBoardPieceRenderMetrics(options).pixelSize;
 
+export const getBoardTileFocusFrame = ({
+  cellSize,
+  col,
+  orientation = 'horizontal',
+  row,
+}: BoardTileLandingOffsetOptions): BoardTileFocusFrame => {
+  if (orientation !== 'vertical') {
+    return {
+      centerX: cellSize / 2,
+      centerY: cellSize / 2,
+      height: cellSize,
+      left: 0,
+      top: 0,
+      width: cellSize,
+    };
+  }
+
+  const displayRow = col;
+  const displayCol = BOARD_ROWS - 1 - row;
+  const widthRatio = VERTICAL_BOARD_COLUMN_FOCUS_WIDTH_RATIOS[displayCol] ?? 0.7;
+  const heightRatio = VERTICAL_BOARD_ROW_FOCUS_HEIGHT_RATIOS[displayRow] ?? 0.74;
+  const centerXRatio = VERTICAL_BOARD_COLUMN_FOCUS_CENTER_X_RATIOS[displayCol] ?? 0.5;
+  const centerYRatio = VERTICAL_BOARD_ROW_FOCUS_CENTER_Y_RATIOS[displayRow] ?? 0.5;
+  const width = Math.round(cellSize * widthRatio * 100) / 100;
+  const height = Math.round(cellSize * heightRatio * 100) / 100;
+  const rawLeft = cellSize * centerXRatio - width / 2;
+  const rawTop = cellSize * centerYRatio - height / 2;
+  const left = Math.round(clamp(rawLeft, 0, Math.max(0, cellSize - width)) * 100) / 100;
+  const top = Math.round(clamp(rawTop, 0, Math.max(0, cellSize - height)) * 100) / 100;
+
+  return {
+    centerX: Math.round((left + width / 2) * 100) / 100,
+    centerY: Math.round((top + height / 2) * 100) / 100,
+    height,
+    left,
+    top,
+    width,
+  };
+};
+
 export const getBoardTileLandingOffset = ({
   cellSize,
   col,
   orientation = 'horizontal',
   row,
 }: BoardTileLandingOffsetOptions): Point => {
-  if (orientation !== 'vertical') {
-    return { x: 0, y: 0 };
-  }
-
-  const displayRow = col;
-  const displayCol = BOARD_ROWS - 1 - row;
-  const xRatio = VERTICAL_BOARD_COLUMN_LANDING_OFFSET_X_RATIOS[displayCol] ?? 0;
-  const yRatio = VERTICAL_BOARD_ROW_LANDING_OFFSET_Y_RATIOS[displayRow] ?? 0;
+  const focusFrame = getBoardTileFocusFrame({
+    cellSize,
+    col,
+    orientation,
+    row,
+  });
 
   return {
-    x: Math.round(cellSize * xRatio * 100) / 100,
-    y: Math.round(cellSize * yRatio * 100) / 100,
+    x: Math.round((focusFrame.centerX - cellSize / 2) * 100) / 100,
+    y: Math.round((focusFrame.centerY - cellSize / 2) * 100) / 100,
   };
 };
 

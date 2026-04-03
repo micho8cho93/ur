@@ -11,6 +11,8 @@ import {
   VERTICAL_BOARD_GAP_ROW_START,
   computeBoardGapControlLayout,
   computeLandingZone,
+  computeMobileBoardGapControlMetrics,
+  computeMobileWebTrayColumnControlLayout,
   type BoardFrame,
 } from './matchDiceStageLayout';
 
@@ -123,5 +125,77 @@ describe('matchDiceStageLayout', () => {
     expect(boardGapLayout.diceFrame.y).toBeGreaterThanOrEqual(artTop);
     expect(boardGapLayout.rollFrame.x + boardGapLayout.rollFrame.width).toBeLessThanOrEqual(artRight);
     expect(boardGapLayout.rollFrame.y + boardGapLayout.rollFrame.height).toBeLessThanOrEqual(artBottom);
+  });
+
+  it('aligns mobile web tray-column controls with the board bottom while keeping them inside the rail frames', () => {
+    const referenceLayout = computeBoardGapControlLayout({ boardFrame });
+    const lightRailFrame: BoardFrame = {
+      x: 24,
+      y: 138,
+      width: 48,
+      height: 540,
+    };
+    const darkRailFrame: BoardFrame = {
+      x: 664,
+      y: 138,
+      width: 48,
+      height: 540,
+    };
+
+    const trayColumnLayout = computeMobileWebTrayColumnControlLayout({
+      boardFrame,
+      diceRailFrame: lightRailFrame,
+      referenceLayout,
+      rollRailFrame: darkRailFrame,
+    });
+    const boardBottom = boardFrame.y + boardFrame.height;
+
+    expect(trayColumnLayout.diceFrame.y + trayColumnLayout.diceFrame.height).toBe(boardBottom);
+    expect(trayColumnLayout.rollFrame.y + trayColumnLayout.rollFrame.height).toBe(boardBottom);
+    expect(trayColumnLayout.diceFrame.y).toBeGreaterThanOrEqual(lightRailFrame.y);
+    expect(trayColumnLayout.rollFrame.y).toBeGreaterThanOrEqual(darkRailFrame.y);
+    expect(trayColumnLayout.diceFrame.y + trayColumnLayout.diceFrame.height).toBeLessThanOrEqual(
+      lightRailFrame.y + lightRailFrame.height,
+    );
+    expect(trayColumnLayout.rollFrame.y + trayColumnLayout.rollFrame.height).toBeLessThanOrEqual(
+      darkRailFrame.y + darkRailFrame.height,
+    );
+  });
+
+  it('adds the mobile web reel nudge and larger bottom-aligned roll button metrics for tray columns', () => {
+    const referenceLayout = computeBoardGapControlLayout({ boardFrame });
+    const trayColumnLayout = computeMobileWebTrayColumnControlLayout({
+      boardFrame,
+      diceRailFrame: {
+        x: 24,
+        y: 138,
+        width: 48,
+        height: 540,
+      },
+      referenceLayout,
+      rollRailFrame: {
+        x: 664,
+        y: 138,
+        width: 48,
+        height: 540,
+      },
+    });
+
+    const controlMetrics = computeMobileBoardGapControlMetrics({
+      boardGapControlScale: 1,
+      controlLayout: trayColumnLayout,
+      reelBoxScale: 1.55,
+      reelDiceImageScale: 1.2 / 1.55,
+      reelRightShiftRatio: 0.18,
+      rollButtonScale: 1.2,
+      rollButtonSizeBoost: 1.2,
+      useMobileWebVerticalDiceReels: true,
+    });
+
+    expect(controlMetrics.diceOrientation).toBe('vertical');
+    expect(controlMetrics.diceOffsetX).toBe(9);
+    expect(controlMetrics.diceTranslateY).toBe(-25);
+    expect(controlMetrics.rollArtSize).toBe(57);
+    expect(controlMetrics.rollTranslateY).toBeGreaterThan(0);
   });
 });

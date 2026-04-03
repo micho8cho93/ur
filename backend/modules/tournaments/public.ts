@@ -16,12 +16,15 @@ import {
   createSingleEliminationBracket,
   getTournamentBracketCurrentRound,
   getTournamentBracketEntry,
+  getTournamentBracketEntryByMatchId,
   getTournamentBracketParticipant,
-  getTournamentParticipantCanLaunch,
   hasTournamentBracketStarted,
   startTournamentBracketMatch,
   upsertTournamentRegistration,
+  type TournamentBracketEntry,
+  type TournamentBracketParticipant,
   type TournamentBracketParticipantState,
+  type TournamentBracketState,
 } from "./bracket";
 import {
   getActorLabel,
@@ -301,6 +304,61 @@ const buildStoredFinalizedParticipationOverride = (
       participant?.lastResult ??
       (state === "champion" ? "win" : state === "runner_up" ? "loss" : null),
     canLaunch: false,
+  };
+};
+
+const isParticipantAssignedToEntry = (
+  entry: TournamentBracketEntry | null,
+  userId: string,
+): entry is TournamentBracketEntry =>
+  Boolean(entry && (entry.playerAUserId === userId || entry.playerBUserId === userId));
+
+const resolvePublicParticipantBracketState = (
+  bracket: TournamentBracketState,
+  participant: TournamentBracketParticipant,
+): {
+  currentEntry: TournamentBracketEntry | null;
+  activeMatchId: string | null;
+  playerState: TournamentBracketParticipantState;
+  canLaunch: boolean;
+} => {
+  const currentEntryCandidate = participant.currentEntryId
+    ? getTournamentBracketEntry(bracket, participant.currentEntryId)
+    : null;
+  const currentEntry = isParticipantAssignedToEntry(currentEntryCandidate, participant.userId)
+    ? currentEntryCandidate
+    : null;
+  const activeEntryCandidate = participant.activeMatchId
+    ? getTournamentBracketEntryByMatchId(bracket, participant.activeMatchId)
+    : null;
+  const activeEntry = isParticipantAssignedToEntry(activeEntryCandidate, participant.userId)
+    ? activeEntryCandidate
+    : null;
+  const resumedEntry =
+    currentEntry?.status === "in_match" && currentEntry.matchId
+      ? currentEntry
+      : !currentEntry && activeEntry?.status === "in_match" && activeEntry.matchId
+        ? activeEntry
+        : null;
+  const resolvedEntry = currentEntry ?? resumedEntry ?? null;
+  const activeMatchId = resumedEntry?.matchId ?? null;
+  const canLaunch = Boolean(
+    activeMatchId ||
+      (currentEntry && (currentEntry.status === "ready" || currentEntry.status === "in_match")),
+  );
+
+  let playerState = participant.state;
+  if (activeMatchId) {
+    playerState = "in_match";
+  } else if (participant.state === "in_match" && currentEntry && currentEntry.status !== "completed") {
+    playerState = "waiting_next_round";
+  }
+
+  return {
+    currentEntry: resolvedEntry,
+    activeMatchId,
+    playerState,
+    canLaunch,
   };
 };
 
@@ -617,14 +675,16 @@ const buildPublicParticipationState = (
     return storedFinalizedParticipation;
   }
 
+  const resolvedParticipantState = resolvePublicParticipantBracketState(run.bracket, participant);
+
   return {
-    state: participant.state,
-    currentRound: participant.currentRound,
-    currentEntryId: participant.currentEntryId,
-    activeMatchId: participant.activeMatchId,
+    state: resolvedParticipantState.playerState,
+    currentRound: resolvedParticipantState.currentEntry?.round ?? participant.currentRound,
+    currentEntryId: resolvedParticipantState.currentEntry?.entryId ?? participant.currentEntryId,
+    activeMatchId: resolvedParticipantState.activeMatchId,
     finalPlacement: participant.finalPlacement,
     lastResult: participant.lastResult,
-    canLaunch: getTournamentParticipantCanLaunch(run.bracket, participant.userId),
+    canLaunch: resolvedParticipantState.canLaunch,
   };
 };
 
@@ -1051,6 +1111,7 @@ export const rpcLaunchTournamentMatch = (
   if (!participant) {
     throw new Error("You are not seated in this tournament bracket.");
   }
+  const resolvedParticipantState = resolvePublicParticipantBracketState(run.bracket, participant);
 
   if (participant.state === "eliminated") {
     throw new Error("Your tournament run has ended.");
@@ -1069,12 +1130,40 @@ export const rpcLaunchTournamentMatch = (
     });
   }
 
-  if (participant.activeMatchId) {
+  if (resolvedParticipantState.activeMatchId) {
     return buildTournamentLaunchResponse({
       run,
-      matchId: participant.activeMatchId,
+      matchId: resolvedParticipantState.activeMatchId,
+      tournamentRound: resolvedParticipantState.currentEntry?.round ?? participant.currentRound,
+      tournamentEntryId: resolvedParticipantState.currentEntry?.entryId ?? participant.currentEntryId,
+      playerState: resolvedParticipantState.playerState,
+      nextRoundReady: true,
+      queueStatus: "active_match",
+      statusMessage: "Resuming active tournament match.",
+    });
+  }
+
+  if (!resolvedParticipantState.currentEntry) {
+    return buildTournamentLaunchResponse({
+      run,
+      matchId: null,
       tournamentRound: participant.currentRound,
-      tournamentEntryId: participant.currentEntryId,
+      tournamentEntryId: null,
+      playerState: resolvedParticipantState.playerState,
+      nextRoundReady: false,
+      queueStatus: "waiting_next_round",
+      statusMessage: "Waiting for the next tournament pairing.",
+    });
+  }
+
+  const entry = resolvedParticipantState.currentEntry;
+
+  if (entry.status === "in_match" && entry.matchId) {
+    return buildTournamentLaunchResponse({
+      run,
+      matchId: entry.matchId,
+      tournamentRound: entry.round,
+      tournamentEntryId: entry.entryId,
       playerState: "in_match",
       nextRoundReady: true,
       queueStatus: "active_match",
@@ -1082,47 +1171,13 @@ export const rpcLaunchTournamentMatch = (
     });
   }
 
-  if (!participant.currentEntryId) {
-    return buildTournamentLaunchResponse({
-      run,
-      matchId: null,
-      tournamentRound: participant.currentRound,
-      tournamentEntryId: null,
-      playerState: participant.state,
-      nextRoundReady: false,
-      queueStatus: "waiting_next_round",
-      statusMessage: "Waiting for the next tournament pairing.",
-    });
-  }
-
-  const entry = getTournamentBracketEntry(run.bracket, participant.currentEntryId);
-  if (!entry) {
-    throw new Error(`Tournament bracket entry '${participant.currentEntryId}' was not found.`);
-  }
-
-  if (entry.matchId) {
-    return buildTournamentLaunchResponse({
-      run,
-      matchId: entry.matchId,
-      tournamentRound: entry.round,
-      tournamentEntryId: entry.entryId,
-      playerState: entry.status === "in_match" ? "in_match" : participant.state,
-      nextRoundReady: entry.status === "ready" || entry.status === "in_match",
-      queueStatus: entry.status === "in_match" ? "active_match" : "ready_to_launch",
-      statusMessage:
-        entry.status === "in_match"
-          ? "Resuming active tournament match."
-          : "Your next tournament match is ready.",
-    });
-  }
-
-  if (!getTournamentParticipantCanLaunch(run.bracket, userId)) {
+  if (!resolvedParticipantState.canLaunch || entry.status !== "ready") {
     return buildTournamentLaunchResponse({
       run,
       matchId: null,
       tournamentRound: entry.round,
       tournamentEntryId: entry.entryId,
-      playerState: participant.state,
+      playerState: resolvedParticipantState.playerState,
       nextRoundReady: false,
       queueStatus: "waiting_next_round",
       statusMessage: "Waiting for the rest of the bracket to settle.",

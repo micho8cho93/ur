@@ -105,10 +105,11 @@ const mockDiceStageVisual = jest.fn((_props?: unknown) => {
   const { View } = require('react-native');
   return <View testID="mock-dice-stage-visual" />;
 });
-const mockPieceRail = jest.fn((_props?: unknown) => {
+const defaultMockPieceRailImplementation = (_props?: unknown) => {
   const { View } = require('react-native');
   return <View testID="mock-piece-rail" />;
-});
+};
+const mockPieceRail = jest.fn(defaultMockPieceRailImplementation);
 
 const mockMatchMomentIndicator = jest.fn(({ cue }: { cue: { message: string } | null }) => {
   const { Text } = require('react-native');
@@ -717,7 +718,7 @@ jest.mock('expo-font', () => ({
   useFonts: () => [true, null],
 }));
 
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { GameRoom } from '@/app/match/[id]';
 
 const configureCompletedMatchChallenges = (matchId: string) => {
@@ -1945,6 +1946,130 @@ describe('GameRoom match dice stage', () => {
 
       expect(screen.getByTestId('mobile-match-status-popover')).toBeTruthy();
       expect(screen.getByText('Private Match - ABCD12')).toBeTruthy();
+    } finally {
+      Object.defineProperty(global, 'window', {
+        configurable: true,
+        value: previousWindow,
+      });
+    }
+  });
+
+  it('uses the larger mobile web roll button size beside the board', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+    const previousWindow = global.window;
+    const mockWindow = {
+      ...previousWindow,
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      innerWidth: 390,
+      innerHeight: 844,
+      visualViewport: {
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        width: 390,
+        height: 844,
+      },
+    } as typeof window;
+    Object.defineProperty(global, 'window', {
+      configurable: true,
+      value: mockWindow,
+    });
+
+    try {
+      render(<GameRoom />);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      act(() => {
+        jest.advanceTimersByTime(400);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(screen.getByTestId('dice-roll-scene-host')).toBeTruthy();
+
+      const latestDiceProps = [...mockDice.mock.calls]
+        .map(([props]) => props)
+        .reverse()
+        .find((props) => typeof props?.onRoll === 'function') as {
+        artSize?: number;
+      };
+
+      expect(latestDiceProps.artSize).toBeGreaterThanOrEqual(100);
+    } finally {
+      Object.defineProperty(global, 'window', {
+        configurable: true,
+        value: previousWindow,
+      });
+    }
+  });
+
+  it('pins the tutorial objective banner beneath the score row on mobile web', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+    const previousWindow = global.window;
+    const mockWindow = {
+      ...previousWindow,
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      innerWidth: 390,
+      innerHeight: 844,
+      visualViewport: {
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        width: 390,
+        height: 844,
+      },
+    } as typeof window;
+    Object.defineProperty(global, 'window', {
+      configurable: true,
+      value: mockWindow,
+    });
+
+    try {
+      mockSearchParams.tutorial = 'playthrough';
+      mockSearchParams.botDifficulty = 'easy';
+
+      render(<GameRoom />);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      act(() => {
+        jest.advanceTimersByTime(400);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('mock-play-tutorial-coach-continue'));
+      });
+
+      const bannerStyle = StyleSheet.flatten(
+        screen.getByTestId('tutorial-objective-banner').props.style,
+      ) as {
+        left?: number;
+        position?: string;
+        right?: number;
+        top?: number;
+      };
+      const bannerText = screen.getByTestId('tutorial-objective-banner-text').props.children as string;
+
+      expect(bannerStyle.position).toBe('absolute');
+      expect(bannerStyle.top).toBeGreaterThan(0);
+      expect(bannerStyle.left).toBeGreaterThan(80);
+      expect(bannerStyle.right).toBeGreaterThan(80);
+      expect(bannerText).toContain('\n');
     } finally {
       Object.defineProperty(global, 'window', {
         configurable: true,

@@ -776,6 +776,259 @@ describe('public tournament rpc flow', () => {
     expect(nk.matchCreate).toHaveBeenCalledTimes(3);
   });
 
+  it('ignores stale semifinal active-match ids once the final is ready to launch', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedOpenRun(nk, {
+      entrants: 0,
+      maxSize: 4,
+    });
+
+    nk.matchCreate
+      .mockImplementationOnce(() => 'match-semi-1')
+      .mockImplementationOnce(() => 'match-semi-2')
+      .mockImplementationOnce(() => 'match-final');
+
+    rpcJoinPublicTournament(
+      { userId: 'user-1', username: 'RoyalPlayer' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcJoinPublicTournament(
+      { userId: 'user-2', username: 'TempleGuest' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcJoinPublicTournament(
+      { userId: 'user-3', username: 'CourtScribe' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcJoinPublicTournament(
+      { userId: 'user-4', username: 'Archivist' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+
+    rpcLaunchTournamentMatch(
+      { userId: 'user-1', username: 'RoyalPlayer' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcLaunchTournamentMatch(
+      { userId: 'user-3', username: 'CourtScribe' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+
+    let storedRun = readStoredRunValue(nk);
+    const afterFirstSemi = completeTournamentBracketMatch(storedRun.bracket as never, {
+      entryId: 'round-1-match-1',
+      matchId: 'match-semi-1',
+      winnerUserId: 'user-1',
+      loserUserId: 'user-2',
+      completedAt: '2026-03-27T10:05:00.000Z',
+    });
+
+    writeStoredRunValue(nk, {
+      ...storedRun,
+      updatedAt: '2026-03-27T10:05:00.000Z',
+      bracket: afterFirstSemi,
+    });
+
+    storedRun = readStoredRunValue(nk);
+    const afterSecondSemi = completeTournamentBracketMatch(storedRun.bracket as never, {
+      entryId: 'round-1-match-2',
+      matchId: 'match-semi-2',
+      winnerUserId: 'user-3',
+      loserUserId: 'user-4',
+      completedAt: '2026-03-27T10:06:00.000Z',
+    });
+    const staleFinalBracket = {
+      ...afterSecondSemi,
+      participants: afterSecondSemi.participants.map((participant) =>
+        participant.userId === 'user-1'
+          ? {
+              ...participant,
+              state: 'in_match',
+              activeMatchId: 'match-semi-1',
+            }
+          : participant,
+      ),
+    };
+
+    writeStoredRunValue(nk, {
+      ...storedRun,
+      updatedAt: '2026-03-27T10:06:00.000Z',
+      bracket: staleFinalBracket,
+    });
+
+    const detailResponse = JSON.parse(
+      rpcGetPublicTournament(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      tournament: {
+        participation: {
+          state: string | null;
+          currentRound: number | null;
+          currentEntryId: string | null;
+          activeMatchId: string | null;
+          canLaunch: boolean;
+        };
+      };
+    };
+
+    expect(detailResponse.tournament.participation).toEqual(
+      expect.objectContaining({
+        state: 'waiting_next_round',
+        currentRound: 2,
+        currentEntryId: 'round-2-match-1',
+        activeMatchId: null,
+        canLaunch: true,
+      }),
+    );
+
+    const finalLaunch = JSON.parse(
+      rpcLaunchTournamentMatch(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      matchId: string | null;
+      tournamentEntryId: string | null;
+      tournamentRound: number | null;
+      playerState: string;
+      queueStatus: string;
+    };
+
+    expect(finalLaunch).toEqual(
+      expect.objectContaining({
+        matchId: 'match-final',
+        tournamentEntryId: 'round-2-match-1',
+        tournamentRound: 2,
+        playerState: 'in_match',
+        queueStatus: 'active_match',
+      }),
+    );
+  });
+
+  it('does not resume a completed prior-round entry while the rest of the bracket settles', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedOpenRun(nk, {
+      entrants: 0,
+      maxSize: 4,
+    });
+
+    nk.matchCreate
+      .mockImplementationOnce(() => 'match-semi-1')
+      .mockImplementationOnce(() => 'match-semi-2');
+
+    rpcJoinPublicTournament(
+      { userId: 'user-1', username: 'RoyalPlayer' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcJoinPublicTournament(
+      { userId: 'user-2', username: 'TempleGuest' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcJoinPublicTournament(
+      { userId: 'user-3', username: 'CourtScribe' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcJoinPublicTournament(
+      { userId: 'user-4', username: 'Archivist' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+
+    rpcLaunchTournamentMatch(
+      { userId: 'user-1', username: 'RoyalPlayer' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcLaunchTournamentMatch(
+      { userId: 'user-3', username: 'CourtScribe' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+
+    const storedRun = readStoredRunValue(nk);
+    const afterFirstSemi = completeTournamentBracketMatch(storedRun.bracket as never, {
+      entryId: 'round-1-match-1',
+      matchId: 'match-semi-1',
+      winnerUserId: 'user-1',
+      loserUserId: 'user-2',
+      completedAt: '2026-03-27T10:05:00.000Z',
+    });
+    const staleWinnerBracket = {
+      ...afterFirstSemi,
+      participants: afterFirstSemi.participants.map((participant) =>
+        participant.userId === 'user-1'
+          ? {
+              ...participant,
+              currentRound: 1,
+              currentEntryId: 'round-1-match-1',
+            }
+          : participant,
+      ),
+    };
+
+    writeStoredRunValue(nk, {
+      ...storedRun,
+      updatedAt: '2026-03-27T10:05:00.000Z',
+      bracket: staleWinnerBracket,
+    });
+
+    const waitingLaunch = JSON.parse(
+      rpcLaunchTournamentMatch(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      matchId: string | null;
+      tournamentEntryId: string | null;
+      tournamentRound: number | null;
+      playerState: string;
+      queueStatus: string;
+      statusMessage: string;
+    };
+
+    expect(waitingLaunch).toEqual(
+      expect.objectContaining({
+        matchId: null,
+        tournamentEntryId: 'round-1-match-1',
+        tournamentRound: 1,
+        playerState: 'waiting_next_round',
+        queueStatus: 'waiting_next_round',
+        statusMessage: 'Waiting for the rest of the bracket to settle.',
+      }),
+    );
+  });
+
   it('keeps finalized tournament status readable for joined players while hiding it from the public list', () => {
     const nk = createNakama();
     const logger = createLogger();

@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
 import * as ReactNative from 'react-native';
 
@@ -224,5 +224,27 @@ describe('AuthenticatedHome', () => {
     expect(view.getByText('Quick Play')).toBeTruthy();
     expect(view.getByText('Play Online')).toBeTruthy();
     expect(view.getByText('Tutorial')).toBeTruthy();
+  });
+
+  it('moves the guest back button to the right on narrow mobile web', () => {
+    useWindowDimensionsSpy.mockReturnValue({ width: 430, height: 932, scale: 1, fontScale: 1 });
+
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: 'guest_1',
+        username: 'Guest',
+        email: null,
+        avatarUrl: null,
+        provider: 'guest',
+        createdAt: '2026-03-15T12:00:00.000Z',
+      },
+      logout: jest.fn().mockResolvedValue(undefined),
+    });
+
+    const view = render(<AuthenticatedHome />);
+
+    expect(within(view.getByTestId('authenticated-home-utility-left')).getByText('Guest')).toBeTruthy();
+    expect(within(view.getByTestId('authenticated-home-utility-left')).queryByText('Back')).toBeNull();
+    expect(within(view.getByTestId('authenticated-home-utility-right')).getByText('Back')).toBeTruthy();
   });
 });

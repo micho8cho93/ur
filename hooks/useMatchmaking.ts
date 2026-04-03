@@ -163,7 +163,8 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
 
   const openPrivateMatch = useCallback(
     async (
-      result: Pick<PrivateMatchResult, 'matchId' | 'modeId' | 'code'>,
+      result: Pick<PrivateMatchResult, 'matchId' | 'modeId' | 'code'> &
+        Partial<Pick<PrivateMatchResult, 'session' | 'userId'>>,
       isHost: boolean,
     ) => {
       await runMatchEntryTransition(
@@ -175,8 +176,17 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
           variant: 'success',
         },
         () => {
+          if (result.session) {
+            setNakamaSession(result.session);
+          }
+          if (result.userId) {
+            setUserId(result.userId);
+          }
+          setOnlineMode('nakama');
           setMatchToken(null);
           setPlayerColor(null);
+          setCreatedPrivateMatch(null);
+          setPendingPrivateMode(null);
           initGame(result.matchId, { matchConfig: getMatchConfig(result.modeId) });
           setSocketState('idle');
           setStatus('matched');
@@ -194,7 +204,17 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
         },
       );
     },
-    [initGame, router, runMatchEntryTransition, setMatchToken, setPlayerColor, setSocketState]
+    [
+      initGame,
+      router,
+      runMatchEntryTransition,
+      setMatchToken,
+      setNakamaSession,
+      setOnlineMode,
+      setPlayerColor,
+      setSocketState,
+      setUserId,
+    ]
   );
 
   const startOfflineMatch = useCallback(

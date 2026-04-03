@@ -126,6 +126,10 @@ export default function AuthenticatedHome() {
 
   const renderUtilityControl = () => {
     if (user?.provider === 'guest') {
+      if (isCompactWebLayout) {
+        return null;
+      }
+
       return renderUtilitySketchButton({
         label: 'Back',
         accessibilityLabel: 'Back to login',
@@ -141,6 +145,17 @@ export default function AuthenticatedHome() {
 
   const renderUtilityAction = () => {
     if (user?.provider === 'guest') {
+      if (isCompactWebLayout) {
+        return renderUtilitySketchButton({
+          label: 'Back',
+          accessibilityLabel: 'Back to login',
+          onPress: () => {
+            void handleBackToLogin();
+          },
+          iconName: 'arrow-back',
+        });
+      }
+
       return <View style={styles.utilitySpacer} />;
     }
 
@@ -169,11 +184,13 @@ export default function AuthenticatedHome() {
 
   const utilityBarContent = (
     <View style={styles.topOverlayRow}>
-      <View style={styles.topOverlayLeft}>
+      <View testID="authenticated-home-utility-left" style={styles.topOverlayLeft}>
         {renderUtilityControl()}
         {renderIdentityLabel()}
       </View>
-      {renderUtilityAction()}
+      <View testID="authenticated-home-utility-right" style={styles.topOverlayRight}>
+        {renderUtilityAction()}
+      </View>
     </View>
   );
 
@@ -367,6 +384,11 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     minHeight: 42,
+  },
+  topOverlayRight: {
+    minHeight: 42,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   utilitySpacer: {
     width: 88,

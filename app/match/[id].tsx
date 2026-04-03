@@ -15,7 +15,11 @@ import {
   type FloatingEmojiReactionItem,
 } from '@/components/game/FloatingEmojiReactions';
 import { GameStageHUD } from '@/components/game/GameStageHUD';
-import { computeBoardGapControlLayout } from '@/components/game/matchDiceStageLayout';
+import {
+  computeBoardGapControlLayout,
+  computeMobileBoardGapControlMetrics,
+  computeMobileWebTrayColumnControlLayout,
+} from '@/components/game/matchDiceStageLayout';
 import { MatchDiceRollStage } from '@/components/game/MatchDiceRollStage';
 import { MatchMomentIndicator } from '@/components/game/MatchMomentIndicator';
 import type { MatchMomentIndicatorCue } from '@/components/game/MatchMomentIndicator';
@@ -97,6 +101,9 @@ import { isTournamentBotUserId } from '@/shared/tournamentBots';
 import { getAppendedHistoryEntries } from '@/shared/historyWindow';
 import { useGameStore } from '@/store/useGameStore';
 import {
+  resolveMatchStageBoardScale,
+  resolveMobileBoardRowInset,
+  resolveMobileBoardViewportSafetyInsets,
   resolveMobileReserveRailTopOffset,
   resolveMobileWebBoardTrayAlignmentCorrection,
   resolveMobileWebHeaderLift,
@@ -190,9 +197,10 @@ const VISUAL_TURN_TIMER_WARNING_THRESHOLD = 0.22;
 const MOBILE_WEB_REEL_BOX_SCALE = 1.55;
 const MOBILE_WEB_REEL_DICE_SIZE_SCALE = 1.2;
 const MOBILE_WEB_REEL_DICE_IMAGE_SCALE = MOBILE_WEB_REEL_DICE_SIZE_SCALE / MOBILE_WEB_REEL_BOX_SCALE;
+const MOBILE_WEB_REEL_RIGHT_SHIFT_RATIO = 0.18;
 const MOBILE_WEB_ROLL_BUTTON_SCALE = 1.2;
+const MOBILE_WEB_ROLL_BUTTON_SIZE_BOOST = 1.2;
 const MOBILE_WEB_TOP_CHROME_SIZE_SCALE = 0.8;
-const MOBILE_WEB_BOARD_SIZE_SCALE = 1.22705;
 const MATCH_CUE_FONT_FAMILY = 'CinzelDecorativeBold';
 const HOURGLASS_HEIGHT_RATIO = 156 / 100;
 const LOCAL_MOVE_HISTORY_RE = /^(light|dark) moved to \d+\. Rosette: (true|false)$/;
@@ -212,6 +220,38 @@ const JACKPOT_ROLL_VALUE = '4';
 const JACKPOT_ROLL_PULSE_IN_MS = 180;
 const JACKPOT_ROLL_GLOW_HOLD_MS = 500;
 const JACKPOT_ROLL_PULSE_OUT_MS = 240;
+const MOBILE_WEB_TUTORIAL_BANNER_MIN_SCORE_BOX_WIDTH = 74;
+const MOBILE_WEB_TUTORIAL_BANNER_MAX_SCORE_BOX_WIDTH = 96;
+
+const estimateMobileWebScoreBoxWidth = (viewportWidth: number): number =>
+  Math.max(
+    MOBILE_WEB_TUTORIAL_BANNER_MIN_SCORE_BOX_WIDTH,
+    Math.min(MOBILE_WEB_TUTORIAL_BANNER_MAX_SCORE_BOX_WIDTH, Math.round(Math.max(0, viewportWidth) * 0.22)),
+  );
+
+const balanceBannerTextAcrossTwoLines = (text: string): string => {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+
+  if (words.length < 4) {
+    return text;
+  }
+
+  let bestSplit = text;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (let index = 1; index < words.length - 1; index += 1) {
+    const firstLine = words.slice(0, index).join(' ');
+    const secondLine = words.slice(index).join(' ');
+    const score = Math.abs(firstLine.length - secondLine.length);
+
+    if (score < bestScore) {
+      bestScore = score;
+      bestSplit = `${firstLine}\n${secondLine}`;
+    }
+  }
+
+  return bestSplit;
+};
 
 const JackpotRollResultText = ({
   active,
@@ -4397,6 +4437,17 @@ export function GameRoom() {
     isTabletLandscape: isTabletLandscapeWebLayout,
   });
   const boardClusterGap = useSideColumns || useMobileSideReserveRails ? urTheme.spacing.xs : urTheme.spacing.sm;
+  const mobileBoardRowInset = resolveMobileBoardRowInset({
+    isMobileWebLayout,
+    useMobileSideReserveRails,
+    viewportWidth,
+  });
+  const mobileBoardViewportSafetyInsets = resolveMobileBoardViewportSafetyInsets({
+    isMobileLayout,
+    isMobileWebLayout,
+    viewportHeight,
+    viewportWidth,
+  });
   const sideColumnWidth = useSideColumns
     ? resolveMatchStageSideColumnWidth({
       isTabletLandscape: matchStageViewportMode.isTabletLandscape,
@@ -4421,17 +4472,35 @@ export function GameRoom() {
     : 0;
   const mobileWebBoardTrayAlignmentLift =
     mobileWebBoardTrayAlignmentBaseLift + mobileBoardTrayAlignmentCorrection;
+  const mobileBoardStageContentWidth = useMobileSideReserveRails
+    ? Math.max(0, stageContentWidth - mobileBoardRowInset * 2)
+    : stageContentWidth;
   const boardWidthLimitByLayout = useSideColumns
     ? Math.max(
       224,
-      Math.min(urTheme.layout.boardMax, stageContentWidth - sideColumnWidth * 2 - boardClusterGap * 2),
+      Math.min(
+        urTheme.layout.boardMax,
+        stageContentWidth - sideColumnWidth * 2 - boardClusterGap * 2 - mobileBoardViewportSafetyInsets.horizontal * 2,
+      ),
     )
     : useMobileSideReserveRails
       ? Math.max(
         160,
-        Math.min(urTheme.layout.boardMax, stageContentWidth - mobileReserveColumnWidth * 2 - boardClusterGap * 2),
+        Math.min(
+          urTheme.layout.boardMax,
+          mobileBoardStageContentWidth -
+            mobileReserveColumnWidth * 2 -
+            boardClusterGap * 2 -
+            mobileBoardViewportSafetyInsets.horizontal * 2,
+        ),
       )
-      : Math.max(224, Math.min(urTheme.layout.boardMax, stageContentWidth - 2));
+      : Math.max(
+        224,
+        Math.min(
+          urTheme.layout.boardMax,
+          stageContentWidth - 2 - mobileBoardViewportSafetyInsets.horizontal * 2,
+        ),
+      );
 
   // Must match Board.tsx base width before boardScale is applied.
   const boardBaseWidth = Math.min(Math.max(viewportWidth - urTheme.spacing.lg, 0), urTheme.layout.boardMax);
@@ -4555,9 +4624,7 @@ export function GameRoom() {
   const baseMobileBoardOffsetTop = isMobileLayout
     ? baseMobileScoreOverlayTop + mobileStatusRowHeight + mobileBoardTopGap - mobileWebBoardLift
     : 0;
-  const mobileScoreRowInset = isMobileWebLayout && useMobileSideReserveRails
-    ? urTheme.spacing.xs
-    : Math.max(urTheme.spacing.xs, Math.round(viewportWidth / 65));
+  const mobileScoreRowInset = mobileBoardRowInset;
   const mobileDarkScoreNudge = isMobileLayout
     ? Math.max(4, Math.round(viewportWidth * 0.012))
     : 0;
@@ -4583,12 +4650,14 @@ export function GameRoom() {
     ? 0
     : 0;
   const mobileWebRollButtonArtSize = useMobileSideReserveRails
-    ? Math.min(
-      Math.max(
-        Math.round(stageContentWidth * tabletPortraitTuning.rollButtonWidthRatio),
-        tabletPortraitTuning.rollButtonMinSize,
-      ),
-      tabletPortraitTuning.rollButtonMaxSize,
+    ? Math.round(
+      Math.min(
+        Math.max(
+          Math.round(stageContentWidth * tabletPortraitTuning.rollButtonWidthRatio),
+          tabletPortraitTuning.rollButtonMinSize,
+        ),
+        tabletPortraitTuning.rollButtonMaxSize,
+      ) * MOBILE_WEB_ROLL_BUTTON_SIZE_BOOST,
     )
     : 0;
   const mobileDiceDockWidth = useMobileSideReserveRails
@@ -4616,7 +4685,8 @@ export function GameRoom() {
         baseMobileBoardOffsetTop -
         viewportBottomPadding -
         mobileWebUnderBoardControlReserve -
-        urTheme.spacing.xs,
+        urTheme.spacing.xs -
+        mobileBoardViewportSafetyInsets.vertical,
     )
     : boardSlotHeight;
   const viewportBoardWidthLimitByHeight = Math.min(
@@ -4632,12 +4702,12 @@ export function GameRoom() {
       (viewportBoardWidthLimitByHeight / Math.max(boardBaseWidth, 1)) * mobileBoardScaleBoost,
     ),
   );
-  const adjustedLayoutBoardScale = isMobileWebLayout
-    ? layoutBoardScale * MOBILE_WEB_BOARD_SIZE_SCALE
-    : layoutBoardScale;
-  const boardScale = isMobileLayout
-    ? Math.min(adjustedLayoutBoardScale, viewportFitBoardScale)
-    : adjustedLayoutBoardScale;
+  const boardScale = resolveMatchStageBoardScale({
+    isMobileLayout,
+    isMobileWebLayout,
+    layoutBoardScale,
+    viewportFitBoardScale,
+  });
   const reservePiecePixelSize = useMemo(
     () => getBoardPiecePixelSize({ viewportWidth, boardScale, orientation: 'vertical' }),
     [boardScale, viewportWidth],
@@ -4698,31 +4768,21 @@ export function GameRoom() {
       !isMobileWebLayout ||
       !useMobileSideReserveRails ||
       !mobileBoardGapLayout ||
+      !boardTargetFrame ||
       !lightTrayFrame ||
       !darkTrayFrame
     ) {
       return null;
     }
 
-    return {
-      diceFrame: {
-        x: Math.round(lightTrayFrame.x),
-        y: Math.round(
-          lightTrayFrame.y + Math.max(0, lightTrayFrame.height - mobileBoardGapLayout.diceFrame.height) / 2,
-        ),
-        width: Math.round(lightTrayFrame.width),
-        height: mobileBoardGapLayout.diceFrame.height,
-      },
-      rollFrame: {
-        x: Math.round(darkTrayFrame.x),
-        y: Math.round(
-          darkTrayFrame.y + Math.max(0, darkTrayFrame.height - mobileBoardGapLayout.rollFrame.height) / 2,
-        ),
-        width: Math.round(darkTrayFrame.width),
-        height: mobileBoardGapLayout.rollFrame.height,
-      },
-    };
+    return computeMobileWebTrayColumnControlLayout({
+      boardFrame: boardTargetFrame,
+      diceRailFrame: lightTrayFrame,
+      referenceLayout: mobileBoardGapLayout,
+      rollRailFrame: darkTrayFrame,
+    });
   }, [
+    boardTargetFrame,
     darkTrayFrame,
     isMobileWebLayout,
     lightTrayFrame,
@@ -4736,48 +4796,16 @@ export function GameRoom() {
       return null;
     }
 
-    const diceInset = Math.max(
-      4,
-      Math.round(
-        Math.min(mobileSideControlLayout.diceFrame.width, mobileSideControlLayout.diceFrame.height) * 0.08,
-      ),
-    );
-
-    return {
-      diceViewportHeight: Math.round(
-        Math.max(
-          0,
-          (useMobileWebVerticalDiceReels
-            ? mobileSideControlLayout.diceFrame.height
-            : mobileSideControlLayout.diceFrame.width) -
-            diceInset * 2,
-        ) *
-          tabletPortraitTuning.boardGapControlScale *
-          (useMobileWebVerticalDiceReels ? MOBILE_WEB_REEL_BOX_SCALE : 1),
-      ),
-      diceViewportWidth: Math.round(
-        Math.max(
-          0,
-          (useMobileWebVerticalDiceReels
-            ? mobileSideControlLayout.diceFrame.width
-            : mobileSideControlLayout.diceFrame.height) -
-            diceInset * 2,
-        ) *
-          tabletPortraitTuning.boardGapControlScale *
-          (useMobileWebVerticalDiceReels ? MOBILE_WEB_REEL_BOX_SCALE : 1),
-      ),
-      diceImageScale: useMobileWebVerticalDiceReels ? MOBILE_WEB_REEL_DICE_IMAGE_SCALE : 1,
-      diceOrientation: useMobileWebVerticalDiceReels ? 'vertical' as const : 'horizontal' as const,
-      rollArtSize: Math.max(
-        44,
-        Math.round(
-          Math.min(mobileSideControlLayout.rollFrame.width, mobileSideControlLayout.rollFrame.height) *
-            0.82 *
-            tabletPortraitTuning.boardGapControlScale *
-            (useMobileWebVerticalDiceReels ? MOBILE_WEB_ROLL_BUTTON_SCALE : 1),
-        ),
-      ),
-    };
+    return computeMobileBoardGapControlMetrics({
+      boardGapControlScale: tabletPortraitTuning.boardGapControlScale,
+      controlLayout: mobileSideControlLayout,
+      reelBoxScale: MOBILE_WEB_REEL_BOX_SCALE,
+      reelDiceImageScale: MOBILE_WEB_REEL_DICE_IMAGE_SCALE,
+      reelRightShiftRatio: MOBILE_WEB_REEL_RIGHT_SHIFT_RATIO,
+      rollButtonScale: MOBILE_WEB_ROLL_BUTTON_SCALE,
+      rollButtonSizeBoost: MOBILE_WEB_ROLL_BUTTON_SIZE_BOOST,
+      useMobileWebVerticalDiceReels,
+    });
   }, [
     mobileSideControlLayout,
     tabletPortraitTuning.boardGapControlScale,
@@ -4796,6 +4824,15 @@ export function GameRoom() {
 
   const mobileScoreOverlayTop = baseMobileScoreOverlayTop + mobileContentVerticalShift;
   const mobileBoardOffsetTop = baseMobileBoardOffsetTop + mobileContentVerticalShift;
+  const mobileBelowScoreRowTop =
+    mobileScoreOverlayTop - mobileScoreRowRenderLift + measuredScoreRowHeight + urTheme.spacing.xs;
+  const mobileWebTutorialBannerSideInset = isMobileWebLayout
+    ? mobileScoreRowInset + estimateMobileWebScoreBoxWidth(viewportWidth) + urTheme.spacing.xs
+    : mobileScoreRowInset;
+  const displayedTutorialObjectiveText =
+    displayedTutorialObjectiveBanner && isMobileWebLayout
+      ? balanceBannerTextAcrossTwoLines(displayedTutorialObjectiveBanner)
+      : displayedTutorialObjectiveBanner;
 
   const reserveCascadeTargets = useMemo<ReserveCascadePieceTarget[]>(() => {
     const orderedLight = [...lightReserveSlots].sort((a, b) => a.index - b.index);
@@ -5466,6 +5503,12 @@ export function GameRoom() {
             style={[
               styles.mobileBoardGapDiceWrap,
               useMobileWebVerticalDiceReels && styles.mobileBoardGapDiceWrapVisible,
+              useMobileWebVerticalDiceReels && {
+                transform: [
+                  { translateX: mobileBoardGapControlMetrics.diceOffsetX },
+                  { translateY: mobileBoardGapControlMetrics.diceTranslateY },
+                ],
+              },
             ]}
           >
             <View
@@ -5537,24 +5580,30 @@ export function GameRoom() {
                 {displayedRollText ?? ''}
               </JackpotRollResultText>
             ) : (
-              <Dice
-                animationDurationMs={diceAnimationDurationMs}
-                value={displayedRollValue}
-                resultLabel={displayedRollLabel}
-                rolling={rollingVisual}
-                onRoll={handleRoll}
-                onResultShown={handleRollResultShown}
-                canRoll={introsComplete && canRoll}
-                pressedIn={introsComplete ? isRollButtonPressedIn : false}
-                mode="stage"
-                compact
-                showNumericResult={false}
-                showStatusCopy={false}
-                showVisual={false}
-                visualPlacement="external"
-                artSize={mobileBoardGapControlMetrics.rollArtSize}
-                onMeasuredWidth={handleRollButtonMeasuredWidth}
-              />
+              <View
+                style={{
+                  transform: [{ translateY: mobileBoardGapControlMetrics.rollTranslateY }],
+                }}
+              >
+                <Dice
+                  animationDurationMs={diceAnimationDurationMs}
+                  value={displayedRollValue}
+                  resultLabel={displayedRollLabel}
+                  rolling={rollingVisual}
+                  onRoll={handleRoll}
+                  onResultShown={handleRollResultShown}
+                  canRoll={introsComplete && canRoll}
+                  pressedIn={introsComplete ? isRollButtonPressedIn : false}
+                  mode="stage"
+                  compact
+                  showNumericResult={false}
+                  showStatusCopy={false}
+                  showVisual={false}
+                  visualPlacement="external"
+                  artSize={mobileBoardGapControlMetrics.rollArtSize}
+                  onMeasuredWidth={handleRollButtonMeasuredWidth}
+                />
+              </View>
             )}
             {renderEmojiReactionControl(styles.diceReactionControl, true, mobileBoardGapControlMetrics.rollArtSize)}
           </View>
@@ -5719,9 +5768,17 @@ export function GameRoom() {
               testID="online-match-status-pill"
               style={[
                 styles.onlineStatusPill,
+                isMobileWebLayout && styles.mobileFloatingTopBanner,
                 isPrivateMatch ? styles.onlineStatusPillPrivate : null,
                 isTournamentMatch ? styles.onlineStatusPillTournament : null,
                 !isPrivateMatch && hasOpponentJoined ? styles.onlineStatusPillReady : null,
+                isMobileWebLayout
+                  ? {
+                    top: mobileBelowScoreRowTop,
+                    left: mobileScoreRowInset,
+                    right: mobileScoreRowInset,
+                  }
+                  : null,
               ]}
             >
               <Text numberOfLines={1} style={styles.onlineStatusPillText}>
@@ -5734,9 +5791,33 @@ export function GameRoom() {
               <Text style={styles.reconnectGraceBannerText}>{reconnectGraceBannerText}</Text>
             </View>
           ) : null}
-          {displayedTutorialObjectiveBanner ? (
-            <View pointerEvents="none" style={styles.tutorialObjectiveBanner}>
-              <Text style={styles.tutorialObjectiveText}>{displayedTutorialObjectiveBanner}</Text>
+          {displayedTutorialObjectiveText ? (
+            <View
+              pointerEvents="none"
+              testID="tutorial-objective-banner"
+              style={[
+                styles.tutorialObjectiveBanner,
+                isMobileWebLayout && styles.mobileFloatingTopBanner,
+                isMobileWebLayout && styles.tutorialObjectiveBannerMobileWeb,
+                isMobileWebLayout
+                  ? {
+                    top: mobileBelowScoreRowTop,
+                    left: mobileWebTutorialBannerSideInset,
+                    right: mobileWebTutorialBannerSideInset,
+                  }
+                  : null,
+              ]}
+            >
+              <Text
+                numberOfLines={isMobileWebLayout ? 2 : undefined}
+                testID="tutorial-objective-banner-text"
+                style={[
+                  styles.tutorialObjectiveText,
+                  isMobileWebLayout && styles.tutorialObjectiveTextMobileWeb,
+                ]}
+              >
+                {displayedTutorialObjectiveText}
+              </Text>
             </View>
           ) : null}
           <View
@@ -6581,6 +6662,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     zIndex: 5,
   },
+  mobileFloatingTopBanner: {
+    position: 'absolute',
+    marginTop: 0,
+    marginBottom: 0,
+  },
   stageViewport: {
     flex: 1,
     paddingHorizontal: urTheme.spacing.md,
@@ -6607,11 +6693,22 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(246, 214, 151, 0.42)',
     zIndex: 6,
   },
+  tutorialObjectiveBannerMobileWeb: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: urTheme.spacing.sm,
+    paddingVertical: 5,
+    borderRadius: 18,
+  },
   tutorialObjectiveText: {
     color: '#F7E9CD',
     fontSize: 12,
     lineHeight: 18,
     textAlign: 'center',
+  },
+  tutorialObjectiveTextMobileWeb: {
+    fontSize: 11,
+    lineHeight: 14,
   },
   topChrome: {
     position: 'absolute',
