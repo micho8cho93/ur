@@ -7,6 +7,7 @@ import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
 import { StatusBadge } from '../components/StatusBadge'
+import { appRoutes } from '../routes'
 import { formatTournamentBotSummary } from '../tournamentBots'
 import { getTournamentStructureLabel } from '../tournamentStructure'
 import type { Tournament } from '../types/tournament'
@@ -120,7 +121,7 @@ export function TournamentsPage() {
         description="Live list of tournament runs returned by the Nakama admin list RPC, including lifecycle, capacity, and scoring settings."
         actions={
           <ActionToolbar>
-            <Link className="button button--primary" to="/tournaments/new">
+            <Link className="button button--primary" to={appRoutes.tournaments.create}>
               New tournament
             </Link>
           </ActionToolbar>
@@ -225,7 +226,7 @@ export function TournamentsPage() {
                     </td>
                     <td>
                       <div className="table__actions">
-                        <Link className="table__link" to={`/tournaments/${tournament.id}`}>
+                        <Link className="table__link" to={appRoutes.tournaments.detail(tournament.id)}>
                           Control room
                         </Link>
                         {tournament.status === 'Draft' ? (

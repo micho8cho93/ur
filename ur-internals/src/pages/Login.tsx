@@ -54,7 +54,7 @@ export function LoginPage() {
             <h1>Operator access</h1>
             <p className="auth-copy">
               Sign in with the hardcoded admin account, verify access through{' '}
-              <code>rpc_admin_whoami</code>, and then enter the dashboard.
+              <code>rpc_admin_whoami</code>, and then choose the workspace you want to enter.
             </p>
           </div>
 
@@ -87,7 +87,7 @@ export function LoginPage() {
           <div className="auth-panel__form-copy">
             <p className="meta-label">Secure access</p>
             <h2>Admin sign-in</h2>
-            <p className="auth-footnote">Use the shared hardcoded admin credentials to enter the operations workspace.</p>
+            <p className="auth-footnote">Use the shared hardcoded admin credentials to enter the tournaments or analytics control center.</p>
           </div>
 
           {errorMessage ? <div className="alert alert--error">{errorMessage}</div> : null}

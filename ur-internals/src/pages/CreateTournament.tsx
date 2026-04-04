@@ -5,6 +5,7 @@ import { ActionToolbar } from '../components/ActionToolbar'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
+import { appRoutes } from '../routes'
 import {
   getTournamentStructureDescription,
   getTournamentStructureLabel,
@@ -126,7 +127,7 @@ export function CreateTournamentPage() {
         xpForTournamentChampion: Math.floor(xpForTournamentChampion),
       })
 
-      void navigate(`/tournaments/${tournament.id}`)
+      void navigate(appRoutes.tournaments.detail(tournament.id))
     } catch (submitError) {
       const message =
         submitError instanceof Error ? submitError.message : 'Unable to create tournament.'
@@ -152,7 +153,7 @@ export function CreateTournamentPage() {
         description="Creates a draft single-elimination tournament run in Nakama. Drafts stay hidden from public players until you open them from the admin dashboard."
         actions={
           <ActionToolbar>
-            <Link to="/tournaments" className="button button--secondary">
+            <Link to={appRoutes.tournaments.runs} className="button button--secondary">
               Cancel
             </Link>
           </ActionToolbar>
@@ -386,7 +387,7 @@ export function CreateTournamentPage() {
               <button className="button button--primary" type="submit" disabled={isSaving}>
                 {isSaving ? 'Creating...' : 'Create tournament'}
               </button>
-              <Link to="/tournaments" className="button button--secondary">
+              <Link to={appRoutes.tournaments.runs} className="button button--secondary">
                 Return to queue
               </Link>
             </ActionToolbar>

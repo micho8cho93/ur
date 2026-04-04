@@ -17,6 +17,7 @@ import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
 import { StatCard } from '../components/StatCard'
 import { StatusBadge } from '../components/StatusBadge'
+import { appRoutes } from '../routes'
 import { formatTournamentBotSummary } from '../tournamentBots'
 import { getTournamentStructureLabel } from '../tournamentStructure'
 import type { AuditLogEntry } from '../types/audit'
@@ -664,7 +665,7 @@ export function TournamentDetailPage() {
 
     try {
       await deleteTournament(tournament.id)
-      navigate('/tournaments')
+      navigate(appRoutes.tournaments.runs)
     } catch (deleteError) {
       const message =
         deleteError instanceof Error ? deleteError.message : 'Unable to delete tournament.'
@@ -757,7 +758,7 @@ export function TournamentDetailPage() {
           title="Tournament not found"
           description="The requested run was not returned by the admin API."
           actions={
-            <Link to="/tournaments" className="button button--secondary">
+            <Link to={appRoutes.tournaments.runs} className="button button--secondary">
               Back to tournaments
             </Link>
           }
@@ -849,7 +850,7 @@ export function TournamentDetailPage() {
                 {isDeleting ? 'Deleting...' : 'Delete tournament'}
               </button>
             ) : null}
-            <Link to="/tournaments" className="button button--secondary">
+            <Link to={appRoutes.tournaments.runs} className="button button--secondary">
               Back to tournaments
             </Link>
           </ActionToolbar>

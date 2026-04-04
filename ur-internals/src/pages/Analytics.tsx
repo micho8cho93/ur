@@ -41,12 +41,12 @@ import type {
 } from '../types/analytics'
 
 const SECTION_NAV: Array<{ id: AnalyticsSectionId; label: string }> = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'players', label: 'Players' },
-  { id: 'gameplay', label: 'Gameplay' },
-  { id: 'tournaments', label: 'Tournaments' },
+  { id: 'overview', label: 'Executive Summary' },
+  { id: 'players', label: 'Player Growth & Retention' },
+  { id: 'gameplay', label: 'Gameplay Health' },
+  { id: 'tournaments', label: 'Tournament Performance' },
   { id: 'progression', label: 'Progression' },
-  { id: 'realtime', label: 'Realtime / Ops' },
+  { id: 'realtime', label: 'Realtime Ops' },
 ]
 
 function getMetricNumber(row: AnalyticsTableRow, key: string) {
@@ -121,6 +121,33 @@ function buildGeneratedAt(bundle: AnalyticsDashboardBundle | null, realtime: Ana
   ].filter((value): value is string => typeof value === 'string')
 
   return timestamps.sort().at(-1) ?? null
+}
+
+function buildRangeLabel(filters: AnalyticsQueryFilters) {
+  return `${formatDateLabel(filters.startDate)} to ${formatDateLabel(filters.endDate)}`
+}
+
+function buildFocusLabel(
+  filters: AnalyticsQueryFilters,
+  tournamentOptions: Array<{ id: string; label: string }>,
+) {
+  const tournamentLabel =
+    tournamentOptions.find((option) => option.id === filters.tournamentId)?.label ?? null
+  const modeLabel = filters.gameMode ? trimGameModeLabel(filters.gameMode) : null
+
+  if (tournamentLabel && modeLabel) {
+    return `${tournamentLabel} · ${modeLabel}`
+  }
+
+  if (tournamentLabel) {
+    return tournamentLabel
+  }
+
+  if (modeLabel) {
+    return modeLabel
+  }
+
+  return 'All tournaments · all modes'
 }
 
 function RealtimeEventTable({
@@ -325,9 +352,14 @@ export function AnalyticsPage() {
 
   const notes = useMemo(() => collectBundleNotes(bundle, realtime), [bundle, realtime])
   const generatedAt = useMemo(() => buildGeneratedAt(bundle, realtime), [bundle, realtime])
+  const rangeLabel = useMemo(() => buildRangeLabel(filters), [filters])
   const gameModeOptions = useMemo(
     () => buildGameModeOptions(bundle, tournamentOptions),
     [bundle, tournamentOptions],
+  )
+  const focusLabel = useMemo(
+    () => buildFocusLabel(filters, tournamentOptions),
+    [filters, tournamentOptions],
   )
 
   const topPlayerColumns: AnalyticsTableColumn[] = [
@@ -496,6 +528,8 @@ export function AnalyticsPage() {
   return (
     <AnalyticsPageShell
       generatedAt={generatedAt}
+      rangeLabel={rangeLabel}
+      focusLabel={focusLabel}
       notices={notes}
       actions={
         <ActionToolbar>
@@ -524,7 +558,7 @@ export function AnalyticsPage() {
       {error ? <div className="alert alert--error">{error}</div> : null}
       {realtimeError ? <div className="alert alert--warning">{realtimeError}</div> : null}
 
-      <nav className="analytics-nav" aria-label="Analytics sections">
+      <nav className="analytics-nav analytics-nav--sticky" aria-label="Analytics sections">
         {SECTION_NAV.map((item) => (
           <a key={item.id} className="analytics-nav__link" href={`#analytics-${item.id}`}>
             {item.label}
@@ -590,9 +624,9 @@ export function AnalyticsPage() {
         <>
           <AnalyticsSection
             id="analytics-overview"
-            eyebrow="Overview"
-            title="Overview"
-            subtitle="Small-sample trends that answer whether the game is alive, returning usage is forming, and tournaments are moving."
+            eyebrow="Executive Summary"
+            title="Executive Summary"
+            subtitle="Top-line player, activity, and tournament signals arranged to answer whether the game is active, returning usage is forming, and tournament systems are moving."
           >
             <div className="analytics-grid analytics-grid--2col">
               <AnalyticsChartCard
@@ -723,9 +757,9 @@ export function AnalyticsPage() {
 
           <AnalyticsSection
             id="analytics-players"
-            eyebrow="Players"
-            title="Players"
-            subtitle="Retention-adjacent signals, engagement buckets, and the specific players carrying the live game today."
+            eyebrow="Player Growth & Retention"
+            title="Player Growth & Retention"
+            subtitle="Acquisition, repeat usage, engagement depth, and the specific players currently carrying the live game."
           >
             <div className="analytics-grid analytics-grid--2col">
               <AnalyticsChartCard
@@ -829,9 +863,9 @@ export function AnalyticsPage() {
 
           <AnalyticsSection
             id="analytics-gameplay"
-            eyebrow="Gameplay"
-            title="Gameplay"
-            subtitle="Core loop health: are matches starting, finishing, disconnecting, and showing signs of fair play?"
+            eyebrow="Gameplay Health"
+            title="Gameplay Health"
+            subtitle="Core loop health: are matches starting, finishing, disconnecting, and showing signs of stable balance?"
           >
             <div className="analytics-grid analytics-grid--2col">
               <AnalyticsChartCard
@@ -994,9 +1028,9 @@ export function AnalyticsPage() {
 
           <AnalyticsSection
             id="analytics-tournaments"
-            eyebrow="Tournaments"
-            title="Tournaments"
-            subtitle="Operational health for the tournament system: creation, participation, completion, and where entrants are dropping out."
+            eyebrow="Tournament Performance"
+            title="Tournament Performance"
+            subtitle="Creation, participation, completion, and where tournament entrants are dropping out across the selected range."
           >
             <div className="analytics-grid analytics-grid--2col">
               <AnalyticsChartCard
@@ -1203,8 +1237,8 @@ export function AnalyticsPage() {
 
           <AnalyticsSection
             id="analytics-realtime"
-            eyebrow="Realtime / Ops"
-            title="Realtime / Ops"
+            eyebrow="Realtime Ops"
+            title="Realtime Ops"
             subtitle="Current live status, recent operational events, and the places where telemetry is still intentionally missing."
             actions={
               <ActionToolbar>

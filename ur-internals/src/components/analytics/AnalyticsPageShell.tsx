@@ -5,6 +5,8 @@ interface AnalyticsPageShellProps {
   actions?: ReactNode
   filters: ReactNode
   generatedAt: string | null
+  rangeLabel: string
+  focusLabel: string
   notices: string[]
   children: ReactNode
 }
@@ -24,15 +26,17 @@ export function AnalyticsPageShell({
   actions,
   filters,
   generatedAt,
+  rangeLabel,
+  focusLabel,
   notices,
   children,
 }: AnalyticsPageShellProps) {
   return (
     <div className="analytics-page">
       <PageHeader
-        eyebrow="Analytics"
-        title="Analytics"
-        description="Operational and product intelligence from live data only. Built to answer whether people are playing, returning, completing matches, and successfully using tournaments."
+        eyebrow="Analytics Control Center"
+        title="Analytics control center"
+        description="Operational and product intelligence from live data only. Optimized for quick executive scanning first and drill-down diagnosis second."
         actions={actions}
       />
 
@@ -40,6 +44,19 @@ export function AnalyticsPageShell({
         <div className="analytics-page__generated-at">
           <span className="meta-label">Generated</span>
           <strong>{formatGeneratedAt(generatedAt)}</strong>
+          <span>Latest successful analytics bundle timestamp.</span>
+        </div>
+
+        <div className="analytics-page__generated-at">
+          <span className="meta-label">Window</span>
+          <strong>{rangeLabel}</strong>
+          <span>Current reporting range across the active filter set.</span>
+        </div>
+
+        <div className="analytics-page__generated-at">
+          <span className="meta-label">Focus</span>
+          <strong>{focusLabel}</strong>
+          <span>Current tournament and mode scope for this view.</span>
         </div>
       </div>
 

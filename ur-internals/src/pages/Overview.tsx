@@ -9,6 +9,7 @@ import { SectionPanel } from '../components/SectionPanel'
 import { StatCard } from '../components/StatCard'
 import { StatusBadge } from '../components/StatusBadge'
 import { buildTournamentLiveOverviewKpis } from '../liveOps'
+import { appRoutes } from '../routes'
 import type { AuditLogEntry } from '../types/audit'
 import type {
   TournamentActiveMatchesByRound,
@@ -239,7 +240,7 @@ export function OverviewPage() {
         description="Cross-tournament operational view with live bracket pressure, queue health, finalize readiness, and audit activity."
         actions={
           <ActionToolbar>
-            <Link className="button button--primary" to="/tournaments/new">
+            <Link className="button button--primary" to={appRoutes.tournaments.create}>
               Create tournament
             </Link>
           </ActionToolbar>
@@ -291,7 +292,7 @@ export function OverviewPage() {
         subtitle="Sorted by stale states, ready matches, and live bracket pressure."
         actions={
           <ActionToolbar>
-            <Link to="/tournaments" className="button button--secondary">
+            <Link to={appRoutes.tournaments.runs} className="button button--secondary">
               View all runs
             </Link>
           </ActionToolbar>
@@ -353,7 +354,7 @@ export function OverviewPage() {
                       </div>
                     </td>
                     <td>
-                      <Link className="table__link" to={`/tournaments/${summary.runId}`}>
+                      <Link className="table__link" to={appRoutes.tournaments.detail(summary.runId)}>
                         Control room
                       </Link>
                     </td>
@@ -452,12 +453,12 @@ export function OverviewPage() {
         <SectionPanel
           title="Recent audit activity"
           subtitle="Most recent operator events from the admin audit trail."
-          actions={
-            <ActionToolbar>
-              <Link to="/audit-log" className="button button--secondary">
+        actions={
+          <ActionToolbar>
+              <Link to={appRoutes.tournaments.auditLog} className="button button--secondary">
                 Full log
               </Link>
-            </ActionToolbar>
+          </ActionToolbar>
           }
         >
           {isLoading ? (

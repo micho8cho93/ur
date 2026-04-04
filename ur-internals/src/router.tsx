@@ -1,13 +1,17 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { PublicOnlyRoute, RequireAdminAuth } from './auth/RouteGuards'
-import { DashboardLayout } from './layout/DashboardLayout'
+import { AnalyticsLayout } from './layout/AnalyticsLayout'
+import { TournamentsLayout } from './layout/TournamentsLayout'
 import { AuditLogPage } from './pages/AuditLog'
 import { AnalyticsPage } from './pages/Analytics'
 import { CreateTournamentPage } from './pages/CreateTournament'
+import { LegacyTournamentDetailRedirect } from './pages/LegacyTournamentDetailRedirect'
 import { LoginPage } from './pages/Login'
 import { OverviewPage } from './pages/Overview'
 import { TournamentDetailPage } from './pages/TournamentDetail'
 import { TournamentsPage } from './pages/Tournaments'
+import { WorkspaceChooserPage } from './pages/WorkspaceChooser'
+import { appRoutes } from './routes'
 
 export const router = createBrowserRouter([
   {
@@ -23,34 +27,56 @@ export const router = createBrowserRouter([
     element: <RequireAdminAuth />,
     children: [
       {
-        path: '/',
-        element: <DashboardLayout />,
+        path: appRoutes.chooser,
+        element: <WorkspaceChooserPage />,
+      },
+      {
+        path: appRoutes.tournaments.home,
+        element: <TournamentsLayout />,
         children: [
           {
             index: true,
             element: <OverviewPage />,
           },
           {
-            path: 'tournaments',
+            path: 'runs',
             element: <TournamentsPage />,
           },
           {
-            path: 'tournaments/new',
+            path: 'runs/new',
             element: <CreateTournamentPage />,
           },
           {
-            path: 'tournaments/:tournamentId',
+            path: 'runs/:tournamentId',
             element: <TournamentDetailPage />,
           },
           {
             path: 'audit-log',
             element: <AuditLogPage />,
           },
+        ],
+      },
+      {
+        path: appRoutes.analytics.home,
+        element: <AnalyticsLayout />,
+        children: [
           {
-            path: 'analytics',
+            index: true,
             element: <AnalyticsPage />,
           },
         ],
+      },
+      {
+        path: appRoutes.legacy.auditLog,
+        element: <Navigate to={appRoutes.tournaments.auditLog} replace />,
+      },
+      {
+        path: appRoutes.legacy.tournaments.create,
+        element: <Navigate to={appRoutes.tournaments.create} replace />,
+      },
+      {
+        path: '/tournaments/:tournamentId',
+        element: <LegacyTournamentDetailRedirect />,
       },
     ],
   },
