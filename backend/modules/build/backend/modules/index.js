@@ -11657,17 +11657,31 @@ var RPC_ADMIN_GET_ANALYTICS_GAMEPLAY = "rpc_admin_get_analytics_gameplay";
 var RPC_ADMIN_GET_ANALYTICS_TOURNAMENTS = "rpc_admin_get_analytics_tournaments";
 var RPC_ADMIN_GET_ANALYTICS_PROGRESSION = "rpc_admin_get_analytics_progression";
 var RPC_ADMIN_GET_ANALYTICS_REALTIME = "rpc_admin_get_analytics_realtime";
-var withAdminAccess = (handler) => (ctx, logger2, nk, payload) => {
+var runAnalyticsRpc = (ctx, nk, logger2, payload, handler) => {
   assertAdmin(ctx, "viewer", nk);
   return JSON.stringify(handler(nk, logger2, payload));
 };
-var rpcAdminGetAnalyticsSummary = withAdminAccess(getAnalyticsSummary);
-var rpcAdminGetAnalyticsOverview = withAdminAccess(getAnalyticsOverview);
-var rpcAdminGetAnalyticsPlayers = withAdminAccess(getAnalyticsPlayers);
-var rpcAdminGetAnalyticsGameplay = withAdminAccess(getAnalyticsGameplay);
-var rpcAdminGetAnalyticsTournaments = withAdminAccess(getAnalyticsTournaments);
-var rpcAdminGetAnalyticsProgression = withAdminAccess(getAnalyticsProgression);
-var rpcAdminGetAnalyticsRealtime = withAdminAccess(getAnalyticsRealtime);
+function rpcAdminGetAnalyticsSummary(ctx, logger2, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsSummary);
+}
+function rpcAdminGetAnalyticsOverview(ctx, logger2, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsOverview);
+}
+function rpcAdminGetAnalyticsPlayers(ctx, logger2, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsPlayers);
+}
+function rpcAdminGetAnalyticsGameplay(ctx, logger2, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsGameplay);
+}
+function rpcAdminGetAnalyticsTournaments(ctx, logger2, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsTournaments);
+}
+function rpcAdminGetAnalyticsProgression(ctx, logger2, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsProgression);
+}
+function rpcAdminGetAnalyticsRealtime(ctx, logger2, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsRealtime);
+}
 var registerAnalyticsRpcs = (initializer) => {
   initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_SUMMARY, rpcAdminGetAnalyticsSummary);
   initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_OVERVIEW, rpcAdminGetAnalyticsOverview);

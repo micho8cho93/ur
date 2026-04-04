@@ -18,20 +18,79 @@ export const RPC_ADMIN_GET_ANALYTICS_TOURNAMENTS = "rpc_admin_get_analytics_tour
 export const RPC_ADMIN_GET_ANALYTICS_PROGRESSION = "rpc_admin_get_analytics_progression";
 export const RPC_ADMIN_GET_ANALYTICS_REALTIME = "rpc_admin_get_analytics_realtime";
 
-const withAdminAccess = (
+const runAnalyticsRpc = (
+  ctx: RuntimeContext,
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  payload: string,
   handler: (nk: RuntimeNakama, logger: RuntimeLogger, payload: string) => unknown,
-) => (ctx: RuntimeContext, logger: RuntimeLogger, nk: RuntimeNakama, payload: string): string => {
+): string => {
   assertAdmin(ctx, "viewer", nk);
   return JSON.stringify(handler(nk, logger, payload));
 };
 
-export const rpcAdminGetAnalyticsSummary = withAdminAccess(getAnalyticsSummary);
-export const rpcAdminGetAnalyticsOverview = withAdminAccess(getAnalyticsOverview);
-export const rpcAdminGetAnalyticsPlayers = withAdminAccess(getAnalyticsPlayers);
-export const rpcAdminGetAnalyticsGameplay = withAdminAccess(getAnalyticsGameplay);
-export const rpcAdminGetAnalyticsTournaments = withAdminAccess(getAnalyticsTournaments);
-export const rpcAdminGetAnalyticsProgression = withAdminAccess(getAnalyticsProgression);
-export const rpcAdminGetAnalyticsRealtime = withAdminAccess(getAnalyticsRealtime);
+export function rpcAdminGetAnalyticsSummary(
+  ctx: RuntimeContext,
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  payload: string,
+): string {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsSummary);
+}
+
+export function rpcAdminGetAnalyticsOverview(
+  ctx: RuntimeContext,
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  payload: string,
+): string {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsOverview);
+}
+
+export function rpcAdminGetAnalyticsPlayers(
+  ctx: RuntimeContext,
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  payload: string,
+): string {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsPlayers);
+}
+
+export function rpcAdminGetAnalyticsGameplay(
+  ctx: RuntimeContext,
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  payload: string,
+): string {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsGameplay);
+}
+
+export function rpcAdminGetAnalyticsTournaments(
+  ctx: RuntimeContext,
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  payload: string,
+): string {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsTournaments);
+}
+
+export function rpcAdminGetAnalyticsProgression(
+  ctx: RuntimeContext,
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  payload: string,
+): string {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsProgression);
+}
+
+export function rpcAdminGetAnalyticsRealtime(
+  ctx: RuntimeContext,
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  payload: string,
+): string {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsRealtime);
+}
 
 export const registerAnalyticsRpcs = (initializer: RuntimeInitializer): void => {
   initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_SUMMARY, rpcAdminGetAnalyticsSummary);
