@@ -2010,7 +2010,71 @@ describe('GameRoom match dice stage', () => {
     }
   });
 
-  it('pins the tutorial objective banner beneath the score row on mobile web', async () => {
+  it('stacks the mobile web online emoji control above the roll button', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+    const previousWindow = global.window;
+    const mockWindow = {
+      ...previousWindow,
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      innerWidth: 390,
+      innerHeight: 844,
+      visualViewport: {
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        width: 390,
+        height: 844,
+      },
+    } as typeof window;
+    Object.defineProperty(global, 'window', {
+      configurable: true,
+      value: mockWindow,
+    });
+
+    try {
+      mockSearchParams.id = 'online-mobile-web';
+      mockSearchParams.offline = '0';
+      mockHasNakamaConfig.mockReturnValue(true);
+      mockIsNakamaEnabled.mockReturnValue(true);
+      mockSocketJoinMatch.mockResolvedValue({
+        self: { user_id: 'self-user' },
+        presences: [{ user_id: 'opponent-user' }],
+        match_id: 'online-mobile-web',
+      });
+      mockStoreState.matchId = 'online-mobile-web';
+      mockStoreState.userId = 'self-user';
+      mockStoreState.matchPresences = ['self-user', 'opponent-user'];
+
+      render(<GameRoom />);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      act(() => {
+        jest.advanceTimersByTime(400);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const stack = screen.getByTestId('mobile-web-roll-action-stack');
+      const stackChildren = stack.children.filter((child) => typeof child !== 'string') as any[];
+
+      expect(stackChildren[0]?.props.testID).toBe('emoji-reaction-control');
+      expect(stackChildren[1]).toBeTruthy();
+    } finally {
+      Object.defineProperty(global, 'window', {
+        configurable: true,
+        value: previousWindow,
+      });
+    }
+  });
+
+  it('renders the tutorial objective banner inline between the score cards on mobile web', async () => {
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
       get: () => 'web',
@@ -2058,17 +2122,18 @@ describe('GameRoom match dice stage', () => {
       const bannerStyle = StyleSheet.flatten(
         screen.getByTestId('tutorial-objective-banner').props.style,
       ) as {
-        left?: number;
+        flexShrink?: number;
+        marginTop?: number;
+        maxWidth?: number | string;
         position?: string;
-        right?: number;
-        top?: number;
       };
       const bannerText = screen.getByTestId('tutorial-objective-banner-text').props.children as string;
 
-      expect(bannerStyle.position).toBe('absolute');
-      expect(bannerStyle.top).toBeGreaterThan(0);
-      expect(bannerStyle.left).toBeGreaterThan(80);
-      expect(bannerStyle.right).toBeGreaterThan(80);
+      expect(screen.getByTestId('score-row-center-slot')).toBeTruthy();
+      expect(bannerStyle.position).toBeUndefined();
+      expect(bannerStyle.marginTop).toBe(0);
+      expect(bannerStyle.maxWidth).toBe('100%');
+      expect(bannerStyle.flexShrink).toBe(1);
       expect(bannerText).toContain('\n');
     } finally {
       Object.defineProperty(global, 'window', {

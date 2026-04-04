@@ -20,12 +20,14 @@ interface EmojiReactionMenuProps {
   options: readonly EmojiReactionMenuOption[];
   remainingCount: number;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 }
 
 const emojiReactionTriggerImage = require('../../assets/buttons/emoji_reaction_trigger.png');
 const EMOJI_TRIGGER_ASPECT_RATIO = 520 / 236;
 const DEFAULT_TRIGGER_WIDTH = 112;
 const DEFAULT_TRIGGER_WIDTH_COMPACT = 94;
+const COMPACT_MENU_ITEMS_PER_ROW = 5;
 
 export function EmojiReactionMenu({
   buttonWidth,
@@ -37,6 +39,7 @@ export function EmojiReactionMenu({
   options,
   remainingCount,
   style,
+  testID,
 }: EmojiReactionMenuProps) {
   const resolvedTriggerWidth = Math.max(
     1,
@@ -44,25 +47,40 @@ export function EmojiReactionMenu({
   );
   const resolvedTriggerHeight = Math.max(1, Math.round(resolvedTriggerWidth / EMOJI_TRIGGER_ASPECT_RATIO));
   const triggerRadius = Math.round(resolvedTriggerHeight / 2);
+  const menuRows = React.useMemo(() => {
+    if (!compact) {
+      return [options];
+    }
+
+    const rows: EmojiReactionMenuOption[][] = [];
+    for (let index = 0; index < options.length; index += COMPACT_MENU_ITEMS_PER_ROW) {
+      rows.push(options.slice(index, index + COMPACT_MENU_ITEMS_PER_ROW));
+    }
+    return rows;
+  }, [compact, options]);
 
   return (
-    <View style={[styles.wrap, style]}>
+    <View testID={testID} style={[styles.wrap, style]}>
       {menuVisible ? (
         <View style={styles.menu}>
-          {options.map((option) => (
-            <Pressable
-              key={option.key}
-              accessibilityRole="button"
-              accessibilityLabel={`Send ${option.label} emoji reaction`}
-              onPress={() => onSelect(option.key)}
-              style={({ pressed }) => [
-                styles.emojiButton,
-                compact && styles.emojiButtonCompact,
-                pressed && styles.emojiButtonPressed,
-              ]}
-            >
-              <Text style={[styles.emojiText, compact && styles.emojiTextCompact]}>{option.emoji}</Text>
-            </Pressable>
+          {menuRows.map((row, rowIndex) => (
+            <View key={`emoji-row-${rowIndex}`} style={styles.menuRow}>
+              {row.map((option) => (
+                <Pressable
+                  key={option.key}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Send ${option.label} emoji reaction`}
+                  onPress={() => onSelect(option.key)}
+                  style={({ pressed }) => [
+                    styles.emojiButton,
+                    compact && styles.emojiButtonCompact,
+                    pressed && styles.emojiButtonPressed,
+                  ]}
+                >
+                  <Text style={[styles.emojiText, compact && styles.emojiTextCompact]}>{option.emoji}</Text>
+                </Pressable>
+              ))}
+            </View>
           ))}
         </View>
       ) : null}
@@ -134,7 +152,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: '100%',
     marginBottom: urTheme.spacing.xs,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: urTheme.spacing.xs,
@@ -151,6 +168,12 @@ const styles = StyleSheet.create({
       blurRadius: 12,
       elevation: 10,
     }),
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: urTheme.spacing.xs,
   },
   emojiButton: {
     width: 42,
