@@ -17,9 +17,9 @@
 
     @public_nakama path /v2/* /ws /ws/* /healthcheck
     handle @public_nakama {
-      header Access-Control-Allow-Origin https://urgame.live
-      header Access-Control-Allow-Credentials true
-      header Vary Origin
+      # Let Nakama supply CORS on actual responses. Adding origin headers here
+      # duplicates Nakama's own `Access-Control-Allow-Origin: *` header and
+      # breaks browser auth requests with a multiple-values CORS error.
       reverse_proxy nakama:7350
     }
 
@@ -55,9 +55,8 @@ internals.urgame.live {
 
     @internals_nakama path /v2/* /ws /ws/* /healthcheck
     handle @internals_nakama {
-      header Access-Control-Allow-Origin https://internals.urgame.live
-      header Access-Control-Allow-Credentials true
-      header Vary Origin
+      # Keep preflight handling here, but do not add CORS headers to proxied
+      # responses or they will conflict with Nakama's own headers.
       reverse_proxy nakama:7350
     }
 
