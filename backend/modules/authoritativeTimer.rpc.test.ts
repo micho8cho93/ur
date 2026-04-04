@@ -606,7 +606,7 @@ describe('authoritative online timer runtime', () => {
     );
   });
 
-  it('forfeits the player that reaches two timed-out turns of accumulated inactivity', () => {
+  it('forfeits the player that reaches three timed-out turns of accumulated inactivity', () => {
     const runtime = globalThis as RuntimeGlobals;
     const nowSpy = jest.spyOn(Date, 'now');
     const { ctx, logger, nk, dispatcher, state } = initializeStartedMatch(runtime, nowSpy);
@@ -616,7 +616,7 @@ describe('authoritative online timer runtime', () => {
     mockedProcessRankedMatchResult.mockClear();
     mockedAwardXpForMatchWin.mockClear();
 
-    state.afk.light.accumulatedMs = 10_000;
+    state.afk.light.accumulatedMs = 20_000;
 
     const result = runtime.matchLoop(ctx, logger, nk, dispatcher, 1, state, []);
 

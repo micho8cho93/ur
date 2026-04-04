@@ -34,7 +34,7 @@ import { useFonts } from 'expo-font';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Image,
+  ImageBackground,
   Platform,
   ScrollView,
   Share,
@@ -82,45 +82,46 @@ function OnlineActionPanel({
         style,
       ]}
     >
-      <Image
-        pointerEvents="none"
+      <ImageBackground
         source={onlineActionCard}
         resizeMode="stretch"
-        style={styles.modePanelImage}
-      />
-      {typeof rewardAmount === 'number' ? (
-        <XpRewardBadge
-          amount={rewardAmount}
-          style={[styles.modeRewardBadge, compact && styles.modeRewardBadgeCompact]}
-        />
-      ) : null}
-
-      <View
-        style={[
-          styles.modePanelContent,
-          compact ? styles.modePanelContentCompact : styles.modePanelContentDesktop,
-        ]}
+        style={styles.modePanelFrame}
+        imageStyle={styles.modePanelImage}
       >
-        <Text
-          style={[
-            styles.modePanelTitle,
-            compact ? styles.modePanelTitleCompact : styles.modePanelTitleDesktop,
-            { fontFamily: titleFontFamily },
-          ]}
-        >
-          {title}
-        </Text>
-        <Text
-          style={[
-            styles.modePanelSubtitle,
-            { fontFamily: bodyFontFamily },
-          ]}
-        >
-          {subtitle}
-        </Text>
+        {typeof rewardAmount === 'number' ? (
+          <XpRewardBadge
+            amount={rewardAmount}
+            style={[styles.modeRewardBadge, compact && styles.modeRewardBadgeCompact]}
+          />
+        ) : null}
 
-        <View style={styles.modePanelBody}>{children}</View>
-      </View>
+        <View
+          style={[
+            styles.modePanelContent,
+            compact ? styles.modePanelContentCompact : styles.modePanelContentDesktop,
+          ]}
+        >
+          <Text
+            style={[
+              styles.modePanelTitle,
+              compact ? styles.modePanelTitleCompact : styles.modePanelTitleDesktop,
+              { fontFamily: titleFontFamily },
+            ]}
+          >
+            {title}
+          </Text>
+          <Text
+            style={[
+              styles.modePanelSubtitle,
+              { fontFamily: bodyFontFamily },
+            ]}
+          >
+            {subtitle}
+          </Text>
+
+          <View style={styles.modePanelBody}>{children}</View>
+        </View>
+      </ImageBackground>
     </View>
   );
 }
@@ -176,6 +177,13 @@ export default function Lobby() {
       : isCompactLayout
         ? Math.min(width - horizontalPadding * 2, 430)
         : Math.min(width - horizontalPadding * 2, 820);
+  const actionsStageWidth = useThreeColumnLayout
+    ? Math.min(stageWidth, 960)
+    : isDesktopViewport
+      ? Math.min(stageWidth, 720)
+      : isCompactLayout
+        ? Math.min(stageWidth, 320)
+        : Math.min(stageWidth, 680);
   const titleFontFamily = resolveHomeMagicFontFamily(fontsLoaded);
   const bodyFontFamily = resolveHomeFredokaFontFamily(fontsLoaded);
   const buttonFontFamily = resolveHomeButtonFontFamily(fontsLoaded);
@@ -203,6 +211,15 @@ export default function Lobby() {
   if (mode === 'bot') {
     return null;
   }
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace('/');
+  };
 
   const handleStart = async () => {
     await startMatch();
@@ -263,8 +280,8 @@ export default function Lobby() {
     return 'Find Opponent';
   })();
   const findOpponentButtonMaxWidth = Math.min(
-    isCompactLayout ? 252 : 244,
-    Math.max(196, 112 + buttonTitle.length * 8),
+    164,
+    Math.max(144, 96 + buttonTitle.length * 7),
   );
 
   const statusLabel = (() => {
@@ -337,7 +354,7 @@ export default function Lobby() {
             <SketchButton
               label="Back"
               accessibilityLabel="Back"
-              onPress={() => router.back()}
+              onPress={handleBack}
               iconName="arrow-back"
               fontFamily={buttonFontFamily}
             />
@@ -481,7 +498,7 @@ export default function Lobby() {
               )}
             </View>
 
-            <View style={styles.actionsSection}>
+            <View style={[styles.actionsSection, { maxWidth: actionsStageWidth }]}>
               <Text style={[styles.actionsTitle, { fontFamily: titleFontFamily }]}>
                 Choose how you want to enter the court
               </Text>
@@ -852,7 +869,7 @@ const styles = StyleSheet.create({
     gap: urTheme.spacing.md,
   },
   actionGridThreeColumn: {
-    justifyContent: 'space-between',
+    justifyContent: 'center',
   },
   actionCell: {
     width: '48.8%',
@@ -871,84 +888,87 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modePanelDesktop: {
-    maxWidth: 390,
+    maxWidth: 320,
+    minHeight: 380,
     alignSelf: 'center',
   },
   modePanelCompact: {
-    maxWidth: 420,
+    maxWidth: 300,
+    minHeight: 292,
     alignSelf: 'center',
   },
+  modePanelFrame: {
+    width: '100%',
+    height: '100%',
+  },
   modePanelImage: {
-    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
   },
   modeRewardBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 2,
+    right: 2,
     minWidth: 78,
-    transform: [{ scale: 0.86 }],
+    transform: [{ scale: 0.72 }],
     zIndex: 2,
   },
   modeRewardBadgeCompact: {
-    top: 8,
-    right: 8,
+    top: 2,
+    right: 2,
     minWidth: 78,
-    transform: [{ scale: 0.86 }],
+    transform: [{ scale: 0.72 }],
   },
   modePanelContent: {
-    position: 'absolute',
-    top: '12%',
-    left: '13%',
-    right: '13%',
-    bottom: '14%',
+    flex: 1,
+    paddingTop: 52,
+    paddingBottom: 22,
+    paddingHorizontal: 26,
     alignItems: 'center',
-    justifyContent: 'flex-start',
     zIndex: 1,
   },
   modePanelContentDesktop: {
-    top: '13%',
-    bottom: '15.5%',
-    gap: 10,
+    gap: 7,
   },
   modePanelContentCompact: {
-    top: '12%',
-    bottom: '14.5%',
-    gap: 9,
+    paddingTop: 48,
+    paddingBottom: 20,
+    paddingHorizontal: 24,
+    gap: 7,
   },
   modePanelTitle: {
     color: urTextColors.titleOnPanel,
     textAlign: 'center',
-    maxWidth: '82%',
+    maxWidth: '72%',
     ...urTextVariants.cardTitle,
   },
   modePanelTitleDesktop: {
-    fontSize: 20,
-    lineHeight: 23,
+    fontSize: 16,
+    lineHeight: 18,
   },
   modePanelTitleCompact: {
-    fontSize: 18,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 17,
   },
   modePanelSubtitle: {
     color: urTextColors.bodyOnPanel,
-    maxWidth: '90%',
-    fontSize: 13,
-    lineHeight: 18,
+    maxWidth: '82%',
+    fontSize: 11,
+    lineHeight: 15,
     textAlign: 'center',
     ...urTextVariants.body,
   },
   modePanelBody: {
     flex: 1,
     width: '100%',
-    marginTop: 8,
-    paddingBottom: 10,
-    gap: 14,
+    marginTop: 0,
+    gap: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryActionButton: {
     width: '100%',
-    maxWidth: 196,
+    maxWidth: 164,
     alignSelf: 'center',
   },
   containedLightButton: {
@@ -956,7 +976,7 @@ const styles = StyleSheet.create({
   },
   primaryActionField: {
     width: '100%',
-    maxWidth: 216,
+    maxWidth: 176,
     alignSelf: 'center',
   },
   optionActionButton: {
@@ -965,21 +985,21 @@ const styles = StyleSheet.create({
   statusText: {
     maxWidth: '94%',
     color: urTextColors.bodyOnPanel,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 11,
+    lineHeight: 15,
     textAlign: 'center',
     ...urTextVariants.body,
   },
   privateCodePanel: {
     width: '100%',
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    borderRadius: 22,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: urPanelColors.parchmentBorder,
     backgroundColor: urPanelColors.parchmentSurfaceStrong,
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   privateCodeEyebrow: {
     color: urTextColors.captionOnPanel,
@@ -990,8 +1010,8 @@ const styles = StyleSheet.create({
   },
   privateCodeValue: {
     color: urTextColors.titleOnPanel,
-    fontSize: 28,
-    lineHeight: 30,
+    fontSize: 20,
+    lineHeight: 24,
     letterSpacing: 2.2,
     textAlign: 'center',
     ...urTextVariants.sectionTitle,
@@ -1032,18 +1052,18 @@ const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 8,
   },
   actionRowCell: {
-    minWidth: 138,
+    minWidth: 108,
     flexGrow: 1,
-    maxWidth: 208,
+    maxWidth: 164,
   },
   secondaryActionWrap: {
     width: '100%',
     alignItems: 'center',
     marginTop: 2,
-    maxWidth: 208,
+    maxWidth: 170,
     alignSelf: 'center',
   },
   secondaryActionButton: {
@@ -1054,25 +1074,25 @@ const styles = StyleSheet.create({
   },
   optionGrid: {
     width: '100%',
-    maxWidth: 196,
+    maxWidth: 164,
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   optionCell: {
     width: '100%',
   },
   codeInput: {
     width: '100%',
-    minHeight: 56,
-    borderRadius: 22,
+    minHeight: 46,
+    borderRadius: 18,
     borderWidth: 1.5,
     borderColor: urPanelColors.parchmentBorder,
     backgroundColor: urPanelColors.parchmentSurfaceStrong,
     color: urTextColors.titleOnPanel,
     textAlign: 'center',
-    fontSize: 22,
-    lineHeight: 26,
+    fontSize: 18,
+    lineHeight: 22,
     letterSpacing: 2.2,
     paddingHorizontal: urTheme.spacing.md,
   },

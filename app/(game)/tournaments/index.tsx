@@ -105,7 +105,7 @@ export default function PublicTournamentBrowseScreen() {
             <SketchButton
               label="Back"
               accessibilityLabel="Back to online play"
-              onPress={() => router.replace('/(game)/lobby?mode=online')}
+              onPress={() => router.dismissTo('/(game)/lobby?mode=online')}
               iconName="arrow-back"
               fontFamily={buttonFontFamily}
             />
@@ -155,7 +155,7 @@ export default function PublicTournamentBrowseScreen() {
                     tone="gold"
                     compact={isCompactLayout}
                     fontLoaded={fontsLoaded}
-                    onPress={() => router.replace('/(game)/lobby?mode=online')}
+                    onPress={() => router.dismissTo('/(game)/lobby?mode=online')}
                   />
                 </View>
               </View>

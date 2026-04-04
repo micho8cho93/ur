@@ -6,6 +6,8 @@ const mockUseMatchmaking = jest.fn();
 const mockUseTournamentList = jest.fn();
 const mockReplace = jest.fn();
 const mockPush = jest.fn();
+const mockBack = jest.fn();
+const mockCanGoBack = jest.fn();
 const mockJoinPrivateMatchByCode = jest.fn();
 
 jest.mock('@/hooks/useMatchmaking', () => ({
@@ -22,7 +24,8 @@ jest.mock('expo-router', () => ({
   },
   useLocalSearchParams: () => ({ mode: 'online' }),
   useRouter: () => ({
-    back: jest.fn(),
+    back: mockBack,
+    canGoBack: mockCanGoBack,
     replace: mockReplace,
     push: mockPush,
   }),
@@ -36,7 +39,11 @@ jest.mock('@expo/vector-icons/MaterialIcons', () => {
   const React = jest.requireActual('react');
   const { Text } = jest.requireActual('react-native');
 
-  return ({ name }: { name: string }) => <Text>{name}</Text>;
+  function MockMaterialIcons({ name }: { name: string }) {
+    return <Text>{name}</Text>;
+  }
+
+  return MockMaterialIcons;
 });
 
 jest.mock('@/components/ui/MobileBackground', () => ({
@@ -82,6 +89,7 @@ jest.mock('@/components/ui/Button', () => ({
 describe('Lobby private game join input', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCanGoBack.mockReturnValue(true);
     mockUseMatchmaking.mockReturnValue({
       startMatch: jest.fn(),
       startPrivateMatch: jest.fn(),
@@ -254,5 +262,16 @@ describe('Lobby private game join input', () => {
     const view = render(<Lobby />);
 
     expect(view.getAllByText('Waiting for lobby to fill').length).toBeGreaterThan(0);
+  });
+
+  it('falls back to home when back navigation is unavailable', () => {
+    mockCanGoBack.mockReturnValue(false);
+
+    const view = render(<Lobby />);
+
+    fireEvent.press(view.getByLabelText('Back'));
+
+    expect(mockBack).not.toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledWith('/');
   });
 });
