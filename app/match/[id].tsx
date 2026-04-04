@@ -2862,80 +2862,6 @@ export function GameRoom() {
   ]);
 
   useEffect(() => {
-    if (!shouldResolveTournamentAdvanceBeforeModal) {
-      enteringTournamentWaitingRoomRef.current = false;
-      setTournamentTerminalOutcomeOverride(null);
-      setTournamentAdvanceResolutionState('idle');
-      return;
-    }
-
-    let cancelled = false;
-
-    if (!tournamentRunIdParam) {
-      setTournamentTerminalOutcomeOverride(null);
-      setTournamentAdvanceResolutionState('waiting');
-
-      if (!isOnlineForfeit) {
-        void handleEnterTournamentWaitingRoom();
-      }
-
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    setTournamentAdvanceResolutionState('checking');
-
-    void getPublicTournamentStatus(tournamentRunIdParam)
-      .then((snapshot) => {
-        if (cancelled) {
-          return;
-        }
-
-        if (isTerminalTournamentStatusSnapshot(snapshot, { didPlayerWin, initialRound: initialTournamentRound })) {
-          setTournamentTerminalOutcomeOverride(
-            deriveTerminalTournamentOutcomeFromSnapshot(snapshot, {
-              didPlayerWin,
-              initialRound: initialTournamentRound,
-            }),
-          );
-          setTournamentAdvanceResolutionState('terminal');
-          return;
-        }
-
-        setTournamentTerminalOutcomeOverride(null);
-        setTournamentAdvanceResolutionState('waiting');
-
-        if (!isOnlineForfeit) {
-          void handleEnterTournamentWaitingRoom();
-        }
-      })
-      .catch(() => {
-        if (cancelled) {
-          return;
-        }
-
-        setTournamentTerminalOutcomeOverride(null);
-        setTournamentAdvanceResolutionState('waiting');
-
-        if (!isOnlineForfeit) {
-          void handleEnterTournamentWaitingRoom();
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    didPlayerWin,
-    handleEnterTournamentWaitingRoom,
-    initialTournamentRound,
-    isOnlineForfeit,
-    shouldResolveTournamentAdvanceBeforeModal,
-    tournamentRunIdParam,
-  ]);
-
-  useEffect(() => {
     if (!isPostMatchFlowActive || !isTournamentMatch || tournamentRewardSummary || tournamentRewardFallbackActive) {
       return;
     }
@@ -3114,6 +3040,80 @@ export function GameRoom() {
       enteringTournamentWaitingRoomRef.current = false;
     }
   }, [hasEnteredTournamentWaitingRoom, runScreenTransition]);
+
+  useEffect(() => {
+    if (!shouldResolveTournamentAdvanceBeforeModal) {
+      enteringTournamentWaitingRoomRef.current = false;
+      setTournamentTerminalOutcomeOverride(null);
+      setTournamentAdvanceResolutionState('idle');
+      return;
+    }
+
+    let cancelled = false;
+
+    if (!tournamentRunIdParam) {
+      setTournamentTerminalOutcomeOverride(null);
+      setTournamentAdvanceResolutionState('waiting');
+
+      if (!isOnlineForfeit) {
+        void handleEnterTournamentWaitingRoom();
+      }
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setTournamentAdvanceResolutionState('checking');
+
+    void getPublicTournamentStatus(tournamentRunIdParam)
+      .then((snapshot) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (isTerminalTournamentStatusSnapshot(snapshot, { didPlayerWin, initialRound: initialTournamentRound })) {
+          setTournamentTerminalOutcomeOverride(
+            deriveTerminalTournamentOutcomeFromSnapshot(snapshot, {
+              didPlayerWin,
+              initialRound: initialTournamentRound,
+            }),
+          );
+          setTournamentAdvanceResolutionState('terminal');
+          return;
+        }
+
+        setTournamentTerminalOutcomeOverride(null);
+        setTournamentAdvanceResolutionState('waiting');
+
+        if (!isOnlineForfeit) {
+          void handleEnterTournamentWaitingRoom();
+        }
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setTournamentTerminalOutcomeOverride(null);
+        setTournamentAdvanceResolutionState('waiting');
+
+        if (!isOnlineForfeit) {
+          void handleEnterTournamentWaitingRoom();
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    didPlayerWin,
+    handleEnterTournamentWaitingRoom,
+    initialTournamentRound,
+    isOnlineForfeit,
+    shouldResolveTournamentAdvanceBeforeModal,
+    tournamentRunIdParam,
+  ]);
 
   const validateTournamentResultBeforeExit = React.useCallback(async () => {
     if (!tournamentRunIdParam) {
