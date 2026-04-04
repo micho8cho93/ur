@@ -13,6 +13,11 @@ import {
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
 import { buildDisplayedProgressionSnapshot, formatProgressionXp } from '@/src/progression/progressionDisplay';
+import {
+  XP_PROGRESS_FILL_COLOR,
+  XP_PROGRESS_GLOSS_COLOR,
+  XP_PROGRESS_SHEEN_COLOR,
+} from '@/src/progression/xpProgressBarTheme';
 import { HOME_FREDOKA_FONT_FAMILY, HOME_SUPERCELL_FONT_FAMILY } from '@/src/home/homeTheme';
 import { RankBadge } from './RankBadge';
 
@@ -597,25 +602,25 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: urTheme.radii.pill,
     overflow: 'hidden',
-    backgroundColor: '#C56A48',
+    backgroundColor: XP_PROGRESS_FILL_COLOR,
   },
   fillMax: {
-    backgroundColor: urTheme.colors.gold,
+    backgroundColor: XP_PROGRESS_FILL_COLOR,
   },
   fillGloss: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: '52%',
-    backgroundColor: 'rgba(255, 240, 207, 0.28)',
+    height: '56%',
+    backgroundColor: XP_PROGRESS_GLOSS_COLOR,
   },
   fillSweep: {
     position: 'absolute',
     top: -6,
     bottom: -6,
     width: '28%',
-    backgroundColor: 'rgba(255, 244, 212, 0.34)',
+    backgroundColor: XP_PROGRESS_SHEEN_COLOR,
   },
   progressCopy: {
     gap: 4,

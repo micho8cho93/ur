@@ -119,15 +119,9 @@ describe('useMatchmaking', () => {
         action: expect.any(Function),
       }),
     );
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/match/[id]',
-      params: {
-        id: 'match-private-1',
-        modeId: 'standard',
-        privateMatch: '1',
-        privateCode: 'ABCD2345',
-      },
-    });
+    expect(mockPush).toHaveBeenCalledWith(
+      '/match/match-private-1?modeId=standard&privateMatch=1&privateCode=ABCD2345',
+    );
   });
 
   it('reapplies the host private match session before opening a created private table', async () => {
@@ -165,8 +159,7 @@ describe('useMatchmaking', () => {
     });
 
     await act(async () => {
-      result.current.startCreatedPrivateMatch();
-      await flush();
+      await result.current.startCreatedPrivateMatch();
     });
 
     expect(mockRunScreenTransition).toHaveBeenCalledWith(
@@ -179,15 +172,45 @@ describe('useMatchmaking', () => {
     expect(useGameStore.getState().onlineMode).toBe('nakama');
     expect(useGameStore.getState().nakamaSession).toEqual(expect.objectContaining({ user_id: 'host-1' }));
     expect(useGameStore.getState().userId).toBe('host-1');
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/match/[id]',
-      params: {
-        id: 'match-private-host-1',
-        modeId: 'gameMode_capture',
-        privateMatch: '1',
-        privateHost: '1',
-        privateCode: 'CAPTURE1',
-      },
+    expect(mockPush).toHaveBeenCalledWith(
+      '/match/match-private-host-1?modeId=gameMode_capture&privateMatch=1&privateHost=1&privateCode=CAPTURE1',
+    );
+  });
+
+  it('keeps the created private code visible when opening the host table fails', async () => {
+    mockCreatePrivateMatch.mockResolvedValue({
+      matchId: 'match-private-host-2',
+      modeId: 'gameMode_3_pieces',
+      code: 'RACE1234',
+      session: { user_id: 'host-2' },
+      userId: 'host-2',
     });
+    mockPush.mockImplementation(() => {
+      throw new Error('Navigation failed.');
+    });
+
+    const { result } = renderHook(() => useMatchmaking('online'));
+
+    await act(async () => {
+      await flush();
+    });
+
+    await act(async () => {
+      await result.current.startPrivateMatch('gameMode_3_pieces');
+    });
+
+    await act(async () => {
+      await result.current.startCreatedPrivateMatch();
+    });
+
+    expect(result.current.createdPrivateMatch).toEqual(
+      expect.objectContaining({
+        matchId: 'match-private-host-2',
+        modeId: 'gameMode_3_pieces',
+        code: 'RACE1234',
+      }),
+    );
+    expect(result.current.errorMessage).toBe('Navigation failed.');
+    expect(result.current.status).toBe('error');
   });
 });

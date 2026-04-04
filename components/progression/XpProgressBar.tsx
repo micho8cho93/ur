@@ -17,6 +17,10 @@ import {
   buildDisplayedProgressionSnapshot,
   formatProgressionXp,
 } from '@/src/progression/progressionDisplay';
+import {
+  XP_PROGRESS_FILL_COLOR,
+  XP_PROGRESS_GLOSS_COLOR,
+} from '@/src/progression/xpProgressBarTheme';
 import { RankBadge } from './RankBadge';
 
 interface XpProgressBarProps {
@@ -231,27 +235,28 @@ const styles = StyleSheet.create({
   fill: {
     height: '100%',
     borderRadius: urTheme.radii.pill,
-    backgroundColor: '#9B533D',
+    backgroundColor: XP_PROGRESS_FILL_COLOR,
     overflow: 'hidden',
   },
   fillMax: {
-    backgroundColor: urTheme.colors.gold,
+    backgroundColor: XP_PROGRESS_FILL_COLOR,
   },
   fillGloss: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: '54%',
-    backgroundColor: 'rgba(255, 223, 202, 0.2)',
+    height: '56%',
+    backgroundColor: XP_PROGRESS_GLOSS_COLOR,
   },
   fillEdge: {
     position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: 10,
-    backgroundColor: 'rgba(255, 210, 186, 0.14)',
+    top: 1,
+    right: 10,
+    bottom: 1,
+    width: 18,
+    borderRadius: urTheme.radii.pill,
+    backgroundColor: 'rgba(255, 250, 245, 0.12)',
   },
   progressLabel: {
     color: 'rgba(250, 238, 214, 0.94)',

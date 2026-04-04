@@ -4301,16 +4301,9 @@ describe('GameRoom match dice stage', () => {
 
     await waitFor(() => expect(mockSocketLeaveMatch).toHaveBeenCalledWith('online-rematch-private'));
     await waitFor(() =>
-      expect(mockRouterReplace).toHaveBeenCalledWith({
-        pathname: '/match/[id]',
-        params: {
-          id: 'online-rematch-private-2',
-          modeId: 'standard',
-          privateMatch: '1',
-          privateHost: '1',
-          privateCode: 'NEWCODE1',
-        },
-      }),
+      expect(mockRouterReplace).toHaveBeenCalledWith(
+        '/match/online-rematch-private-2?modeId=standard&privateMatch=1&privateHost=1&privateCode=NEWCODE1',
+      ),
     );
   });
 

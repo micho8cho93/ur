@@ -66,6 +66,7 @@ import { useChallenges } from '@/src/challenges/useChallenges';
 import { useEloRating } from '@/src/elo/useEloRating';
 import { resolveAuthoritativeRemainingMs } from '@/src/match/authoritativeTimer';
 import { resolveDidPlayerWin, resolveMatchPlayerColor } from '@/src/match/playerOutcome';
+import { buildMatchRoutePath } from '@/src/match/buildMatchRoutePath';
 import { isSuddenDeathState } from '@/src/match/suddenDeath';
 import {
   buildForfeitTransitionCopy,
@@ -2920,18 +2921,15 @@ export function GameRoom() {
       setXpRewardPresentation(null);
       setDidPlayXpRewardReveal(false);
 
-      router.replace({
-        pathname: '/match/[id]',
-        params: {
+      router.replace(
+        buildMatchRoutePath({
           id: nextMatchId,
           modeId: effectiveMatchConfig.modeId,
-          ...(isPrivateMatch ? { privateMatch: '1' } : {}),
-          ...(isPrivateMatch && isPrivateMatchHost ? { privateHost: '1' } : {}),
-          ...(isPrivateMatch && authoritativeRematch?.nextPrivateCode
-            ? { privateCode: authoritativeRematch.nextPrivateCode }
-            : {}),
-        },
-      } as never);
+          privateMatch: isPrivateMatch,
+          privateHost: isPrivateMatch && isPrivateMatchHost,
+          privateCode: isPrivateMatch ? authoritativeRematch?.nextPrivateCode ?? null : null,
+        }) as never,
+      );
     })();
 
     return () => {

@@ -11,6 +11,7 @@ import {
 } from '@/services/matchmaking';
 import { getSitePlayerCount } from '@/services/presence';
 import { useGameStore } from '@/store/useGameStore';
+import { buildMatchRoutePath } from '@/src/match/buildMatchRoutePath';
 import { useScreenTransition } from '@/src/transitions/ScreenTransitionContext';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -185,22 +186,21 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
           setOnlineMode('nakama');
           setMatchToken(null);
           setPlayerColor(null);
+          initGame(result.matchId, { matchConfig: getMatchConfig(result.modeId) });
+          router.push(
+            buildMatchRoutePath({
+              id: result.matchId,
+              modeId: result.modeId,
+              privateMatch: true,
+              privateCode: result.code,
+              ...(isHost ? { privateHost: true } : {}),
+            }),
+          );
           setCreatedPrivateMatch(null);
           setPendingPrivateMode(null);
-          initGame(result.matchId, { matchConfig: getMatchConfig(result.modeId) });
           setSocketState('idle');
           setStatus('matched');
           setActiveAction(null);
-          router.push({
-            pathname: '/match/[id]',
-            params: {
-              id: result.matchId,
-              modeId: result.modeId,
-              privateMatch: '1',
-              privateCode: result.code,
-              ...(isHost ? { privateHost: '1' } : {}),
-            },
-          });
         },
       );
     },
@@ -242,9 +242,12 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
           setSocketState('connected');
           setStatus('matched');
           router.push(
-            isOfflineBotMatch
-              ? `/match/${localMatchId}?offline=1&botDifficulty=${difficulty}&modeId=${matchConfig.modeId}`
-              : `/match/${localMatchId}?offline=1&modeId=${matchConfig.modeId}`,
+            buildMatchRoutePath({
+              id: localMatchId,
+              offline: true,
+              botDifficulty: isOfflineBotMatch ? difficulty : null,
+              modeId: matchConfig.modeId,
+            }),
           );
         },
       );
@@ -298,7 +301,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
           setSocketState('connected');
           setStatus('matched');
           setActiveAction(null);
-          router.push(`/match/${result.matchId}`);
+          router.push(buildMatchRoutePath({ id: result.matchId }));
         },
       );
     } catch (error) {
@@ -392,7 +395,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
         setUserId(result.userId);
         setMatchToken(null);
         setCreatedPrivateMatch(null);
-        openPrivateMatch(result, false);
+        await openPrivateMatch(result, false);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to join that private game right now.';
         setErrorMessage(message);
@@ -412,13 +415,23 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
     setErrorMessage(null);
   }, []);
 
-  const startCreatedPrivateMatch = useCallback(() => {
+  const startCreatedPrivateMatch = useCallback(async () => {
     if (!createdPrivateMatch) {
       return;
     }
 
-    void openPrivateMatch(createdPrivateMatch, true);
-  }, [createdPrivateMatch, openPrivateMatch]);
+    setErrorMessage(null);
+
+    try {
+      await openPrivateMatch(createdPrivateMatch, true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to open that private game right now.';
+      setErrorMessage(message);
+      setStatus('error');
+      setSocketState('error');
+      setActiveAction(null);
+    }
+  }, [createdPrivateMatch, openPrivateMatch, setSocketState]);
 
   const startMatch = useCallback(
     async (difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY) => {
