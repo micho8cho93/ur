@@ -1,6 +1,30 @@
 {$NAKAMA_DOMAIN} {
-  encode zstd gzip
-  reverse_proxy nakama:7350
+  route {
+    @public_nakama_preflight {
+      method OPTIONS
+      path /v2/* /ws /ws/* /healthcheck
+      header Origin https://urgame.live
+    }
+
+    handle @public_nakama_preflight {
+      header Access-Control-Allow-Origin https://urgame.live
+      header Access-Control-Allow-Credentials true
+      header Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With"
+      header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+      header Vary Origin
+      respond "" 204
+    }
+
+    @public_nakama path /v2/* /ws /ws/* /healthcheck
+    handle @public_nakama {
+      header Access-Control-Allow-Origin https://urgame.live
+      header Access-Control-Allow-Credentials true
+      header Vary Origin
+      reverse_proxy nakama:7350
+    }
+
+    encode zstd gzip
+  }
 }
 
 admin-nakama.urgame.live {

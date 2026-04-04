@@ -14,6 +14,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      backend:
+        aliases:
+          - postgres
 
   nakama:
     image: heroiclabs/nakama:3.38.0
@@ -49,6 +53,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    networks:
+      backend:
+        aliases:
+          - nakama
 
   caddy:
     image: caddy:2.9.1
@@ -67,8 +75,14 @@ services:
       - ../../ur-internals/dist:/var/www/internals:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      - backend
 
 volumes:
   postgres_data:
   caddy_data:
   caddy_config:
+
+networks:
+  backend:
+    name: ur_nakama_net
