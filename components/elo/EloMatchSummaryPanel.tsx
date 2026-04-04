@@ -3,12 +3,14 @@ import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
-import { EloRatingChangeNotificationPayload } from '@/shared/elo';
+import { EloImpactIndicator } from '@/components/elo/EloImpactIndicator';
+import { EloRatingChangeNotificationPayload, EloRatingProfileRpcResponse } from '@/shared/elo';
 
 interface EloMatchSummaryPanelProps {
   result: EloRatingChangeNotificationPayload | null;
   pending?: boolean;
   unchangedReason?: string | null;
+  ratingProfile?: EloRatingProfileRpcResponse | null;
 }
 
 const formatDelta = (value: number): string => `${value >= 0 ? '+' : ''}${value}`;
@@ -17,6 +19,7 @@ export const EloMatchSummaryPanel: React.FC<EloMatchSummaryPanelProps> = ({
   result,
   pending = false,
   unchangedReason = null,
+  ratingProfile = null,
 }) => {
   const { width } = useWindowDimensions();
   const useCompactLayout = width < 420;
@@ -32,7 +35,10 @@ export const EloMatchSummaryPanel: React.FC<EloMatchSummaryPanelProps> = ({
             <Text style={[styles.deltaValue, isPositive ? styles.deltaPositive : styles.deltaNegative]}>
               {formatDelta(result.player.delta)} Elo
             </Text>
-            <Text style={styles.deltaMeta}>New rating: {result.player.newRating}</Text>
+            <View style={styles.ratingValueRow}>
+              <Text style={styles.deltaMeta}>Rating {result.player.newRating}</Text>
+              <EloImpactIndicator delta={result.player.delta} size={18} testID="elo-impact-indicator" />
+            </View>
           </View>
           {result.player.provisional ? (
             <View style={styles.provisionalBadge}>
@@ -58,6 +64,29 @@ export const EloMatchSummaryPanel: React.FC<EloMatchSummaryPanelProps> = ({
             </Text>
           </View>
         </View>
+      </View>
+    );
+  }
+
+  if (!pending && ratingProfile) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.eyebrow}>Ranked Elo</Text>
+        <View style={[styles.resultRow, useCompactLayout && styles.resultRowCompact]}>
+          <View>
+            <Text style={styles.stateTitle}>Elo unchanged</Text>
+            <View style={styles.ratingValueRow}>
+              <Text style={styles.deltaMeta}>Rating {ratingProfile.eloRating}</Text>
+              <EloImpactIndicator delta={0} size={18} testID="elo-impact-indicator" />
+            </View>
+          </View>
+          {ratingProfile.provisional ? (
+            <View style={styles.provisionalBadge}>
+              <Text style={styles.provisionalBadgeText}>Provisional</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={styles.stateText}>{unchangedReason ?? 'This match did not affect your Elo rating.'}</Text>
       </View>
     );
   }
@@ -120,6 +149,11 @@ const styles = StyleSheet.create({
     color: 'rgba(243, 230, 206, 0.78)',
     fontSize: 13,
     lineHeight: 18,
+  },
+  ratingValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   provisionalBadge: {
     borderRadius: urTheme.radii.pill,

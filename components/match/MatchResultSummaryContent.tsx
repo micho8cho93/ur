@@ -1,11 +1,12 @@
 import { MatchChallengeRewardsPanel } from '@/components/challenges/MatchChallengeRewardsPanel';
+import { EloImpactIndicator } from '@/components/elo/EloImpactIndicator';
 import { EloMatchSummaryPanel } from '@/components/elo/EloMatchSummaryPanel';
 import { ProgressionAwardSummary } from '@/components/progression/ProgressionAwardSummary';
 import { XPDisplay } from '@/components/challenges/XPDisplay';
 import { urTheme, urTypography } from '@/constants/urTheme';
 import { formatProgressionXp } from '@/src/progression/progressionDisplay';
 import type { MatchChallengeRewardSummary } from '@/src/challenges/challengeUi';
-import type { EloRatingChangeNotificationPayload } from '@/shared/elo';
+import type { EloRatingChangeNotificationPayload, EloRatingProfileRpcResponse } from '@/shared/elo';
 import type { ProgressionAwardResponse, ProgressionSnapshot } from '@/shared/progression';
 import type { TournamentMatchRewardSummaryPayload } from '@/shared/urMatchProtocol';
 import React from 'react';
@@ -20,12 +21,14 @@ type MatchResultSummaryContentProps = {
   isPlaythroughTutorialMatch: boolean;
   isRankedHumanMatch: boolean;
   lastEloRatingChange: EloRatingChangeNotificationPayload | null;
+  eloRatingProfile: EloRatingProfileRpcResponse | null;
   eloUnchangedReason: string | null;
   shouldShowAccountRewards: boolean;
   progression: ProgressionSnapshot | null;
   isRefreshingMatchRewards: boolean;
   progressionError: string | null;
   lastProgressionAward: ProgressionAwardResponse | null;
+  animateProgressionAward?: boolean;
   shouldShowChallengeRewards: boolean;
   matchChallengeSummary: MatchChallengeRewardSummary | null;
   matchRewardsErrorMessage: string | null;
@@ -44,12 +47,14 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
   isPlaythroughTutorialMatch,
   isRankedHumanMatch,
   lastEloRatingChange,
+  eloRatingProfile,
   eloUnchangedReason,
   shouldShowAccountRewards,
   progression,
   isRefreshingMatchRewards,
   progressionError,
   lastProgressionAward,
+  animateProgressionAward = true,
   shouldShowChallengeRewards,
   matchChallengeSummary,
   matchRewardsErrorMessage,
@@ -77,9 +82,16 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
           <View style={[styles.tournamentRewardStats, useCompactRewardStats && styles.tournamentRewardStatsCompact]}>
             <View style={styles.tournamentRewardStat}>
               <Text style={styles.tournamentRewardStatLabel}>Elo</Text>
-              <Text style={styles.tournamentRewardStatValue}>{formatSignedValue(tournamentRewardSummary.eloDelta)}</Text>
+              <View style={styles.tournamentRewardValueRow}>
+                <Text style={styles.tournamentRewardStatValue}>{String(tournamentRewardSummary.eloNew)}</Text>
+                <EloImpactIndicator
+                  delta={tournamentRewardSummary.eloDelta}
+                  size={18}
+                  testID="tournament-elo-impact-indicator"
+                />
+              </View>
               <Text style={styles.tournamentRewardStatDetail}>
-                {`${tournamentRewardSummary.eloOld} -> ${tournamentRewardSummary.eloNew}`}
+                {`${formatSignedValue(tournamentRewardSummary.eloDelta)} from ${tournamentRewardSummary.eloOld}`}
               </Text>
             </View>
             <View style={styles.tournamentRewardStat}>
@@ -119,6 +131,7 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
         <EloMatchSummaryPanel
           result={isRankedHumanMatch ? lastEloRatingChange : null}
           pending={isRankedHumanMatch && !lastEloRatingChange}
+          ratingProfile={eloRatingProfile}
           unchangedReason={!isRankedHumanMatch ? eloUnchangedReason : null}
         />
       ) : null}
@@ -135,6 +148,7 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
             <ProgressionAwardSummary
               progression={progression}
               award={lastProgressionAward}
+              animateProgressBar={animateProgressionAward}
               pending={!lastProgressionAward}
             />
           ) : null}
@@ -217,6 +231,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: urTheme.spacing.sm,
     paddingVertical: urTheme.spacing.sm,
     gap: 4,
+  },
+  tournamentRewardValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   tournamentRewardStatLabel: {
     ...urTypography.label,

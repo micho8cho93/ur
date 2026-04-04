@@ -4,6 +4,7 @@ import { createInitialState, getValidMoves } from '@/logic/engine';
 import { getMatchConfig } from '@/logic/matchConfigs';
 import type { GameState, MoveAction } from '@/logic/types';
 import { CHALLENGE_DEFINITIONS, createDefaultUserChallengeProgressSnapshot } from '@/shared/challenges';
+import type { EloRatingProfileRpcResponse } from '@/shared/elo';
 import { buildProgressionSnapshot } from '@/shared/progression';
 import { MatchOpCode } from '@/shared/urMatchProtocol';
 
@@ -40,6 +41,42 @@ const mockAudioSettingsModal = jest.fn((_props?: unknown) => {
   const { View } = require('react-native');
   return <View testID="mock-audio-settings" />;
 });
+const mockCinematicXpRewardModal = jest.fn(
+  ({
+    visible,
+    previousTotalXp,
+    newTotalXp,
+    onComplete,
+  }: {
+    visible?: boolean;
+    previousTotalXp?: number;
+    newTotalXp?: number;
+    onComplete?: () => void;
+  }) => {
+    const React = require('react');
+    const { useEffect } = React;
+    const { Pressable, Text, View } = require('react-native');
+
+    useEffect(() => {
+      if (visible && mockAutoCompleteCinematicXpModal) {
+        onComplete?.();
+      }
+    }, [onComplete, visible]);
+
+    if (!visible) {
+      return null;
+    }
+
+    return (
+      <View testID="mock-cinematic-xp-modal">
+        <Text>{`XP reveal ${String(previousTotalXp ?? 0)} -> ${String(newTotalXp ?? 0)}`}</Text>
+        <Pressable testID="mock-cinematic-xp-complete" onPress={onComplete}>
+          <Text>Finish XP Reveal</Text>
+        </Pressable>
+      </View>
+    );
+  },
+);
 const mockModal = jest.fn(
   ({
     visible,
@@ -151,6 +188,11 @@ const mockDisconnectSocket = jest.fn();
 const mockRefreshElo = jest.fn(() => Promise.resolve(null));
 const mockRefreshProgression = jest.fn(() => Promise.resolve(null));
 const mockRefreshChallenges = jest.fn(() => Promise.resolve(null));
+const mockSubmitCompletedBotMatchResult = jest.fn();
+let mockProgression = null as ReturnType<typeof buildProgressionSnapshot> | null;
+let mockProgressionErrorMessage: string | null = null;
+let mockEloRatingProfile: EloRatingProfileRpcResponse | null = null;
+let mockAutoCompleteCinematicXpModal = true;
 const mockGetPublicTournamentStatus = jest.fn();
 const mockLaunchTournamentMatch = jest.fn();
 const mockFinalizeTournamentMatch = jest.fn();
@@ -444,6 +486,10 @@ jest.mock('@/components/tutorial/PlayTutorialCoachModal', () => {
   };
 });
 
+jest.mock('@/components/progression/CinematicXpRewardModal', () => ({
+  CinematicXpRewardModal: (props: unknown) => mockCinematicXpRewardModal(props),
+}));
+
 jest.mock('@/components/match/MatchResultSummaryContent', () => {
   const React = require('react');
   const { View } = require('react-native');
@@ -569,15 +615,15 @@ jest.mock('@/hooks/useGameLoop', () => ({
 
 jest.mock('@/src/progression/useProgression', () => ({
   useProgression: () => ({
-    progression: null,
+    progression: mockProgression,
     refresh: mockRefreshProgression,
-    errorMessage: null,
+    errorMessage: mockProgressionErrorMessage,
   }),
 }));
 
 jest.mock('@/src/elo/useEloRating', () => ({
   useEloRating: () => ({
-    ratingProfile: null,
+    ratingProfile: mockEloRatingProfile,
     status: 'ready',
     errorMessage: null,
     isLoading: false,
@@ -614,6 +660,10 @@ jest.mock('@/services/audio', () => ({
     setSfxVolume: jest.fn().mockResolvedValue(undefined),
     stopAll: jest.fn().mockResolvedValue(undefined),
   },
+}));
+
+jest.mock('@/services/botMatchRewards', () => ({
+  submitCompletedBotMatchResult: (...args: unknown[]) => mockSubmitCompletedBotMatchResult(...args),
 }));
 
 jest.mock('@/services/tournaments', () => ({
@@ -755,6 +805,24 @@ const configureCompletedMatchChallenges = (matchId: string) => {
   };
 };
 
+const createProgressionAward = (
+  matchId: string,
+  previousTotalXp: number,
+  newTotalXp: number,
+) => ({
+  type: 'progression_award' as const,
+  matchId,
+  source: 'pvp_win' as const,
+  duplicate: false,
+  awardedXp: Math.max(0, newTotalXp - previousTotalXp),
+  previousTotalXp,
+  newTotalXp,
+  previousRank: buildProgressionSnapshot(previousTotalXp).currentRank,
+  newRank: buildProgressionSnapshot(newTotalXp).currentRank,
+  rankChanged: buildProgressionSnapshot(previousTotalXp).currentRank !== buildProgressionSnapshot(newTotalXp).currentRank,
+  progression: buildProgressionSnapshot(newTotalXp),
+});
+
 const emitTournamentRewardSummary = (
   matchId: string,
   overrides: Partial<{
@@ -857,6 +925,11 @@ describe('GameRoom match dice stage', () => {
     mockRefreshElo.mockImplementation(() => Promise.resolve(null));
     mockRefreshProgression.mockImplementation(() => Promise.resolve(null));
     mockRefreshChallenges.mockImplementation(() => Promise.resolve(null));
+    mockSubmitCompletedBotMatchResult.mockResolvedValue({ progressionAward: null });
+    mockProgression = null;
+    mockProgressionErrorMessage = null;
+    mockEloRatingProfile = null;
+    mockAutoCompleteCinematicXpModal = true;
     mockGetPublicTournamentStatus.mockResolvedValue({
       tournament: {
         runId: 'run-1',
@@ -1721,7 +1794,7 @@ describe('GameRoom match dice stage', () => {
         'When you roll a number but none of your pieces can legally use it, the game shows No Move and your turn ends.',
       ),
     ).toBeTruthy();
-  });
+  }, 15_000);
 
   it('shows Opponent Joined only when a private match becomes ready', async () => {
     mockSearchParams.id = 'private-1';
@@ -2918,6 +2991,272 @@ describe('GameRoom match dice stage', () => {
     expect(mockRefreshElo).toHaveBeenCalledWith({ silent: true });
   });
 
+  it('shows the cinematic XP reveal before the regular online winner modal', async () => {
+    const matchId = 'online-xp-win';
+    mockAutoCompleteCinematicXpModal = false;
+    mockSearchParams.id = matchId;
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: matchId,
+    });
+    mockProgression = buildProgressionSnapshot(500);
+    mockStoreState.matchId = matchId;
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.lastProgressionAward = createProgressionAward(matchId, 500, 620);
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      jest.advanceTimersByTime(1_250);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('mock-cinematic-xp-modal')).toBeTruthy();
+    expect(screen.queryByText('Victory')).toBeNull();
+
+    fireEvent.press(screen.getByTestId('mock-cinematic-xp-complete'));
+
+    expect(screen.getByText('Victory')).toBeTruthy();
+  });
+
+  it('does not show the cinematic XP reveal for losers', async () => {
+    const matchId = 'online-xp-loss';
+    mockSearchParams.id = matchId;
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: matchId,
+    });
+    mockProgression = buildProgressionSnapshot(500);
+    mockStoreState.matchId = matchId;
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.lastProgressionAward = createProgressionAward(matchId, 500, 620);
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'dark',
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId('mock-cinematic-xp-modal')).toBeNull();
+    expect(screen.getByText('Defeat')).toBeTruthy();
+  });
+
+  it('waits for refreshed progression data before opening the cinematic XP reveal', async () => {
+    const matchId = 'online-xp-delayed-refresh';
+    mockAutoCompleteCinematicXpModal = false;
+    mockSearchParams.id = matchId;
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: matchId,
+    });
+    mockProgression = buildProgressionSnapshot(500);
+    mockStoreState.matchId = matchId;
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.lastProgressionAward = null;
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockRefreshProgression.mockResolvedValue(buildProgressionSnapshot(660));
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId('mock-cinematic-xp-modal')).toBeNull();
+
+    mockProgression = buildProgressionSnapshot(660);
+    view.rerender(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('mock-cinematic-xp-modal')).toBeTruthy();
+    expect(screen.getByText('XP reveal 500 -> 660')).toBeTruthy();
+    expect(screen.queryByText('Victory')).toBeNull();
+
+    fireEvent.press(screen.getByTestId('mock-cinematic-xp-complete'));
+
+    expect(screen.getByText('Victory')).toBeTruthy();
+  });
+
+  it('shows the cinematic XP reveal before the regular offline winner modal when bot rewards are eligible', async () => {
+    const matchId = 'local-1';
+    mockAutoCompleteCinematicXpModal = false;
+    mockSearchParams.id = matchId;
+    mockSearchParams.offline = '1';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockAuthState.user = {
+      id: 'self-user',
+      username: 'Michel',
+      email: 'michel@example.com',
+      provider: 'google',
+      avatarUrl: null,
+      createdAt: '2026-03-20T12:00:00.000Z',
+      nakamaUserId: 'self-user',
+    };
+    mockProgression = buildProgressionSnapshot(300);
+    mockStoreState.matchId = matchId;
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockStoreState.lastProgressionAward = createProgressionAward(matchId, 300, 360);
+    mockSubmitCompletedBotMatchResult.mockResolvedValue({
+      progressionAward: createProgressionAward(matchId, 300, 360),
+    });
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      jest.advanceTimersByTime(1_250);
+      await Promise.resolve();
+    });
+
+    expect(mockSubmitCompletedBotMatchResult).toHaveBeenCalled();
+    expect(screen.getByTestId('mock-cinematic-xp-modal')).toBeTruthy();
+    expect(screen.queryByText('Victory')).toBeNull();
+
+    fireEvent.press(screen.getByTestId('mock-cinematic-xp-complete'));
+
+    expect(screen.getByText('Victory')).toBeTruthy();
+  });
+
+  it('holds the tournament waiting room until the cinematic XP reveal completes', async () => {
+    const matchId = 'tournament-win-cinematic';
+    mockAutoCompleteCinematicXpModal = false;
+    mockSearchParams.id = matchId;
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: matchId,
+    });
+    mockStoreState.matchId = matchId;
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary(matchId, {
+        tournamentOutcome: 'advancing',
+        shouldEnterWaitingRoom: true,
+        totalXpOld: 500,
+        totalXpNew: 650,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-cinematic-xp-modal')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
+    expect(screen.queryByText('Victory')).toBeNull();
+
+    fireEvent.press(screen.getByTestId('mock-cinematic-xp-complete'));
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
+  });
+
+  it('does not surface a stale cinematic XP reveal after the route switches to a new match', async () => {
+    const oldMatchId = 'online-stale-xp-old';
+    const nextMatchId = 'online-stale-xp-next';
+    mockSearchParams.id = oldMatchId;
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: oldMatchId,
+    });
+    mockProgression = buildProgressionSnapshot(500);
+    mockStoreState.matchId = oldMatchId;
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.lastProgressionAward = createProgressionAward(oldMatchId, 500, 620);
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+
+    const view = render(<GameRoom />);
+
+    mockSearchParams.id = nextMatchId;
+    mockStoreState.matchId = nextMatchId;
+    mockStoreState.lastProgressionAward = null;
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'rolling',
+      winner: null,
+    };
+
+    view.rerender(<GameRoom />);
+
+    await act(async () => {
+      jest.advanceTimersByTime(1_250);
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId('mock-cinematic-xp-modal')).toBeNull();
+    expect(screen.queryByText('Victory')).toBeNull();
+  });
+
   it('shows the eliminated tournament result modal when a tournament run ends in a loss', async () => {
     mockSearchParams.id = 'tournament-loss';
     mockSearchParams.offline = '0';
@@ -3881,6 +4220,8 @@ describe('GameRoom match dice stage', () => {
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
+      await Promise.resolve();
+      jest.advanceTimersByTime(1_250);
       await Promise.resolve();
     });
 

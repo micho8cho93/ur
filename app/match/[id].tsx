@@ -29,6 +29,7 @@ import {
 } from '@/components/game/rollResultHold';
 import { MatchResultSummaryContent } from '@/components/match/MatchResultSummaryContent';
 import { PieceRail, PieceRailFrameMeasurement, ReserveSlotMeasurement } from '@/components/game/PieceRail';
+import { CinematicXpRewardModal } from '@/components/progression/CinematicXpRewardModal';
 import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
 import { DEFAULT_DICE_ROLL_DURATION_MS } from '@/components/game/slotDiceShared';
 import { TournamentWaitingRoom } from '@/components/tournaments/TournamentWaitingRoom';
@@ -127,7 +128,7 @@ import {
 import type { TutorialResultModalContent } from '@/tutorials/tutorialTypes';
 import type { CompletedBotMatchRewardMode } from '@/shared/challenges';
 import { isEloRatingChangeNotificationPayload } from '@/shared/elo';
-import { isProgressionAwardNotificationPayload } from '@/shared/progression';
+import { isProgressionAwardNotificationPayload, type ProgressionAwardResponse, type ProgressionSnapshot } from '@/shared/progression';
 import {
   EmojiReactionBroadcastPayload,
   EmojiReactionKey,
@@ -212,6 +213,7 @@ const TUTORIAL_BOT_MOVE_DELAY_MS = 1200 * TUTORIAL_PACING_MULTIPLIER;
 const TUTORIAL_NO_MOVE_DELAY_MS = 850 * TUTORIAL_PACING_MULTIPLIER;
 const ONLINE_MATCH_REWARD_REFRESH_RETRY_MS = 1200;
 const MATCH_PRESENTATION_READY_FALLBACK_MS = 1200;
+const XP_REWARD_WAIT_TIMEOUT_MS = 1_200;
 const TOURNAMENT_REWARD_SUMMARY_FALLBACK_MS = 4_000;
 const TOURNAMENT_EXIT_VALIDATION_TIMEOUT_MS = 5_000;
 const MATCH_LEAVE_TIMEOUT_MS = 1_500;
@@ -251,6 +253,98 @@ const balanceBannerTextAcrossTwoLines = (text: string): string => {
   }
 
   return bestSplit;
+};
+
+type PostMatchPresentationStage = 'hidden' | 'xp_reward_wait' | 'xp_reward_play' | 'result';
+
+type ResolvedXpRewardPresentation = {
+  previousTotalXp: number;
+  newTotalXp: number;
+  awardedXp: number;
+};
+
+const sanitizeXpPresentationValue = (value: number): number =>
+  Math.max(0, Number.isFinite(value) ? Math.floor(value) : 0);
+
+const buildResolvedXpRewardPresentation = (
+  previousTotalXp: number,
+  newTotalXp: number,
+): ResolvedXpRewardPresentation | null => {
+  const sanitizedPreviousTotalXp = sanitizeXpPresentationValue(previousTotalXp);
+  const sanitizedNewTotalXp = sanitizeXpPresentationValue(newTotalXp);
+
+  if (sanitizedNewTotalXp <= sanitizedPreviousTotalXp) {
+    return null;
+  }
+
+  return {
+    previousTotalXp: sanitizedPreviousTotalXp,
+    newTotalXp: sanitizedNewTotalXp,
+    awardedXp: sanitizedNewTotalXp - sanitizedPreviousTotalXp,
+  };
+};
+
+const resolvePreferredXpRewardPresentation = (params: {
+  matchId: string | string[] | undefined;
+  tournamentRewardSummary: TournamentMatchRewardSummaryPayload | null;
+  preMatchTotalXp: number | null;
+  progression: ProgressionSnapshot | null;
+  lastProgressionAward: ProgressionAwardResponse | null;
+}): ResolvedXpRewardPresentation | null => {
+  const resolvedMatchId = typeof params.matchId === 'string' ? params.matchId : null;
+
+  if (
+    resolvedMatchId &&
+    params.tournamentRewardSummary &&
+    params.tournamentRewardSummary.matchId === resolvedMatchId
+  ) {
+    return buildResolvedXpRewardPresentation(
+      params.tournamentRewardSummary.totalXpOld,
+      params.tournamentRewardSummary.totalXpNew,
+    );
+  }
+
+  if (params.progression) {
+    if (params.preMatchTotalXp !== null) {
+      const fromPreMatchSnapshot = buildResolvedXpRewardPresentation(
+        params.preMatchTotalXp,
+        params.progression.totalXp,
+      );
+
+      if (fromPreMatchSnapshot) {
+        return fromPreMatchSnapshot;
+      }
+    }
+
+    if (resolvedMatchId && params.lastProgressionAward?.matchId === resolvedMatchId) {
+      const fromAwardBackfill = buildResolvedXpRewardPresentation(
+        params.lastProgressionAward.previousTotalXp,
+        params.progression.totalXp,
+      );
+
+      if (fromAwardBackfill) {
+        return fromAwardBackfill;
+      }
+    }
+  }
+
+  return null;
+};
+
+const resolveFallbackXpRewardPresentation = (params: {
+  matchId: string | string[] | undefined;
+  lastProgressionAward: ProgressionAwardResponse | null;
+}): ResolvedXpRewardPresentation | null => {
+  const resolvedMatchId = typeof params.matchId === 'string' ? params.matchId : null;
+
+  if (!resolvedMatchId || params.lastProgressionAward?.matchId !== resolvedMatchId) {
+    return null;
+  }
+
+  return buildResolvedXpRewardPresentation(
+    params.lastProgressionAward.previousTotalXp,
+    params.lastProgressionAward.newTotalXp,
+  );
 };
 
 const JackpotRollResultText = ({
@@ -831,7 +925,7 @@ export function GameRoom() {
   const setRollCommandSender = useGameStore((state) => state.setRollCommandSender);
   const setMoveCommandSender = useGameStore((state) => state.setMoveCommandSender);
   const { progression, refresh: refreshProgression, errorMessage: progressionError } = useProgression();
-  const { refresh: refreshElo } = useEloRating();
+  const { ratingProfile, refresh: refreshElo } = useEloRating();
   const {
     definitions: challengeDefinitions,
     progress: challengeProgress,
@@ -1118,7 +1212,11 @@ export function GameRoom() {
     }
   }, [privateMatchCode]);
 
-  const [showWinModal, setShowWinModal] = React.useState(false);
+  const [postMatchPresentationStage, setPostMatchPresentationStage] =
+    React.useState<PostMatchPresentationStage>('hidden');
+  const [xpRewardPresentation, setXpRewardPresentation] = React.useState<ResolvedXpRewardPresentation | null>(null);
+  const [didPlayXpRewardReveal, setDidPlayXpRewardReveal] = React.useState(false);
+  const [preMatchTotalXp, setPreMatchTotalXp] = React.useState<number | null>(progression?.totalXp ?? null);
   const [tournamentRewardSummary, setTournamentRewardSummary] =
     React.useState<TournamentMatchRewardSummaryPayload | null>(null);
   const [tournamentRewardFallbackActive, setTournamentRewardFallbackActive] = React.useState(false);
@@ -1200,6 +1298,10 @@ export function GameRoom() {
   const [tutorialPinnedObjectiveBanner, setTutorialPinnedObjectiveBanner] = React.useState<string | null>(null);
   const [tutorialLessonIndex, setTutorialLessonIndex] = React.useState(0);
   const [tutorialScriptStepIndex, setTutorialScriptStepIndex] = React.useState(0);
+  const showWinModal = postMatchPresentationStage === 'result';
+  const isPostMatchFlowActive = postMatchPresentationStage !== 'hidden';
+  const showCinematicXpRewardModal =
+    postMatchPresentationStage === 'xp_reward_play' && xpRewardPresentation !== null;
   const isTournamentRewardSummaryPrimary = Boolean(tournamentRewardSummary) && !tournamentRewardFallbackActive;
   const tournamentOutcome = tournamentRewardSummary?.tournamentOutcome ?? null;
   const shouldTrackTournamentAdvanceFlow =
@@ -1232,6 +1334,7 @@ export function GameRoom() {
   const forceMoveAfterRollRef = useRef(false);
   const activeMatchCueRef = useRef<MatchMomentIndicatorCue | null>(null);
   const queuedMatchCuesRef = useRef<MatchMomentIndicatorCue[]>([]);
+  const xpRewardWaitStartedAtRef = useRef<number | null>(null);
   const lastSentPieceSelectionRef = useRef<string | null | undefined>(undefined);
   const pendingForfeitModalRevealKeyRef = useRef<string | null>(null);
   const enteringTournamentWaitingRoomRef = useRef(false);
@@ -1811,6 +1914,68 @@ export function GameRoom() {
     tournamentExitValidationFailed,
   ]);
   const canUseTopExit = !isTournamentMatch || isTournamentResultModal;
+  const shouldAttemptWinnerXpReveal = didPlayerWin && shouldShowAccountRewards;
+  const preferredXpRewardPresentation = useMemo(
+    () =>
+      resolvePreferredXpRewardPresentation({
+        matchId,
+        tournamentRewardSummary,
+        preMatchTotalXp,
+        progression,
+        lastProgressionAward,
+      }),
+    [lastProgressionAward, matchId, preMatchTotalXp, progression, tournamentRewardSummary],
+  );
+  const fallbackXpRewardPresentation = useMemo(
+    () =>
+      resolveFallbackXpRewardPresentation({
+        matchId,
+        lastProgressionAward,
+      }),
+    [lastProgressionAward, matchId],
+  );
+  const beginPostMatchPresentation = React.useCallback(() => {
+    if (postMatchPresentationStage !== 'hidden') {
+      return;
+    }
+
+    setDidPlayXpRewardReveal(false);
+    setXpRewardPresentation(null);
+
+    if (shouldAttemptWinnerXpReveal) {
+      xpRewardWaitStartedAtRef.current = Date.now();
+      setPostMatchPresentationStage('xp_reward_wait');
+      return;
+    }
+
+    xpRewardWaitStartedAtRef.current = null;
+    setPostMatchPresentationStage('result');
+  }, [postMatchPresentationStage, shouldAttemptWinnerXpReveal]);
+  const revealXpRewardPresentation = React.useCallback((presentation: ResolvedXpRewardPresentation) => {
+    xpRewardWaitStartedAtRef.current = null;
+    setXpRewardPresentation((current) => {
+      if (
+        current &&
+        current.previousTotalXp === presentation.previousTotalXp &&
+        current.newTotalXp === presentation.newTotalXp
+      ) {
+        return current;
+      }
+
+      return presentation;
+    });
+    setPostMatchPresentationStage('xp_reward_play');
+  }, []);
+  const skipXpRewardPresentation = React.useCallback(() => {
+    xpRewardWaitStartedAtRef.current = null;
+    setXpRewardPresentation(null);
+    setPostMatchPresentationStage('result');
+  }, []);
+  const handleXpRewardPresentationComplete = React.useCallback(() => {
+    xpRewardWaitStartedAtRef.current = null;
+    setDidPlayXpRewardReveal(true);
+    setPostMatchPresentationStage('result');
+  }, []);
 
   const cueSystemReady = ancientCueFontLoaded || Boolean(ancientCueFontError);
   const cueFontFamily = ancientCueFontLoaded ? MATCH_CUE_FONT_FAMILY : undefined;
@@ -2476,6 +2641,13 @@ export function GameRoom() {
     setShowRulesIntroModal(Boolean(rulesIntro));
   }, [matchId, rulesIntro]);
   useEffect(() => {
+    if (postMatchPresentationStage !== 'hidden' || preMatchTotalXp !== null || progression?.totalXp === undefined) {
+      return;
+    }
+
+    setPreMatchTotalXp(progression.totalXp);
+  }, [postMatchPresentationStage, preMatchTotalXp, progression?.totalXp]);
+  useEffect(() => {
     if (
       !isPlaythroughTutorialMatch ||
       tutorialCoachPhase !== 'lesson_play' ||
@@ -2486,7 +2658,7 @@ export function GameRoom() {
       showAudioSettings ||
       showTopMenu ||
       showMatchStatusInfo ||
-      showWinModal ||
+      isPostMatchFlowActive ||
       gameState.winner !== null ||
       gameState.phase === 'ended'
     ) {
@@ -2536,7 +2708,7 @@ export function GameRoom() {
     showMatchStatusInfo,
     showRulesIntroModal,
     showTopMenu,
-    showWinModal,
+    isPostMatchFlowActive,
     tutorialCoachInterlude,
     triggerTutorialRoll,
     tutorialCoachPhase,
@@ -2554,13 +2726,13 @@ export function GameRoom() {
     const forfeitReason = onlineMatchEnd?.reason;
 
     if (forfeitReason !== 'forfeit_disconnect' && forfeitReason !== 'forfeit_inactivity') {
-      setShowWinModal(true);
+      beginPostMatchPresentation();
       return;
     }
 
     const transitionKey = `${matchId ?? 'unknown'}:${forfeitReason}:${onlineMatchEnd?.forfeitingUserId ?? 'none'}`;
 
-    if (pendingForfeitModalRevealKeyRef.current === transitionKey || showWinModal) {
+    if (pendingForfeitModalRevealKeyRef.current === transitionKey || isPostMatchFlowActive) {
       return;
     }
 
@@ -2582,17 +2754,17 @@ export function GameRoom() {
           postActionDelayMs: 0,
           action: () => {
             if (!cancelled) {
-              setShowWinModal(true);
+              beginPostMatchPresentation();
             }
           },
         });
 
         if (!didStart && !cancelled) {
-          setShowWinModal(true);
+          beginPostMatchPresentation();
         }
       } catch {
         if (!cancelled) {
-          setShowWinModal(true);
+          beginPostMatchPresentation();
         }
       }
     })();
@@ -2609,7 +2781,8 @@ export function GameRoom() {
     matchId,
     onlineMatchEnd,
     runScreenTransition,
-    showWinModal,
+    beginPostMatchPresentation,
+    isPostMatchFlowActive,
     storedMatchId,
   ]);
 
@@ -2620,18 +2793,69 @@ export function GameRoom() {
 
     previousRenderedMatchIdRef.current = matchId ?? null;
     processedRematchMatchIdRef.current = null;
-    setShowWinModal(false);
+    setPostMatchPresentationStage('hidden');
+    setXpRewardPresentation(null);
+    setDidPlayXpRewardReveal(false);
+    setPreMatchTotalXp(progression?.totalXp ?? null);
     setTournamentRewardSummary(null);
     setTournamentRewardFallbackActive(false);
     setTournamentTerminalOutcomeOverride(null);
     setTournamentAdvanceResolutionState('idle');
     pendingForfeitModalRevealKeyRef.current = null;
+    xpRewardWaitStartedAtRef.current = null;
     enteringTournamentWaitingRoomRef.current = false;
     setHasEnteredTournamentWaitingRoom(false);
     setPostResultCountdownMs(null);
     setIsValidatingTournamentExit(false);
     setTournamentExitValidationFailed(false);
-  }, [matchId]);
+  }, [matchId, progression?.totalXp]);
+
+  useEffect(() => {
+    if (postMatchPresentationStage !== 'xp_reward_wait') {
+      xpRewardWaitStartedAtRef.current = null;
+      return;
+    }
+
+    if (preferredXpRewardPresentation) {
+      revealXpRewardPresentation(preferredXpRewardPresentation);
+      return;
+    }
+
+    if (xpRewardWaitStartedAtRef.current === null) {
+      xpRewardWaitStartedAtRef.current = Date.now();
+    }
+
+    const elapsedMs = Date.now() - xpRewardWaitStartedAtRef.current;
+    const remainingMs = Math.max(0, XP_REWARD_WAIT_TIMEOUT_MS - elapsedMs);
+
+    if (remainingMs === 0) {
+      if (fallbackXpRewardPresentation) {
+        revealXpRewardPresentation(fallbackXpRewardPresentation);
+      } else {
+        skipXpRewardPresentation();
+      }
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (fallbackXpRewardPresentation) {
+        revealXpRewardPresentation(fallbackXpRewardPresentation);
+        return;
+      }
+
+      skipXpRewardPresentation();
+    }, remainingMs);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [
+    fallbackXpRewardPresentation,
+    postMatchPresentationStage,
+    preferredXpRewardPresentation,
+    revealXpRewardPresentation,
+    skipXpRewardPresentation,
+  ]);
 
   useEffect(() => {
     if (!shouldResolveTournamentAdvanceBeforeModal) {
@@ -2708,7 +2932,7 @@ export function GameRoom() {
   ]);
 
   useEffect(() => {
-    if (!showWinModal || !isTournamentMatch || tournamentRewardSummary || tournamentRewardFallbackActive) {
+    if (!isPostMatchFlowActive || !isTournamentMatch || tournamentRewardSummary || tournamentRewardFallbackActive) {
       return;
     }
 
@@ -2721,7 +2945,7 @@ export function GameRoom() {
     };
   }, [
     isTournamentMatch,
-    showWinModal,
+    isPostMatchFlowActive,
     tournamentRewardFallbackActive,
     tournamentRewardSummary,
   ]);
@@ -2762,7 +2986,9 @@ export function GameRoom() {
         return;
       }
 
-      setShowWinModal(false);
+      setPostMatchPresentationStage('hidden');
+      setXpRewardPresentation(null);
+      setDidPlayXpRewardReveal(false);
 
       router.replace({
         pathname: '/match/[id]',
@@ -2803,7 +3029,9 @@ export function GameRoom() {
       setShowTopMenu(false);
       setShowMatchStatusInfo(false);
       await leaveCurrentMatch();
-      setShowWinModal(false);
+      setPostMatchPresentationStage('hidden');
+      setXpRewardPresentation(null);
+      setDidPlayXpRewardReveal(false);
       reset();
       router.replace('/');
     },
@@ -3068,7 +3296,7 @@ export function GameRoom() {
 
   useEffect(() => {
     if (
-      !showWinModal ||
+      !isPostMatchFlowActive ||
       !canSyncOfflineBotRewards ||
       !matchId ||
       !hasAssignedColor ||
@@ -3180,7 +3408,7 @@ export function GameRoom() {
     refreshProgression,
     resolvedBotDifficulty,
     setLastProgressionAward,
-    showWinModal,
+    isPostMatchFlowActive,
     effectiveMatchConfig.modeId,
     tutorialId,
     offlineBotRewardMode,
@@ -3189,7 +3417,7 @@ export function GameRoom() {
   ]);
 
   useEffect(() => {
-    if (!showWinModal) {
+    if (!isPostMatchFlowActive) {
       setMatchChallengeSummary(null);
       setMatchRewardsErrorMessage(null);
       setIsRefreshingMatchRewards(false);
@@ -3286,17 +3514,17 @@ export function GameRoom() {
     refreshChallenges,
     refreshProgression,
     shouldShowChallengeRewards,
-    showWinModal,
+    isPostMatchFlowActive,
     tournamentRewardFallbackActive,
   ]);
   useEffect(() => {
-    if (!showAudioSettings && !showRulesIntroModal && !showWinModal && !tutorialCoachVisible) {
+    if (!showAudioSettings && !showRulesIntroModal && !isPostMatchFlowActive && !tutorialCoachVisible) {
       return;
     }
 
     setShowTopMenu(false);
     setShowMatchStatusInfo(false);
-  }, [showAudioSettings, showRulesIntroModal, showWinModal, tutorialCoachVisible]);
+  }, [showAudioSettings, showRulesIntroModal, isPostMatchFlowActive, tutorialCoachVisible]);
   useEffect(() => {
     boardImageLayoutRef.current = null;
     tutorialHydratingStateRef.current = false;
@@ -3576,7 +3804,7 @@ export function GameRoom() {
       showAudioSettings ||
       showTopMenu ||
       showMatchStatusInfo ||
-      showWinModal
+      isPostMatchFlowActive
     ) {
       return;
     }
@@ -3604,7 +3832,7 @@ export function GameRoom() {
     showAudioSettings,
     showMatchStatusInfo,
     showTopMenu,
-    showWinModal,
+    isPostMatchFlowActive,
     triggerLocalRoll,
   ]);
   useEffect(() => {
@@ -4423,12 +4651,14 @@ export function GameRoom() {
         isPlaythroughTutorialMatch={isPlaythroughTutorialMatch}
         isRankedHumanMatch={isRankedHumanMatch}
         lastEloRatingChange={lastEloRatingChange}
+        eloRatingProfile={ratingProfile}
         eloUnchangedReason={eloUnchangedReason}
         shouldShowAccountRewards={shouldShowAccountRewards}
         progression={progression}
         isRefreshingMatchRewards={isRefreshingMatchRewards}
         progressionError={progressionError}
         lastProgressionAward={lastProgressionAward}
+        animateProgressionAward={!didPlayXpRewardReveal}
         shouldShowChallengeRewards={shouldShowChallengeRewards}
         matchChallengeSummary={matchChallengeSummary}
         matchRewardsErrorMessage={matchRewardsErrorMessage}
@@ -6542,6 +6772,13 @@ export function GameRoom() {
         actionLabel="Close"
         onAction={() => setShowRulesIntroModal(false)}
         maxWidth={520}
+      />
+
+      <CinematicXpRewardModal
+        visible={showCinematicXpRewardModal}
+        previousTotalXp={xpRewardPresentation?.previousTotalXp ?? 0}
+        newTotalXp={xpRewardPresentation?.newTotalXp ?? 0}
+        onComplete={handleXpRewardPresentationComplete}
       />
 
       <Modal

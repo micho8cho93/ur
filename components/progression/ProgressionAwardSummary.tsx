@@ -13,12 +13,14 @@ interface ProgressionAwardSummaryProps {
   progression: ProgressionSnapshot | null;
   award: ProgressionAwardResponse | null;
   pending?: boolean;
+  animateProgressBar?: boolean;
 }
 
 export const ProgressionAwardSummary: React.FC<ProgressionAwardSummaryProps> = ({
   progression,
   award,
   pending = false,
+  animateProgressBar = true,
 }) => {
   if (!progression && !pending) {
     return null;
@@ -37,7 +39,9 @@ export const ProgressionAwardSummary: React.FC<ProgressionAwardSummaryProps> = (
         ) : null}
       </View>
 
-      {progression ? <XpProgressBar snapshot={progression} award={award} compact /> : null}
+      {progression ? (
+        <XpProgressBar snapshot={progression} award={award} animateAward={animateProgressBar} compact />
+      ) : null}
 
       {award?.rankChanged ? (
         <Text style={styles.rankUpText}>

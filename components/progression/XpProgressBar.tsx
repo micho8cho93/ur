@@ -22,6 +22,7 @@ import { RankBadge } from './RankBadge';
 interface XpProgressBarProps {
   snapshot: ProgressionSnapshot | null;
   award?: ProgressionAwardResponse | null;
+  animateAward?: boolean;
   showInfoButton?: boolean;
   onInfoPress?: () => void;
   compact?: boolean;
@@ -34,6 +35,7 @@ const resolveAnimationDuration = (deltaXp: number): number =>
 export const XpProgressBar: React.FC<XpProgressBarProps> = ({
   snapshot,
   award,
+  animateAward = true,
   showInfoButton = false,
   onInfoPress,
   compact = false,
@@ -69,7 +71,7 @@ export const XpProgressBar: React.FC<XpProgressBarProps> = ({
 
     animatedXp.stopAnimation();
 
-    if (award && awardKey && awardKey !== lastAwardKeyRef.current && award.newTotalXp === targetXp) {
+    if (animateAward && award && awardKey && awardKey !== lastAwardKeyRef.current && award.newTotalXp === targetXp) {
       lastAwardKeyRef.current = awardKey;
       animatedXp.setValue(award.previousTotalXp);
       setDisplayedXp(award.previousTotalXp);
@@ -84,9 +86,12 @@ export const XpProgressBar: React.FC<XpProgressBarProps> = ({
       return;
     }
 
+    if (awardKey) {
+      lastAwardKeyRef.current = awardKey;
+    }
     animatedXp.setValue(targetXp);
     setDisplayedXp(targetXp);
-  }, [award, awardKey, snapshot?.totalXp]);
+  }, [animateAward, award, awardKey, snapshot?.totalXp]);
 
   if (!snapshot) {
     return (
