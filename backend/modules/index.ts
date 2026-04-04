@@ -133,6 +133,14 @@ import {
   rpcLaunchTournamentMatch,
   rpcListPublicTournaments,
 } from "./tournaments";
+import { registerAnalyticsRpcs } from "./analytics";
+import {
+  getOnlinePresenceSnapshot,
+  recordMatchEndAnalyticsEvent,
+  recordMatchStartAnalyticsEvent,
+  trackPresenceHeartbeat,
+  unregisterActiveMatch,
+} from "./analytics/tracking";
 import {
   maybeAutoFinalizeTournamentRunById,
   processCompletedAuthoritativeTournamentMatch,
@@ -178,6 +186,7 @@ type MatchState = {
   rollDisplay: MatchRollDisplayState;
   telemetry: MatchTelemetry;
   timer: MatchTimerState;
+  matchStartedAtMs: number | null;
   afk: Record<PlayerColor, PlayerAfkState>;
   disconnect: Record<PlayerColor, PlayerDisconnectState>;
   matchEnd: MatchEndPayload | null;
@@ -313,7 +322,6 @@ type RuntimeRecord = Record<string, unknown>;
 const TICK_RATE = 10;
 const MAX_PLAYERS = 2;
 const MAX_SNAPSHOT_HISTORY_ENTRIES = 12;
-const ONLINE_TTL_MS = 30_000;
 const ONLINE_TURN_DURATION_MS = 10_000;
 const ONLINE_AFK_FORFEIT_MS = 30_000;
 const ONLINE_DISCONNECT_GRACE_MS = 15_000;
@@ -340,7 +348,6 @@ const MATCH_HANDLER = "authoritative_match";
 const PRIVATE_MATCH_CODE_COLLECTION = "private_match_codes";
 const PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS = 12;
 const PRIVATE_MATCH_CODE_WRITE_ATTEMPTS = 4;
-const onlinePresenceByUser = new Map<string, number>();
 
 const asRecord = (value: unknown): RuntimeRecord | null =>
   typeof value === "object" && value !== null ? (value as RuntimeRecord) : null;
@@ -480,21 +487,6 @@ const buildMatchClassification = (params: Record<string, unknown>, modeId: Match
     experimental,
   };
 };
-
-const pruneOnlinePresence = (nowMs: number): void => {
-  onlinePresenceByUser.forEach((lastSeenMs, userId) => {
-    if (nowMs - lastSeenMs > ONLINE_TTL_MS) {
-      onlinePresenceByUser.delete(userId);
-    }
-  });
-};
-
-const encodeOnlinePresencePayload = (nowMs: number): string =>
-  JSON.stringify({
-    onlineCount: onlinePresenceByUser.size,
-    onlineTtlMs: ONLINE_TTL_MS,
-    serverTimeMs: nowMs,
-  });
 
 const createPlayerTelemetry = (): MatchPlayerTelemetry => ({
   playerMoveCount: 0,
@@ -1532,6 +1524,36 @@ const finalizeCompletedMatch = (
 
   state.resultRecorded = true;
 
+  {
+    const endedAt = new Date().toISOString();
+    const durationSeconds =
+      state.matchStartedAtMs !== null ? Math.max(0, Math.round((Date.now() - state.matchStartedAtMs) / 1000)) : null;
+
+    recordMatchEndAnalyticsEvent(nk, logger, {
+      matchId,
+      startedAt: state.matchStartedAtMs !== null ? new Date(state.matchStartedAtMs).toISOString() : null,
+      endedAt,
+      durationSeconds,
+      modeId: state.modeId,
+      reason: state.matchEnd?.reason ?? "completed",
+      classification: {
+        ranked: state.classification.ranked,
+        casual: state.classification.casual,
+        private: state.classification.private,
+        bot: state.classification.bot,
+        experimental: state.classification.experimental,
+        tournament: Boolean(state.tournamentContext),
+      },
+      tournamentRunId: state.tournamentContext?.runId ?? null,
+      tournamentId: state.tournamentContext?.tournamentId ?? null,
+      winnerUserId: state.matchEnd?.winnerUserId ?? null,
+      loserUserId: state.matchEnd?.loserUserId ?? null,
+      totalMoves: state.telemetry.totalMoves,
+      totalTurns: state.telemetry.totalTurns,
+      players: buildAnalyticsMatchPlayers(state),
+    });
+  }
+
   if (
     state.tournamentContext &&
     tournamentProcessingResult &&
@@ -1587,6 +1609,7 @@ const markMatchStartedIfReady = (state: MatchState, nowMs: number): boolean => {
   }
 
   state.started = true;
+  state.matchStartedAtMs = nowMs;
   resetTurnTimerForCurrentState(state, nowMs, "match_started");
   return true;
 };
@@ -1668,6 +1691,24 @@ const buildPlayerMatchSummary = (
 
 const getPresenceUsername = (presence: unknown): string | null =>
   readStringField(presence, ["username", "displayName", "display_name", "name"]);
+
+const buildAnalyticsMatchPlayers = (state: MatchState) =>
+  Object.entries(state.assignments).map(([userId, color]) => {
+    const presence = getPrimaryUserPresence(state, userId);
+    const playerTelemetry = state.telemetry.players[color];
+
+    return {
+      userId,
+      username: getPresenceUsername(presence) ?? state.playerTitles[userId] ?? null,
+      color,
+      didWin: state.gameState.winner ? state.gameState.winner === color : null,
+      capturesMade: playerTelemetry.capturesMade,
+      capturesSuffered: playerTelemetry.capturesSuffered,
+      playerMoveCount: playerTelemetry.playerMoveCount,
+      finishedCount: state.gameState[color].finishedCount,
+      isBot: isConfiguredBotUser(state, userId),
+    };
+  });
 
 const buildTournamentMatchCompletion = (
   state: MatchState,
@@ -1797,6 +1838,7 @@ function InitModule(
   initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT_STANDINGS, rpcGetPublicTournamentStandings);
   initializer.registerRpc(RPC_JOIN_PUBLIC_TOURNAMENT, rpcJoinPublicTournament);
   initializer.registerRpc(RPC_LAUNCH_TOURNAMENT_MATCH, rpcLaunchTournamentMatch);
+  registerAnalyticsRpcs(initializer);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,
@@ -1839,10 +1881,7 @@ function rpcPresenceHeartbeat(
     throw new Error("Authentication required.");
   }
 
-  const nowMs = Date.now();
-  onlinePresenceByUser.set(userId, nowMs);
-  pruneOnlinePresence(nowMs);
-  return encodeOnlinePresencePayload(nowMs);
+  return JSON.stringify(trackPresenceHeartbeat(userId));
 }
 
 function rpcPresenceCount(
@@ -1856,9 +1895,7 @@ function rpcPresenceCount(
     throw new Error("Authentication required.");
   }
 
-  const nowMs = Date.now();
-  pruneOnlinePresence(nowMs);
-  return encodeOnlinePresencePayload(nowMs);
+  return JSON.stringify(getOnlinePresenceSnapshot());
 }
 
 function rpcAuthLinkCustom(
@@ -2126,6 +2163,7 @@ function matchInit(
     rollDisplay: createMatchRollDisplayState(),
     telemetry: createMatchTelemetry(),
     timer: createMatchTimerState(),
+    matchStartedAtMs: null,
     afk: {
       light: createPlayerAfkState(),
       dark: createPlayerAfkState(),
@@ -2218,8 +2256,27 @@ function matchJoin(
     resumeTurnTimerAfterReconnect(state, nowMs);
   }
 
-  markMatchStartedIfReady(state, nowMs);
-  broadcastSnapshot(dispatcher, state, getMatchId(ctx));
+  const matchId = getMatchId(ctx);
+  const didStartMatch = markMatchStartedIfReady(state, nowMs);
+  if (didStartMatch && state.matchStartedAtMs !== null) {
+    recordMatchStartAnalyticsEvent(nk, logger, {
+      matchId,
+      startedAt: new Date(state.matchStartedAtMs).toISOString(),
+      modeId: state.modeId,
+      classification: {
+        ranked: state.classification.ranked,
+        casual: state.classification.casual,
+        private: state.classification.private,
+        bot: state.classification.bot,
+        experimental: state.classification.experimental,
+        tournament: Boolean(state.tournamentContext),
+      },
+      tournamentRunId: state.tournamentContext?.runId ?? null,
+      tournamentId: state.tournamentContext?.tournamentId ?? null,
+      players: buildAnalyticsMatchPlayers(state),
+    });
+  }
+  broadcastSnapshot(dispatcher, state, matchId);
 
   return { state };
 }
@@ -2304,7 +2361,25 @@ function matchLoop(
   const nowMs = Date.now();
 
   try {
-    markMatchStartedIfReady(state, nowMs);
+    const didStartMatch = markMatchStartedIfReady(state, nowMs);
+    if (didStartMatch && state.matchStartedAtMs !== null) {
+      recordMatchStartAnalyticsEvent(nk, logger, {
+        matchId,
+        startedAt: new Date(state.matchStartedAtMs).toISOString(),
+        modeId: state.modeId,
+        classification: {
+          ranked: state.classification.ranked,
+          casual: state.classification.casual,
+          private: state.classification.private,
+          bot: state.classification.bot,
+          experimental: state.classification.experimental,
+          tournament: Boolean(state.tournamentContext),
+        },
+        tournamentRunId: state.tournamentContext?.runId ?? null,
+        tournamentId: state.tournamentContext?.tournamentId ?? null,
+        players: buildAnalyticsMatchPlayers(state),
+      });
+    }
     ensureTurnTimerForCurrentState(state, nowMs);
   } catch (error) {
     logMatchLoopError(logger, matchId, state, "timer_sync", error);
@@ -2488,25 +2563,28 @@ function matchTerminate(
   state: MatchState,
   _graceSeconds: number
 ): { state: MatchState } {
+  const matchId = getMatchId(ctx);
   if (state.gameState.winner && !state.resultRecorded) {
     try {
-      finalizeCompletedMatch(logger, nk, dispatcher, state, getMatchId(ctx));
+      finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
     } catch (error) {
-      logMatchLoopError(logger, getMatchId(ctx), state, "terminate_result_processing", error);
+      logMatchLoopError(logger, matchId, state, "terminate_result_processing", error);
     }
   }
 
   if (state.gameState.winner && state.resultRecorded) {
     try {
-      syncRematchState(logger, nk, dispatcher, state, getMatchId(ctx), Date.now());
+      syncRematchState(logger, nk, dispatcher, state, matchId, Date.now());
     } catch (error) {
-      logMatchLoopError(logger, getMatchId(ctx), state, "terminate_rematch_processing", error);
+      logMatchLoopError(logger, matchId, state, "terminate_rematch_processing", error);
     }
   }
 
   if (state.gameState.winner && state.resultRecorded) {
-    maybeFinalizeRecordedTournamentRun(logger, nk, state, getMatchId(ctx), "terminate");
+    maybeFinalizeRecordedTournamentRun(logger, nk, state, matchId, "terminate");
   }
+
+  unregisterActiveMatch(matchId);
 
   return { state };
 }

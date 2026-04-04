@@ -45,8 +45,8 @@ export function DashboardLayout() {
       <div className="shell__content">
         <header className="topbar">
           <div className="topbar__workspace">
-            <p className="topbar__eyebrow">Operations dashboard</p>
-            <h1>Tournament control center</h1>
+            <p className="topbar__eyebrow">Ur internals</p>
+            <h1>Operations and analytics</h1>
           </div>
 
           <div className="topbar__status">

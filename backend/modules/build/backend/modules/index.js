@@ -898,15 +898,15 @@ var getBotMove = (state, roll, difficulty = DEFAULT_BOT_DIFFICULTY) => {
   }
 };
 
-// backend/modules/progression.ts
-var PROGRESSION_COLLECTION = "progression";
-var PROGRESSION_PROFILE_KEY = "profile";
-var XP_REWARD_LEDGER_COLLECTION = "xp_reward_ledger";
+// backend/modules/analytics/tracking.ts
 var STORAGE_PERMISSION_NONE = 0;
-var MAX_WRITE_ATTEMPTS = 4;
-var GLOBAL_STORAGE_USER_ID = "00000000-0000-0000-0000-000000000000";
-var RPC_GET_PROGRESSION = "get_progression";
-var RPC_GET_USER_XP_PROGRESS = "get_user_xp_progress";
+var SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+var ONLINE_TTL_MS = 3e4;
+var ANALYTICS_EVENT_PAGE_SIZE = 100;
+var ANALYTICS_EVENT_MAX_PAGES = 50;
+var ANALYTICS_EVENT_COLLECTION = "analytics_events";
+var onlinePresenceByUser = /* @__PURE__ */ new Map();
+var activeMatchesById = /* @__PURE__ */ new Map();
 var asRecord = (value) => typeof value === "object" && value !== null ? value : null;
 var readStringField = (value, keys) => {
   const record = asRecord(value);
@@ -915,8 +915,8 @@ var readStringField = (value, keys) => {
   }
   for (const key of keys) {
     const field = record[key];
-    if (typeof field === "string" && field.length > 0) {
-      return field;
+    if (typeof field === "string" && field.trim().length > 0) {
+      return field.trim();
     }
   }
   return null;
@@ -940,19 +940,374 @@ var readNumberField = (value, keys) => {
   }
   return null;
 };
+var readBooleanField = (value, keys) => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "boolean") {
+      return field;
+    }
+  }
+  return null;
+};
+var getErrorMessage = (error) => error instanceof Error ? error.message : String(error);
+var buildEventId = (type, occurredAt, scope) => {
+  const compactTimestamp = occurredAt.replace(/[^0-9]/g, "");
+  const randomSuffix = Math.random().toString(36).slice(2, 8);
+  return `${type}:${scope}:${compactTimestamp}:${randomSuffix}`;
+};
+var pruneOnlinePresence = (nowMs) => {
+  onlinePresenceByUser.forEach((lastSeenMs, userId) => {
+    if (nowMs - lastSeenMs > ONLINE_TTL_MS) {
+      onlinePresenceByUser.delete(userId);
+    }
+  });
+};
+var normalizeClassification = (value) => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+  return {
+    ranked: readBooleanField(record, ["ranked"]) === true,
+    casual: readBooleanField(record, ["casual"]) === true,
+    private: readBooleanField(record, ["private"]) === true,
+    bot: readBooleanField(record, ["bot"]) === true,
+    experimental: readBooleanField(record, ["experimental"]) === true,
+    tournament: readBooleanField(record, ["tournament"]) === true
+  };
+};
+var normalizeMatchPlayer = (value) => {
+  const record = asRecord(value);
+  const userId = readStringField(record, ["userId", "user_id"]);
+  const color = readStringField(record, ["color"]);
+  if (!record || !userId || color !== "light" && color !== "dark") {
+    return null;
+  }
+  return {
+    userId,
+    username: readStringField(record, ["username"]),
+    color,
+    didWin: (() => {
+      const didWin = readBooleanField(record, ["didWin", "did_win"]);
+      return typeof didWin === "boolean" ? didWin : null;
+    })(),
+    capturesMade: readNumberField(record, ["capturesMade", "captures_made"]),
+    capturesSuffered: readNumberField(record, ["capturesSuffered", "captures_suffered"]),
+    playerMoveCount: readNumberField(record, ["playerMoveCount", "player_move_count"]),
+    finishedCount: readNumberField(record, ["finishedCount", "finished_count"]),
+    isBot: readBooleanField(record, ["isBot", "is_bot"]) === true
+  };
+};
+var normalizeMatchStartEvent = (value) => {
+  const record = asRecord(value);
+  const eventId = readStringField(record, ["eventId", "event_id"]);
+  const occurredAt = readStringField(record, ["occurredAt", "occurred_at"]);
+  const matchId = readStringField(record, ["matchId", "match_id"]);
+  const startedAt = readStringField(record, ["startedAt", "started_at"]);
+  const modeId = readStringField(record, ["modeId", "mode_id"]);
+  const classification = normalizeClassification(record == null ? void 0 : record.classification);
+  if (!record || !eventId || !occurredAt || !matchId || !startedAt || !modeId || !classification) {
+    return null;
+  }
+  return {
+    eventId,
+    type: "match_start",
+    occurredAt,
+    matchId,
+    startedAt,
+    modeId,
+    classification,
+    tournamentRunId: readStringField(record, ["tournamentRunId", "tournament_run_id"]),
+    tournamentId: readStringField(record, ["tournamentId", "tournament_id"]),
+    players: Array.isArray(record.players) ? record.players.map((player) => normalizeMatchPlayer(player)).filter((player) => Boolean(player)) : []
+  };
+};
+var normalizeMatchEndEvent = (value) => {
+  var _a, _b;
+  const record = asRecord(value);
+  const eventId = readStringField(record, ["eventId", "event_id"]);
+  const occurredAt = readStringField(record, ["occurredAt", "occurred_at"]);
+  const matchId = readStringField(record, ["matchId", "match_id"]);
+  const endedAt = readStringField(record, ["endedAt", "ended_at"]);
+  const modeId = readStringField(record, ["modeId", "mode_id"]);
+  const reason = readStringField(record, ["reason"]);
+  const classification = normalizeClassification(record == null ? void 0 : record.classification);
+  if (!record || !eventId || !occurredAt || !matchId || !endedAt || !modeId || !classification || reason !== "completed" && reason !== "forfeit_inactivity" && reason !== "forfeit_disconnect") {
+    return null;
+  }
+  return {
+    eventId,
+    type: "match_end",
+    occurredAt,
+    matchId,
+    startedAt: readStringField(record, ["startedAt", "started_at"]),
+    endedAt,
+    durationSeconds: readNumberField(record, ["durationSeconds", "duration_seconds"]),
+    modeId,
+    reason,
+    classification,
+    tournamentRunId: readStringField(record, ["tournamentRunId", "tournament_run_id"]),
+    tournamentId: readStringField(record, ["tournamentId", "tournament_id"]),
+    winnerUserId: readStringField(record, ["winnerUserId", "winner_user_id"]),
+    loserUserId: readStringField(record, ["loserUserId", "loser_user_id"]),
+    totalMoves: Math.max(0, Math.floor((_a = readNumberField(record, ["totalMoves", "total_moves"])) != null ? _a : 0)),
+    totalTurns: Math.max(0, Math.floor((_b = readNumberField(record, ["totalTurns", "total_turns"])) != null ? _b : 0)),
+    players: Array.isArray(record.players) ? record.players.map((player) => normalizeMatchPlayer(player)).filter((player) => Boolean(player)) : []
+  };
+};
+var normalizeXpAwardEvent = (value) => {
+  var _a, _b, _c, _d, _e;
+  const record = asRecord(value);
+  const eventId = readStringField(record, ["eventId", "event_id"]);
+  const occurredAt = readStringField(record, ["occurredAt", "occurred_at"]);
+  const userId = readStringField(record, ["userId", "user_id"]);
+  const source = readStringField(record, ["source"]);
+  const sourceId = readStringField(record, ["sourceId", "source_id"]);
+  if (!record || !eventId || !occurredAt || !userId || !source || !sourceId) {
+    return null;
+  }
+  return {
+    eventId,
+    type: "xp_awarded",
+    occurredAt,
+    userId,
+    awardedXp: Math.max(0, Math.floor((_a = readNumberField(record, ["awardedXp", "awarded_xp"])) != null ? _a : 0)),
+    source,
+    sourceId,
+    matchId: readStringField(record, ["matchId", "match_id"]),
+    previousTotalXp: Math.max(
+      0,
+      Math.floor((_b = readNumberField(record, ["previousTotalXp", "previous_total_xp"])) != null ? _b : 0)
+    ),
+    newTotalXp: Math.max(0, Math.floor((_c = readNumberField(record, ["newTotalXp", "new_total_xp"])) != null ? _c : 0)),
+    previousRank: (_d = readStringField(record, ["previousRank", "previous_rank"])) != null ? _d : "Laborer",
+    newRank: (_e = readStringField(record, ["newRank", "new_rank"])) != null ? _e : "Laborer",
+    rankChanged: readBooleanField(record, ["rankChanged", "rank_changed"]) === true
+  };
+};
+var normalizeAnalyticsEvent = (value) => {
+  const record = asRecord(value);
+  const type = readStringField(record, ["type"]);
+  if (type === "match_start") {
+    return normalizeMatchStartEvent(record);
+  }
+  if (type === "match_end") {
+    return normalizeMatchEndEvent(record);
+  }
+  if (type === "xp_awarded") {
+    return normalizeXpAwardEvent(record);
+  }
+  return null;
+};
+var normalizeStorageListResult = (value) => {
+  if (Array.isArray(value)) {
+    return {
+      objects: value.map((object) => {
+        var _a;
+        return (_a = asRecord(object)) != null ? _a : {};
+      }),
+      cursor: null
+    };
+  }
+  const record = asRecord(value);
+  const objects = Array.isArray(record == null ? void 0 : record.objects) ? record.objects.map((object) => {
+    var _a;
+    return (_a = asRecord(object)) != null ? _a : {};
+  }) : [];
+  return {
+    objects,
+    cursor: readStringField(record, ["cursor", "nextCursor", "next_cursor"])
+  };
+};
+var writeEvent = (nk, logger2, event) => {
+  try {
+    nk.storageWrite([
+      {
+        collection: ANALYTICS_EVENT_COLLECTION,
+        key: event.eventId,
+        userId: SYSTEM_USER_ID,
+        value: event,
+        version: "*",
+        permissionRead: STORAGE_PERMISSION_NONE,
+        permissionWrite: STORAGE_PERMISSION_NONE
+      }
+    ]);
+  } catch (error) {
+    logger2.warn("Unable to write analytics event %s: %s", event.eventId, getErrorMessage(error));
+  }
+};
+var trackPresenceHeartbeat = (userId) => {
+  const nowMs = Date.now();
+  onlinePresenceByUser.set(userId, nowMs);
+  pruneOnlinePresence(nowMs);
+  return {
+    onlineCount: onlinePresenceByUser.size,
+    onlineTtlMs: ONLINE_TTL_MS,
+    serverTimeMs: nowMs
+  };
+};
+var getOnlinePresenceSnapshot = () => {
+  const nowMs = Date.now();
+  pruneOnlinePresence(nowMs);
+  return {
+    onlineCount: onlinePresenceByUser.size,
+    onlineTtlMs: ONLINE_TTL_MS,
+    serverTimeMs: nowMs
+  };
+};
+var recordMatchStartAnalyticsEvent = (nk, logger2, event) => {
+  const occurredAt = event.startedAt;
+  const normalizedEvent = __spreadValues({
+    eventId: buildEventId("match_start", occurredAt, event.matchId),
+    type: "match_start",
+    occurredAt
+  }, event);
+  activeMatchesById.set(event.matchId, {
+    matchId: event.matchId,
+    startedAt: event.startedAt,
+    modeId: event.modeId,
+    tournamentRunId: event.tournamentRunId,
+    tournamentId: event.tournamentId,
+    playerLabels: event.players.map((player) => {
+      var _a;
+      return (_a = player.username) != null ? _a : player.userId;
+    }).filter((playerLabel) => playerLabel.length > 0)
+  });
+  writeEvent(nk, logger2, normalizedEvent);
+};
+var recordMatchEndAnalyticsEvent = (nk, logger2, event) => {
+  const occurredAt = event.endedAt;
+  const normalizedEvent = __spreadValues({
+    eventId: buildEventId("match_end", occurredAt, event.matchId),
+    type: "match_end",
+    occurredAt
+  }, event);
+  activeMatchesById.delete(event.matchId);
+  writeEvent(nk, logger2, normalizedEvent);
+};
+var recordXpAwardAnalyticsEvent = (nk, logger2, event) => {
+  var _a;
+  const occurredAt = (_a = event.occurredAt) != null ? _a : (/* @__PURE__ */ new Date()).toISOString();
+  const normalizedEvent = {
+    eventId: buildEventId("xp_awarded", occurredAt, `${event.userId}:${event.sourceId}`),
+    type: "xp_awarded",
+    occurredAt,
+    userId: event.userId,
+    awardedXp: event.awardedXp,
+    source: event.source,
+    sourceId: event.sourceId,
+    matchId: event.matchId,
+    previousTotalXp: event.previousTotalXp,
+    newTotalXp: event.newTotalXp,
+    previousRank: event.previousRank,
+    newRank: event.newRank,
+    rankChanged: event.rankChanged
+  };
+  writeEvent(nk, logger2, normalizedEvent);
+};
+var unregisterActiveMatch = (matchId) => {
+  activeMatchesById.delete(matchId);
+};
+var listActiveTrackedMatches = () => Array.from(activeMatchesById.values()).sort((left, right) => left.startedAt.localeCompare(right.startedAt) * -1);
+var listAnalyticsEvents = (nk, logger2) => {
+  if (typeof nk.storageList !== "function") {
+    return {
+      supported: false,
+      notes: ["Analytics event storage listing is not supported by this Nakama runtime."],
+      events: []
+    };
+  }
+  const events = [];
+  let cursor = "";
+  for (let page = 0; page < ANALYTICS_EVENT_MAX_PAGES; page += 1) {
+    try {
+      const rawResult = nk.storageList(SYSTEM_USER_ID, ANALYTICS_EVENT_COLLECTION, ANALYTICS_EVENT_PAGE_SIZE, cursor);
+      const result = normalizeStorageListResult(rawResult);
+      result.objects.forEach((object) => {
+        const event = normalizeAnalyticsEvent(object.value);
+        if (event) {
+          events.push(event);
+        }
+      });
+      if (!result.cursor) {
+        break;
+      }
+      cursor = result.cursor;
+    } catch (error) {
+      logger2.warn("Unable to list analytics events: %s", getErrorMessage(error));
+      return {
+        supported: false,
+        notes: ["Analytics event storage could not be listed from the current runtime."],
+        events: []
+      };
+    }
+  }
+  return {
+    supported: true,
+    notes: [],
+    events: events.sort((left, right) => left.occurredAt.localeCompare(right.occurredAt))
+  };
+};
+
+// backend/modules/progression.ts
+var PROGRESSION_COLLECTION = "progression";
+var PROGRESSION_PROFILE_KEY = "profile";
+var XP_REWARD_LEDGER_COLLECTION = "xp_reward_ledger";
+var STORAGE_PERMISSION_NONE2 = 0;
+var MAX_WRITE_ATTEMPTS = 4;
+var GLOBAL_STORAGE_USER_ID = "00000000-0000-0000-0000-000000000000";
+var RPC_GET_PROGRESSION = "get_progression";
+var RPC_GET_USER_XP_PROGRESS = "get_user_xp_progress";
+var asRecord2 = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField2 = (value, keys) => {
+  const record = asRecord2(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "string" && field.length > 0) {
+      return field;
+    }
+  }
+  return null;
+};
+var readNumberField2 = (value, keys) => {
+  const record = asRecord2(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "number" && Number.isFinite(field)) {
+      return field;
+    }
+    if (typeof field === "string" && field.trim().length > 0) {
+      const parsed = Number(field);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+};
 var getStorageObjectValue = (object) => {
   var _a;
   return (_a = object == null ? void 0 : object.value) != null ? _a : null;
 };
-var getStorageObjectVersion = (object) => readStringField(object, ["version"]);
+var getStorageObjectVersion = (object) => readStringField2(object, ["version"]);
 var maybeSetStorageVersion = (write, version) => typeof version === "string" && version.length > 0 ? __spreadProps(__spreadValues({}, write), { version }) : write;
-var getErrorMessage = (error) => error instanceof Error ? error.message : String(error);
+var getErrorMessage2 = (error) => error instanceof Error ? error.message : String(error);
 var findStorageObject = (objects, collection, key, userId) => {
   var _a;
   return (_a = objects.find((object) => {
-    const collectionName = readStringField(object, ["collection"]);
-    const objectKey = readStringField(object, ["key"]);
-    const objectUserId = readStringField(object, ["userId", "user_id"]);
+    const collectionName = readStringField2(object, ["collection"]);
+    const objectKey = readStringField2(object, ["key"]);
+    const objectUserId = readStringField2(object, ["userId", "user_id"]);
     if (collectionName !== collection || objectKey !== key) {
       return false;
     }
@@ -964,8 +1319,8 @@ var findStorageObject = (objects, collection, key, userId) => {
 };
 var normalizeProgressionProfile = (rawValue, fallbackUpdatedAt = (/* @__PURE__ */ new Date()).toISOString()) => {
   var _a, _b;
-  const totalXp = sanitizeTotalXp((_a = readNumberField(rawValue, ["totalXp", "total_xp"])) != null ? _a : 0);
-  const lastUpdatedAt = (_b = readStringField(rawValue, ["lastUpdatedAt", "last_updated_at"])) != null ? _b : fallbackUpdatedAt;
+  const totalXp = sanitizeTotalXp((_a = readNumberField2(rawValue, ["totalXp", "total_xp"])) != null ? _a : 0);
+  const lastUpdatedAt = (_b = readStringField2(rawValue, ["lastUpdatedAt", "last_updated_at"])) != null ? _b : fallbackUpdatedAt;
   return {
     totalXp,
     currentRankTitle: getRankForXp(totalXp).title,
@@ -973,30 +1328,30 @@ var normalizeProgressionProfile = (rawValue, fallbackUpdatedAt = (/* @__PURE__ *
   };
 };
 var profileNeedsRepair = (rawValue, normalized) => {
-  const rawRecord = asRecord(rawValue);
+  const rawRecord = asRecord2(rawValue);
   if (!rawRecord) {
     return true;
   }
-  const rawTotalXp = readNumberField(rawRecord, ["totalXp", "total_xp"]);
-  const rawRankTitle = readStringField(rawRecord, ["currentRankTitle", "current_rank_title"]);
-  const rawLastUpdatedAt = readStringField(rawRecord, ["lastUpdatedAt", "last_updated_at"]);
+  const rawTotalXp = readNumberField2(rawRecord, ["totalXp", "total_xp"]);
+  const rawRankTitle = readStringField2(rawRecord, ["currentRankTitle", "current_rank_title"]);
+  const rawLastUpdatedAt = readStringField2(rawRecord, ["lastUpdatedAt", "last_updated_at"]);
   return rawTotalXp !== normalized.totalXp || rawRankTitle !== normalized.currentRankTitle || rawLastUpdatedAt !== normalized.lastUpdatedAt;
 };
 var normalizeStoredXpRewardRecord = (rawValue) => {
   var _a, _b, _c;
-  const record = asRecord(rawValue);
+  const record = asRecord2(rawValue);
   if (!record) {
     return null;
   }
-  const userId = readStringField(record, ["userId", "user_id"]);
-  const ledgerKey = readStringField(record, ["ledgerKey", "ledger_key"]);
-  const source = readStringField(record, ["source"]);
-  const sourceId = readStringField(record, ["sourceId", "source_id"]);
-  const awardedAt = readStringField(record, ["awardedAt", "awarded_at"]);
-  const matchId = readStringField(record, ["matchId", "match_id"]);
-  const awardedXp = sanitizeTotalXp((_a = readNumberField(record, ["awardedXp", "awarded_xp"])) != null ? _a : 0);
-  const previousTotalXp = sanitizeTotalXp((_b = readNumberField(record, ["previousTotalXp", "previous_total_xp"])) != null ? _b : 0);
-  const newTotalXp = sanitizeTotalXp((_c = readNumberField(record, ["newTotalXp", "new_total_xp"])) != null ? _c : 0);
+  const userId = readStringField2(record, ["userId", "user_id"]);
+  const ledgerKey = readStringField2(record, ["ledgerKey", "ledger_key"]);
+  const source = readStringField2(record, ["source"]);
+  const sourceId = readStringField2(record, ["sourceId", "source_id"]);
+  const awardedAt = readStringField2(record, ["awardedAt", "awarded_at"]);
+  const matchId = readStringField2(record, ["matchId", "match_id"]);
+  const awardedXp = sanitizeTotalXp((_a = readNumberField2(record, ["awardedXp", "awarded_xp"])) != null ? _a : 0);
+  const previousTotalXp = sanitizeTotalXp((_b = readNumberField2(record, ["previousTotalXp", "previous_total_xp"])) != null ? _b : 0);
+  const newTotalXp = sanitizeTotalXp((_c = readNumberField2(record, ["newTotalXp", "new_total_xp"])) != null ? _c : 0);
   const progression = record.progression;
   const isKnownRewardSource = (candidate) => typeof candidate === "string" && (candidate === "challenge_completion" || candidate in XP_SOURCE_CONFIG);
   const normalizedSource = isKnownRewardSource(source) ? source : null;
@@ -1052,8 +1407,8 @@ var writeProgressionProfile = (nk, userId, profile, version) => {
       userId,
       value: profile,
       version,
-      permissionRead: STORAGE_PERMISSION_NONE,
-      permissionWrite: STORAGE_PERMISSION_NONE
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
     }
   ]);
 };
@@ -1125,7 +1480,7 @@ var ensureProgressionProfile = (nk, logger2, userId) => {
           attempt,
           MAX_WRITE_ATTEMPTS,
           userId,
-          getErrorMessage(error)
+          getErrorMessage2(error)
         );
       }
       continue;
@@ -1140,7 +1495,7 @@ var ensureProgressionProfile = (nk, logger2, userId) => {
         attempt,
         MAX_WRITE_ATTEMPTS,
         userId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
   }
@@ -1148,7 +1503,7 @@ var ensureProgressionProfile = (nk, logger2, userId) => {
 };
 var getProgressionForUser = (nk, logger2, userId) => buildProgressionSnapshot(ensureProgressionProfile(nk, logger2, userId).totalXp);
 var awardXp = (nk, logger2, params) => {
-  var _a, _b, _c, _d, _e, _f, _g, _h;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i;
   const userId = (_a = params.userId) == null ? void 0 : _a.trim();
   const ledgerKey = (_b = params.ledgerKey) == null ? void 0 : _b.trim();
   const sourceId = (_c = params.sourceId) == null ? void 0 : _c.trim();
@@ -1222,8 +1577,8 @@ var awardXp = (nk, logger2, params) => {
           userId,
           value: nextProfile,
           version: profileObject ? (_g = getStorageObjectVersion(profileObject)) != null ? _g : "" : "*",
-          permissionRead: STORAGE_PERMISSION_NONE,
-          permissionWrite: STORAGE_PERMISSION_NONE
+          permissionRead: STORAGE_PERMISSION_NONE2,
+          permissionWrite: STORAGE_PERMISSION_NONE2
         },
         {
           collection: XP_REWARD_LEDGER_COLLECTION,
@@ -1231,8 +1586,8 @@ var awardXp = (nk, logger2, params) => {
           userId,
           value: rewardRecord,
           version: "*",
-          permissionRead: STORAGE_PERMISSION_NONE,
-          permissionWrite: STORAGE_PERMISSION_NONE
+          permissionRead: STORAGE_PERMISSION_NONE2,
+          permissionWrite: STORAGE_PERMISSION_NONE2
         }
       ]);
       logger2.info(
@@ -1243,6 +1598,19 @@ var awardXp = (nk, logger2, params) => {
         sourceId,
         newTotalXp
       );
+      recordXpAwardAnalyticsEvent(nk, logger2, {
+        occurredAt: now,
+        userId,
+        awardedXp,
+        source: params.source,
+        sourceId,
+        matchId: (_h = params.matchId) != null ? _h : null,
+        previousTotalXp,
+        newTotalXp,
+        previousRank,
+        newRank,
+        rankChanged: previousRank !== newRank
+      });
       return response;
     } catch (error) {
       const refreshed = readProgressionProfileAndLedger(nk, userId, ledgerKey);
@@ -1256,7 +1624,7 @@ var awardXp = (nk, logger2, params) => {
             ledgerKey,
             source: params.source,
             sourceId,
-            matchId: (_h = params.matchId) != null ? _h : null
+            matchId: (_i = params.matchId) != null ? _i : null
           }
         );
       }
@@ -1267,7 +1635,7 @@ var awardXp = (nk, logger2, params) => {
         userId,
         params.source,
         sourceId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
   }
@@ -1467,15 +1835,15 @@ var sanitizeUsernameSuggestionBase = (input) => {
 };
 
 // backend/modules/usernameOnboarding.ts
-var SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+var SYSTEM_USER_ID2 = "00000000-0000-0000-0000-000000000000";
 var RPC_GET_USERNAME_ONBOARDING_STATUS = "get_username_onboarding_status";
 var RPC_CLAIM_USERNAME = "claim_username";
 var USERNAME_PROFILE_COLLECTION = "user_profile";
 var USERNAME_PROFILE_KEY = "profile";
 var USERNAME_CANONICAL_INDEX_COLLECTION = "username_canonical_index";
 var FALLBACK_SUGGESTION_BASES = ["Rosette", "Lapis", "Sumer", "Reed", "RoyalUr"];
-var readStringField2 = (value, keys) => {
-  const record = asRecord(value);
+var readStringField3 = (value, keys) => {
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
@@ -1487,8 +1855,8 @@ var readStringField2 = (value, keys) => {
   }
   return null;
 };
-var readBooleanField = (value, keys) => {
-  const record = asRecord(value);
+var readBooleanField2 = (value, keys) => {
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
@@ -1512,11 +1880,11 @@ var createDefaultUsernameProfile = (userId, now) => ({
 var normalizeUsernameProfile = (rawValue, userId, fallbackTimestamp = (/* @__PURE__ */ new Date()).toISOString()) => {
   var _a, _b;
   const defaults = createDefaultUsernameProfile(userId, fallbackTimestamp);
-  const usernameDisplay = readStringField2(rawValue, ["usernameDisplay", "username_display"]);
-  const usernameCanonical = readStringField2(rawValue, ["usernameCanonical", "username_canonical"]);
-  const createdAt = (_a = readStringField2(rawValue, ["createdAt", "created_at"])) != null ? _a : defaults.createdAt;
-  const updatedAt = (_b = readStringField2(rawValue, ["updatedAt", "updated_at"])) != null ? _b : defaults.updatedAt;
-  const onboardingComplete = readBooleanField(rawValue, ["onboardingComplete", "onboarding_complete"]);
+  const usernameDisplay = readStringField3(rawValue, ["usernameDisplay", "username_display"]);
+  const usernameCanonical = readStringField3(rawValue, ["usernameCanonical", "username_canonical"]);
+  const createdAt = (_a = readStringField3(rawValue, ["createdAt", "created_at"])) != null ? _a : defaults.createdAt;
+  const updatedAt = (_b = readStringField3(rawValue, ["updatedAt", "updated_at"])) != null ? _b : defaults.updatedAt;
+  const onboardingComplete = readBooleanField2(rawValue, ["onboardingComplete", "onboarding_complete"]);
   const hasValidUsername = Boolean(usernameDisplay && usernameCanonical);
   return {
     userId,
@@ -1529,15 +1897,15 @@ var normalizeUsernameProfile = (rawValue, userId, fallbackTimestamp = (/* @__PUR
   };
 };
 var normalizeUsernameClaimIndexRecord = (rawValue) => {
-  const record = asRecord(rawValue);
+  const record = asRecord2(rawValue);
   if (!record) {
     return null;
   }
-  const userId = readStringField2(record, ["userId", "user_id"]);
-  const usernameDisplay = readStringField2(record, ["usernameDisplay", "username_display"]);
-  const usernameCanonical = readStringField2(record, ["usernameCanonical", "username_canonical"]);
-  const claimedAt = readStringField2(record, ["claimedAt", "claimed_at"]);
-  const updatedAt = readStringField2(record, ["updatedAt", "updated_at"]);
+  const userId = readStringField3(record, ["userId", "user_id"]);
+  const usernameDisplay = readStringField3(record, ["usernameDisplay", "username_display"]);
+  const usernameCanonical = readStringField3(record, ["usernameCanonical", "username_canonical"]);
+  const claimedAt = readStringField3(record, ["claimedAt", "claimed_at"]);
+  const updatedAt = readStringField3(record, ["updatedAt", "updated_at"]);
   if (!userId || !usernameDisplay || !usernameCanonical || !claimedAt || !updatedAt) {
     return null;
   }
@@ -1571,14 +1939,14 @@ var readUsernameCanonicalIndex = (nk, usernameCanonical) => {
     {
       collection: USERNAME_CANONICAL_INDEX_COLLECTION,
       key: usernameCanonical,
-      userId: SYSTEM_USER_ID
+      userId: SYSTEM_USER_ID2
     }
   ]);
   const object = findStorageObject(
     objects,
     USERNAME_CANONICAL_INDEX_COLLECTION,
     usernameCanonical,
-    SYSTEM_USER_ID
+    SYSTEM_USER_ID2
   );
   return {
     object,
@@ -1599,7 +1967,7 @@ var parseStatusRequest = (payload) => {
   if (!payload) {
     return {};
   }
-  const data = asRecord(JSON.parse(payload));
+  const data = asRecord2(JSON.parse(payload));
   if (!data) {
     return {};
   }
@@ -1614,7 +1982,7 @@ var parseClaimUsernameRequest = (payload) => {
       username: ""
     };
   }
-  const data = asRecord(JSON.parse(payload));
+  const data = asRecord2(JSON.parse(payload));
   return {
     username: typeof (data == null ? void 0 : data.username) === "string" ? data.username : ""
   };
@@ -1634,8 +2002,8 @@ var ensureUsernameProfile = (nk, userId) => {
         userId,
         value: nextProfile,
         version: "*",
-        permissionRead: STORAGE_PERMISSION_NONE,
-        permissionWrite: STORAGE_PERMISSION_NONE
+        permissionRead: STORAGE_PERMISSION_NONE2,
+        permissionWrite: STORAGE_PERMISSION_NONE2
       }
     ]);
   } catch (e) {
@@ -1767,7 +2135,7 @@ var rpcClaimUsername = (ctx, logger2, nk, payload) => {
       {
         collection: USERNAME_CANONICAL_INDEX_COLLECTION,
         key: validation.canonical,
-        userId: SYSTEM_USER_ID
+        userId: SYSTEM_USER_ID2
       }
     ]);
     const profileObject = findStorageObject(objects, USERNAME_PROFILE_COLLECTION, USERNAME_PROFILE_KEY, ctx.userId);
@@ -1775,7 +2143,7 @@ var rpcClaimUsername = (ctx, logger2, nk, payload) => {
       objects,
       USERNAME_CANONICAL_INDEX_COLLECTION,
       validation.canonical,
-      SYSTEM_USER_ID
+      SYSTEM_USER_ID2
     );
     const profile = normalizeUsernameProfile(profileObject == null ? void 0 : profileObject.value, ctx.userId);
     const existingIndexRecord = normalizeUsernameClaimIndexRecord(indexObject == null ? void 0 : indexObject.value);
@@ -1817,17 +2185,17 @@ var rpcClaimUsername = (ctx, logger2, nk, payload) => {
           userId: ctx.userId,
           value: nextProfile,
           version: profileObject ? (_c = getStorageObjectVersion(profileObject)) != null ? _c : "" : "*",
-          permissionRead: STORAGE_PERMISSION_NONE,
-          permissionWrite: STORAGE_PERMISSION_NONE
+          permissionRead: STORAGE_PERMISSION_NONE2,
+          permissionWrite: STORAGE_PERMISSION_NONE2
         },
         {
           collection: USERNAME_CANONICAL_INDEX_COLLECTION,
           key: validation.canonical,
-          userId: SYSTEM_USER_ID,
+          userId: SYSTEM_USER_ID2,
           value: nextIndexRecord,
           version: indexObject ? (_d = getStorageObjectVersion(indexObject)) != null ? _d : "" : "*",
-          permissionRead: STORAGE_PERMISSION_NONE,
-          permissionWrite: STORAGE_PERMISSION_NONE
+          permissionRead: STORAGE_PERMISSION_NONE2,
+          permissionWrite: STORAGE_PERMISSION_NONE2
         }
       ]);
       logger2.info("User %s claimed username %s.", ctx.userId, validation.display);
@@ -1839,7 +2207,7 @@ var rpcClaimUsername = (ctx, logger2, nk, payload) => {
         MAX_WRITE_ATTEMPTS,
         ctx.userId,
         validation.canonical,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
   }
@@ -1849,7 +2217,7 @@ var rpcClaimUsername = (ctx, logger2, nk, payload) => {
 };
 
 // backend/modules/elo.ts
-var SYSTEM_USER_ID2 = "00000000-0000-0000-0000-000000000000";
+var SYSTEM_USER_ID3 = "00000000-0000-0000-0000-000000000000";
 var ELO_PROFILE_COLLECTION = "elo_profiles";
 var ELO_PROFILE_KEY = "profile";
 var ELO_MATCH_RESULT_COLLECTION = "elo_match_results";
@@ -1859,8 +2227,8 @@ var DEFAULT_HAYSTACK_SIZE = 11;
 var RPC_GET_MY_RATING_PROFILE = "get_my_rating_profile";
 var RPC_LIST_TOP_ELO_PLAYERS = "list_top_elo_players";
 var RPC_GET_ELO_LEADERBOARD_AROUND_ME = "get_elo_leaderboard_around_me";
-var readStringField3 = (value, keys) => {
-  const record = asRecord(value);
+var readStringField4 = (value, keys) => {
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
@@ -1872,8 +2240,8 @@ var readStringField3 = (value, keys) => {
   }
   return null;
 };
-var readNumberField2 = (value, keys) => {
-  const record = asRecord(value);
+var readNumberField3 = (value, keys) => {
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
@@ -1891,8 +2259,8 @@ var readNumberField2 = (value, keys) => {
   }
   return null;
 };
-var readBooleanField2 = (value, keys) => {
-  const record = asRecord(value);
+var readBooleanField3 = (value, keys) => {
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
@@ -1914,22 +2282,22 @@ var getRequiredUsernameDisplay = (nk, userId) => {
 var normalizeEloProfile = (rawValue, userId, usernameDisplay, fallbackTimestamp = (/* @__PURE__ */ new Date()).toISOString()) => {
   var _a, _b, _c, _d, _e, _f;
   const defaults = createDefaultEloProfile(userId, usernameDisplay, fallbackTimestamp);
-  const eloRating = sanitizeEloRating((_a = readNumberField2(rawValue, ["eloRating", "elo_rating"])) != null ? _a : defaults.eloRating);
+  const eloRating = sanitizeEloRating((_a = readNumberField3(rawValue, ["eloRating", "elo_rating"])) != null ? _a : defaults.eloRating);
   const ratedGames = sanitizeRatedGameCount(
-    (_b = readNumberField2(rawValue, ["ratedGames", "rated_games"])) != null ? _b : defaults.ratedGames
+    (_b = readNumberField3(rawValue, ["ratedGames", "rated_games"])) != null ? _b : defaults.ratedGames
   );
   const ratedWins = Math.min(
     ratedGames,
-    sanitizeRatedGameCount((_c = readNumberField2(rawValue, ["ratedWins", "rated_wins"])) != null ? _c : defaults.ratedWins)
+    sanitizeRatedGameCount((_c = readNumberField3(rawValue, ["ratedWins", "rated_wins"])) != null ? _c : defaults.ratedWins)
   );
   const ratedLosses = Math.min(
     ratedGames,
-    sanitizeRatedGameCount((_d = readNumberField2(rawValue, ["ratedLosses", "rated_losses"])) != null ? _d : defaults.ratedLosses)
+    sanitizeRatedGameCount((_d = readNumberField3(rawValue, ["ratedLosses", "rated_losses"])) != null ? _d : defaults.ratedLosses)
   );
-  const createdAt = (_e = readStringField3(rawValue, ["createdAt", "created_at"])) != null ? _e : defaults.createdAt;
-  const updatedAt = (_f = readStringField3(rawValue, ["updatedAt", "updated_at"])) != null ? _f : fallbackTimestamp;
-  const lastRatedMatchId = readStringField3(rawValue, ["lastRatedMatchId", "last_rated_match_id"]);
-  const lastRatedAt = readStringField3(rawValue, ["lastRatedAt", "last_rated_at"]);
+  const createdAt = (_e = readStringField4(rawValue, ["createdAt", "created_at"])) != null ? _e : defaults.createdAt;
+  const updatedAt = (_f = readStringField4(rawValue, ["updatedAt", "updated_at"])) != null ? _f : fallbackTimestamp;
+  const lastRatedMatchId = readStringField4(rawValue, ["lastRatedMatchId", "last_rated_match_id"]);
+  const lastRatedAt = readStringField4(rawValue, ["lastRatedAt", "last_rated_at"]);
   const sanitizedLosses = Math.min(ratedGames - ratedWins, ratedLosses);
   return {
     userId,
@@ -1946,7 +2314,7 @@ var normalizeEloProfile = (rawValue, userId, usernameDisplay, fallbackTimestamp 
   };
 };
 var normalizeStoredEloProfile = (rawValue, userId) => {
-  const usernameDisplay = readStringField3(rawValue, ["usernameDisplay", "username_display"]);
+  const usernameDisplay = readStringField4(rawValue, ["usernameDisplay", "username_display"]);
   if (!usernameDisplay) {
     return null;
   }
@@ -1954,11 +2322,11 @@ var normalizeStoredEloProfile = (rawValue, userId) => {
 };
 var eloProfileNeedsRepair = (rawValue, normalized) => {
   var _a, _b, _c, _d, _e, _f;
-  const rawRecord = asRecord(rawValue);
+  const rawRecord = asRecord2(rawValue);
   if (!rawRecord) {
     return true;
   }
-  return readStringField3(rawRecord, ["userId", "user_id"]) !== normalized.userId || readStringField3(rawRecord, ["usernameDisplay", "username_display"]) !== normalized.usernameDisplay || sanitizeEloRating((_a = readNumberField2(rawRecord, ["eloRating", "elo_rating"])) != null ? _a : normalized.eloRating) !== normalized.eloRating || sanitizeRatedGameCount((_b = readNumberField2(rawRecord, ["ratedGames", "rated_games"])) != null ? _b : normalized.ratedGames) !== normalized.ratedGames || sanitizeRatedGameCount((_c = readNumberField2(rawRecord, ["ratedWins", "rated_wins"])) != null ? _c : normalized.ratedWins) !== normalized.ratedWins || sanitizeRatedGameCount((_d = readNumberField2(rawRecord, ["ratedLosses", "rated_losses"])) != null ? _d : normalized.ratedLosses) !== normalized.ratedLosses || readBooleanField2(rawRecord, ["provisional"]) !== normalized.provisional || ((_e = readStringField3(rawRecord, ["lastRatedMatchId", "last_rated_match_id"])) != null ? _e : null) !== normalized.lastRatedMatchId || ((_f = readStringField3(rawRecord, ["lastRatedAt", "last_rated_at"])) != null ? _f : null) !== normalized.lastRatedAt || readStringField3(rawRecord, ["createdAt", "created_at"]) !== normalized.createdAt || readStringField3(rawRecord, ["updatedAt", "updated_at"]) !== normalized.updatedAt;
+  return readStringField4(rawRecord, ["userId", "user_id"]) !== normalized.userId || readStringField4(rawRecord, ["usernameDisplay", "username_display"]) !== normalized.usernameDisplay || sanitizeEloRating((_a = readNumberField3(rawRecord, ["eloRating", "elo_rating"])) != null ? _a : normalized.eloRating) !== normalized.eloRating || sanitizeRatedGameCount((_b = readNumberField3(rawRecord, ["ratedGames", "rated_games"])) != null ? _b : normalized.ratedGames) !== normalized.ratedGames || sanitizeRatedGameCount((_c = readNumberField3(rawRecord, ["ratedWins", "rated_wins"])) != null ? _c : normalized.ratedWins) !== normalized.ratedWins || sanitizeRatedGameCount((_d = readNumberField3(rawRecord, ["ratedLosses", "rated_losses"])) != null ? _d : normalized.ratedLosses) !== normalized.ratedLosses || readBooleanField3(rawRecord, ["provisional"]) !== normalized.provisional || ((_e = readStringField4(rawRecord, ["lastRatedMatchId", "last_rated_match_id"])) != null ? _e : null) !== normalized.lastRatedMatchId || ((_f = readStringField4(rawRecord, ["lastRatedAt", "last_rated_at"])) != null ? _f : null) !== normalized.lastRatedAt || readStringField4(rawRecord, ["createdAt", "created_at"]) !== normalized.createdAt || readStringField4(rawRecord, ["updatedAt", "updated_at"]) !== normalized.updatedAt;
 };
 var writeEloProfile = (nk, userId, profile, version) => {
   nk.storageWrite([
@@ -1968,8 +2336,8 @@ var writeEloProfile = (nk, userId, profile, version) => {
       userId,
       value: profile,
       version,
-      permissionRead: STORAGE_PERMISSION_NONE,
-      permissionWrite: STORAGE_PERMISSION_NONE
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
     }
   ]);
 };
@@ -2008,7 +2376,7 @@ var ensureEloProfileObject = (nk, logger2, userId) => {
           attempt,
           MAX_WRITE_ATTEMPTS,
           userId,
-          getErrorMessage(error)
+          getErrorMessage2(error)
         );
       }
       continue;
@@ -2026,7 +2394,7 @@ var ensureEloProfileObject = (nk, logger2, userId) => {
         attempt,
         MAX_WRITE_ATTEMPTS,
         userId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
   }
@@ -2061,16 +2429,16 @@ var getEloRatingProfileForUser = (nk, logger2, userId) => {
   });
 };
 var getLeaderboardRecordRank = (record) => {
-  const rank = readNumberField2(record, ["rank"]);
+  const rank = readNumberField3(record, ["rank"]);
   return typeof rank === "number" ? rank : null;
 };
-var getLeaderboardRecordOwnerId = (record) => readStringField3(record, ["ownerId", "owner_id"]);
-var getLeaderboardRecordScore = (record) => readNumberField2(record, ["score"]);
+var getLeaderboardRecordOwnerId = (record) => readStringField4(record, ["ownerId", "owner_id"]);
+var getLeaderboardRecordScore = (record) => readNumberField3(record, ["score"]);
 var getLeaderboardRecordMetadata = (record) => {
-  const data = asRecord(record);
-  return asRecord(data == null ? void 0 : data.metadata);
+  const data = asRecord2(record);
+  return asRecord2(data == null ? void 0 : data.metadata);
 };
-var getLeaderboardRecordUsername = (record) => readStringField3(record, ["username"]);
+var getLeaderboardRecordUsername = (record) => readStringField4(record, ["username"]);
 var syncEloLeaderboardRecord = (nk, logger2, profile) => {
   try {
     const record = nk.leaderboardRecordWrite(
@@ -2086,7 +2454,7 @@ var syncEloLeaderboardRecord = (nk, logger2, profile) => {
     logger2.error(
       "Failed to write Elo leaderboard record for user %s: %s",
       profile.userId,
-      getErrorMessage(error)
+      getErrorMessage2(error)
     );
     return null;
   }
@@ -2113,7 +2481,7 @@ var parseLeaderboardRequest = (payload) => {
   if (!payload) {
     return {};
   }
-  const data = asRecord(JSON.parse(payload));
+  const data = asRecord2(JSON.parse(payload));
   return {
     limit: typeof (data == null ? void 0 : data.limit) === "number" ? data.limit : null,
     cursor: typeof (data == null ? void 0 : data.cursor) === "string" ? data.cursor : null
@@ -2123,23 +2491,23 @@ var parseAroundMeRequest = (payload) => {
   if (!payload) {
     return {};
   }
-  const data = asRecord(JSON.parse(payload));
+  const data = asRecord2(JSON.parse(payload));
   return {
     limit: typeof (data == null ? void 0 : data.limit) === "number" ? data.limit : null
   };
 };
 var normalizeStoredEloMatchParticipantResult = (value) => {
-  const userId = readStringField3(value, ["userId", "user_id"]);
-  const usernameDisplay = readStringField3(value, ["usernameDisplay", "username_display"]);
-  const oldRating = readNumberField2(value, ["oldRating", "old_rating"]);
-  const newRating = readNumberField2(value, ["newRating", "new_rating"]);
-  const delta = readNumberField2(value, ["delta"]);
-  const ratedGames = readNumberField2(value, ["ratedGames", "rated_games"]);
-  const ratedWins = readNumberField2(value, ["ratedWins", "rated_wins"]);
-  const ratedLosses = readNumberField2(value, ["ratedLosses", "rated_losses"]);
-  const provisional = readBooleanField2(value, ["provisional"]);
-  const lastRatedMatchId = readStringField3(value, ["lastRatedMatchId", "last_rated_match_id"]);
-  const lastRatedAt = readStringField3(value, ["lastRatedAt", "last_rated_at"]);
+  const userId = readStringField4(value, ["userId", "user_id"]);
+  const usernameDisplay = readStringField4(value, ["usernameDisplay", "username_display"]);
+  const oldRating = readNumberField3(value, ["oldRating", "old_rating"]);
+  const newRating = readNumberField3(value, ["newRating", "new_rating"]);
+  const delta = readNumberField3(value, ["delta"]);
+  const ratedGames = readNumberField3(value, ["ratedGames", "rated_games"]);
+  const ratedWins = readNumberField3(value, ["ratedWins", "rated_wins"]);
+  const ratedLosses = readNumberField3(value, ["ratedLosses", "rated_losses"]);
+  const provisional = readBooleanField3(value, ["provisional"]);
+  const lastRatedMatchId = readStringField4(value, ["lastRatedMatchId", "last_rated_match_id"]);
+  const lastRatedAt = readStringField4(value, ["lastRatedAt", "last_rated_at"]);
   if (!userId || !usernameDisplay || oldRating === null || newRating === null || delta === null || ratedGames === null || ratedWins === null || ratedLosses === null || provisional === null || !lastRatedMatchId || !lastRatedAt) {
     return null;
   }
@@ -2158,15 +2526,15 @@ var normalizeStoredEloMatchParticipantResult = (value) => {
   };
 };
 var normalizeStoredEloMatchResultRecord = (value) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
-  const matchId = readStringField3(record, ["matchId", "match_id"]);
-  const leaderboardId = readStringField3(record, ["leaderboardId", "leaderboard_id"]);
-  const processedAt = readStringField3(record, ["processedAt", "processed_at"]);
-  const winnerUserId = readStringField3(record, ["winnerUserId", "winner_user_id"]);
-  const loserUserId = readStringField3(record, ["loserUserId", "loser_user_id"]);
+  const matchId = readStringField4(record, ["matchId", "match_id"]);
+  const leaderboardId = readStringField4(record, ["leaderboardId", "leaderboard_id"]);
+  const processedAt = readStringField4(record, ["processedAt", "processed_at"]);
+  const winnerUserId = readStringField4(record, ["winnerUserId", "winner_user_id"]);
+  const loserUserId = readStringField4(record, ["loserUserId", "loser_user_id"]);
   const rawPlayerResults = Array.isArray(record.playerResults) ? record.playerResults : Array.isArray(record.player_results) ? record.player_results : [];
   const playerResults = rawPlayerResults.map((playerResult) => normalizeStoredEloMatchParticipantResult(playerResult)).filter((playerResult) => Boolean(playerResult));
   if (!matchId || !leaderboardId || !processedAt || !winnerUserId || !loserUserId || playerResults.length !== 2) {
@@ -2186,10 +2554,10 @@ var readProcessedMatchResultObject = (nk, matchId) => {
     {
       collection: ELO_MATCH_RESULT_COLLECTION,
       key: matchId,
-      userId: SYSTEM_USER_ID2
+      userId: SYSTEM_USER_ID3
     }
   ]);
-  return findStorageObject(objects, ELO_MATCH_RESULT_COLLECTION, matchId, SYSTEM_USER_ID2);
+  return findStorageObject(objects, ELO_MATCH_RESULT_COLLECTION, matchId, SYSTEM_USER_ID3);
 };
 var getProcessedMatchPlayerResult = (result, userId) => {
   var _a;
@@ -2259,7 +2627,7 @@ var ensureEloLeaderboard = (nk, logger2) => {
       true
     );
   } catch (error) {
-    logger2.warn("Unable to ensure Elo leaderboard exists: %s", getErrorMessage(error));
+    logger2.warn("Unable to ensure Elo leaderboard exists: %s", getErrorMessage2(error));
   }
 };
 var processRankedMatchResult = (nk, logger2, params) => {
@@ -2366,8 +2734,8 @@ var processRankedMatchResult = (nk, logger2, params) => {
           userId: nextWinnerProfile.userId,
           value: nextWinnerProfile,
           version: winnerProfileState.object ? (_a = getStorageObjectVersion(winnerProfileState.object)) != null ? _a : "" : "*",
-          permissionRead: STORAGE_PERMISSION_NONE,
-          permissionWrite: STORAGE_PERMISSION_NONE
+          permissionRead: STORAGE_PERMISSION_NONE2,
+          permissionWrite: STORAGE_PERMISSION_NONE2
         },
         {
           collection: ELO_PROFILE_COLLECTION,
@@ -2375,17 +2743,17 @@ var processRankedMatchResult = (nk, logger2, params) => {
           userId: nextLoserProfile.userId,
           value: nextLoserProfile,
           version: loserProfileState.object ? (_b = getStorageObjectVersion(loserProfileState.object)) != null ? _b : "" : "*",
-          permissionRead: STORAGE_PERMISSION_NONE,
-          permissionWrite: STORAGE_PERMISSION_NONE
+          permissionRead: STORAGE_PERMISSION_NONE2,
+          permissionWrite: STORAGE_PERMISSION_NONE2
         },
         {
           collection: ELO_MATCH_RESULT_COLLECTION,
           key: matchId,
-          userId: SYSTEM_USER_ID2,
+          userId: SYSTEM_USER_ID3,
           value: processedRecord,
           version: "*",
-          permissionRead: STORAGE_PERMISSION_NONE,
-          permissionWrite: STORAGE_PERMISSION_NONE
+          permissionRead: STORAGE_PERMISSION_NONE2,
+          permissionWrite: STORAGE_PERMISSION_NONE2
         }
       ]);
       logger2.info(
@@ -2420,7 +2788,7 @@ var processRankedMatchResult = (nk, logger2, params) => {
         attempt,
         MAX_WRITE_ATTEMPTS,
         matchId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
   }
@@ -2459,11 +2827,11 @@ var buildLeaderboardEntryFromRecord = (record, profile) => {
     return buildLeaderboardEntryFromProfile(profile, getLeaderboardRecordRank(record));
   }
   const metadata = getLeaderboardRecordMetadata(record);
-  const usernameDisplay = (_b = (_a = readStringField3(metadata, ["usernameDisplay", "username_display"])) != null ? _a : getLeaderboardRecordUsername(record)) != null ? _b : "Unknown";
-  const ratedGames = sanitizeRatedGameCount((_c = readNumberField2(metadata, ["ratedGames", "rated_games"])) != null ? _c : 0);
-  const ratedWins = sanitizeRatedGameCount((_d = readNumberField2(metadata, ["ratedWins", "rated_wins"])) != null ? _d : 0);
-  const ratedLosses = sanitizeRatedGameCount((_e = readNumberField2(metadata, ["ratedLosses", "rated_losses"])) != null ? _e : 0);
-  const provisional = readBooleanField2(metadata, ["provisional"]);
+  const usernameDisplay = (_b = (_a = readStringField4(metadata, ["usernameDisplay", "username_display"])) != null ? _a : getLeaderboardRecordUsername(record)) != null ? _b : "Unknown";
+  const ratedGames = sanitizeRatedGameCount((_c = readNumberField3(metadata, ["ratedGames", "rated_games"])) != null ? _c : 0);
+  const ratedWins = sanitizeRatedGameCount((_d = readNumberField3(metadata, ["ratedWins", "rated_wins"])) != null ? _d : 0);
+  const ratedLosses = sanitizeRatedGameCount((_e = readNumberField3(metadata, ["ratedLosses", "rated_losses"])) != null ? _e : 0);
+  const provisional = readBooleanField3(metadata, ["provisional"]);
   return {
     userId,
     usernameDisplay,
@@ -2476,10 +2844,10 @@ var buildLeaderboardEntryFromRecord = (record, profile) => {
   };
 };
 var normalizeLeaderboardListResponse = (result) => {
-  const response = asRecord(result);
+  const response = asRecord2(result);
   const records = Array.isArray(response == null ? void 0 : response.records) ? response.records : [];
-  const nextCursor = readStringField3(response, ["nextCursor", "next_cursor"]);
-  const prevCursor = readStringField3(response, ["prevCursor", "prev_cursor"]);
+  const nextCursor = readStringField4(response, ["nextCursor", "next_cursor"]);
+  const prevCursor = readStringField4(response, ["prevCursor", "prev_cursor"]);
   return {
     records,
     nextCursor: nextCursor != null ? nextCursor : null,
@@ -3160,9 +3528,9 @@ var calculateDoubleStrikeTurnSpan = (captureTurnNumbers, maxInclusiveTurnSpan = 
 var hasReachedImmortalRank = (totalXp) => getRankForXp(totalXp).title === MAX_PROGRESSION_RANK.title;
 
 // backend/modules/challengeProgress.ts
-var asRecord2 = (value) => typeof value === "object" && value !== null ? value : null;
-var readStringField4 = (value, keys) => {
-  const record = asRecord2(value);
+var asRecord3 = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField5 = (value, keys) => {
+  const record = asRecord3(value);
   if (!record) {
     return null;
   }
@@ -3174,8 +3542,8 @@ var readStringField4 = (value, keys) => {
   }
   return null;
 };
-var readNumberField3 = (value, keys) => {
-  const record = asRecord2(value);
+var readNumberField4 = (value, keys) => {
+  const record = asRecord3(value);
   if (!record) {
     return null;
   }
@@ -3196,20 +3564,20 @@ var readNumberField3 = (value, keys) => {
 var clampNonNegativeInteger = (value) => typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 var normalizeChallengeStats = (rawValue) => {
   var _a, _b, _c, _d, _e;
-  const record = asRecord2(rawValue);
+  const record = asRecord3(rawValue);
   return {
     totalGamesPlayed: clampNonNegativeInteger(
-      (_a = readNumberField3(record, ["totalGamesPlayed", "total_games_played"])) != null ? _a : 0
+      (_a = readNumberField4(record, ["totalGamesPlayed", "total_games_played"])) != null ? _a : 0
     ),
-    totalWins: clampNonNegativeInteger((_b = readNumberField3(record, ["totalWins", "total_wins"])) != null ? _b : 0),
+    totalWins: clampNonNegativeInteger((_b = readNumberField4(record, ["totalWins", "total_wins"])) != null ? _b : 0),
     currentWinStreak: clampNonNegativeInteger(
-      (_c = readNumberField3(record, ["currentWinStreak", "current_win_streak"])) != null ? _c : 0
+      (_c = readNumberField4(record, ["currentWinStreak", "current_win_streak"])) != null ? _c : 0
     ),
     currentTournamentWinStreak: clampNonNegativeInteger(
-      (_d = readNumberField3(record, ["currentTournamentWinStreak", "current_tournament_win_streak"])) != null ? _d : 0
+      (_d = readNumberField4(record, ["currentTournamentWinStreak", "current_tournament_win_streak"])) != null ? _d : 0
     ),
-    dailyGameBucket: readStringField4(record, ["dailyGameBucket", "daily_game_bucket"]),
-    dailyGameCount: clampNonNegativeInteger((_e = readNumberField3(record, ["dailyGameCount", "daily_game_count"])) != null ? _e : 0)
+    dailyGameBucket: readStringField5(record, ["dailyGameBucket", "daily_game_bucket"]),
+    dailyGameCount: clampNonNegativeInteger((_e = readNumberField4(record, ["dailyGameCount", "daily_game_count"])) != null ? _e : 0)
   };
 };
 var getRequiredCountForChallenge = (challengeId) => {
@@ -3320,18 +3688,18 @@ var decorateChallengeProgressSnapshot = (snapshot, totalXp) => {
 var normalizeChallengeProgressSnapshot = (rawValue, totalXp, fallbackUpdatedAt = (/* @__PURE__ */ new Date()).toISOString()) => {
   var _a;
   const defaults = createDefaultUserChallengeProgressSnapshot(fallbackUpdatedAt);
-  const rawRecord = asRecord2(rawValue);
+  const rawRecord = asRecord3(rawValue);
   const rawChallenges = rawRecord && typeof rawRecord.challenges === "object" && rawRecord.challenges !== null ? rawRecord.challenges : null;
   const normalized = __spreadProps(__spreadValues({}, defaults), {
-    updatedAt: (_a = readStringField4(rawRecord, ["updatedAt", "updated_at"])) != null ? _a : fallbackUpdatedAt,
+    updatedAt: (_a = readStringField5(rawRecord, ["updatedAt", "updated_at"])) != null ? _a : fallbackUpdatedAt,
     stats: normalizeChallengeStats(rawRecord == null ? void 0 : rawRecord.stats),
     challenges: CHALLENGE_DEFINITIONS.reduce(
       (states, definition) => {
         var _a2;
-        const rawState = asRecord2(rawChallenges == null ? void 0 : rawChallenges[definition.id]);
+        const rawState = asRecord3(rawChallenges == null ? void 0 : rawChallenges[definition.id]);
         const completed = (rawState == null ? void 0 : rawState.completed) === true;
-        const completedAt = completed ? (_a2 = readStringField4(rawState, ["completedAt", "completed_at"])) != null ? _a2 : fallbackUpdatedAt : null;
-        const completedMatchId = completed ? readStringField4(rawState, ["completedMatchId", "completed_match_id"]) : null;
+        const completedAt = completed ? (_a2 = readStringField5(rawState, ["completedAt", "completed_at"])) != null ? _a2 : fallbackUpdatedAt : null;
+        const completedMatchId = completed ? readStringField5(rawState, ["completedMatchId", "completed_match_id"]) : null;
         states[definition.id] = {
           challengeId: definition.id,
           completed,
@@ -3352,7 +3720,7 @@ var normalizeChallengeProgressSnapshot = (rawValue, totalXp, fallbackUpdatedAt =
   return decorateChallengeProgressSnapshot(normalized, totalXp);
 };
 var challengeProgressNeedsRepair = (rawValue, normalized) => {
-  const rawRecord = asRecord2(rawValue);
+  const rawRecord = asRecord3(rawValue);
   if (!rawRecord) {
     return true;
   }
@@ -3365,13 +3733,13 @@ var challengeProgressNeedsRepair = (rawValue, normalized) => {
   if (rawRecord.updatedAt !== normalized.updatedAt) {
     return true;
   }
-  const rawStats = asRecord2(rawRecord.stats);
-  if (readNumberField3(rawStats, ["totalGamesPlayed", "total_games_played"]) !== normalized.stats.totalGamesPlayed || readNumberField3(rawStats, ["totalWins", "total_wins"]) !== normalized.stats.totalWins || readNumberField3(rawStats, ["currentWinStreak", "current_win_streak"]) !== normalized.stats.currentWinStreak || readNumberField3(rawStats, ["currentTournamentWinStreak", "current_tournament_win_streak"]) !== normalized.stats.currentTournamentWinStreak || readStringField4(rawStats, ["dailyGameBucket", "daily_game_bucket"]) !== normalized.stats.dailyGameBucket || readNumberField3(rawStats, ["dailyGameCount", "daily_game_count"]) !== normalized.stats.dailyGameCount) {
+  const rawStats = asRecord3(rawRecord.stats);
+  if (readNumberField4(rawStats, ["totalGamesPlayed", "total_games_played"]) !== normalized.stats.totalGamesPlayed || readNumberField4(rawStats, ["totalWins", "total_wins"]) !== normalized.stats.totalWins || readNumberField4(rawStats, ["currentWinStreak", "current_win_streak"]) !== normalized.stats.currentWinStreak || readNumberField4(rawStats, ["currentTournamentWinStreak", "current_tournament_win_streak"]) !== normalized.stats.currentTournamentWinStreak || readStringField5(rawStats, ["dailyGameBucket", "daily_game_bucket"]) !== normalized.stats.dailyGameBucket || readNumberField4(rawStats, ["dailyGameCount", "daily_game_count"]) !== normalized.stats.dailyGameCount) {
     return true;
   }
   const rawChallenges = rawRecord.challenges;
   return CHALLENGE_DEFINITIONS.some((definition) => {
-    const rawState = asRecord2(rawChallenges == null ? void 0 : rawChallenges[definition.id]);
+    const rawState = asRecord3(rawChallenges == null ? void 0 : rawChallenges[definition.id]);
     const normalizedState = normalized.challenges[definition.id];
     return !rawState || rawState.completed !== normalizedState.completed || rawState.completedAt !== normalizedState.completedAt || rawState.completedMatchId !== normalizedState.completedMatchId || rawState.rewardXp !== normalizedState.rewardXp || rawState.progressCurrent !== normalizedState.progressCurrent || rawState.progressTarget !== normalizedState.progressTarget || rawState.progressLabel !== normalizedState.progressLabel;
   });
@@ -3518,7 +3886,7 @@ var RPC_SUBMIT_COMPLETED_BOT_MATCH = "submit_completed_bot_match";
 var buildChallengeRewardLedgerKey = (challengeId) => `challenge:${challengeId}`;
 var buildProcessedMatchResultKey = (matchId) => matchId;
 var isBotOpponentType = (opponentType) => opponentType === "easy_bot" || opponentType === "medium_bot" || opponentType === "hard_bot" || opponentType === "perfect_bot";
-var readStringField5 = (value, keys) => {
+var readStringField6 = (value, keys) => {
   if (typeof value !== "object" || value === null) {
     return null;
   }
@@ -3549,8 +3917,8 @@ var writeChallengeProgressObject = (nk, userId, progress, version) => {
       userId,
       value: progress,
       version,
-      permissionRead: STORAGE_PERMISSION_NONE,
-      permissionWrite: STORAGE_PERMISSION_NONE
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
     }
   ]);
 };
@@ -3581,8 +3949,8 @@ var ensureChallengeDefinitions = (nk, logger2) => {
           key: definition.id,
           value,
           version: existing ? (_a = getStorageObjectVersion(existing)) != null ? _a : "" : "*",
-          permissionRead: STORAGE_PERMISSION_NONE,
-          permissionWrite: STORAGE_PERMISSION_NONE
+          permissionRead: STORAGE_PERMISSION_NONE2,
+          permissionWrite: STORAGE_PERMISSION_NONE2
         }
       ];
     });
@@ -3598,7 +3966,7 @@ var ensureChallengeDefinitions = (nk, logger2) => {
         "Challenge definition sync attempt %d/%d failed: %s",
         attempt,
         MAX_WRITE_ATTEMPTS,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
   }
@@ -3626,7 +3994,7 @@ var ensureUserChallengeProgress = (nk, logger2, userId) => {
           attempt,
           MAX_WRITE_ATTEMPTS,
           userId,
-          getErrorMessage(error)
+          getErrorMessage2(error)
         );
       }
       continue;
@@ -3644,7 +4012,7 @@ var ensureUserChallengeProgress = (nk, logger2, userId) => {
         attempt,
         MAX_WRITE_ATTEMPTS,
         userId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
   }
@@ -3659,9 +4027,9 @@ var normalizeProcessedMatchResult = (rawValue) => {
     return null;
   }
   const record = rawValue;
-  const matchId = readStringField5(record, ["matchId", "match_id"]);
-  const playerUserId = readStringField5(record, ["playerUserId", "player_user_id"]);
-  const processedAt = readStringField5(record, ["processedAt", "processed_at"]);
+  const matchId = readStringField6(record, ["matchId", "match_id"]);
+  const playerUserId = readStringField6(record, ["playerUserId", "player_user_id"]);
+  const processedAt = readStringField6(record, ["processedAt", "processed_at"]);
   const summary = record.summary;
   const completedChallengeIds = Array.isArray(record.completedChallengeIds) ? record.completedChallengeIds.filter((challengeId) => typeof challengeId === "string") : [];
   const awardedXp = typeof record.awardedXp === "number" ? record.awardedXp : 0;
@@ -3852,8 +4220,8 @@ var processCompletedMatch = (nk, logger2, summary) => {
           now
         ),
         version: "*",
-        permissionRead: STORAGE_PERMISSION_NONE,
-        permissionWrite: STORAGE_PERMISSION_NONE
+        permissionRead: STORAGE_PERMISSION_NONE2,
+        permissionWrite: STORAGE_PERMISSION_NONE2
       };
     });
     const writes = [
@@ -3863,8 +4231,8 @@ var processCompletedMatch = (nk, logger2, summary) => {
         userId,
         value: nextProfile,
         version: profileObject ? (_a = getStorageObjectVersion(profileObject)) != null ? _a : "" : "*",
-        permissionRead: STORAGE_PERMISSION_NONE,
-        permissionWrite: STORAGE_PERMISSION_NONE
+        permissionRead: STORAGE_PERMISSION_NONE2,
+        permissionWrite: STORAGE_PERMISSION_NONE2
       },
       {
         collection: USER_CHALLENGE_PROGRESS_COLLECTION,
@@ -3872,8 +4240,8 @@ var processCompletedMatch = (nk, logger2, summary) => {
         userId,
         value: nextProgress,
         version: challengeProgressObject ? (_b = getStorageObjectVersion(challengeProgressObject)) != null ? _b : "" : "*",
-        permissionRead: STORAGE_PERMISSION_NONE,
-        permissionWrite: STORAGE_PERMISSION_NONE
+        permissionRead: STORAGE_PERMISSION_NONE2,
+        permissionWrite: STORAGE_PERMISSION_NONE2
       },
       {
         collection: PROCESSED_MATCH_RESULTS_COLLECTION,
@@ -3881,8 +4249,8 @@ var processCompletedMatch = (nk, logger2, summary) => {
         userId,
         value: processedRecord,
         version: processedMatchObject ? (_c = getStorageObjectVersion(processedMatchObject)) != null ? _c : "" : "*",
-        permissionRead: STORAGE_PERMISSION_NONE,
-        permissionWrite: STORAGE_PERMISSION_NONE
+        permissionRead: STORAGE_PERMISSION_NONE2,
+        permissionWrite: STORAGE_PERMISSION_NONE2
       },
       ...challengeRewardWrites
     ];
@@ -3921,7 +4289,7 @@ var processCompletedMatch = (nk, logger2, summary) => {
         MAX_WRITE_ATTEMPTS,
         userId,
         matchId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
   }
@@ -4068,8 +4436,8 @@ var TOURNAMENT_STATUSES = [
   "complete",
   "cancelled"
 ];
-var readStringField6 = (value, keys) => {
-  const record = asRecord(value);
+var readStringField7 = (value, keys) => {
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
@@ -4081,8 +4449,8 @@ var readStringField6 = (value, keys) => {
   }
   return null;
 };
-var readNumberField4 = (value, keys) => {
-  const record = asRecord(value);
+var readNumberField5 = (value, keys) => {
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
@@ -4100,8 +4468,8 @@ var readNumberField4 = (value, keys) => {
   }
   return null;
 };
-var readBooleanField3 = (value, keys) => {
-  const record = asRecord(value);
+var readBooleanField4 = (value, keys) => {
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
@@ -4114,7 +4482,7 @@ var readBooleanField3 = (value, keys) => {
   return null;
 };
 var readStringArrayField = (value, keys) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return [];
   }
@@ -4146,14 +4514,14 @@ var parseJsonPayload = (payload) => {
     return {};
   }
   const parsed = JSON.parse(payload);
-  const record = asRecord(parsed);
+  const record = asRecord2(parsed);
   if (!record) {
     throw new Error("RPC payload must be a JSON object.");
   }
   return record;
 };
 var requireAuthenticatedUserId = (ctx) => {
-  const userId = readStringField6(ctx, ["userId", "user_id"]);
+  const userId = readStringField7(ctx, ["userId", "user_id"]);
   if (!userId) {
     throw new Error("Authentication required.");
   }
@@ -4161,9 +4529,9 @@ var requireAuthenticatedUserId = (ctx) => {
 };
 var getActorLabel = (ctx) => {
   var _a, _b;
-  const ctxRecord = asRecord(ctx);
-  const vars = asRecord(ctxRecord == null ? void 0 : ctxRecord.vars);
-  return (_b = (_a = readStringField6(ctxRecord, ["username", "displayName", "display_name", "name"])) != null ? _a : readStringField6(vars, ["usernameDisplay", "username_display", "displayName", "display_name", "email"])) != null ? _b : requireAuthenticatedUserId(ctx);
+  const ctxRecord = asRecord2(ctx);
+  const vars = asRecord2(ctxRecord == null ? void 0 : ctxRecord.vars);
+  return (_b = (_a = readStringField7(ctxRecord, ["username", "displayName", "display_name", "name"])) != null ? _a : readStringField7(vars, ["usernameDisplay", "username_display", "displayName", "display_name", "email"])) != null ? _b : requireAuthenticatedUserId(ctx);
 };
 var normalizeTournamentStatus = (value, fallback = "draft") => {
   if (typeof value !== "string") {
@@ -4206,7 +4574,7 @@ var normalizeRewardPoolAmount = (value) => {
 };
 var resolveTournamentXpRewardSettings = (value) => ({
   xpPerMatchWin: clampNonNegativeInteger2(
-    readNumberField4(value, [
+    readNumberField5(value, [
       "xpPerMatchWin",
       "xp_per_match_win",
       "matchWinXp",
@@ -4218,7 +4586,7 @@ var resolveTournamentXpRewardSettings = (value) => ({
     1e6
   ),
   xpForTournamentChampion: clampNonNegativeInteger2(
-    readNumberField4(value, [
+    readNumberField5(value, [
       "xpForTournamentChampion",
       "xp_for_tournament_champion",
       "championXp",
@@ -4232,18 +4600,18 @@ var resolveTournamentXpRewardSettings = (value) => ({
 });
 var slugify = (value) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 var normalizeParticipant = (value) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
-  const userId = readStringField6(record, ["userId", "user_id"]);
-  const displayName = readStringField6(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField6(record, ["joinedAt", "joined_at"]);
+  const userId = readStringField7(record, ["userId", "user_id"]);
+  const displayName = readStringField7(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField7(record, ["joinedAt", "joined_at"]);
   if (!userId || !displayName || !joinedAt) {
     return null;
   }
-  const status = readStringField6(record, ["status"]);
-  const seed = readNumberField4(record, ["seed"]);
+  const status = readStringField7(record, ["status"]);
+  const seed = readNumberField5(record, ["seed"]);
   return {
     userId,
     displayName,
@@ -4254,18 +4622,18 @@ var normalizeParticipant = (value) => {
 };
 var normalizeResult = (value) => {
   var _a;
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
-  const matchId = readStringField6(record, ["matchId", "match_id"]);
-  const submittedByUserId = readStringField6(record, ["submittedByUserId", "submitted_by_user_id"]);
-  const submittedAt = readStringField6(record, ["submittedAt", "submitted_at"]);
-  const playerAUserId = readStringField6(record, ["playerAUserId", "player_a_user_id"]);
-  const playerBUserId = readStringField6(record, ["playerBUserId", "player_b_user_id"]);
-  const scoreA = readNumberField4(record, ["scoreA", "score_a"]);
-  const scoreB = readNumberField4(record, ["scoreB", "score_b"]);
-  const round = readNumberField4(record, ["round"]);
+  const matchId = readStringField7(record, ["matchId", "match_id"]);
+  const submittedByUserId = readStringField7(record, ["submittedByUserId", "submitted_by_user_id"]);
+  const submittedAt = readStringField7(record, ["submittedAt", "submitted_at"]);
+  const playerAUserId = readStringField7(record, ["playerAUserId", "player_a_user_id"]);
+  const playerBUserId = readStringField7(record, ["playerBUserId", "player_b_user_id"]);
+  const scoreA = readNumberField5(record, ["scoreA", "score_a"]);
+  const scoreB = readNumberField5(record, ["scoreB", "score_b"]);
+  const round = readNumberField5(record, ["round"]);
   if (!matchId || !submittedByUserId || !submittedAt || !playerAUserId || !playerBUserId || typeof scoreA !== "number" || typeof scoreB !== "number" || typeof round !== "number") {
     return null;
   }
@@ -4278,29 +4646,29 @@ var normalizeResult = (value) => {
     playerBUserId,
     scoreA,
     scoreB,
-    winnerUserId: readStringField6(record, ["winnerUserId", "winner_user_id"]),
-    notes: (_a = readStringField6(record, ["notes"])) != null ? _a : null
+    winnerUserId: readStringField7(record, ["winnerUserId", "winner_user_id"]),
+    notes: (_a = readStringField7(record, ["notes"])) != null ? _a : null
   };
 };
 var normalizeTournamentRecord = (value, fallbackId) => {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
-  const id = (_b = (_a = readStringField6(record, ["id"])) != null ? _a : fallbackId) != null ? _b : null;
-  const name = readStringField6(record, ["name"]);
-  const startsAt = readStringField6(record, ["startsAt", "starts_at"]);
-  const createdAt = readStringField6(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField6(record, ["updatedAt", "updated_at"]);
-  const createdByUserId = readStringField6(record, ["createdByUserId", "created_by_user_id"]);
-  const createdByLabel = readStringField6(record, ["createdByLabel", "created_by_label"]);
+  const id = (_b = (_a = readStringField7(record, ["id"])) != null ? _a : fallbackId) != null ? _b : null;
+  const name = readStringField7(record, ["name"]);
+  const startsAt = readStringField7(record, ["startsAt", "starts_at"]);
+  const createdAt = readStringField7(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField7(record, ["updatedAt", "updated_at"]);
+  const createdByUserId = readStringField7(record, ["createdByUserId", "created_by_user_id"]);
+  const createdByLabel = readStringField7(record, ["createdByLabel", "created_by_label"]);
   if (!id || !name || !startsAt || !createdAt || !updatedAt || !createdByUserId || !createdByLabel) {
     return null;
   }
   const rawParticipants = Array.isArray(record.participants) ? record.participants : [];
   const rawResults = Array.isArray(record.results) ? record.results : [];
-  const scoringRecord = asRecord(record.scoring);
+  const scoringRecord = asRecord2(record.scoring);
   const participants = rawParticipants.map((entry) => normalizeParticipant(entry)).filter((entry) => Boolean(entry));
   const results = rawResults.map((entry) => normalizeResult(entry)).filter((entry) => Boolean(entry)).sort((left, right) => {
     if (left.round !== right.round) {
@@ -4310,32 +4678,32 @@ var normalizeTournamentRecord = (value, fallbackId) => {
   });
   return {
     id,
-    slug: (_c = readStringField6(record, ["slug"])) != null ? _c : id,
+    slug: (_c = readStringField7(record, ["slug"])) != null ? _c : id,
     name,
-    description: (_d = readStringField6(record, ["description"])) != null ? _d : "",
+    description: (_d = readStringField7(record, ["description"])) != null ? _d : "",
     status: normalizeTournamentStatus(record.status, "draft"),
     startsAt,
     createdAt,
     updatedAt,
     createdByUserId,
     createdByLabel,
-    region: (_e = readStringField6(record, ["region"])) != null ? _e : "Global",
-    gameMode: (_f = readStringField6(record, ["gameMode", "game_mode"])) != null ? _f : "Standard",
-    entryFee: (_g = readStringField6(record, ["entryFee", "entry_fee"])) != null ? _g : "Free",
+    region: (_e = readStringField7(record, ["region"])) != null ? _e : "Global",
+    gameMode: (_f = readStringField7(record, ["gameMode", "game_mode"])) != null ? _f : "Standard",
+    entryFee: (_g = readStringField7(record, ["entryFee", "entry_fee"])) != null ? _g : "Free",
     maxParticipants: clampPositiveInteger(
-      readNumberField4(record, ["maxParticipants", "max_participants"]),
+      readNumberField5(record, ["maxParticipants", "max_participants"]),
       DEFAULT_MAX_PARTICIPANTS,
       MAX_TOURNAMENT_PARTICIPANTS
     ),
     rewardCurrency: normalizeCurrency(record.rewardCurrency),
     rewardPoolAmount: normalizeRewardPoolAmount(record.rewardPoolAmount),
-    rewardNotes: readStringField6(record, ["rewardNotes", "reward_notes"]),
+    rewardNotes: readStringField7(record, ["rewardNotes", "reward_notes"]),
     tags: readStringArrayField(record, ["tags"]),
     scoring: {
-      winPoints: (_h = readNumberField4(scoringRecord, ["winPoints", "win_points"])) != null ? _h : DEFAULT_TOURNAMENT_SCORING.winPoints,
-      drawPoints: (_i = readNumberField4(scoringRecord, ["drawPoints", "draw_points"])) != null ? _i : DEFAULT_TOURNAMENT_SCORING.drawPoints,
-      lossPoints: (_j = readNumberField4(scoringRecord, ["lossPoints", "loss_points"])) != null ? _j : DEFAULT_TOURNAMENT_SCORING.lossPoints,
-      allowDraws: (_k = readBooleanField3(scoringRecord, ["allowDraws", "allow_draws"])) != null ? _k : DEFAULT_TOURNAMENT_SCORING.allowDraws
+      winPoints: (_h = readNumberField5(scoringRecord, ["winPoints", "win_points"])) != null ? _h : DEFAULT_TOURNAMENT_SCORING.winPoints,
+      drawPoints: (_i = readNumberField5(scoringRecord, ["drawPoints", "draw_points"])) != null ? _i : DEFAULT_TOURNAMENT_SCORING.drawPoints,
+      lossPoints: (_j = readNumberField5(scoringRecord, ["lossPoints", "loss_points"])) != null ? _j : DEFAULT_TOURNAMENT_SCORING.lossPoints,
+      allowDraws: (_k = readBooleanField4(scoringRecord, ["allowDraws", "allow_draws"])) != null ? _k : DEFAULT_TOURNAMENT_SCORING.allowDraws
     },
     participants,
     results
@@ -4379,8 +4747,8 @@ var writeTournamentObject = (nk, tournament, version) => {
       key: tournament.id,
       value: tournament,
       version,
-      permissionRead: STORAGE_PERMISSION_NONE,
-      permissionWrite: STORAGE_PERMISSION_NONE
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
     }
   ]);
 };
@@ -4403,7 +4771,7 @@ var updateTournamentWithRetry = (nk, logger2, tournamentId, updater) => {
       logger2.warn(
         "Retrying tournament write for %s after storage conflict: %s",
         tournamentId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
   }
@@ -4421,8 +4789,8 @@ var ADMIN_ROLE_RANK = {
   operator: 2,
   admin: 3
 };
-var readStringField7 = (value, keys) => {
-  const record = asRecord(value);
+var readStringField8 = (value, keys) => {
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
@@ -4435,7 +4803,7 @@ var readStringField7 = (value, keys) => {
   return null;
 };
 var getContextUserId = (ctx) => {
-  const userId = readStringField7(ctx, ["userId", "user_id"]);
+  const userId = readStringField8(ctx, ["userId", "user_id"]);
   if (!userId) {
     throw new Error("Authentication required.");
   }
@@ -4448,11 +4816,11 @@ var normalizeAdminRole = (value) => {
       return normalized;
     }
   }
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
-  const role = readStringField7(record, ["role"]);
+  const role = readStringField8(record, ["role"]);
   if (role === "viewer" || role === "operator" || role === "admin") {
     return role;
   }
@@ -4486,7 +4854,7 @@ var assertAdmin = (ctx, requiredRole, nk) => {
   return actualRole;
 };
 var normalizeUserRecord = (value) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
@@ -4506,9 +4874,9 @@ var resolveAdminProfile = (nk, userId) => {
     const users = Array.isArray(rawUsers) ? rawUsers : [];
     const profile = (_a = users.map((value) => normalizeUserRecord(value)).find((value) => Boolean(value))) != null ? _a : null;
     return {
-      username: readStringField7(profile, ["username"]),
-      displayName: readStringField7(profile, ["displayName", "display_name"]),
-      email: readStringField7(profile, ["email"])
+      username: readStringField8(profile, ["username"]),
+      displayName: readStringField8(profile, ["displayName", "display_name"]),
+      email: readStringField8(profile, ["email"])
     };
   } catch (e) {
     return {
@@ -4529,8 +4897,8 @@ var maybeBootstrapTestAdminRole = (nk, userId) => {
       key: ADMIN_ROLE_KEY,
       userId,
       value: { role: TEST_ADMIN_ROLE },
-      permissionRead: STORAGE_PERMISSION_NONE,
-      permissionWrite: STORAGE_PERMISSION_NONE
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
     }
   ]);
   return TEST_ADMIN_ROLE;
@@ -4576,7 +4944,7 @@ var normalizeAuditValue = (value, depth = 0) => {
   if (Array.isArray(value)) {
     return value.slice(0, 5).map((entry) => normalizeAuditValue(entry, depth + 1));
   }
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return void 0;
   }
@@ -4600,7 +4968,7 @@ var normalizeAuditValue = (value, depth = 0) => {
   return nested;
 };
 var createAuditPayloadSummary = (value) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return {};
   }
@@ -4615,21 +4983,21 @@ var createAuditPayloadSummary = (value) => {
 };
 var normalizeAuditEntry = (value) => {
   var _a, _b, _c, _d, _e, _f;
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
-  const id = readStringField6(record, ["id"]);
-  const action = readStringField6(record, ["action"]);
-  const userId = readStringField6(record, ["userId", "user_id", "actorUserId", "actor_user_id"]);
-  const targetId = readStringField6(record, ["targetId", "target_id", "tournamentId", "tournament_id"]);
-  const timestamp = readStringField6(record, ["timestamp", "createdAt", "created_at"]);
+  const id = readStringField7(record, ["id"]);
+  const action = readStringField7(record, ["action"]);
+  const userId = readStringField7(record, ["userId", "user_id", "actorUserId", "actor_user_id"]);
+  const targetId = readStringField7(record, ["targetId", "target_id", "tournamentId", "tournament_id"]);
+  const timestamp = readStringField7(record, ["timestamp", "createdAt", "created_at"]);
   if (!id || !action || !userId || !targetId || !timestamp) {
     return null;
   }
-  const payloadSummary = (_c = (_b = (_a = asRecord(record.payloadSummary)) != null ? _a : asRecord(record.payload_summary)) != null ? _b : asRecord(record.metadata)) != null ? _c : {};
-  const actorLabel = (_d = readStringField6(record, ["actorLabel", "actor_label"])) != null ? _d : userId;
-  const tournamentName = (_f = (_e = readStringField6(record, ["tournamentName", "tournament_name"])) != null ? _e : readStringField6(record, ["targetName", "target_name"])) != null ? _f : targetId;
+  const payloadSummary = (_c = (_b = (_a = asRecord2(record.payloadSummary)) != null ? _a : asRecord2(record.payload_summary)) != null ? _b : asRecord2(record.metadata)) != null ? _c : {};
+  const actorLabel = (_d = readStringField7(record, ["actorLabel", "actor_label"])) != null ? _d : userId;
+  const tournamentName = (_f = (_e = readStringField7(record, ["tournamentName", "tournament_name"])) != null ? _e : readStringField7(record, ["targetName", "target_name"])) != null ? _f : targetId;
   return {
     id,
     userId,
@@ -4647,11 +5015,11 @@ var normalizeAuditEntry = (value) => {
 };
 var normalizeAuditLogRecord = (value) => {
   var _a;
-  const record = asRecord(value);
+  const record = asRecord2(value);
   const entries = Array.isArray(record == null ? void 0 : record.entries) ? record.entries.map((entry) => normalizeAuditEntry(entry)).filter((entry) => Boolean(entry)) : [];
   return {
     entries,
-    updatedAt: (_a = readStringField6(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
+    updatedAt: (_a = readStringField7(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
   };
 };
 var readAuditLogState = (nk) => {
@@ -4674,8 +5042,8 @@ var writeAuditLogState = (nk, log, version) => {
       collection: TOURNAMENT_AUDIT_COLLECTION,
       key: TOURNAMENT_AUDIT_LOG_KEY,
       value: log,
-      permissionRead: STORAGE_PERMISSION_NONE,
-      permissionWrite: STORAGE_PERMISSION_NONE
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
     }, version)
   ]);
 };
@@ -4714,22 +5082,22 @@ var appendTournamentAuditEntry = (ctx, logger2, nk, target, action, payloadSumma
     };
     writeAuditLogState(nk, nextLog, getStorageObjectVersion(currentState.object));
   } catch (error) {
-    logger2.warn("Unable to append tournament audit entry for %s: %s", target.id, getErrorMessage(error));
+    logger2.warn("Unable to append tournament audit entry for %s: %s", target.id, getErrorMessage2(error));
   }
   return entry;
 };
 var parseResponseRecord = (value) => {
   try {
-    return asRecord(JSON.parse(value));
+    return asRecord2(JSON.parse(value));
   } catch (e) {
     return null;
   }
 };
 var resolveDefaultTargetId = (ctx, payload, response) => {
   var _a, _b, _c, _d, _e;
-  const responseRun = asRecord(response == null ? void 0 : response.run);
-  const responseTournament = asRecord(response == null ? void 0 : response.tournament);
-  return (_e = (_d = (_c = (_b = (_a = readStringField6(payload, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id"])) != null ? _a : readStringField6(response, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id", "userId", "user_id"])) != null ? _b : readStringField6(responseRun, ["runId", "run_id", "tournamentId", "tournament_id"])) != null ? _c : readStringField6(responseTournament, ["id", "tournamentId", "tournament_id"])) != null ? _d : readStringField6(ctx, ["userId", "user_id"])) != null ? _e : "unknown-target";
+  const responseRun = asRecord2(response == null ? void 0 : response.run);
+  const responseTournament = asRecord2(response == null ? void 0 : response.tournament);
+  return (_e = (_d = (_c = (_b = (_a = readStringField7(payload, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id"])) != null ? _a : readStringField7(response, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id", "userId", "user_id"])) != null ? _b : readStringField7(responseRun, ["runId", "run_id", "tournamentId", "tournament_id"])) != null ? _c : readStringField7(responseTournament, ["id", "tournamentId", "tournament_id"])) != null ? _d : readStringField7(ctx, ["userId", "user_id"])) != null ? _e : "unknown-target";
 };
 var resolveTargetId = (ctx, payload, response, resolver) => {
   var _a;
@@ -4749,9 +5117,9 @@ var resolveTargetName = (ctx, payload, response, targetId, resolver) => {
   if (typeof resolver === "string" && resolver.trim().length > 0) {
     return resolver;
   }
-  const responseRun = asRecord(response == null ? void 0 : response.run);
-  const responseTournament = asRecord(response == null ? void 0 : response.tournament);
-  return (_d = (_c = (_b = readStringField6(responseRun, ["title", "name"])) != null ? _b : readStringField6(responseTournament, ["title", "name"])) != null ? _c : readStringField6(payload, ["title", "name"])) != null ? _d : targetId;
+  const responseRun = asRecord2(response == null ? void 0 : response.run);
+  const responseTournament = asRecord2(response == null ? void 0 : response.tournament);
+  return (_d = (_c = (_b = readStringField7(responseRun, ["title", "name"])) != null ? _b : readStringField7(responseTournament, ["title", "name"])) != null ? _c : readStringField7(payload, ["title", "name"])) != null ? _d : targetId;
 };
 var safeParsePayload = (payload) => {
   try {
@@ -4764,7 +5132,7 @@ var appendAutomatedAdminAuditEntry = (ctx, logger2, nk, action, targetId, target
   try {
     appendTournamentAuditEntry(ctx, logger2, nk, { id: targetId, name: targetName }, action, payloadSummary);
   } catch (error) {
-    logger2.warn("Unable to append automated admin audit entry for %s: %s", targetId, getErrorMessage(error));
+    logger2.warn("Unable to append automated admin audit entry for %s: %s", targetId, getErrorMessage2(error));
   }
 };
 var runAuditedAdminRpc = (handler, options, ctx, logger2, nk, payload) => {
@@ -4796,7 +5164,7 @@ var runAuditedAdminRpc = (handler, options, ctx, logger2, nk, payload) => {
       targetId,
       targetName,
       __spreadProps(__spreadValues({}, createAuditPayloadSummary(parsedPayload)), {
-        error: getErrorMessage(error)
+        error: getErrorMessage2(error)
       })
     );
     throw error;
@@ -4837,14 +5205,14 @@ var sortRegistrations = (registrations) => registrations.slice().sort((left, rig
   return left.userId.localeCompare(right.userId);
 });
 var normalizeTournamentRunRegistration = (value) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
-  const userId = readStringField6(record, ["userId", "user_id"]);
-  const displayName = readStringField6(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField6(record, ["joinedAt", "joined_at"]);
-  const seed = readNumberField4(record, ["seed"]);
+  const userId = readStringField7(record, ["userId", "user_id"]);
+  const displayName = readStringField7(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField7(record, ["joinedAt", "joined_at"]);
+  const seed = readNumberField5(record, ["seed"]);
   if (!userId || !displayName || !joinedAt || typeof seed !== "number" || !Number.isFinite(seed)) {
     return null;
   }
@@ -4856,15 +5224,15 @@ var normalizeTournamentRunRegistration = (value) => {
   };
 };
 var normalizeTournamentBracketParticipant = (value) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
-  const userId = readStringField6(record, ["userId", "user_id"]);
-  const displayName = readStringField6(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField6(record, ["joinedAt", "joined_at"]);
-  const updatedAt = readStringField6(record, ["updatedAt", "updated_at"]);
-  const seed = readNumberField4(record, ["seed"]);
+  const userId = readStringField7(record, ["userId", "user_id"]);
+  const displayName = readStringField7(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField7(record, ["joinedAt", "joined_at"]);
+  const updatedAt = readStringField7(record, ["updatedAt", "updated_at"]);
+  const seed = readNumberField5(record, ["seed"]);
   if (!userId || !displayName || !joinedAt || !updatedAt || typeof seed !== "number" || !Number.isFinite(seed)) {
     return null;
   }
@@ -4873,34 +5241,34 @@ var normalizeTournamentBracketParticipant = (value) => {
     displayName,
     joinedAt,
     seed: Math.max(1, Math.floor(seed)),
-    state: normalizeParticipantState(readStringField6(record, ["state"])),
+    state: normalizeParticipantState(readStringField7(record, ["state"])),
     currentRound: (() => {
-      const round = readNumberField4(record, ["currentRound", "current_round"]);
+      const round = readNumberField5(record, ["currentRound", "current_round"]);
       return typeof round === "number" && Number.isFinite(round) ? Math.max(1, Math.floor(round)) : null;
     })(),
-    currentEntryId: readStringField6(record, ["currentEntryId", "current_entry_id"]),
-    activeMatchId: readStringField6(record, ["activeMatchId", "active_match_id"]),
+    currentEntryId: readStringField7(record, ["currentEntryId", "current_entry_id"]),
+    activeMatchId: readStringField7(record, ["activeMatchId", "active_match_id"]),
     finalPlacement: (() => {
-      const placement = readNumberField4(record, ["finalPlacement", "final_placement"]);
+      const placement = readNumberField5(record, ["finalPlacement", "final_placement"]);
       return typeof placement === "number" && Number.isFinite(placement) ? Math.max(1, Math.floor(placement)) : null;
     })(),
     lastResult: (() => {
-      const result = readStringField6(record, ["lastResult", "last_result"]);
+      const result = readStringField7(record, ["lastResult", "last_result"]);
       return result === "win" || result === "loss" ? result : null;
     })(),
     updatedAt
   };
 };
 var normalizeTournamentBracketEntry = (value) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
-  const entryId = readStringField6(record, ["entryId", "entry_id"]);
-  const round = readNumberField4(record, ["round"]);
-  const slot = readNumberField4(record, ["slot"]);
-  const createdAt = readStringField6(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField6(record, ["updatedAt", "updated_at"]);
+  const entryId = readStringField7(record, ["entryId", "entry_id"]);
+  const round = readNumberField5(record, ["round"]);
+  const slot = readNumberField5(record, ["slot"]);
+  const createdAt = readStringField7(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField7(record, ["updatedAt", "updated_at"]);
   const sourceEntryIds = Array.isArray(record.sourceEntryIds) ? record.sourceEntryIds.filter((entry) => typeof entry === "string" && entry.trim().length > 0) : [];
   if (!entryId || typeof round !== "number" || !Number.isFinite(round) || typeof slot !== "number" || !Number.isFinite(slot) || !createdAt || !updatedAt) {
     return null;
@@ -4910,29 +5278,29 @@ var normalizeTournamentBracketEntry = (value) => {
     round: Math.max(1, Math.floor(round)),
     slot: Math.max(1, Math.floor(slot)),
     sourceEntryIds,
-    playerAUserId: readStringField6(record, ["playerAUserId", "player_a_user_id"]),
-    playerBUserId: readStringField6(record, ["playerBUserId", "player_b_user_id"]),
-    matchId: readStringField6(record, ["matchId", "match_id"]),
-    status: normalizeEntryStatus(readStringField6(record, ["status"])),
-    winnerUserId: readStringField6(record, ["winnerUserId", "winner_user_id"]),
-    loserUserId: readStringField6(record, ["loserUserId", "loser_user_id"]),
+    playerAUserId: readStringField7(record, ["playerAUserId", "player_a_user_id"]),
+    playerBUserId: readStringField7(record, ["playerBUserId", "player_b_user_id"]),
+    matchId: readStringField7(record, ["matchId", "match_id"]),
+    status: normalizeEntryStatus(readStringField7(record, ["status"])),
+    winnerUserId: readStringField7(record, ["winnerUserId", "winner_user_id"]),
+    loserUserId: readStringField7(record, ["loserUserId", "loser_user_id"]),
     createdAt,
     updatedAt,
-    readyAt: readStringField6(record, ["readyAt", "ready_at"]),
-    startedAt: readStringField6(record, ["startedAt", "started_at"]),
-    completedAt: readStringField6(record, ["completedAt", "completed_at"])
+    readyAt: readStringField7(record, ["readyAt", "ready_at"]),
+    startedAt: readStringField7(record, ["startedAt", "started_at"]),
+    completedAt: readStringField7(record, ["completedAt", "completed_at"])
   };
 };
 var normalizeTournamentBracketState = (value) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
-  const startedAt = readStringField6(record, ["startedAt", "started_at"]);
-  const lockedAt = readStringField6(record, ["lockedAt", "locked_at"]);
-  const size = readNumberField4(record, ["size"]);
-  const totalRounds = readNumberField4(record, ["totalRounds", "total_rounds"]);
-  if (readStringField6(record, ["format"]) !== "single_elimination" || !startedAt || !lockedAt || typeof size !== "number" || !Number.isFinite(size) || typeof totalRounds !== "number" || !Number.isFinite(totalRounds)) {
+  const startedAt = readStringField7(record, ["startedAt", "started_at"]);
+  const lockedAt = readStringField7(record, ["lockedAt", "locked_at"]);
+  const size = readNumberField5(record, ["size"]);
+  const totalRounds = readNumberField5(record, ["totalRounds", "total_rounds"]);
+  if (readStringField7(record, ["format"]) !== "single_elimination" || !startedAt || !lockedAt || typeof size !== "number" || !Number.isFinite(size) || typeof totalRounds !== "number" || !Number.isFinite(totalRounds)) {
     return null;
   }
   const participants = Array.isArray(record.participants) ? record.participants.map((entry) => normalizeTournamentBracketParticipant(entry)).filter((entry) => Boolean(entry)) : [];
@@ -4943,9 +5311,9 @@ var normalizeTournamentBracketState = (value) => {
     totalRounds: Math.max(1, Math.floor(totalRounds)),
     startedAt,
     lockedAt,
-    finalizedAt: readStringField6(record, ["finalizedAt", "finalized_at"]),
-    winnerUserId: readStringField6(record, ["winnerUserId", "winner_user_id"]),
-    runnerUpUserId: readStringField6(record, ["runnerUpUserId", "runner_up_user_id"]),
+    finalizedAt: readStringField7(record, ["finalizedAt", "finalized_at"]),
+    winnerUserId: readStringField7(record, ["winnerUserId", "winner_user_id"]),
+    runnerUpUserId: readStringField7(record, ["runnerUpUserId", "runner_up_user_id"]),
     participants,
     entries
   };
@@ -5205,9 +5573,9 @@ var hasTournamentBracketStarted = (bracket) => Boolean(bracket == null ? void 0 
 
 // shared/tournamentBots.ts
 var TOURNAMENT_BOT_USER_ID_PREFIX = "tournament-bot:";
-var asRecord3 = (value) => typeof value === "object" && value !== null ? value : null;
-var readBooleanField4 = (value, keys) => {
-  const record = asRecord3(value);
+var asRecord4 = (value) => typeof value === "object" && value !== null ? value : null;
+var readBooleanField5 = (value, keys) => {
+  const record = asRecord4(value);
   if (!record) {
     return null;
   }
@@ -5218,8 +5586,8 @@ var readBooleanField4 = (value, keys) => {
   }
   return null;
 };
-var readStringField8 = (value, keys) => {
-  const record = asRecord3(value);
+var readStringField9 = (value, keys) => {
+  const record = asRecord4(value);
   if (!record) {
     return null;
   }
@@ -5245,8 +5613,8 @@ var formatBotDifficultyLabel = (difficulty) => `${difficulty.slice(0, 1).toUpper
 var buildTournamentBotDisplayName = (difficulty, ordinal) => `${formatBotDifficultyLabel(difficulty)} Bot ${Math.max(1, Math.floor(ordinal))}`;
 var normalizeTournamentBotPolicy = (metadata) => {
   var _a;
-  const autoAdd = (_a = readBooleanField4(metadata, ["autoAddBots", "auto_add_bots"])) != null ? _a : false;
-  const requestedDifficulty = readStringField8(metadata, ["botDifficulty", "bot_difficulty"]);
+  const autoAdd = (_a = readBooleanField5(metadata, ["autoAddBots", "auto_add_bots"])) != null ? _a : false;
+  const requestedDifficulty = readStringField9(metadata, ["botDifficulty", "bot_difficulty"]);
   const difficulty = requestedDifficulty && isBotDifficulty(requestedDifficulty) ? requestedDifficulty : null;
   if (!autoAdd) {
     return {
@@ -5327,11 +5695,11 @@ var DEFAULT_MAX_SIZE = 1024;
 var DEFAULT_STANDINGS_LIMIT = 100;
 var MAX_STANDINGS_LIMIT = 1e4;
 var MAX_RUN_LIST_LIMIT = 100;
-var SYSTEM_USER_ID3 = "00000000-0000-0000-0000-000000000000";
+var SYSTEM_USER_ID4 = "00000000-0000-0000-0000-000000000000";
 var TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION = "tournament_run_memberships";
 var TOURNAMENT_MATCH_RESULTS_COLLECTION = "tournament_match_results";
-var readBooleanField5 = (value, keys) => {
-  const record = asRecord(value);
+var readBooleanField6 = (value, keys) => {
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
@@ -5344,12 +5712,12 @@ var readBooleanField5 = (value, keys) => {
   return null;
 };
 var readMetadataField = (value, keys) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return {};
   }
   for (const key of keys) {
-    const field = asRecord(record[key]);
+    const field = asRecord2(record[key]);
     if (field) {
       return field;
     }
@@ -5357,7 +5725,7 @@ var readMetadataField = (value, keys) => {
   return {};
 };
 var readStringArrayField2 = (value, keys) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return [];
   }
@@ -5411,39 +5779,39 @@ var buildRunId = (preferredId, title, existingIds) => {
 };
 var normalizeStandingsSnapshot = (value) => {
   var _a;
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
   const rawRecords = Array.isArray(record.records) ? record.records : [];
   return {
-    generatedAt: (_a = readStringField6(record, ["generatedAt", "generated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString(),
-    overrideExpiry: clampInteger(readNumberField4(record, ["overrideExpiry", "override_expiry"]), 0, 0, 2147483647),
+    generatedAt: (_a = readStringField7(record, ["generatedAt", "generated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString(),
+    overrideExpiry: clampInteger(readNumberField5(record, ["overrideExpiry", "override_expiry"]), 0, 0, 2147483647),
     rankCount: (() => {
-      const rankCount = readNumberField4(record, ["rankCount", "rank_count"]);
+      const rankCount = readNumberField5(record, ["rankCount", "rank_count"]);
       return typeof rankCount === "number" ? rankCount : null;
     })(),
     records: rawRecords.map((entry) => {
       var _a2;
-      return (_a2 = asRecord(entry)) != null ? _a2 : {};
+      return (_a2 = asRecord2(entry)) != null ? _a2 : {};
     }),
-    prevCursor: readStringField6(record, ["prevCursor", "prev_cursor"]),
-    nextCursor: readStringField6(record, ["nextCursor", "next_cursor"])
+    prevCursor: readStringField7(record, ["prevCursor", "prev_cursor"]),
+    nextCursor: readStringField7(record, ["nextCursor", "next_cursor"])
   };
 };
 var normalizeRunRecord = (value, fallbackId) => {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
-  const runId = (_b = (_a = readStringField6(record, ["runId", "run_id"])) != null ? _a : fallbackId) != null ? _b : null;
-  const tournamentId = (_c = readStringField6(record, ["tournamentId", "tournament_id"])) != null ? _c : runId;
-  const title = readStringField6(record, ["title"]);
-  const createdAt = readStringField6(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField6(record, ["updatedAt", "updated_at"]);
-  const createdByUserId = readStringField6(record, ["createdByUserId", "created_by_user_id"]);
-  const createdByLabel = readStringField6(record, ["createdByLabel", "created_by_label"]);
+  const runId = (_b = (_a = readStringField7(record, ["runId", "run_id"])) != null ? _a : fallbackId) != null ? _b : null;
+  const tournamentId = (_c = readStringField7(record, ["tournamentId", "tournament_id"])) != null ? _c : runId;
+  const title = readStringField7(record, ["title"]);
+  const createdAt = readStringField7(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField7(record, ["updatedAt", "updated_at"]);
+  const createdByUserId = readStringField7(record, ["createdByUserId", "created_by_user_id"]);
+  const createdByLabel = readStringField7(record, ["createdByLabel", "created_by_label"]);
   if (!runId || !tournamentId || !title || !createdAt || !updatedAt || !createdByUserId || !createdByLabel) {
     return null;
   }
@@ -5451,33 +5819,33 @@ var normalizeRunRecord = (value, fallbackId) => {
     runId,
     tournamentId,
     title,
-    description: (_d = readStringField6(record, ["description"])) != null ? _d : "",
-    category: clampInteger(readNumberField4(record, ["category"]), DEFAULT_CATEGORY, 0, 127),
-    authoritative: (_e = readBooleanField5(record, ["authoritative"])) != null ? _e : true,
-    sortOrder: normalizeSortOrder((_f = readStringField6(record, ["sortOrder", "sort_order"])) != null ? _f : DEFAULT_SORT_ORDER),
-    operator: normalizeOperator((_g = readStringField6(record, ["operator"])) != null ? _g : DEFAULT_OPERATOR),
-    resetSchedule: (_h = readStringField6(record, ["resetSchedule", "reset_schedule"])) != null ? _h : "",
+    description: (_d = readStringField7(record, ["description"])) != null ? _d : "",
+    category: clampInteger(readNumberField5(record, ["category"]), DEFAULT_CATEGORY, 0, 127),
+    authoritative: (_e = readBooleanField6(record, ["authoritative"])) != null ? _e : true,
+    sortOrder: normalizeSortOrder((_f = readStringField7(record, ["sortOrder", "sort_order"])) != null ? _f : DEFAULT_SORT_ORDER),
+    operator: normalizeOperator((_g = readStringField7(record, ["operator"])) != null ? _g : DEFAULT_OPERATOR),
+    resetSchedule: (_h = readStringField7(record, ["resetSchedule", "reset_schedule"])) != null ? _h : "",
     metadata: readMetadataField(record, ["metadata"]),
-    startTime: clampInteger(readNumberField4(record, ["startTime", "start_time"]), 0, 0, 2147483647),
-    endTime: clampInteger(readNumberField4(record, ["endTime", "end_time"]), 0, 0, 2147483647),
-    duration: clampInteger(readNumberField4(record, ["duration"]), DEFAULT_DURATION_SECONDS, 1, 2147483647),
-    maxSize: clampInteger(readNumberField4(record, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1e6),
+    startTime: clampInteger(readNumberField5(record, ["startTime", "start_time"]), 0, 0, 2147483647),
+    endTime: clampInteger(readNumberField5(record, ["endTime", "end_time"]), 0, 0, 2147483647),
+    duration: clampInteger(readNumberField5(record, ["duration"]), DEFAULT_DURATION_SECONDS, 1, 2147483647),
+    maxSize: clampInteger(readNumberField5(record, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1e6),
     maxNumScore: clampInteger(
-      readNumberField4(record, ["maxNumScore", "max_num_score"]),
+      readNumberField5(record, ["maxNumScore", "max_num_score"]),
       1,
       1,
       1e6
     ),
-    joinRequired: (_i = readBooleanField5(record, ["joinRequired", "join_required"])) != null ? _i : true,
-    enableRanks: (_j = readBooleanField5(record, ["enableRanks", "enable_ranks"])) != null ? _j : true,
-    lifecycle: normalizeRunLifecycle((_k = readStringField6(record, ["lifecycle"])) != null ? _k : "draft"),
+    joinRequired: (_i = readBooleanField6(record, ["joinRequired", "join_required"])) != null ? _i : true,
+    enableRanks: (_j = readBooleanField6(record, ["enableRanks", "enable_ranks"])) != null ? _j : true,
+    lifecycle: normalizeRunLifecycle((_k = readStringField7(record, ["lifecycle"])) != null ? _k : "draft"),
     createdAt,
     updatedAt,
     createdByUserId,
     createdByLabel,
-    openedAt: readStringField6(record, ["openedAt", "opened_at"]),
-    closedAt: readStringField6(record, ["closedAt", "closed_at"]),
-    finalizedAt: readStringField6(record, ["finalizedAt", "finalized_at"]),
+    openedAt: readStringField7(record, ["openedAt", "opened_at"]),
+    closedAt: readStringField7(record, ["closedAt", "closed_at"]),
+    finalizedAt: readStringField7(record, ["finalizedAt", "finalized_at"]),
     finalSnapshot: normalizeStandingsSnapshot(record.finalSnapshot),
     registrations: Array.isArray(record.registrations) ? record.registrations.map((entry) => normalizeTournamentRunRegistration(entry)).filter((entry) => Boolean(entry)) : [],
     bracket: normalizeTournamentBracketState(record.bracket)
@@ -5485,13 +5853,13 @@ var normalizeRunRecord = (value, fallbackId) => {
 };
 var normalizeRunIndex = (value) => {
   var _a;
-  const record = asRecord(value);
+  const record = asRecord2(value);
   const runIds = Array.isArray(record == null ? void 0 : record.runIds) ? record == null ? void 0 : record.runIds : [];
   return {
     runIds: Array.from(
       new Set(runIds.filter((entry) => typeof entry === "string" && entry.trim().length > 0))
     ),
-    updatedAt: (_a = readStringField6(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
+    updatedAt: (_a = readStringField7(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
   };
 };
 var readRunIndexState = (nk) => {
@@ -5548,8 +5916,8 @@ var writeRun = (nk, run, version) => {
       collection: RUNS_COLLECTION,
       key: run.runId,
       value: run,
-      permissionRead: STORAGE_PERMISSION_NONE,
-      permissionWrite: STORAGE_PERMISSION_NONE
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
     }, version)
   ]);
 };
@@ -5559,8 +5927,8 @@ var writeRunIndex = (nk, index, version) => {
       collection: RUNS_COLLECTION,
       key: RUNS_INDEX_KEY,
       value: index,
-      permissionRead: STORAGE_PERMISSION_NONE,
-      permissionWrite: STORAGE_PERMISSION_NONE
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
     }, version)
   ]);
 };
@@ -5583,7 +5951,7 @@ var updateRunWithRetry = (nk, logger2, runId, updater) => {
       logger2.warn(
         "Retrying tournament run write for %s after storage conflict: %s",
         runId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
   }
@@ -5593,20 +5961,20 @@ var readTournamentArray = (value) => {
   if (Array.isArray(value)) {
     return value.map((entry) => {
       var _a;
-      return (_a = asRecord(entry)) != null ? _a : {};
+      return (_a = asRecord2(entry)) != null ? _a : {};
     }).filter((entry) => Object.keys(entry).length > 0);
   }
-  const record = asRecord(value);
+  const record = asRecord2(value);
   const tournaments = Array.isArray(record == null ? void 0 : record.tournaments) ? record.tournaments : [];
   return tournaments.map((entry) => {
     var _a;
-    return (_a = asRecord(entry)) != null ? _a : {};
+    return (_a = asRecord2(entry)) != null ? _a : {};
   }).filter((entry) => Object.keys(entry).length > 0);
 };
 var mapTournamentsById = (value) => {
   return readTournamentArray(value).reduce(
     (accumulator, tournament) => {
-      const tournamentId = readStringField6(tournament, ["id"]);
+      const tournamentId = readStringField7(tournament, ["id"]);
       if (tournamentId) {
         accumulator[tournamentId] = tournament;
       }
@@ -5623,12 +5991,12 @@ var getRunEntrantCount = (run, nakamaTournament) => {
   var _a;
   return Math.max(
     run.registrations.length,
-    Math.max(0, Math.floor((_a = readNumberField4(nakamaTournament, ["size"])) != null ? _a : 0))
+    Math.max(0, Math.floor((_a = readNumberField5(nakamaTournament, ["size"])) != null ? _a : 0))
   );
 };
 var getRunCapacity = (run, nakamaTournament) => {
   var _a;
-  return Math.max(0, Math.floor((_a = readNumberField4(nakamaTournament, ["maxSize", "max_size"])) != null ? _a : run.maxSize));
+  return Math.max(0, Math.floor((_a = readNumberField5(nakamaTournament, ["maxSize", "max_size"])) != null ? _a : run.maxSize));
 };
 var getRunBotUserIds = (run) => {
   var _a, _b;
@@ -5657,8 +6025,8 @@ var buildRunBotSummary = (run) => buildTournamentBotSummary(run.metadata, getRun
 var buildRunResponseMetadata = (value) => {
   var _a;
   const baseMetadata = readMetadataField(value, ["metadata"]);
-  const explicitAutoAddBots = readBooleanField5(value, ["autoAddBots", "auto_add_bots"]);
-  const explicitBotDifficulty = readStringField6(value, ["botDifficulty", "bot_difficulty"]);
+  const explicitAutoAddBots = readBooleanField6(value, ["autoAddBots", "auto_add_bots"]);
+  const explicitBotDifficulty = readStringField7(value, ["botDifficulty", "bot_difficulty"]);
   const normalizedPolicy = normalizeTournamentBotPolicy(__spreadValues(__spreadValues(__spreadValues({}, baseMetadata), explicitAutoAddBots !== null ? { autoAddBots: explicitAutoAddBots } : {}), explicitBotDifficulty !== null ? { botDifficulty: explicitBotDifficulty } : {}));
   return __spreadProps(__spreadValues({}, baseMetadata), {
     autoAddBots: normalizedPolicy.autoAdd,
@@ -5694,7 +6062,7 @@ var joinTournamentBots = (nk, logger2, tournamentId, registrations) => {
     try {
       nk.tournamentJoin(tournamentId, registration.userId, registration.displayName);
     } catch (error) {
-      const message = getErrorMessage(error);
+      const message = getErrorMessage2(error);
       if (/already|joined|duplicate|exists|member/i.test(message)) {
         return;
       }
@@ -5793,7 +6161,7 @@ var maybeAutoFinalizeRunForLobbyTimeout = (logger2, nk, run, nakamaTournament) =
       logger2.warn(
         "Unable to fill tournament run %s with bots after the lobby fill countdown expired: %s",
         run.runId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
       return readRunOrThrow(nk, run.runId);
     }
@@ -5809,7 +6177,7 @@ var maybeAutoFinalizeRunForLobbyTimeout = (logger2, nk, run, nakamaTournament) =
     logger2.warn(
       "Unable to auto-finalize tournament run %s after the lobby fill countdown expired: %s",
       run.runId,
-      getErrorMessage(error)
+      getErrorMessage2(error)
     );
     return readRunOrThrow(nk, run.runId);
   }
@@ -5822,22 +6190,22 @@ var getNakamaTournamentsById = (nk, tournamentIds) => {
   return mapTournamentsById(nk.tournamentsGetId(filteredIds));
 };
 var readTournamentRecordList = (value) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   const records = Array.isArray(record == null ? void 0 : record.records) ? record.records : [];
   const ownerRecords = Array.isArray(record == null ? void 0 : record.owner_records) ? record.owner_records : Array.isArray(record == null ? void 0 : record.ownerRecords) ? record.ownerRecords : [];
   return {
     records: records.map((entry) => {
       var _a;
-      return (_a = asRecord(entry)) != null ? _a : {};
+      return (_a = asRecord2(entry)) != null ? _a : {};
     }),
     ownerRecords: ownerRecords.map((entry) => {
       var _a;
-      return (_a = asRecord(entry)) != null ? _a : {};
+      return (_a = asRecord2(entry)) != null ? _a : {};
     }),
-    prevCursor: readStringField6(record, ["prev_cursor", "prevCursor"]),
-    nextCursor: readStringField6(record, ["next_cursor", "nextCursor"]),
+    prevCursor: readStringField7(record, ["prev_cursor", "prevCursor"]),
+    nextCursor: readStringField7(record, ["next_cursor", "nextCursor"]),
     rankCount: (() => {
-      const parsed = readNumberField4(record, ["rank_count", "rankCount"]);
+      const parsed = readNumberField5(record, ["rank_count", "rankCount"]);
       return typeof parsed === "number" ? parsed : null;
     })()
   };
@@ -5847,7 +6215,7 @@ var resolveOverrideExpiry = (overrideExpiry, tournament) => {
     return Math.floor(overrideExpiry);
   }
   if (tournament) {
-    const endTime = readNumberField4(tournament, ["end_time", "endTime"]);
+    const endTime = readNumberField5(tournament, ["end_time", "endTime"]);
     if (typeof endTime === "number" && endTime > 0) {
       return Math.floor(endTime);
     }
@@ -5869,32 +6237,32 @@ var buildStandingsSnapshot = (nk, tournamentId, limit, overrideExpiry) => {
 };
 var normalizeStoredTournamentMatchSummary = (value, options) => {
   var _a;
-  const record = asRecord(value);
+  const record = asRecord2(value);
   const requireCounted = (options == null ? void 0 : options.requireCounted) !== false;
-  if (!record || requireCounted && readBooleanField5(record, ["counted"]) !== true) {
+  if (!record || requireCounted && readBooleanField6(record, ["counted"]) !== true) {
     return null;
   }
-  const summary = asRecord(record.summary);
-  const matchId = readStringField6(record, ["matchId", "match_id"]);
-  const completedAt = (_a = readStringField6(summary, ["completedAt", "completed_at"])) != null ? _a : readStringField6(record, ["updatedAt", "updated_at", "createdAt", "created_at"]);
+  const summary = asRecord2(record.summary);
+  const matchId = readStringField7(record, ["matchId", "match_id"]);
+  const completedAt = (_a = readStringField7(summary, ["completedAt", "completed_at"])) != null ? _a : readStringField7(record, ["updatedAt", "updated_at", "createdAt", "created_at"]);
   if (!summary || !matchId || !completedAt) {
     return null;
   }
   const players = Array.isArray(summary.players) ? summary.players.map((entry) => {
     var _a2, _b;
-    const player = asRecord(entry);
-    const userId = readStringField6(player, ["userId", "user_id"]);
+    const player = asRecord2(entry);
+    const userId = readStringField7(player, ["userId", "user_id"]);
     if (!player || !userId) {
       return null;
     }
     return {
       userId,
-      username: readStringField6(player, ["username"]),
-      didWin: readBooleanField5(player, ["didWin"]) === true,
-      score: Math.max(0, Math.floor((_a2 = readNumberField4(player, ["score"])) != null ? _a2 : 0)),
+      username: readStringField7(player, ["username"]),
+      didWin: readBooleanField6(player, ["didWin"]) === true,
+      score: Math.max(0, Math.floor((_a2 = readNumberField5(player, ["score"])) != null ? _a2 : 0)),
       finishedCount: Math.max(
         0,
-        Math.floor((_b = readNumberField4(player, ["finishedCount", "finished_count"])) != null ? _b : 0)
+        Math.floor((_b = readNumberField5(player, ["finishedCount", "finished_count"])) != null ? _b : 0)
       )
     };
   }).filter((entry) => Boolean(entry)) : [];
@@ -5905,10 +6273,10 @@ var normalizeStoredTournamentMatchSummary = (value, options) => {
     matchId,
     completedAt,
     round: (() => {
-      const round = readNumberField4(summary, ["round"]);
+      const round = readNumberField5(summary, ["round"]);
       return typeof round === "number" && Number.isFinite(round) ? Math.max(1, Math.floor(round)) : null;
     })(),
-    entryId: readStringField6(summary, ["entryId", "entry_id"]),
+    entryId: readStringField7(summary, ["entryId", "entry_id"]),
     players
   };
 };
@@ -6213,21 +6581,21 @@ var resolveRunStandingsSnapshot = (nk, run, limit, overrideExpiry) => {
   return buildStandingsSnapshot(nk, run.tournamentId, limit, overrideExpiry);
 };
 var readStandingsRecordRank = (record) => {
-  const rank = readNumberField4(record, ["rank"]);
+  const rank = readNumberField5(record, ["rank"]);
   return typeof rank === "number" && Number.isFinite(rank) ? rank : null;
 };
-var readStandingsRecordOwnerId = (record) => readStringField6(record, ["ownerId", "owner_id"]);
+var readStandingsRecordOwnerId = (record) => readStringField7(record, ["ownerId", "owner_id"]);
 var readStandingsRecordScore = (record) => {
   var _a;
-  return Math.max(0, Math.floor((_a = readNumberField4(record, ["score"])) != null ? _a : 0));
+  return Math.max(0, Math.floor((_a = readNumberField5(record, ["score"])) != null ? _a : 0));
 };
 var readStandingsRecordSubscore = (record) => {
   var _a;
-  return Math.max(0, Math.floor((_a = readNumberField4(record, ["subscore"])) != null ? _a : 0));
+  return Math.max(0, Math.floor((_a = readNumberField5(record, ["subscore"])) != null ? _a : 0));
 };
 var readStandingsRecordAttemptCount = (record) => {
   var _a;
-  return Math.max(0, Math.floor((_a = readNumberField4(record, ["numScore", "num_score"])) != null ? _a : 0));
+  return Math.max(0, Math.floor((_a = readNumberField5(record, ["numScore", "num_score"])) != null ? _a : 0));
 };
 var resolveChampionUserId = (snapshot) => {
   var _a, _b, _c, _d;
@@ -6356,7 +6724,7 @@ var finalizeTournamentRun = (logger2, nk, runId, options = {}) => {
       logger2.warn(
         "Unable to reconstruct counted-match standings for %s during finalization: %s",
         runBeforeUpdate.runId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
       return null;
     }
@@ -6399,14 +6767,14 @@ var finalizeTournamentRun = (logger2, nk, runId, options = {}) => {
         logger2.warn(
           "Unable to build final standings snapshot for %s during finalization, using counted-match reconstruction: %s",
           runBeforeUpdate.runId,
-          getErrorMessage(error)
+          getErrorMessage2(error)
         );
         return reconstructedSnapshot;
       }
       logger2.warn(
         "Unable to build final standings snapshot for %s during finalization, using bracket fallback: %s",
         runBeforeUpdate.runId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
       return bracketFallbackSnapshot;
     }
@@ -6461,7 +6829,7 @@ var finalizeTournamentRun = (logger2, nk, runId, options = {}) => {
           "Unable to award tournament champion XP for %s to %s: %s",
           run.runId,
           championUserId,
-          getErrorMessage(error)
+          getErrorMessage2(error)
         );
       }
     }
@@ -6501,7 +6869,7 @@ var maybeAutoFinalizeAdminRun = (logger2, nk, run) => {
     logger2.warn(
       "Unable to auto-finalize admin tournament run %s while serving internals: %s",
       maybeTimedOutRun.runId,
-      getErrorMessage(error)
+      getErrorMessage2(error)
     );
     return readRunOrThrow(nk, maybeTimedOutRun.runId);
   }
@@ -6522,7 +6890,7 @@ var deleteRunWithRetry = (nk, logger2, run) => {
         {
           collection: "tournament_match_queue",
           key: run.runId,
-          userId: SYSTEM_USER_ID3
+          userId: SYSTEM_USER_ID4
         },
         ...run.registrations.map((registration) => ({
           collection: TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION,
@@ -6539,7 +6907,7 @@ var deleteRunWithRetry = (nk, logger2, run) => {
       logger2.warn(
         "Retrying tournament run delete for %s after storage conflict: %s",
         run.runId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
   }
@@ -6551,7 +6919,7 @@ var rpcAdminListTournaments = (ctx, logger2, nk, payload) => {
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
       const limit = clampInteger(parsed.limit, 50, 1, MAX_RUN_LIST_LIMIT);
-      const lifecycleFilter = readStringField6(parsed, ["lifecycle"]);
+      const lifecycleFilter = readStringField7(parsed, ["lifecycle"]);
       const indexState = readRunIndexState(_nk);
       const runs = sortRuns(readRunsByIds(_nk, indexState.index.runIds).map(
         (run) => maybeAutoFinalizeAdminRun(_logger, _nk, run)
@@ -6591,7 +6959,7 @@ var rpcAdminGetTournamentRun = (ctx, logger2, nk, payload) => {
       var _a, _b;
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -6626,7 +6994,7 @@ var rpcAdminCreateTournamentRun = (ctx, logger2, nk, payload) => {
       var _a, _b, _c, _d, _e;
       assertAdmin(_ctx, "operator", _nk);
       const parsed = parseJsonPayload(_payload);
-      const title = readStringField6(parsed, ["title"]);
+      const title = readStringField7(parsed, ["title"]);
       if (!title) {
         throw new Error("title is required.");
       }
@@ -6634,12 +7002,12 @@ var rpcAdminCreateTournamentRun = (ctx, logger2, nk, payload) => {
         const indexState = readRunIndexState(_nk);
         const createdAt = (/* @__PURE__ */ new Date()).toISOString();
         const runId = buildRunId(
-          readStringField6(parsed, ["runId", "run_id"]),
+          readStringField7(parsed, ["runId", "run_id"]),
           title,
           indexState.index.runIds
         );
-        const startTime = clampInteger(readNumberField4(parsed, ["startTime", "start_time"]), 0, 0, 2147483647);
-        const maxSize = clampInteger(readNumberField4(parsed, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1e6);
+        const startTime = clampInteger(readNumberField5(parsed, ["startTime", "start_time"]), 0, 0, 2147483647);
+        const maxSize = clampInteger(readNumberField5(parsed, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1e6);
         assertPowerOfTwoTournamentSize(maxSize);
         const duration = AUTO_TOURNAMENT_DURATION_SECONDS;
         const maxNumScore = getSingleEliminationRoundCount(maxSize);
@@ -6648,20 +7016,20 @@ var rpcAdminCreateTournamentRun = (ctx, logger2, nk, payload) => {
           runId,
           tournamentId: runId,
           title,
-          description: (_a = readStringField6(parsed, ["description"])) != null ? _a : "",
-          category: clampInteger(readNumberField4(parsed, ["category"]), DEFAULT_CATEGORY, 0, 127),
-          authoritative: (_b = readBooleanField5(parsed, ["authoritative"])) != null ? _b : true,
-          sortOrder: normalizeSortOrder(readStringField6(parsed, ["sortOrder", "sort_order"])),
-          operator: normalizeOperator(readStringField6(parsed, ["operator"])),
-          resetSchedule: (_c = readStringField6(parsed, ["resetSchedule", "reset_schedule"])) != null ? _c : "",
+          description: (_a = readStringField7(parsed, ["description"])) != null ? _a : "",
+          category: clampInteger(readNumberField5(parsed, ["category"]), DEFAULT_CATEGORY, 0, 127),
+          authoritative: (_b = readBooleanField6(parsed, ["authoritative"])) != null ? _b : true,
+          sortOrder: normalizeSortOrder(readStringField7(parsed, ["sortOrder", "sort_order"])),
+          operator: normalizeOperator(readStringField7(parsed, ["operator"])),
+          resetSchedule: (_c = readStringField7(parsed, ["resetSchedule", "reset_schedule"])) != null ? _c : "",
           metadata: buildRunResponseMetadata(parsed),
           startTime,
           endTime,
           duration,
           maxSize,
           maxNumScore,
-          joinRequired: (_d = readBooleanField5(parsed, ["joinRequired", "join_required"])) != null ? _d : true,
-          enableRanks: (_e = readBooleanField5(parsed, ["enableRanks", "enable_ranks"])) != null ? _e : true,
+          joinRequired: (_d = readBooleanField6(parsed, ["joinRequired", "join_required"])) != null ? _d : true,
+          enableRanks: (_e = readBooleanField6(parsed, ["enableRanks", "enable_ranks"])) != null ? _e : true,
           lifecycle: "draft",
           createdAt,
           updatedAt: createdAt,
@@ -6684,15 +7052,15 @@ var rpcAdminCreateTournamentRun = (ctx, logger2, nk, payload) => {
               collection: RUNS_COLLECTION,
               key: run.runId,
               value: run,
-              permissionRead: STORAGE_PERMISSION_NONE,
-              permissionWrite: STORAGE_PERMISSION_NONE
+              permissionRead: STORAGE_PERMISSION_NONE2,
+              permissionWrite: STORAGE_PERMISSION_NONE2
             }, null),
             maybeSetStorageVersion({
               collection: RUNS_COLLECTION,
               key: RUNS_INDEX_KEY,
               value: nextIndex,
-              permissionRead: STORAGE_PERMISSION_NONE,
-              permissionWrite: STORAGE_PERMISSION_NONE
+              permissionRead: STORAGE_PERMISSION_NONE2,
+              permissionWrite: STORAGE_PERMISSION_NONE2
             }, getStorageObjectVersion(indexState.object))
           ]);
           return JSON.stringify(buildRunResponse(_nk, run, null));
@@ -6700,7 +7068,7 @@ var rpcAdminCreateTournamentRun = (ctx, logger2, nk, payload) => {
           if (attempt === MAX_WRITE_ATTEMPTS) {
             throw error;
           }
-          _logger.warn("Retrying tournament run create for %s: %s", title, getErrorMessage(error));
+          _logger.warn("Retrying tournament run create for %s: %s", title, getErrorMessage2(error));
         }
       }
       throw new Error("Unable to create tournament run.");
@@ -6719,7 +7087,7 @@ var rpcAdminOpenTournament = (ctx, logger2, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "operator", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -6781,7 +7149,7 @@ var rpcAdminDeleteTournament = (ctx, logger2, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "admin", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -6796,7 +7164,7 @@ var rpcAdminDeleteTournament = (ctx, logger2, nk, payload) => {
             "Unable to delete Nakama tournament %s for run %s: %s",
             run.tournamentId,
             run.runId,
-            getErrorMessage(error)
+            getErrorMessage2(error)
           );
         }
       }
@@ -6823,7 +7191,7 @@ var rpcAdminCloseTournament = (ctx, logger2, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "operator", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -6858,13 +7226,13 @@ var rpcAdminFinalizeTournament = (ctx, logger2, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "admin", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
       const finalized = finalizeTournamentRun(_logger, _nk, runId, {
-        limit: readNumberField4(parsed, ["limit"]),
-        overrideExpiry: readNumberField4(parsed, ["overrideExpiry", "override_expiry"])
+        limit: readNumberField5(parsed, ["limit"]),
+        overrideExpiry: readNumberField5(parsed, ["overrideExpiry", "override_expiry"])
       });
       return JSON.stringify({
         ok: true,
@@ -6888,7 +7256,7 @@ var rpcAdminGetTournamentStandings = (ctx, logger2, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -6896,7 +7264,7 @@ var rpcAdminGetTournamentStandings = (ctx, logger2, nk, payload) => {
       const nakamaTournament = getNakamaTournamentById(_nk, run.tournamentId);
       const limit = clampInteger(parsed.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
       const overrideExpiry = resolveOverrideExpiry(
-        readNumberField4(parsed, ["overrideExpiry", "override_expiry"]),
+        readNumberField5(parsed, ["overrideExpiry", "override_expiry"]),
         nakamaTournament
       );
       const standings = resolveRunStandingsSnapshot(_nk, run, limit, overrideExpiry);
@@ -6921,7 +7289,7 @@ var rpcAdminGetTournamentAuditLog = (ctx, logger2, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -6954,10 +7322,10 @@ var TOURNAMENT_RUNS_COLLECTION = "tournament_runs";
 var TOURNAMENT_MATCH_RESULTS_COLLECTION2 = "tournament_match_results";
 var normalizeMetadata = (value) => {
   var _a;
-  return (_a = asRecord(value)) != null ? _a : {};
+  return (_a = asRecord2(value)) != null ? _a : {};
 };
 var readStringArrayField3 = (value, keys) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return [];
   }
@@ -6979,7 +7347,7 @@ var readTournamentRunState = (nk, runId) => {
     }
   ]);
   const object = findStorageObject(objects, TOURNAMENT_RUNS_COLLECTION, runId);
-  const value = (_a = asRecord(object == null ? void 0 : object.value)) != null ? _a : null;
+  const value = (_a = asRecord2(object == null ? void 0 : object.value)) != null ? _a : null;
   return {
     object,
     value,
@@ -6996,14 +7364,14 @@ var readTournamentMatchResultObject = (nk, resultId) => {
   return findStorageObject(objects, TOURNAMENT_MATCH_RESULTS_COLLECTION2, resultId);
 };
 var normalizeTournamentMatchResultRecord = (value) => {
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
-  const resultId = readStringField6(record, ["resultId", "result_id"]);
-  const matchId = readStringField6(record, ["matchId", "match_id"]);
-  const runId = readStringField6(record, ["runId", "run_id"]);
-  const tournamentId = readStringField6(record, ["tournamentId", "tournament_id"]);
+  const resultId = readStringField7(record, ["resultId", "result_id"]);
+  const matchId = readStringField7(record, ["matchId", "match_id"]);
+  const runId = readStringField7(record, ["runId", "run_id"]);
+  const tournamentId = readStringField7(record, ["tournamentId", "tournament_id"]);
   if (!resultId || !matchId || !runId || !tournamentId) {
     return null;
   }
@@ -7072,7 +7440,7 @@ var buildInvalidReason = (completion, run) => {
 };
 var normalizeUsersArray = (value) => Array.isArray(value) ? value.map((entry) => {
   var _a;
-  return (_a = asRecord(entry)) != null ? _a : {};
+  return (_a = asRecord2(entry)) != null ? _a : {};
 }).filter((entry) => Object.keys(entry).length > 0) : [];
 var resolveUsernames = (nk, logger2, players, run) => {
   const usernames = {};
@@ -7096,8 +7464,8 @@ var resolveUsernames = (nk, logger2, players, run) => {
     try {
       const users = normalizeUsersArray(nk.usersGetId(unresolvedUserIds));
       users.forEach((user) => {
-        const userId = readStringField6(user, ["userId", "user_id", "id"]);
-        const username = readStringField6(user, ["username", "displayName", "display_name"]);
+        const userId = readStringField7(user, ["userId", "user_id", "id"]);
+        const username = readStringField7(user, ["username", "displayName", "display_name"]);
         if (userId && username) {
           usernames[userId] = username;
         }
@@ -7106,7 +7474,7 @@ var resolveUsernames = (nk, logger2, players, run) => {
       logger2.warn(
         "Unable to resolve tournament usernames for %s: %s",
         unresolvedUserIds.join(","),
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
   }
@@ -7118,7 +7486,7 @@ var resolveUsernames = (nk, logger2, players, run) => {
   return usernames;
 };
 var isIgnorableTournamentJoinError = (error) => {
-  const message = getErrorMessage(error);
+  const message = getErrorMessage2(error);
   return /already|joined|duplicate|exists|member/i.test(message);
 };
 var ensureTournamentJoined = (nk, logger2, run, players, usernames) => {
@@ -7141,7 +7509,7 @@ var ensureTournamentJoined = (nk, logger2, run, players, usernames) => {
           "Skipping redundant tournamentJoin for run %s user %s: %s",
           run.runId,
           player.userId,
-          getErrorMessage(error)
+          getErrorMessage2(error)
         );
         return;
       }
@@ -7182,7 +7550,7 @@ var submitTournamentScores = (nk, run, completion, usernames) => {
       username: (_h = usernames[player.userId]) != null ? _h : null,
       score: player.score,
       subscore: player.finishedCount,
-      result: (_i = asRecord(record)) != null ? _i : null
+      result: (_i = asRecord2(record)) != null ? _i : null
     };
   });
 };
@@ -7192,8 +7560,8 @@ var writeTournamentMatchResultRecord = (nk, record, version = null) => {
       collection: TOURNAMENT_MATCH_RESULTS_COLLECTION2,
       key: record.resultId,
       value: record,
-      permissionRead: STORAGE_PERMISSION_NONE,
-      permissionWrite: STORAGE_PERMISSION_NONE
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
     }, version)
   ]);
 };
@@ -7215,7 +7583,7 @@ var updateTournamentRunMetadata = (nk, logger2, runId, result) => {
       0,
       Math.max(
         currentCountedResultIds.length,
-        Math.floor((_a = readNumberField4(currentMetadata, ["countedMatchCount", "validMatchCount"])) != null ? _a : 0)
+        Math.floor((_a = readNumberField5(currentMetadata, ["countedMatchCount", "validMatchCount"])) != null ? _a : 0)
       )
     );
     if (result.counted) {
@@ -7241,8 +7609,8 @@ var updateTournamentRunMetadata = (nk, logger2, runId, result) => {
           collection: TOURNAMENT_RUNS_COLLECTION,
           key: runId,
           value: nextValue,
-          permissionRead: STORAGE_PERMISSION_NONE,
-          permissionWrite: STORAGE_PERMISSION_NONE
+          permissionRead: STORAGE_PERMISSION_NONE2,
+          permissionWrite: STORAGE_PERMISSION_NONE2
         }, getStorageObjectVersion(currentState.object))
       ]);
       return;
@@ -7253,17 +7621,17 @@ var updateTournamentRunMetadata = (nk, logger2, runId, result) => {
       logger2.warn(
         "Retrying tournament run metadata update for %s after storage conflict: %s",
         runId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
   }
 };
 var readTournamentEntrantCount = (value) => {
-  const entrants = readNumberField4(value, ["size", "maxSize", "max_size"]);
+  const entrants = readNumberField5(value, ["size", "maxSize", "max_size"]);
   return typeof entrants === "number" && Number.isFinite(entrants) ? Math.max(0, Math.floor(entrants)) : 0;
 };
 var resolveTournamentRunModeId = (run) => {
-  const modeId = readStringField6(run.metadata, ["gameMode", "game_mode"]);
+  const modeId = readStringField7(run.metadata, ["gameMode", "game_mode"]);
   return isMatchModeId(modeId) ? modeId : "standard";
 };
 var buildBotOnlyTournamentCompletion = (run, entryId) => {
@@ -7404,14 +7772,14 @@ var maybeAutoFinalizeTournamentRunById = (nk, logger2, runId) => {
       logger2.warn(
         "Unable to auto-finalize tournament run %s after bracket completion: %s",
         run.runId,
-        getErrorMessage(error)
+        getErrorMessage2(error)
       );
     }
     return null;
   }
   const countedMatchCount = Math.max(
     0,
-    Math.floor((_c = readNumberField4(run.metadata, ["countedMatchCount", "validMatchCount"])) != null ? _c : 0)
+    Math.floor((_c = readNumberField5(run.metadata, ["countedMatchCount", "validMatchCount"])) != null ? _c : 0)
   );
   const entrantCount = readTournamentEntrantCount(getNakamaTournamentById(nk, run.tournamentId));
   if (entrantCount < 2 || countedMatchCount < entrantCount - 1) {
@@ -7430,7 +7798,7 @@ var maybeAutoFinalizeTournamentRunById = (nk, logger2, runId) => {
     logger2.warn(
       "Unable to auto-finalize tournament run %s after match completion: %s",
       run.runId,
-      getErrorMessage(error)
+      getErrorMessage2(error)
     );
   }
   return null;
@@ -7443,7 +7811,7 @@ var logRetryableTournamentSyncFailure = (logger2, completion, stage, error) => {
     completion.matchId,
     (_d = (_c = completion.context) == null ? void 0 : _c.entryId) != null ? _d : "",
     stage,
-    getErrorMessage(error)
+    getErrorMessage2(error)
   );
 };
 var synchronizeTournamentRunFromRecord = (nk, logger2, completion, record, fallbackRun) => {
@@ -7502,8 +7870,8 @@ var buildParticipantResolutions = (run, players) => players.map((player) => {
 });
 var resolveTournamentMatchContextFromParams = (params) => {
   var _a, _b;
-  const runId = readStringField6(params, ["tournamentRunId", "tournament_run_id", "runId", "run_id"]);
-  const tournamentId = readStringField6(params, ["tournamentId", "tournament_id"]);
+  const runId = readStringField7(params, ["tournamentRunId", "tournament_run_id", "runId", "run_id"]);
+  const tournamentId = readStringField7(params, ["tournamentId", "tournament_id"]);
   if (!runId && !tournamentId) {
     return null;
   }
@@ -7511,12 +7879,12 @@ var resolveTournamentMatchContextFromParams = (params) => {
   if (!normalizedRunId) {
     return null;
   }
-  const round = readNumberField4(params, ["tournamentRound", "tournament_round", "round"]);
+  const round = readNumberField5(params, ["tournamentRound", "tournament_round", "round"]);
   return {
     runId: normalizedRunId,
     tournamentId: tournamentId != null ? tournamentId : normalizedRunId,
     round: typeof round === "number" && Number.isFinite(round) ? Math.max(1, Math.floor(round)) : null,
-    entryId: (_b = readStringField6(params, [
+    entryId: (_b = readStringField7(params, [
       "tournamentEntryId",
       "tournament_entry_id",
       "tournamentMatchId",
@@ -7585,7 +7953,7 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger2, completion) => 
           retryableFailure: true
         };
       }
-      errorMessage = getErrorMessage(error);
+      errorMessage = getErrorMessage2(error);
     }
   }
   const record = {
@@ -7670,16 +8038,16 @@ var readTournamentAuditEntries = (nk, runId) => {
       key: TOURNAMENT_AUDIT_LOG_KEY
     }
   ]);
-  const log = asRecord(
+  const log = asRecord2(
     (_b = (_a = findStorageObject(objects, TOURNAMENT_AUDIT_COLLECTION, TOURNAMENT_AUDIT_LOG_KEY)) == null ? void 0 : _a.value) != null ? _b : null
   );
   const entries = Array.isArray(log == null ? void 0 : log.entries) ? log.entries : [];
   return entries.map((entry) => {
     var _a2;
-    return (_a2 = asRecord(entry)) != null ? _a2 : null;
+    return (_a2 = asRecord2(entry)) != null ? _a2 : null;
   }).filter((entry) => Boolean(entry)).filter((entry) => {
-    const targetId = readStringField6(entry, ["targetId", "target_id"]);
-    const tournamentId = readStringField6(entry, ["tournamentId", "tournament_id"]);
+    const targetId = readStringField7(entry, ["targetId", "target_id"]);
+    const tournamentId = readStringField7(entry, ["tournamentId", "tournament_id"]);
     return targetId === runId || tournamentId === runId;
   });
 };
@@ -7696,7 +8064,7 @@ var readTournamentMatchResults = (nk, resultIds) => {
   return resultIds.map(
     (resultId) => {
       var _a, _b;
-      return asRecord((_b = (_a = findStorageObject(objects, TOURNAMENT_MATCH_RESULTS_COLLECTION2, resultId)) == null ? void 0 : _a.value) != null ? _b : null);
+      return asRecord2((_b = (_a = findStorageObject(objects, TOURNAMENT_MATCH_RESULTS_COLLECTION2, resultId)) == null ? void 0 : _a.value) != null ? _b : null);
     }
   ).filter((entry) => Boolean(entry));
 };
@@ -7729,7 +8097,7 @@ var rpcAdminExportTournament = (ctx, logger2, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -7740,7 +8108,7 @@ var rpcAdminExportTournament = (ctx, logger2, nk, payload) => {
         "countedResultIds",
         "counted_result_ids"
       ]);
-      const lastProcessedResultId = readStringField6(run.metadata, [
+      const lastProcessedResultId = readStringField7(run.metadata, [
         "lastProcessedResultId",
         "last_processed_result_id"
       ]);
@@ -7818,9 +8186,9 @@ var buildParticipantNameMap = (run) => {
     names.set(participant.userId, participant.displayName);
   });
   (_b = run.finalSnapshot) == null ? void 0 : _b.records.forEach((record) => {
-    const normalized = asRecord(record);
-    const ownerId = readStringField6(normalized, ["ownerId", "owner_id"]);
-    const username = readStringField6(normalized, ["username"]);
+    const normalized = asRecord2(record);
+    const ownerId = readStringField7(normalized, ["ownerId", "owner_id"]);
+    const username = readStringField7(normalized, ["username"]);
     if (ownerId && username) {
       names.set(ownerId, username);
     }
@@ -7828,7 +8196,7 @@ var buildParticipantNameMap = (run) => {
   return names;
 };
 var getEntrantCount = (run, nakamaTournament) => {
-  const nakamaSize = readNumberField4(nakamaTournament, ["size", "size"]);
+  const nakamaSize = readNumberField5(nakamaTournament, ["size", "size"]);
   return Math.max(
     run.registrations.length,
     typeof nakamaSize === "number" && Number.isFinite(nakamaSize) ? Math.floor(nakamaSize) : 0
@@ -8023,7 +8391,7 @@ var buildTournamentLiveSummary = (run, nakamaTournament, auditEntries, nowMs) =>
   const staleEntryCount = entries.filter(
     (entry) => isReadyEntryStale(entry, nowMs) || isInMatchEntryStale(entry, nowMs)
   ).length;
-  const startAt = (_d = toIsoFromUnixSeconds((_c = readNumberField4(nakamaTournament, ["startTime", "start_time"])) != null ? _c : run.startTime)) != null ? _d : null;
+  const startAt = (_d = toIsoFromUnixSeconds((_c = readNumberField5(nakamaTournament, ["startTime", "start_time"])) != null ? _c : run.startTime)) != null ? _d : null;
   const currentRound = getTournamentBracketCurrentRound(run.bracket);
   const lastResultAt = entries.reduce(
     (latest, entry) => maxIso(latest, entry.completedAt),
@@ -8314,7 +8682,7 @@ var buildDetailResponse = (nk, runId) => {
 var rpcAdminGetTournamentLiveStatus = (ctx, _logger, nk, payload) => {
   assertAdmin(ctx, "viewer", nk);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField6(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+  const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
   if (runId) {
     return JSON.stringify(buildDetailResponse(nk, runId));
   }
@@ -8328,12 +8696,12 @@ var resolveDisplayName = (ctx, requestDisplayName, userId) => {
     return requestDisplayName.trim();
   }
   if (typeof ctx === "object" && ctx !== null) {
-    const username = readStringField6(ctx, ["username", "displayName", "display_name", "name"]);
+    const username = readStringField7(ctx, ["username", "displayName", "display_name", "name"]);
     if (username) {
       return username;
     }
     const vars = typeof ctx.vars === "object" && ctx.vars !== null ? ctx.vars : null;
-    const fallbackName = readStringField6(vars, ["usernameDisplay", "displayName", "email"]);
+    const fallbackName = readStringField7(vars, ["usernameDisplay", "displayName", "email"]);
     if (fallbackName) {
       return fallbackName;
     }
@@ -8350,8 +8718,8 @@ var rpcJoinTournament = (ctx, logger2, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
   const request = {
-    tournamentId: (_a = readStringField6(parsed, ["tournamentId", "tournament_id"])) != null ? _a : "",
-    displayName: (_b = readStringField6(parsed, ["displayName", "display_name"])) != null ? _b : void 0
+    tournamentId: (_a = readStringField7(parsed, ["tournamentId", "tournament_id"])) != null ? _a : "",
+    displayName: (_b = readStringField7(parsed, ["displayName", "display_name"])) != null ? _b : void 0
   };
   if (!request.tournamentId) {
     throw new Error("tournamentId is required.");
@@ -8435,16 +8803,16 @@ var RPC_JOIN_PUBLIC_TOURNAMENT = "join_public_tournament";
 var RPC_LAUNCH_TOURNAMENT_MATCH = "launch_tournament_match";
 var normalizeMembershipRecord = (value, fallbackRunId, fallbackUserId) => {
   var _a, _b, _c, _d;
-  const record = asRecord(value);
+  const record = asRecord2(value);
   if (!record) {
     return null;
   }
-  const runId = (_a = readStringField6(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
-  const tournamentId = (_b = readStringField6(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
-  const userId = (_c = readStringField6(record, ["userId", "user_id"])) != null ? _c : fallbackUserId;
-  const displayName = readStringField6(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField6(record, ["joinedAt", "joined_at"]);
-  const updatedAt = (_d = readStringField6(record, ["updatedAt", "updated_at"])) != null ? _d : joinedAt;
+  const runId = (_a = readStringField7(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
+  const tournamentId = (_b = readStringField7(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
+  const userId = (_c = readStringField7(record, ["userId", "user_id"])) != null ? _c : fallbackUserId;
+  const displayName = readStringField7(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField7(record, ["joinedAt", "joined_at"]);
+  const updatedAt = (_d = readStringField7(record, ["updatedAt", "updated_at"])) != null ? _d : joinedAt;
   if (!runId || !tournamentId || !userId || !displayName || !joinedAt || !updatedAt) {
     return null;
   }
@@ -8465,7 +8833,7 @@ var toIsoFromUnixSeconds2 = (seconds, fallback) => {
 };
 var readMetadata = (run) => {
   var _a;
-  return (_a = asRecord(run.metadata)) != null ? _a : {};
+  return (_a = asRecord2(run.metadata)) != null ? _a : {};
 };
 var getRunBotUserIds2 = (run) => {
   var _a, _b;
@@ -8492,11 +8860,11 @@ var getRunBotUserIds2 = (run) => {
 };
 var formatPrizeLabel = (metadata) => {
   var _a;
-  const explicitPrize = readStringField6(metadata, ["prizePool", "prize_pool", "prizeLabel", "prize_label"]);
+  const explicitPrize = readStringField7(metadata, ["prizePool", "prize_pool", "prizeLabel", "prize_label"]);
   if (explicitPrize) {
     return explicitPrize;
   }
-  const buyIn = (_a = readStringField6(metadata, ["buyIn", "buy_in"])) != null ? _a : "Free";
+  const buyIn = (_a = readStringField7(metadata, ["buyIn", "buy_in"])) != null ? _a : "Free";
   return buyIn === "Free" ? "No prize listed" : `${buyIn} buy-in`;
 };
 var buildMembershipState = (membership) => {
@@ -8536,34 +8904,34 @@ var buildFinalizedParticipationOverride = (run, participant) => {
   return null;
 };
 var readStandingsRecordRank2 = (record) => {
-  const rank = readNumberField4(record, ["rank"]);
+  const rank = readNumberField5(record, ["rank"]);
   return typeof rank === "number" && Number.isFinite(rank) ? Math.max(1, Math.floor(rank)) : null;
 };
-var readStandingsRecordOwnerId2 = (record) => readStringField6(record, ["ownerId", "owner_id"]);
+var readStandingsRecordOwnerId2 = (record) => readStringField7(record, ["ownerId", "owner_id"]);
 var readStandingsRecordMetadata = (record) => {
   var _a;
-  return (_a = asRecord(record == null ? void 0 : record.metadata)) != null ? _a : {};
+  return (_a = asRecord2(record == null ? void 0 : record.metadata)) != null ? _a : {};
 };
 var normalizeSnapshotResult = (value) => value === "win" || value === "loss" ? value : null;
 var buildStoredFinalizedParticipationOverride = (run, userId, participant) => {
   var _a, _b, _c, _d, _e, _f, _g;
   const terminalLifecycle = run.lifecycle === "closed" || run.lifecycle === "finalized" || run.finalizedAt != null;
-  const snapshotRecord = (_b = (_a = run.finalSnapshot) == null ? void 0 : _a.records.map((entry) => asRecord(entry)).find((entry) => readStandingsRecordOwnerId2(entry) === userId)) != null ? _b : null;
+  const snapshotRecord = (_b = (_a = run.finalSnapshot) == null ? void 0 : _a.records.map((entry) => asRecord2(entry)).find((entry) => readStandingsRecordOwnerId2(entry) === userId)) != null ? _b : null;
   if (!terminalLifecycle && !snapshotRecord) {
     return null;
   }
   const finalPlacement = (_d = (_c = readStandingsRecordRank2(snapshotRecord)) != null ? _c : participant == null ? void 0 : participant.finalPlacement) != null ? _d : null;
   const metadata = readStandingsRecordMetadata(snapshotRecord);
-  const snapshotState = readStringField6(metadata, ["state"]);
+  const snapshotState = readStringField7(metadata, ["state"]);
   const state = snapshotState === "champion" || snapshotState === "runner_up" || snapshotState === "eliminated" ? snapshotState : finalPlacement === 1 ? "champion" : finalPlacement === 2 ? "runner_up" : typeof finalPlacement === "number" ? "eliminated" : null;
   if (!state) {
     return null;
   }
-  const snapshotLastResult = normalizeSnapshotResult(readStringField6(metadata, ["result"]));
+  const snapshotLastResult = normalizeSnapshotResult(readStringField7(metadata, ["result"]));
   return {
     state,
-    currentRound: (_e = participant == null ? void 0 : participant.currentRound) != null ? _e : readNumberField4(metadata, ["round"]),
-    currentEntryId: (_f = participant == null ? void 0 : participant.currentEntryId) != null ? _f : readStringField6(metadata, ["entryId", "entry_id"]),
+    currentRound: (_e = participant == null ? void 0 : participant.currentRound) != null ? _e : readNumberField5(metadata, ["round"]),
+    currentEntryId: (_f = participant == null ? void 0 : participant.currentEntryId) != null ? _f : readStringField7(metadata, ["entryId", "entry_id"]),
     activeMatchId: null,
     finalPlacement,
     lastResult: (_g = snapshotLastResult != null ? snapshotLastResult : participant == null ? void 0 : participant.lastResult) != null ? _g : state === "champion" ? "win" : state === "runner_up" ? "loss" : null,
@@ -8612,7 +8980,7 @@ var resolveMembershipForRun = (run, membership) => {
 };
 var getRunEndTimeMs = (run, nakamaTournament) => {
   var _a;
-  const endTimeSeconds = (_a = readNumberField4(nakamaTournament, ["endTime", "end_time"])) != null ? _a : run.endTime;
+  const endTimeSeconds = (_a = readNumberField5(nakamaTournament, ["endTime", "end_time"])) != null ? _a : run.endTime;
   if (typeof endTimeSeconds !== "number" || !Number.isFinite(endTimeSeconds) || endTimeSeconds <= 0) {
     return null;
   }
@@ -8622,14 +8990,14 @@ var getRunEntrants = (run, nakamaTournament) => {
   var _a;
   return Math.max(
     run.registrations.length,
-    Math.max(0, Math.floor((_a = readNumberField4(nakamaTournament, ["size"])) != null ? _a : 0))
+    Math.max(0, Math.floor((_a = readNumberField5(nakamaTournament, ["size"])) != null ? _a : 0))
   );
 };
 var getRunMaxEntrants = (run, nakamaTournament) => {
   var _a;
   return Math.max(
     0,
-    Math.floor((_a = readNumberField4(nakamaTournament, ["maxSize", "max_size"])) != null ? _a : run.maxSize)
+    Math.floor((_a = readNumberField5(nakamaTournament, ["maxSize", "max_size"])) != null ? _a : run.maxSize)
   );
 };
 var isPublicRunFull = (run, nakamaTournament) => {
@@ -8748,8 +9116,8 @@ var writeMembership = (nk, run, userId, displayName) => {
           key: run.runId,
           userId,
           value: record,
-          permissionRead: STORAGE_PERMISSION_NONE,
-          permissionWrite: STORAGE_PERMISSION_NONE
+          permissionRead: STORAGE_PERMISSION_NONE2,
+          permissionWrite: STORAGE_PERMISSION_NONE2
         }, getStorageObjectVersion(existingObject))
       ]);
       return record;
@@ -8838,20 +9206,20 @@ var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
     description: run.description || "No description configured.",
     lifecycle: run.lifecycle,
     startAt: (_b = toIsoFromUnixSeconds2(
-      (_a = readNumberField4(nakamaTournament, ["startTime", "start_time"])) != null ? _a : run.startTime,
+      (_a = readNumberField5(nakamaTournament, ["startTime", "start_time"])) != null ? _a : run.startTime,
       createdAt
     )) != null ? _b : createdAt,
     endAt: toIsoFromUnixSeconds2(
-      (_c = readNumberField4(nakamaTournament, ["endTime", "end_time"])) != null ? _c : run.endTime,
+      (_c = readNumberField5(nakamaTournament, ["endTime", "end_time"])) != null ? _c : run.endTime,
       null
     ),
     updatedAt: run.updatedAt,
     lobbyDeadlineAt: getTournamentLobbyDeadlineAt(run.openedAt),
     entrants: getRunEntrants(run, nakamaTournament),
     maxEntrants: getRunMaxEntrants(run, nakamaTournament),
-    gameMode: (_d = readStringField6(metadata, ["gameMode", "game_mode"])) != null ? _d : "standard",
-    region: (_e = readStringField6(metadata, ["region"])) != null ? _e : "Global",
-    buyInLabel: (_f = readStringField6(metadata, ["buyIn", "buy_in"])) != null ? _f : "Free",
+    gameMode: (_d = readStringField7(metadata, ["gameMode", "game_mode"])) != null ? _d : "standard",
+    region: (_e = readStringField7(metadata, ["region"])) != null ? _e : "Global",
+    buyInLabel: (_f = readStringField7(metadata, ["buyIn", "buy_in"])) != null ? _f : "Free",
     prizeLabel: formatPrizeLabel(metadata),
     xpPerMatchWin: rewardSettings.xpPerMatchWin,
     xpForTournamentChampion: rewardSettings.xpForTournamentChampion,
@@ -8978,7 +9346,7 @@ var rpcListPublicTournaments = (ctx, logger2, nk, payload) => {
 var rpcGetPublicTournament = (ctx, logger2, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField6(parsed, [
+  const runId = readStringField7(parsed, [
     "runId",
     "run_id",
     "tournamentRunId",
@@ -9008,7 +9376,7 @@ var rpcGetPublicTournamentStandings = (ctx, logger2, nk, payload) => {
   var _a;
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField6(parsed, [
+  const runId = readStringField7(parsed, [
     "runId",
     "run_id",
     "tournamentRunId",
@@ -9043,7 +9411,7 @@ var rpcJoinPublicTournament = (ctx, logger2, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField6(parsed, [
+  const runId = readStringField7(parsed, [
     "runId",
     "run_id",
     "tournamentRunId",
@@ -9102,7 +9470,7 @@ var rpcLaunchTournamentMatch = (ctx, logger2, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField6(parsed, [
+  const runId = readStringField7(parsed, [
     "runId",
     "run_id",
     "tournamentRunId",
@@ -9217,7 +9585,7 @@ var rpcLaunchTournamentMatch = (ctx, logger2, nk, payload) => {
     });
   }
   const metadata = readMetadata(run);
-  const modeId = (_g = readStringField6(metadata, ["gameMode", "game_mode"])) != null ? _g : "standard";
+  const modeId = (_g = readStringField7(metadata, ["gameMode", "game_mode"])) != null ? _g : "standard";
   const rewardSettings = resolveTournamentXpRewardSettings(metadata);
   const botPolicy = normalizeTournamentBotPolicy(run.metadata);
   const botUserId = isTournamentBotUserId(entry.playerAUserId) && entry.playerAUserId !== userId ? entry.playerAUserId : isTournamentBotUserId(entry.playerBUserId) && entry.playerBUserId !== userId ? entry.playerBUserId : null;
@@ -9278,18 +9646,2053 @@ var rpcLaunchTournamentMatch = (ctx, logger2, nk, payload) => {
   });
 };
 
+// backend/modules/analytics/availability.ts
+var STATUS_PRIORITY = {
+  tracking_missing: 5,
+  not_enough_data: 4,
+  no_data: 3,
+  partial: 2,
+  available: 1
+};
+var uniqueNotes = (notes) => Array.from(new Set(notes.filter((note) => note.trim().length > 0)));
+var createAvailability = (status, options) => {
+  var _a;
+  return {
+    status,
+    hasData: status === "available" || status === "partial",
+    sampleSize: typeof (options == null ? void 0 : options.sampleSize) === "number" ? options.sampleSize : null,
+    notes: uniqueNotes((_a = options == null ? void 0 : options.notes) != null ? _a : [])
+  };
+};
+var available = (sampleSize) => createAvailability("available", { sampleSize });
+var partial = (notes, sampleSize) => createAvailability("partial", { notes, sampleSize });
+var noData = (note, sampleSize) => createAvailability("no_data", { notes: [note], sampleSize });
+var notEnoughData = (note, sampleSize) => createAvailability("not_enough_data", { notes: [note], sampleSize });
+var trackingMissing = (note) => createAvailability("tracking_missing", { notes: [note] });
+var mergeAvailability = (...items) => {
+  if (items.length === 0) {
+    return available();
+  }
+  const status = items.reduce((current, item) => {
+    if (STATUS_PRIORITY[item.status] > STATUS_PRIORITY[current]) {
+      return item.status;
+    }
+    return current;
+  }, "available");
+  const sampleSizes = items.map((item) => item.sampleSize).filter((sampleSize) => typeof sampleSize === "number" && Number.isFinite(sampleSize));
+  return createAvailability(status, {
+    sampleSize: sampleSizes.length > 0 ? Math.max(...sampleSizes) : null,
+    notes: items.flatMap((item) => item.notes)
+  });
+};
+var toResponseAvailability = (availability) => ({
+  hasEnoughData: availability.status === "available" || availability.status === "partial",
+  notes: availability.notes
+});
+
+// backend/modules/analytics/filters.ts
+var DEFAULT_LIMIT = 25;
+var MAX_LIMIT = 100;
+var DEFAULT_RANGE_DAYS = 30;
+var DAY_MS = 24 * 60 * 60 * 1e3;
+var asRecord5 = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField10 = (value, keys) => {
+  const record = asRecord5(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "string" && field.trim().length > 0) {
+      return field.trim();
+    }
+  }
+  return null;
+};
+var readNumberField6 = (value, keys) => {
+  const record = asRecord5(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "number" && Number.isFinite(field)) {
+      return field;
+    }
+    if (typeof field === "string" && field.trim().length > 0) {
+      const parsed = Number(field);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+};
+var parsePayload = (payload) => {
+  var _a;
+  if (!payload) {
+    return {};
+  }
+  const parsed = JSON.parse(payload);
+  return (_a = asRecord5(parsed)) != null ? _a : {};
+};
+var clampLimit2 = (value) => {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_LIMIT;
+  }
+  return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
+};
+var parseDateMs = (value, fallback) => {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+var sanitizeRange = (startMs, endMs) => {
+  if (startMs <= endMs) {
+    return { startMs, endMs };
+  }
+  return { startMs: endMs, endMs: startMs };
+};
+var parseAnalyticsFilters = (payload, now = Date.now()) => {
+  const parsed = parsePayload(payload);
+  const fallbackEndMs = now;
+  const fallbackStartMs = fallbackEndMs - (DEFAULT_RANGE_DAYS - 1) * DAY_MS;
+  const rawStartMs = parseDateMs(
+    readStringField10(parsed, ["startDate", "start_date"]),
+    fallbackStartMs
+  );
+  const rawEndMs = parseDateMs(
+    readStringField10(parsed, ["endDate", "end_date"]),
+    fallbackEndMs
+  );
+  const { startMs, endMs } = sanitizeRange(rawStartMs, rawEndMs);
+  const tournamentId = readStringField10(parsed, ["tournamentId", "tournament_id"]);
+  const gameMode = readStringField10(parsed, ["gameMode", "game_mode"]);
+  const eloMin = readNumberField6(parsed, ["eloMin", "elo_min"]);
+  const eloMax = readNumberField6(parsed, ["eloMax", "elo_max"]);
+  return {
+    startDate: new Date(startMs).toISOString(),
+    endDate: new Date(endMs).toISOString(),
+    startMs,
+    endMs,
+    tournamentId,
+    gameMode,
+    eloMin: typeof eloMin === "number" ? Math.floor(eloMin) : null,
+    eloMax: typeof eloMax === "number" ? Math.floor(eloMax) : null,
+    limit: clampLimit2(parsed.limit)
+  };
+};
+var isWithinRange = (value, filters) => {
+  if (!value) {
+    return false;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && parsed >= filters.startMs && parsed <= filters.endMs;
+};
+var toResponseFilters = (filters) => ({
+  startDate: filters.startDate,
+  endDate: filters.endDate,
+  tournamentId: filters.tournamentId,
+  gameMode: filters.gameMode,
+  eloMin: filters.eloMin,
+  eloMax: filters.eloMax,
+  limit: filters.limit
+});
+var DAY_BUCKET_MS = DAY_MS;
+
+// backend/modules/analytics/service.ts
+var DAY_BUCKET_LABEL_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric"
+});
+var MATCH_DURATION_BUCKETS = [
+  { key: "under_5", label: "< 5m", min: 0, max: 5 * 60 },
+  { key: "5_10", label: "5-10m", min: 5 * 60, max: 10 * 60 },
+  { key: "10_15", label: "10-15m", min: 10 * 60, max: 15 * 60 },
+  { key: "15_20", label: "15-20m", min: 15 * 60, max: 20 * 60 },
+  { key: "20_plus", label: "20m+", min: 20 * 60, max: null }
+];
+var TOURNAMENT_DURATION_BUCKETS = [
+  { key: "under_30m", label: "< 30m", min: 0, max: 30 * 60 },
+  { key: "30_60m", label: "30-60m", min: 30 * 60, max: 60 * 60 },
+  { key: "60_120m", label: "1-2h", min: 60 * 60, max: 120 * 60 },
+  { key: "2_6h", label: "2-6h", min: 120 * 60, max: 6 * 60 * 60 },
+  { key: "6h_plus", label: "6h+", min: 6 * 60 * 60, max: null }
+];
+var ELO_BUCKETS = [
+  { key: "below_1000", label: "< 1000", min: Number.NEGATIVE_INFINITY, max: 1e3 },
+  { key: "1000_1199", label: "1000-1199", min: 1e3, max: 1200 },
+  { key: "1200_1399", label: "1200-1399", min: 1200, max: 1400 },
+  { key: "1400_1599", label: "1400-1599", min: 1400, max: 1600 },
+  { key: "1600_plus", label: "1600+", min: 1600, max: null }
+];
+var PARTICIPATION_BUCKETS = [
+  { key: "1_4", label: "1-4 entrants", min: 1, max: 5 },
+  { key: "5_8", label: "5-8 entrants", min: 5, max: 9 },
+  { key: "9_16", label: "9-16 entrants", min: 9, max: 17 },
+  { key: "17_plus", label: "17+ entrants", min: 17, max: null }
+];
+var asRecord6 = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField11 = (value, keys) => {
+  const record = asRecord6(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "string" && field.trim().length > 0) {
+      return field.trim();
+    }
+  }
+  return null;
+};
+var readNumberField7 = (value, keys) => {
+  const record = asRecord6(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "number" && Number.isFinite(field)) {
+      return field;
+    }
+    if (typeof field === "string" && field.trim().length > 0) {
+      const parsed = Number(field);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+};
+var readBooleanField7 = (value, keys) => {
+  const record = asRecord6(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "boolean") {
+      return field;
+    }
+  }
+  return null;
+};
+var readStringArrayField4 = (value, keys) => {
+  const record = asRecord6(value);
+  if (!record) {
+    return [];
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (Array.isArray(field)) {
+      return field.filter((entry) => typeof entry === "string" && entry.trim().length > 0);
+    }
+  }
+  return [];
+};
+var getErrorMessage3 = (error) => error instanceof Error ? error.message : String(error);
+var batch = (values, size) => {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+};
+var parseIsoMs3 = (value) => {
+  if (!value) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+var startOfDayMs = (value) => {
+  const date = new Date(value);
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+};
+var toDayKey = (value) => {
+  var _a;
+  const timestamp = typeof value === "number" ? value : (_a = parseIsoMs3(value)) != null ? _a : Date.now();
+  return new Date(startOfDayMs(timestamp)).toISOString().slice(0, 10);
+};
+var buildDayKeys = (filters) => {
+  const keys = [];
+  let cursor = startOfDayMs(filters.startMs);
+  const finalDayMs = startOfDayMs(filters.endMs);
+  while (cursor <= finalDayMs) {
+    keys.push(new Date(cursor).toISOString().slice(0, 10));
+    cursor += DAY_BUCKET_MS;
+  }
+  return keys;
+};
+var unique = (values) => Array.from(new Set(values));
+var median = (values) => {
+  if (values.length === 0) {
+    return null;
+  }
+  const sorted = [...values].sort((left, right) => left - right);
+  const midpoint = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return Math.round((sorted[midpoint - 1] + sorted[midpoint]) / 2 * 100) / 100;
+  }
+  return sorted[midpoint];
+};
+var toPercentage = (numerator, denominator) => {
+  if (denominator <= 0) {
+    return null;
+  }
+  return Math.round(numerator / denominator * 1e3) / 10;
+};
+var createMetric = (value, availability, options) => {
+  var _a, _b, _c;
+  return {
+    value,
+    numerator: (_a = options == null ? void 0 : options.numerator) != null ? _a : null,
+    denominator: (_b = options == null ? void 0 : options.denominator) != null ? _b : null,
+    previousValue: (_c = options == null ? void 0 : options.previousValue) != null ? _c : null,
+    availability
+  };
+};
+var getRunGameMode = (run) => {
+  var _a;
+  return (_a = readStringField11(run.metadata, ["gameMode", "game_mode"])) != null ? _a : "standard";
+};
+var runMatchesFilters = (run, filters) => {
+  if (filters.tournamentId && filters.tournamentId !== run.runId && filters.tournamentId !== run.tournamentId) {
+    return false;
+  }
+  if (filters.gameMode && filters.gameMode !== getRunGameMode(run)) {
+    return false;
+  }
+  return true;
+};
+var matchesEloFilter = (eloRating, filters) => {
+  if (filters.eloMin !== null && (eloRating === null || eloRating < filters.eloMin)) {
+    return false;
+  }
+  if (filters.eloMax !== null && (eloRating === null || eloRating > filters.eloMax)) {
+    return false;
+  }
+  return true;
+};
+var isHumanUserId = (userId) => typeof userId === "string" && userId.trim().length > 0 && !isTournamentBotUserId(userId);
+var normalizeTournamentMatchResult = (value) => {
+  const record = asRecord6(value);
+  const resultId = readStringField11(record, ["resultId", "result_id"]);
+  const matchId = readStringField11(record, ["matchId", "match_id"]);
+  const runId = readStringField11(record, ["runId", "run_id"]);
+  const tournamentId = readStringField11(record, ["tournamentId", "tournament_id"]);
+  if (!record || !resultId || !matchId || !runId || !tournamentId) {
+    return null;
+  }
+  return record;
+};
+var normalizeEloHistoryRecord = (value) => {
+  const record = asRecord6(value);
+  const matchId = readStringField11(record, ["matchId", "match_id"]);
+  const processedAt = readStringField11(record, ["processedAt", "processed_at"]);
+  const winnerUserId = readStringField11(record, ["winnerUserId", "winner_user_id"]);
+  const loserUserId = readStringField11(record, ["loserUserId", "loser_user_id"]);
+  if (!record || !matchId || !processedAt || !winnerUserId || !loserUserId) {
+    return null;
+  }
+  const rawPlayers = Array.isArray(record.playerResults) ? record.playerResults : Array.isArray(record.player_results) ? record.player_results : [];
+  const playerResults = rawPlayers.map((player) => {
+    var _a, _b, _c;
+    const normalized = asRecord6(player);
+    const userId = readStringField11(normalized, ["userId", "user_id"]);
+    const usernameDisplay = readStringField11(normalized, ["usernameDisplay", "username_display"]);
+    const oldRating = readNumberField7(normalized, ["oldRating", "old_rating"]);
+    const newRating = readNumberField7(normalized, ["newRating", "new_rating"]);
+    const delta = readNumberField7(normalized, ["delta"]);
+    if (!normalized || !userId || !usernameDisplay || oldRating === null || newRating === null || delta === null) {
+      return null;
+    }
+    return {
+      userId,
+      usernameDisplay,
+      oldRating,
+      newRating,
+      delta,
+      ratedGames: Math.max(0, Math.floor((_a = readNumberField7(normalized, ["ratedGames", "rated_games"])) != null ? _a : 0)),
+      ratedWins: Math.max(0, Math.floor((_b = readNumberField7(normalized, ["ratedWins", "rated_wins"])) != null ? _b : 0)),
+      ratedLosses: Math.max(0, Math.floor((_c = readNumberField7(normalized, ["ratedLosses", "rated_losses"])) != null ? _c : 0)),
+      provisional: readBooleanField7(normalized, ["provisional"]) === true
+    };
+  }).filter((player) => Boolean(player));
+  if (playerResults.length !== 2) {
+    return null;
+  }
+  return {
+    matchId,
+    processedAt,
+    winnerUserId,
+    loserUserId,
+    playerResults
+  };
+};
+var normalizeStorageListResult2 = (value) => {
+  if (Array.isArray(value)) {
+    return {
+      objects: value.map((entry) => {
+        var _a;
+        return (_a = asRecord6(entry)) != null ? _a : {};
+      }),
+      cursor: null
+    };
+  }
+  const record = asRecord6(value);
+  const objects = Array.isArray(record == null ? void 0 : record.objects) ? record.objects.map((entry) => {
+    var _a;
+    return (_a = asRecord6(entry)) != null ? _a : {};
+  }) : [];
+  return {
+    objects,
+    cursor: readStringField11(record, ["cursor", "nextCursor", "next_cursor"])
+  };
+};
+var listAllGlobalObjects = (nk, logger2, collection, userId) => {
+  if (typeof nk.storageList !== "function") {
+    return {
+      supported: false,
+      notes: [`Collection listing is not supported for '${collection}' on this runtime.`],
+      objects: []
+    };
+  }
+  const objects = [];
+  let cursor = "";
+  for (let page = 0; page < 50; page += 1) {
+    try {
+      const rawResult = nk.storageList(userId, collection, 100, cursor);
+      const result = normalizeStorageListResult2(rawResult);
+      objects.push(...result.objects);
+      if (!result.cursor) {
+        break;
+      }
+      cursor = result.cursor;
+    } catch (error) {
+      logger2.warn("Unable to list storage collection %s: %s", collection, getErrorMessage3(error));
+      return {
+        supported: false,
+        notes: [`Collection listing failed for '${collection}'.`],
+        objects: []
+      };
+    }
+  }
+  return {
+    supported: true,
+    notes: [],
+    objects
+  };
+};
+var getLeaderboardRecordMetadata2 = (record) => {
+  var _a;
+  return asRecord6((_a = asRecord6(record)) == null ? void 0 : _a.metadata);
+};
+var getLeaderboardRecordOwnerId2 = (record) => readStringField11(record, ["ownerId", "owner_id"]);
+var getLeaderboardRecordUsername2 = (record) => readStringField11(record, ["username"]);
+var getLeaderboardRecordScore2 = (record) => readNumberField7(record, ["score"]);
+var getLeaderboardRecordRank2 = (record) => readNumberField7(record, ["rank"]);
+var listAllLeaderboardRows = (nk) => {
+  if (typeof nk.leaderboardRecordsList !== "function") {
+    return [];
+  }
+  const rows = [];
+  let cursor = "";
+  for (let page = 0; page < 50; page += 1) {
+    const result = asRecord6(nk.leaderboardRecordsList(ELO_LEADERBOARD_ID, [], 100, cursor, 0));
+    const records = Array.isArray(result == null ? void 0 : result.records) ? result.records : [];
+    records.forEach((record) => {
+      var _a, _b, _c, _d, _e, _f;
+      const userId = getLeaderboardRecordOwnerId2(record);
+      if (!userId) {
+        return;
+      }
+      const metadata = getLeaderboardRecordMetadata2(record);
+      const ratedGames = Math.max(0, Math.floor((_a = readNumberField7(metadata, ["ratedGames", "rated_games"])) != null ? _a : 0));
+      rows.push({
+        userId,
+        usernameDisplay: (_c = (_b = readStringField11(metadata, ["usernameDisplay", "username_display"])) != null ? _b : getLeaderboardRecordUsername2(record)) != null ? _c : userId,
+        eloRating: sanitizeEloRating((_d = getLeaderboardRecordScore2(record)) != null ? _d : DEFAULT_ELO_RATING),
+        ratedGames,
+        ratedWins: Math.max(0, Math.floor((_e = readNumberField7(metadata, ["ratedWins", "rated_wins"])) != null ? _e : 0)),
+        ratedLosses: Math.max(0, Math.floor((_f = readNumberField7(metadata, ["ratedLosses", "rated_losses"])) != null ? _f : 0)),
+        provisional: readBooleanField7(metadata, ["provisional"]) === true || ratedGames < 10,
+        rank: getLeaderboardRecordRank2(record)
+      });
+    });
+    const nextCursor = readStringField11(result, ["nextCursor", "next_cursor"]);
+    if (!nextCursor) {
+      break;
+    }
+    cursor = nextCursor;
+  }
+  return rows;
+};
+var loadRuns = (nk, filters) => {
+  const runIds = readRunIndexState(nk).index.runIds;
+  return readRunsByIds(nk, runIds).filter((run) => runMatchesFilters(run, filters)).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+};
+var readTournamentMatchResultIds = (run) => unique(readStringArrayField4(run.metadata, ["countedResultIds", "counted_result_ids"]));
+var buildTournamentEntryContextByMatchId = (runs) => {
+  const contextByMatchId = /* @__PURE__ */ new Map();
+  runs.forEach((run) => {
+    var _a;
+    (_a = run.bracket) == null ? void 0 : _a.entries.forEach((entry) => {
+      if (!entry.matchId) {
+        return;
+      }
+      const startedAtMs = parseIsoMs3(entry.startedAt);
+      const completedAtMs = parseIsoMs3(entry.completedAt);
+      contextByMatchId.set(entry.matchId, {
+        runId: run.runId,
+        tournamentId: run.tournamentId,
+        round: entry.round,
+        startedAt: entry.startedAt,
+        completedAt: entry.completedAt,
+        durationSeconds: startedAtMs !== null && completedAtMs !== null && completedAtMs >= startedAtMs ? Math.round((completedAtMs - startedAtMs) / 1e3) : null
+      });
+    });
+  });
+  return contextByMatchId;
+};
+var loadTournamentMatchHistory = (nk, runs) => {
+  const resultIds = unique(runs.flatMap((run) => readTournamentMatchResultIds(run)));
+  if (resultIds.length === 0) {
+    return [];
+  }
+  const objects = nk.storageRead(
+    resultIds.map((resultId) => ({
+      collection: TOURNAMENT_MATCH_RESULTS_COLLECTION2,
+      key: resultId
+    }))
+  );
+  const objectByKey = new Map(
+    objects.map((object) => {
+      const key = readStringField11(object, ["key"]);
+      return key ? [key, object] : null;
+    }).filter((entry) => Boolean(entry))
+  );
+  const entryContextByMatchId = buildTournamentEntryContextByMatchId(runs);
+  return resultIds.map((resultId) => {
+    var _a, _b;
+    return normalizeTournamentMatchResult((_b = (_a = objectByKey.get(resultId)) == null ? void 0 : _a.value) != null ? _b : null);
+  }).filter((record) => Boolean(record)).map((record) => {
+    var _a, _b, _c, _d, _e, _f, _g;
+    const summary = asRecord6(record.summary);
+    const classificationRecord = asRecord6(summary == null ? void 0 : summary.classification);
+    const entryContext = (_a = entryContextByMatchId.get(record.matchId)) != null ? _a : null;
+    const players = Array.isArray(summary == null ? void 0 : summary.players) ? summary.players.map((player) => {
+      const normalized = asRecord6(player);
+      const userId = readStringField11(normalized, ["userId", "user_id"]);
+      if (!normalized || !userId) {
+        return null;
+      }
+      return {
+        userId,
+        username: readStringField11(normalized, ["username"]),
+        color: (() => {
+          const color = readStringField11(normalized, ["color"]);
+          return color === "light" || color === "dark" ? color : null;
+        })(),
+        didWin: readBooleanField7(normalized, ["didWin", "did_win"]),
+        capturesMade: readNumberField7(normalized, ["capturesMade", "captures_made"]),
+        capturesSuffered: readNumberField7(normalized, ["capturesSuffered", "captures_suffered"]),
+        playerMoveCount: readNumberField7(normalized, ["playerMoveCount", "player_move_count"]),
+        finishedCount: readNumberField7(normalized, ["finishedCount", "finished_count"]),
+        isBot: isTournamentBotUserId(userId)
+      };
+    }).filter((player) => Boolean(player)) : [];
+    return {
+      source: "tournament",
+      matchId: record.matchId,
+      startedAt: (_b = entryContext == null ? void 0 : entryContext.startedAt) != null ? _b : null,
+      endedAt: (_d = (_c = readStringField11(summary, ["completedAt", "completed_at"])) != null ? _c : entryContext == null ? void 0 : entryContext.completedAt) != null ? _d : record.updatedAt,
+      durationSeconds: (_e = entryContext == null ? void 0 : entryContext.durationSeconds) != null ? _e : null,
+      reason: "completed",
+      modeId: (_g = readStringField11(summary, ["modeId", "mode_id"])) != null ? _g : getRunGameMode((_f = runs.find((run) => run.runId === record.runId)) != null ? _f : runs[0]),
+      classification: {
+        ranked: readBooleanField7(classificationRecord, ["ranked"]) === true,
+        casual: readBooleanField7(classificationRecord, ["casual"]) === true,
+        private: readBooleanField7(classificationRecord, ["private"]) === true,
+        bot: readBooleanField7(classificationRecord, ["bot"]) === true,
+        experimental: readBooleanField7(classificationRecord, ["experimental"]) === true,
+        tournament: true
+      },
+      tournamentRunId: record.runId,
+      tournamentId: record.tournamentId,
+      winnerUserId: readStringField11(summary, ["winnerUserId", "winner_user_id"]),
+      loserUserId: readStringField11(summary, ["loserUserId", "loser_user_id"]),
+      totalMoves: readNumberField7(summary, ["totalMoves", "total_moves"]),
+      totalTurns: null,
+      players
+    };
+  });
+};
+var loadTrackedAnalyticsEvents = (nk, logger2) => {
+  const result = listAnalyticsEvents(nk, logger2);
+  return {
+    supported: result.supported,
+    notes: result.notes,
+    trackedMatchStarts: result.events.filter(
+      (event) => event.type === "match_start"
+    ),
+    trackedMatchEnds: result.events.filter(
+      (event) => event.type === "match_end"
+    ),
+    xpAwardEvents: result.events.filter((event) => event.type === "xp_awarded")
+  };
+};
+var buildTrackedMatchHistory = (trackedMatchEnds, filters) => trackedMatchEnds.filter((event) => {
+  if (filters.gameMode && filters.gameMode !== event.modeId) {
+    return false;
+  }
+  if (filters.tournamentId && filters.tournamentId !== event.tournamentRunId && filters.tournamentId !== event.tournamentId) {
+    return false;
+  }
+  return true;
+}).map((event) => ({
+  source: "tracked",
+  matchId: event.matchId,
+  startedAt: event.startedAt,
+  endedAt: event.endedAt,
+  durationSeconds: event.durationSeconds,
+  reason: event.reason,
+  modeId: event.modeId,
+  classification: event.classification,
+  tournamentRunId: event.tournamentRunId,
+  tournamentId: event.tournamentId,
+  winnerUserId: event.winnerUserId,
+  loserUserId: event.loserUserId,
+  totalMoves: event.totalMoves,
+  totalTurns: event.totalTurns,
+  players: event.players.map((player) => ({
+    userId: player.userId,
+    username: player.username,
+    color: player.color,
+    didWin: player.didWin,
+    capturesMade: player.capturesMade,
+    capturesSuffered: player.capturesSuffered,
+    playerMoveCount: player.playerMoveCount,
+    finishedCount: player.finishedCount,
+    isBot: player.isBot
+  }))
+}));
+var loadEloHistory = (nk, logger2, filters) => {
+  const leaderboardRows = listAllLeaderboardRows(nk);
+  const historyResult = listAllGlobalObjects(nk, logger2, "elo_match_results", "00000000-0000-0000-0000-000000000000");
+  const eloHistory = historyResult.objects.map((object) => {
+    var _a;
+    return normalizeEloHistoryRecord((_a = object.value) != null ? _a : null);
+  }).filter((record) => Boolean(record));
+  const eloMatches = eloHistory.filter((record) => {
+    if (filters.gameMode && filters.gameMode !== "standard") {
+      return false;
+    }
+    return true;
+  }).map((record) => ({
+    source: "elo",
+    matchId: record.matchId,
+    startedAt: null,
+    endedAt: record.processedAt,
+    durationSeconds: null,
+    reason: "completed",
+    modeId: "standard",
+    classification: {
+      ranked: true,
+      casual: false,
+      private: false,
+      bot: false,
+      experimental: false,
+      tournament: false
+    },
+    tournamentRunId: null,
+    tournamentId: null,
+    winnerUserId: record.winnerUserId,
+    loserUserId: record.loserUserId,
+    totalMoves: null,
+    totalTurns: null,
+    players: record.playerResults.map((player) => ({
+      userId: player.userId,
+      username: player.usernameDisplay,
+      color: null,
+      didWin: player.userId === record.winnerUserId,
+      capturesMade: null,
+      capturesSuffered: null,
+      playerMoveCount: null,
+      finishedCount: null,
+      isBot: false
+    }))
+  }));
+  return {
+    supported: historyResult.supported,
+    notes: historyResult.notes,
+    leaderboardRows,
+    eloHistory,
+    eloMatches
+  };
+};
+var loadKnownUsers = (nk, userIds, leaderboardRows) => {
+  const leaderboardByUserId = new Map(leaderboardRows.map((row) => [row.userId, row]));
+  const records = /* @__PURE__ */ new Map();
+  const uniqueUserIds = unique(userIds.filter((userId) => isHumanUserId(userId)));
+  batch(uniqueUserIds, 60).forEach((chunk) => {
+    const requests = chunk.flatMap((userId) => [
+      {
+        collection: USERNAME_PROFILE_COLLECTION,
+        key: USERNAME_PROFILE_KEY,
+        userId
+      },
+      {
+        collection: PROGRESSION_COLLECTION,
+        key: PROGRESSION_PROFILE_KEY,
+        userId
+      }
+    ]);
+    const objects = nk.storageRead(requests);
+    const objectMap = new Map(
+      objects.map((object) => {
+        const collection = readStringField11(object, ["collection"]);
+        const key = readStringField11(object, ["key"]);
+        const userId = readStringField11(object, ["userId", "user_id"]);
+        return collection && key && userId ? [`${collection}:${key}:${userId}`, object] : null;
+      }).filter((entry) => Boolean(entry))
+    );
+    chunk.forEach((userId) => {
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+      const usernameProfile = asRecord6(
+        (_b = (_a = objectMap.get(`${USERNAME_PROFILE_COLLECTION}:${USERNAME_PROFILE_KEY}:${userId}`)) == null ? void 0 : _a.value) != null ? _b : null
+      );
+      const progressionProfile = asRecord6(
+        (_d = (_c = objectMap.get(`${PROGRESSION_COLLECTION}:${PROGRESSION_PROFILE_KEY}:${userId}`)) == null ? void 0 : _c.value) != null ? _d : null
+      );
+      const leaderboardRow = (_e = leaderboardByUserId.get(userId)) != null ? _e : null;
+      records.set(userId, {
+        userId,
+        username: (_g = (_f = readStringField11(usernameProfile, ["usernameDisplay", "username_display"])) != null ? _f : leaderboardRow == null ? void 0 : leaderboardRow.usernameDisplay) != null ? _g : userId,
+        createdAt: readStringField11(usernameProfile, ["createdAt", "created_at"]),
+        totalXp: readNumberField7(progressionProfile, ["totalXp", "total_xp"]),
+        currentRankTitle: readStringField11(progressionProfile, ["currentRankTitle", "current_rank_title"]),
+        eloRating: (_h = leaderboardRow == null ? void 0 : leaderboardRow.eloRating) != null ? _h : null,
+        ratedGames: (_i = leaderboardRow == null ? void 0 : leaderboardRow.ratedGames) != null ? _i : null,
+        ratedWins: (_j = leaderboardRow == null ? void 0 : leaderboardRow.ratedWins) != null ? _j : null,
+        ratedLosses: (_k = leaderboardRow == null ? void 0 : leaderboardRow.ratedLosses) != null ? _k : null
+      });
+    });
+  });
+  return records;
+};
+var buildUnifiedMatches = (trackedMatches, tournamentMatches, eloMatches) => {
+  const matchById = /* @__PURE__ */ new Map();
+  tournamentMatches.forEach((match) => {
+    matchById.set(match.matchId, match);
+  });
+  eloMatches.forEach((match) => {
+    if (!matchById.has(match.matchId)) {
+      matchById.set(match.matchId, match);
+    }
+  });
+  trackedMatches.forEach((match) => {
+    matchById.set(match.matchId, match);
+  });
+  return Array.from(matchById.values()).sort((left, right) => left.endedAt.localeCompare(right.endedAt));
+};
+var collectActivityEvents = (runs, trackedMatchStarts, trackedMatchEnds, tournamentMatches, eloMatches, xpAwardEvents) => {
+  const events = [];
+  runs.forEach((run) => {
+    run.registrations.forEach((registration) => {
+      if (!isHumanUserId(registration.userId)) {
+        return;
+      }
+      events.push({
+        userId: registration.userId,
+        occurredAt: registration.joinedAt,
+        source: "tournament_registration"
+      });
+    });
+  });
+  trackedMatchStarts.forEach((event) => {
+    event.players.forEach((player) => {
+      if (!isHumanUserId(player.userId)) {
+        return;
+      }
+      events.push({
+        userId: player.userId,
+        occurredAt: event.startedAt,
+        source: "match_start"
+      });
+    });
+  });
+  trackedMatchEnds.forEach((event) => {
+    event.players.forEach((player) => {
+      if (!isHumanUserId(player.userId)) {
+        return;
+      }
+      events.push({
+        userId: player.userId,
+        occurredAt: event.endedAt,
+        source: "match_end"
+      });
+    });
+  });
+  tournamentMatches.forEach((match) => {
+    match.players.forEach((player) => {
+      if (!isHumanUserId(player.userId)) {
+        return;
+      }
+      events.push({
+        userId: player.userId,
+        occurredAt: match.endedAt,
+        source: "tournament_match"
+      });
+    });
+  });
+  eloMatches.forEach((match) => {
+    match.players.forEach((player) => {
+      if (!isHumanUserId(player.userId)) {
+        return;
+      }
+      events.push({
+        userId: player.userId,
+        occurredAt: match.endedAt,
+        source: "ranked_match"
+      });
+    });
+  });
+  xpAwardEvents.forEach((event) => {
+    if (!isHumanUserId(event.userId)) {
+      return;
+    }
+    events.push({
+      userId: event.userId,
+      occurredAt: event.occurredAt,
+      source: "xp_award"
+    });
+  });
+  return events.sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
+};
+var buildFirstSeenByUserId = (usersById, activityEvents) => {
+  const firstSeenByUserId = /* @__PURE__ */ new Map();
+  usersById.forEach((user) => {
+    if (user.createdAt) {
+      firstSeenByUserId.set(user.userId, user.createdAt);
+    }
+  });
+  activityEvents.forEach((event) => {
+    const current = firstSeenByUserId.get(event.userId);
+    if (!current || event.occurredAt < current) {
+      firstSeenByUserId.set(event.userId, event.occurredAt);
+    }
+  });
+  return firstSeenByUserId;
+};
+var buildUserPerformance = (usersById, unifiedMatches, runs, firstSeenByUserId) => {
+  const participationByUserId = /* @__PURE__ */ new Map();
+  const performanceByUserId = /* @__PURE__ */ new Map();
+  runs.forEach((run) => {
+    run.registrations.forEach((registration) => {
+      var _a;
+      if (!isHumanUserId(registration.userId)) {
+        return;
+      }
+      participationByUserId.set(
+        registration.userId,
+        ((_a = participationByUserId.get(registration.userId)) != null ? _a : 0) + 1
+      );
+    });
+  });
+  unifiedMatches.forEach((match) => {
+    match.players.forEach((player) => {
+      var _a, _b, _c, _d, _e, _f;
+      if (!isHumanUserId(player.userId)) {
+        return;
+      }
+      const current = (_f = performanceByUserId.get(player.userId)) != null ? _f : {
+        userId: player.userId,
+        username: (_c = (_b = (_a = usersById.get(player.userId)) == null ? void 0 : _a.username) != null ? _b : player.username) != null ? _c : player.userId,
+        matchesPlayed: 0,
+        wins: 0,
+        losses: 0,
+        tournamentParticipations: (_d = participationByUserId.get(player.userId)) != null ? _d : 0,
+        lastActiveAt: null,
+        firstSeenAt: (_e = firstSeenByUserId.get(player.userId)) != null ? _e : null
+      };
+      current.matchesPlayed += 1;
+      current.wins += player.didWin === true ? 1 : 0;
+      current.losses += player.didWin === false ? 1 : 0;
+      current.lastActiveAt = current.lastActiveAt && current.lastActiveAt > match.endedAt ? current.lastActiveAt : match.endedAt;
+      performanceByUserId.set(player.userId, current);
+    });
+  });
+  usersById.forEach((user) => {
+    var _a, _b;
+    if (!performanceByUserId.has(user.userId)) {
+      performanceByUserId.set(user.userId, {
+        userId: user.userId,
+        username: user.username,
+        matchesPlayed: 0,
+        wins: 0,
+        losses: 0,
+        tournamentParticipations: (_a = participationByUserId.get(user.userId)) != null ? _a : 0,
+        lastActiveAt: null,
+        firstSeenAt: (_b = firstSeenByUserId.get(user.userId)) != null ? _b : null
+      });
+    }
+  });
+  return performanceByUserId;
+};
+var createAnalyticsContext = (nk, logger2, filters) => {
+  const generatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const runs = loadRuns(nk, filters);
+  const tournamentMatches = loadTournamentMatchHistory(nk, runs);
+  const trackedResult = loadTrackedAnalyticsEvents(nk, logger2);
+  const trackedMatches = buildTrackedMatchHistory(trackedResult.trackedMatchEnds, filters);
+  const eloResult = loadEloHistory(nk, logger2, filters);
+  const unifiedMatches = buildUnifiedMatches(trackedMatches, tournamentMatches, eloResult.eloMatches);
+  const userIds = unique(
+    [
+      ...runs.flatMap((run) => run.registrations.map((registration) => registration.userId)),
+      ...trackedResult.trackedMatchStarts.flatMap((event) => event.players.map((player) => player.userId)),
+      ...trackedResult.trackedMatchEnds.flatMap((event) => event.players.map((player) => player.userId)),
+      ...tournamentMatches.flatMap((match) => match.players.map((player) => player.userId)),
+      ...eloResult.eloMatches.flatMap((match) => match.players.map((player) => player.userId)),
+      ...eloResult.leaderboardRows.map((row) => row.userId),
+      ...trackedResult.xpAwardEvents.map((event) => event.userId)
+    ].filter((userId) => isHumanUserId(userId))
+  );
+  const usersById = loadKnownUsers(nk, userIds, eloResult.leaderboardRows);
+  const activityEvents = collectActivityEvents(
+    runs,
+    trackedResult.trackedMatchStarts,
+    trackedResult.trackedMatchEnds,
+    tournamentMatches,
+    eloResult.eloMatches,
+    trackedResult.xpAwardEvents
+  );
+  const firstSeenByUserId = buildFirstSeenByUserId(usersById, activityEvents);
+  const userPerformanceById = buildUserPerformance(usersById, unifiedMatches, runs, firstSeenByUserId);
+  return {
+    generatedAt,
+    filters,
+    runs,
+    tournamentMatches,
+    trackedMatches,
+    eloMatches: eloResult.eloMatches,
+    unifiedMatches,
+    trackedMatchStarts: trackedResult.trackedMatchStarts.filter((event) => {
+      if (filters.gameMode && filters.gameMode !== event.modeId) {
+        return false;
+      }
+      if (filters.tournamentId && filters.tournamentId !== event.tournamentRunId && filters.tournamentId !== event.tournamentId) {
+        return false;
+      }
+      return true;
+    }),
+    trackedMatchEnds: trackedResult.trackedMatchEnds,
+    xpAwardEvents: trackedResult.xpAwardEvents,
+    activityEvents,
+    usersById,
+    userPerformanceById,
+    firstSeenByUserId,
+    leaderboardRows: eloResult.leaderboardRows,
+    eloHistory: eloResult.eloHistory,
+    eventsSupported: trackedResult.supported,
+    eloHistorySupported: eloResult.supported,
+    runtimeNotes: [...trackedResult.notes, ...eloResult.notes]
+  };
+};
+var filterEndedMatchesInWindow = (matches, startMs, endMs) => matches.filter((match) => {
+  const endedAtMs = parseIsoMs3(match.endedAt);
+  return endedAtMs !== null && endedAtMs >= startMs && endedAtMs <= endMs;
+});
+var filterStartsInWindow = (context, startMs, endMs) => {
+  const startsById = /* @__PURE__ */ new Map();
+  context.trackedMatchStarts.forEach((event) => {
+    const startedAtMs = parseIsoMs3(event.startedAt);
+    if (startedAtMs === null || startedAtMs < startMs || startedAtMs > endMs) {
+      return;
+    }
+    startsById.set(event.matchId, {
+      matchId: event.matchId,
+      startedAt: event.startedAt,
+      modeId: event.modeId,
+      tournamentRunId: event.tournamentRunId,
+      tournamentId: event.tournamentId
+    });
+  });
+  context.runs.forEach((run) => {
+    var _a;
+    (_a = run.bracket) == null ? void 0 : _a.entries.forEach((entry) => {
+      if (!entry.matchId || !entry.startedAt) {
+        return;
+      }
+      const startedAtMs = parseIsoMs3(entry.startedAt);
+      if (startedAtMs === null || startedAtMs < startMs || startedAtMs > endMs) {
+        return;
+      }
+      startsById.set(entry.matchId, {
+        matchId: entry.matchId,
+        startedAt: entry.startedAt,
+        modeId: getRunGameMode(run),
+        tournamentRunId: run.runId,
+        tournamentId: run.tournamentId
+      });
+    });
+  });
+  return Array.from(startsById.values());
+};
+var buildStartedMatchMetrics = (context, startMs, endMs) => {
+  const starts = filterStartsInWindow(context, startMs, endMs);
+  const matchById = new Map(context.unifiedMatches.map((match) => [match.matchId, match]));
+  let completedCount = 0;
+  let disconnectCount = 0;
+  let inactivityCount = 0;
+  starts.forEach((start) => {
+    var _a;
+    const matched = (_a = matchById.get(start.matchId)) != null ? _a : null;
+    if (!matched) {
+      return;
+    }
+    if (matched.reason === "completed") {
+      completedCount += 1;
+      return;
+    }
+    if (matched.reason === "forfeit_disconnect") {
+      disconnectCount += 1;
+      return;
+    }
+    if (matched.reason === "forfeit_inactivity") {
+      inactivityCount += 1;
+    }
+  });
+  const abandonedCount = Math.max(0, starts.length - completedCount - disconnectCount - inactivityCount);
+  return {
+    startedCount: starts.length,
+    completedCount,
+    disconnectCount,
+    inactivityCount,
+    abandonedCount
+  };
+};
+var countUniqueActiveUsers = (activityEvents, startMs, endMs) => new Set(
+  activityEvents.filter((event) => {
+    const occurredAtMs = parseIsoMs3(event.occurredAt);
+    return occurredAtMs !== null && occurredAtMs >= startMs && occurredAtMs <= endMs;
+  }).map((event) => event.userId)
+).size;
+var buildDailyActiveUserCounts = (activityEvents, filters) => {
+  const activityByDay = /* @__PURE__ */ new Map();
+  buildDayKeys(filters).forEach((dayKey) => {
+    activityByDay.set(dayKey, /* @__PURE__ */ new Set());
+  });
+  activityEvents.forEach((event) => {
+    var _a;
+    if (!isWithinRange(event.occurredAt, filters)) {
+      return;
+    }
+    const dayKey = toDayKey(event.occurredAt);
+    if (!activityByDay.has(dayKey)) {
+      activityByDay.set(dayKey, /* @__PURE__ */ new Set());
+    }
+    (_a = activityByDay.get(dayKey)) == null ? void 0 : _a.add(event.userId);
+  });
+  return activityByDay;
+};
+var buildCountPoints = (valuesByDay, filters) => buildDayKeys(filters).map((dayKey) => {
+  var _a;
+  return {
+    date: dayKey,
+    value: (_a = valuesByDay.get(dayKey)) != null ? _a : 0
+  };
+});
+var buildRatePoints = (numeratorByDay, denominatorByDay, filters) => buildDayKeys(filters).map((dayKey) => {
+  var _a, _b;
+  const numerator = (_a = numeratorByDay.get(dayKey)) != null ? _a : 0;
+  const denominator = (_b = denominatorByDay.get(dayKey)) != null ? _b : 0;
+  return {
+    date: dayKey,
+    value: toPercentage(numerator, denominator),
+    numerator,
+    denominator
+  };
+});
+var buildDualCountPoints = (primaryByDay, secondaryByDay, filters) => buildDayKeys(filters).map((dayKey) => {
+  var _a, _b;
+  const primary = (_a = primaryByDay.get(dayKey)) != null ? _a : 0;
+  const secondary = (_b = secondaryByDay.get(dayKey)) != null ? _b : 0;
+  return {
+    date: dayKey,
+    primary,
+    secondary,
+    total: primary + secondary
+  };
+});
+var buildBucketDistribution = (values, bucketConfig) => bucketConfig.map((bucket) => ({
+  key: bucket.key,
+  label: bucket.label,
+  min: Number.isFinite(bucket.min) ? bucket.min : null,
+  max: bucket.max,
+  count: values.filter((value) => value >= bucket.min && (bucket.max === null || value < bucket.max)).length
+}));
+var buildSummaryData = (context) => {
+  const previousWindowDuration = context.filters.endMs - context.filters.startMs;
+  const previousStartMs = context.filters.startMs - previousWindowDuration - 1;
+  const previousEndMs = context.filters.startMs - 1;
+  const endDayStartMs = startOfDayMs(context.filters.endMs);
+  const wauWindowStartMs = context.filters.endMs - 6 * DAY_BUCKET_MS;
+  const previousDayStartMs = endDayStartMs - DAY_BUCKET_MS;
+  const previousWauWindowEndMs = wauWindowStartMs - 1;
+  const previousWauWindowStartMs = previousWauWindowEndMs - 6 * DAY_BUCKET_MS;
+  const dauCurrent = countUniqueActiveUsers(context.activityEvents, endDayStartMs, endDayStartMs + DAY_BUCKET_MS - 1);
+  const dauPrevious = countUniqueActiveUsers(
+    context.activityEvents,
+    previousDayStartMs,
+    previousDayStartMs + DAY_BUCKET_MS - 1
+  );
+  const wauCurrent = countUniqueActiveUsers(context.activityEvents, wauWindowStartMs, context.filters.endMs);
+  const wauPrevious = countUniqueActiveUsers(
+    context.activityEvents,
+    previousWauWindowStartMs,
+    previousWauWindowEndMs
+  );
+  const matchesInWindow = filterEndedMatchesInWindow(
+    context.unifiedMatches,
+    context.filters.startMs,
+    context.filters.endMs
+  );
+  const previousMatchesInWindow = filterEndedMatchesInWindow(
+    context.unifiedMatches,
+    previousStartMs,
+    previousEndMs
+  );
+  const completionWindow = buildStartedMatchMetrics(context, context.filters.startMs, context.filters.endMs);
+  const previousCompletionWindow = buildStartedMatchMetrics(context, previousStartMs, previousEndMs);
+  const durationValues = matchesInWindow.map((match) => match.durationSeconds).filter((value) => typeof value === "number" && Number.isFinite(value));
+  const previousDurationValues = previousMatchesInWindow.map((match) => match.durationSeconds).filter((value) => typeof value === "number" && Number.isFinite(value));
+  const tournamentsCompletedCount = context.runs.filter((run) => isWithinRange(run.finalizedAt, context.filters)).length;
+  const previousTournamentsCompletedCount = context.runs.filter((run) => {
+    const finalizedAtMs = parseIsoMs3(run.finalizedAt);
+    return finalizedAtMs !== null && finalizedAtMs >= previousStartMs && finalizedAtMs <= previousEndMs;
+  }).length;
+  const activeTournamentsCount = context.runs.filter(
+    (run) => run.lifecycle === "open" || run.lifecycle === "closed" && !run.finalizedAt
+  ).length;
+  const onlinePresence = getOnlinePresenceSnapshot();
+  const disconnectsInRange = matchesInWindow.filter(
+    (match) => match.reason === "forfeit_disconnect" || match.reason === "forfeit_inactivity"
+  ).length;
+  const previousDisconnectsInRange = previousMatchesInWindow.filter(
+    (match) => match.reason === "forfeit_disconnect" || match.reason === "forfeit_inactivity"
+  ).length;
+  const completionAvailability = completionWindow.startedCount === 0 ? context.eventsSupported ? noData("No started matches were recorded in this date range.") : partial(["Cross-mode start tracking is not available on this runtime."]) : completionWindow.startedCount < 3 ? notEnoughData("Not enough started matches yet for a stable completion rate.", completionWindow.startedCount) : available(completionWindow.startedCount);
+  return {
+    dau: createMetric(
+      dauCurrent,
+      context.activityEvents.length > 0 ? available(dauCurrent) : noData("No recorded player activity is available yet."),
+      { previousValue: dauPrevious }
+    ),
+    wau: createMetric(
+      wauCurrent,
+      context.activityEvents.length > 0 ? available(wauCurrent) : noData("No recorded player activity is available yet."),
+      { previousValue: wauPrevious }
+    ),
+    matchesPlayed: createMetric(
+      matchesInWindow.length,
+      matchesInWindow.length > 0 ? available(matchesInWindow.length) : noData("No matches ended in this date range."),
+      { previousValue: previousMatchesInWindow.length }
+    ),
+    completionRate: createMetric(
+      toPercentage(completionWindow.completedCount, completionWindow.startedCount),
+      completionAvailability,
+      {
+        numerator: completionWindow.completedCount,
+        denominator: completionWindow.startedCount,
+        previousValue: toPercentage(previousCompletionWindow.completedCount, previousCompletionWindow.startedCount)
+      }
+    ),
+    medianMatchDurationSeconds: createMetric(
+      median(durationValues),
+      durationValues.length === 0 ? noData("No completed matches with duration data are available in this date range.") : durationValues.length < 3 ? notEnoughData("Not enough completed matches yet to show a reliable duration median.", durationValues.length) : available(durationValues.length),
+      { previousValue: median(previousDurationValues) }
+    ),
+    activeTournaments: createMetric(activeTournamentsCount, available(activeTournamentsCount)),
+    tournamentsCompleted: createMetric(
+      tournamentsCompletedCount,
+      tournamentsCompletedCount > 0 ? available(tournamentsCompletedCount) : noData("No tournaments finalized in this date range."),
+      { previousValue: previousTournamentsCompletedCount }
+    ),
+    currentOnlinePlayers: createMetric(onlinePresence.onlineCount, available(onlinePresence.onlineCount)),
+    disconnectRate: createMetric(
+      toPercentage(disconnectsInRange, matchesInWindow.length),
+      matchesInWindow.length === 0 ? noData("No ended matches are available for disconnect-rate reporting in this range.") : matchesInWindow.length < 3 ? notEnoughData("Not enough ended matches yet for a stable disconnect rate.", matchesInWindow.length) : available(matchesInWindow.length),
+      {
+        numerator: disconnectsInRange,
+        denominator: matchesInWindow.length,
+        previousValue: toPercentage(previousDisconnectsInRange, previousMatchesInWindow.length)
+      }
+    )
+  };
+};
+var buildOverviewData = (context) => {
+  const activityByDay = buildDailyActiveUserCounts(context.activityEvents, context.filters);
+  const dauValues = new Map(
+    Array.from(activityByDay.entries()).map(([dayKey, users]) => [dayKey, users.size])
+  );
+  const wauValues = /* @__PURE__ */ new Map();
+  const matchesByDay = /* @__PURE__ */ new Map();
+  const completedStartsByDay = /* @__PURE__ */ new Map();
+  const startsByDay = /* @__PURE__ */ new Map();
+  const createdByDay = /* @__PURE__ */ new Map();
+  const completedTournamentByDay = /* @__PURE__ */ new Map();
+  const firstSeenByDay = /* @__PURE__ */ new Map();
+  const returningByDay = /* @__PURE__ */ new Map();
+  const allDayKeys = buildDayKeys(context.filters);
+  context.unifiedMatches.forEach((match) => {
+    var _a;
+    if (!isWithinRange(match.endedAt, context.filters)) {
+      return;
+    }
+    const dayKey = toDayKey(match.endedAt);
+    matchesByDay.set(dayKey, ((_a = matchesByDay.get(dayKey)) != null ? _a : 0) + 1);
+  });
+  const startedMetrics = filterStartsInWindow(context, context.filters.startMs, context.filters.endMs);
+  const matchById = new Map(context.unifiedMatches.map((match) => [match.matchId, match]));
+  startedMetrics.forEach((started) => {
+    var _a, _b;
+    const dayKey = toDayKey(started.startedAt);
+    startsByDay.set(dayKey, ((_a = startsByDay.get(dayKey)) != null ? _a : 0) + 1);
+    const matched = matchById.get(started.matchId);
+    if ((matched == null ? void 0 : matched.reason) === "completed") {
+      completedStartsByDay.set(dayKey, ((_b = completedStartsByDay.get(dayKey)) != null ? _b : 0) + 1);
+    }
+  });
+  allDayKeys.forEach((dayKey) => {
+    var _a;
+    const currentDayMs = (_a = parseIsoMs3(`${dayKey}T00:00:00.000Z`)) != null ? _a : context.filters.startMs;
+    const trailingUserIds = /* @__PURE__ */ new Set();
+    context.activityEvents.forEach((event) => {
+      const occurredAtMs = parseIsoMs3(event.occurredAt);
+      if (occurredAtMs !== null && occurredAtMs >= currentDayMs - 6 * DAY_BUCKET_MS && occurredAtMs <= currentDayMs + DAY_BUCKET_MS - 1) {
+        trailingUserIds.add(event.userId);
+      }
+    });
+    wauValues.set(dayKey, trailingUserIds.size);
+  });
+  context.runs.forEach((run) => {
+    var _a, _b;
+    if (isWithinRange(run.createdAt, context.filters)) {
+      const dayKey = toDayKey(run.createdAt);
+      createdByDay.set(dayKey, ((_a = createdByDay.get(dayKey)) != null ? _a : 0) + 1);
+    }
+    if (isWithinRange(run.finalizedAt, context.filters)) {
+      const dayKey = toDayKey(run.finalizedAt);
+      completedTournamentByDay.set(dayKey, ((_b = completedTournamentByDay.get(dayKey)) != null ? _b : 0) + 1);
+    }
+  });
+  context.firstSeenByUserId.forEach((firstSeenAt) => {
+    var _a;
+    if (!isWithinRange(firstSeenAt, context.filters)) {
+      return;
+    }
+    const dayKey = toDayKey(firstSeenAt);
+    firstSeenByDay.set(dayKey, ((_a = firstSeenByDay.get(dayKey)) != null ? _a : 0) + 1);
+  });
+  activityByDay.forEach((userIds, dayKey) => {
+    let returning = 0;
+    userIds.forEach((userId) => {
+      const firstSeenAt = context.firstSeenByUserId.get(userId);
+      if (!firstSeenAt) {
+        return;
+      }
+      if (toDayKey(firstSeenAt) < dayKey) {
+        returning += 1;
+      }
+    });
+    returningByDay.set(dayKey, returning);
+  });
+  const dauPoints = buildCountPoints(dauValues, context.filters);
+  const wauPoints = buildCountPoints(wauValues, context.filters);
+  const matchPoints = buildCountPoints(matchesByDay, context.filters);
+  const completionPoints = buildRatePoints(completedStartsByDay, startsByDay, context.filters);
+  const newVsReturningPoints = buildDualCountPoints(firstSeenByDay, returningByDay, context.filters);
+  const totalPlayersCount = countUniqueActiveUsers(
+    context.activityEvents,
+    context.filters.startMs,
+    context.filters.endMs
+  );
+  return {
+    dauTrend: {
+      availability: context.activityEvents.length > 0 ? available(context.activityEvents.length) : noData("No recorded player activity is available yet."),
+      points: dauPoints
+    },
+    wauTrend: {
+      availability: context.activityEvents.length > 0 ? available(context.activityEvents.length) : noData("No recorded player activity is available yet."),
+      points: wauPoints
+    },
+    matchesPerDay: {
+      availability: matchPoints.some((point) => point.value > 0) ? available(matchPoints.reduce((sum, point) => sum + point.value, 0)) : noData("No matches ended in this date range."),
+      points: matchPoints
+    },
+    completionRateTrend: {
+      availability: completionPoints.some((point) => point.denominator > 0) ? available(completionPoints.reduce((sum, point) => sum + point.denominator, 0)) : context.eventsSupported ? noData("No started matches were recorded in this date range.") : partial(["Cross-mode start tracking is not available on this runtime."]),
+      points: completionPoints
+    },
+    newVsReturningPlayers: {
+      availability: newVsReturningPoints.some((point) => point.total > 0) ? available(newVsReturningPoints.reduce((sum, point) => sum + point.total, 0)) : noData("No player activity or first-seen data is available in this date range."),
+      points: newVsReturningPoints
+    },
+    totalPlayers: createMetric(
+      totalPlayersCount,
+      totalPlayersCount > 0 ? available(totalPlayersCount) : noData("No active players were recorded in this date range.")
+    ),
+    tournamentsCreated: createMetric(
+      context.runs.filter((run) => isWithinRange(run.createdAt, context.filters)).length,
+      context.runs.length > 0 ? available(context.runs.length) : noData("No tournaments match the selected filters.")
+    ),
+    tournamentsCompleted: createMetric(
+      context.runs.filter((run) => isWithinRange(run.finalizedAt, context.filters)).length,
+      context.runs.some((run) => Boolean(run.finalizedAt)) ? available(context.runs.filter((run) => Boolean(run.finalizedAt)).length) : noData("No finalized tournaments are available in the selected filters.")
+    )
+  };
+};
+var buildPlayersData = (context) => {
+  const newPlayersByDay = /* @__PURE__ */ new Map();
+  const returningPlayersByDay = /* @__PURE__ */ new Map();
+  const activityDaysByUser = /* @__PURE__ */ new Map();
+  const retentionEligible = {
+    d1: [],
+    d7: [],
+    d30: []
+  };
+  const retentionReturned = {
+    d1: 0,
+    d7: 0,
+    d30: 0
+  };
+  context.firstSeenByUserId.forEach((firstSeenAt, userId) => {
+    var _a;
+    if (!isWithinRange(firstSeenAt, context.filters)) {
+      return;
+    }
+    const dayKey = toDayKey(firstSeenAt);
+    newPlayersByDay.set(dayKey, ((_a = newPlayersByDay.get(dayKey)) != null ? _a : 0) + 1);
+    const firstSeenMs = parseIsoMs3(firstSeenAt);
+    if (firstSeenMs === null) {
+      return;
+    }
+    if (firstSeenMs + DAY_BUCKET_MS <= context.filters.endMs) {
+      retentionEligible.d1.push(userId);
+    }
+    if (firstSeenMs + 7 * DAY_BUCKET_MS <= context.filters.endMs) {
+      retentionEligible.d7.push(userId);
+    }
+    if (firstSeenMs + 30 * DAY_BUCKET_MS <= context.filters.endMs) {
+      retentionEligible.d30.push(userId);
+    }
+  });
+  context.activityEvents.forEach((event) => {
+    var _a, _b;
+    if (!isWithinRange(event.occurredAt, context.filters)) {
+      return;
+    }
+    const dayKey = toDayKey(event.occurredAt);
+    if (!activityDaysByUser.has(event.userId)) {
+      activityDaysByUser.set(event.userId, /* @__PURE__ */ new Set());
+    }
+    (_a = activityDaysByUser.get(event.userId)) == null ? void 0 : _a.add(dayKey);
+    const firstSeenAt = context.firstSeenByUserId.get(event.userId);
+    if (!firstSeenAt) {
+      return;
+    }
+    if (toDayKey(firstSeenAt) < dayKey) {
+      returningPlayersByDay.set(dayKey, ((_b = returningPlayersByDay.get(dayKey)) != null ? _b : 0) + 1);
+    }
+  });
+  const didReturnOnTargetDay = (userId, offsetDays) => {
+    var _a, _b;
+    const firstSeenAt = context.firstSeenByUserId.get(userId);
+    if (!firstSeenAt) {
+      return false;
+    }
+    const targetKey = toDayKey(((_a = parseIsoMs3(firstSeenAt)) != null ? _a : 0) + offsetDays * DAY_BUCKET_MS);
+    return ((_b = activityDaysByUser.get(userId)) == null ? void 0 : _b.has(targetKey)) === true;
+  };
+  retentionEligible.d1.forEach((userId) => {
+    if (didReturnOnTargetDay(userId, 1)) {
+      retentionReturned.d1 += 1;
+    }
+  });
+  retentionEligible.d7.forEach((userId) => {
+    if (didReturnOnTargetDay(userId, 7)) {
+      retentionReturned.d7 += 1;
+    }
+  });
+  retentionEligible.d30.forEach((userId) => {
+    if (didReturnOnTargetDay(userId, 30)) {
+      retentionReturned.d30 += 1;
+    }
+  });
+  const activityBuckets = [
+    {
+      key: "1_day",
+      label: "1 active day",
+      count: Array.from(activityDaysByUser.values()).filter((days) => days.size === 1).length
+    },
+    {
+      key: "2_4_days",
+      label: "2-4 active days",
+      count: Array.from(activityDaysByUser.values()).filter((days) => days.size >= 2 && days.size <= 4).length
+    },
+    {
+      key: "5_plus_days",
+      label: "5+ active days",
+      count: Array.from(activityDaysByUser.values()).filter((days) => days.size >= 5).length
+    }
+  ];
+  const topPlayerRows = Array.from(context.userPerformanceById.values()).filter((entry) => {
+    var _a, _b;
+    const currentUser = (_a = context.usersById.get(entry.userId)) != null ? _a : null;
+    return matchesEloFilter((_b = currentUser == null ? void 0 : currentUser.eloRating) != null ? _b : null, context.filters);
+  }).sort((left, right) => {
+    var _a, _b;
+    if (right.matchesPlayed !== left.matchesPlayed) {
+      return right.matchesPlayed - left.matchesPlayed;
+    }
+    return ((_a = right.lastActiveAt) != null ? _a : "").localeCompare((_b = left.lastActiveAt) != null ? _b : "");
+  }).slice(0, context.filters.limit).map((entry) => {
+    var _a, _b, _c, _d;
+    const user = (_a = context.usersById.get(entry.userId)) != null ? _a : null;
+    return {
+      id: entry.userId,
+      userId: entry.userId,
+      label: entry.username,
+      secondaryLabel: (_b = user == null ? void 0 : user.currentRankTitle) != null ? _b : null,
+      metrics: {
+        matchesPlayed: entry.matchesPlayed,
+        wins: entry.wins,
+        losses: entry.losses,
+        winRate: toPercentage(entry.wins, Math.max(1, entry.matchesPlayed)),
+        elo: (_c = user == null ? void 0 : user.eloRating) != null ? _c : null,
+        tournamentParticipations: entry.tournamentParticipations,
+        totalXp: (_d = user == null ? void 0 : user.totalXp) != null ? _d : null,
+        lastActiveAt: entry.lastActiveAt
+      }
+    };
+  });
+  const buildRetentionMetric = (returned, eligible, dayLabel) => {
+    if (eligible.length === 0) {
+      return createMetric(
+        null,
+        noData(`No ${dayLabel} retention cohorts have matured inside the selected date range.`),
+        { numerator: 0, denominator: 0 }
+      );
+    }
+    if (eligible.length < 3) {
+      return createMetric(
+        toPercentage(returned, eligible.length),
+        notEnoughData(`Not enough cohorts have matured for a reliable ${dayLabel} retention signal.`, eligible.length),
+        { numerator: returned, denominator: eligible.length }
+      );
+    }
+    return createMetric(
+      toPercentage(returned, eligible.length),
+      available(eligible.length),
+      { numerator: returned, denominator: eligible.length }
+    );
+  };
+  return {
+    uniquePlayers: createMetric(
+      countUniqueActiveUsers(context.activityEvents, context.filters.startMs, context.filters.endMs),
+      context.activityEvents.length > 0 ? available(context.activityEvents.length) : noData("No player activity is available in this date range.")
+    ),
+    newPlayersOverTime: {
+      availability: newPlayersByDay.size > 0 ? available(newPlayersByDay.size) : noData("No new players were first seen in this date range."),
+      points: buildCountPoints(newPlayersByDay, context.filters)
+    },
+    returningPlayersOverTime: {
+      availability: returningPlayersByDay.size > 0 ? available(returningPlayersByDay.size) : noData("No returning players were recorded in this date range."),
+      points: buildCountPoints(returningPlayersByDay, context.filters)
+    },
+    activityBuckets: {
+      availability: activityBuckets.some((bucket) => bucket.count > 0) ? available(activityBuckets.reduce((sum, bucket) => sum + bucket.count, 0)) : noData("No activity buckets can be built because no player activity was recorded."),
+      buckets: activityBuckets
+    },
+    topPlayers: {
+      availability: topPlayerRows.length > 0 ? available(topPlayerRows.length) : noData("No player rows are available for the selected filters."),
+      rows: topPlayerRows
+    },
+    retention: {
+      availability: mergeAvailability(
+        buildRetentionMetric(retentionReturned.d1, retentionEligible.d1, "D1").availability,
+        buildRetentionMetric(retentionReturned.d7, retentionEligible.d7, "D7").availability,
+        buildRetentionMetric(retentionReturned.d30, retentionEligible.d30, "D30").availability
+      ),
+      d1: buildRetentionMetric(retentionReturned.d1, retentionEligible.d1, "D1"),
+      d7: buildRetentionMetric(retentionReturned.d7, retentionEligible.d7, "D7"),
+      d30: buildRetentionMetric(retentionReturned.d30, retentionEligible.d30, "D30")
+    }
+  };
+};
+var buildGameplayData = (context) => {
+  const matchesPerDay = /* @__PURE__ */ new Map();
+  const startedByDay = /* @__PURE__ */ new Map();
+  const completedByDay = /* @__PURE__ */ new Map();
+  const abandonedByDay = /* @__PURE__ */ new Map();
+  const recentMatches = filterEndedMatchesInWindow(context.unifiedMatches, context.filters.startMs, context.filters.endMs).sort((left, right) => right.endedAt.localeCompare(left.endedAt)).slice(0, context.filters.limit);
+  const startedMetrics = filterStartsInWindow(context, context.filters.startMs, context.filters.endMs);
+  const matchById = new Map(context.unifiedMatches.map((match) => [match.matchId, match]));
+  const durations = recentMatches.map((match) => match.durationSeconds).filter((value) => typeof value === "number" && Number.isFinite(value));
+  const completionWindow = buildStartedMatchMetrics(context, context.filters.startMs, context.filters.endMs);
+  const lightSideWinsByMode = /* @__PURE__ */ new Map();
+  let captureCount = 0;
+  let captureMatchCount = 0;
+  filterEndedMatchesInWindow(context.unifiedMatches, context.filters.startMs, context.filters.endMs).forEach((match) => {
+    var _a, _b, _c;
+    const dayKey = toDayKey(match.endedAt);
+    matchesPerDay.set(dayKey, ((_a = matchesPerDay.get(dayKey)) != null ? _a : 0) + 1);
+    if (match.modeId) {
+      const bucket = (_b = lightSideWinsByMode.get(match.modeId)) != null ? _b : { wins: 0, losses: 0, count: 0 };
+      const lightPlayer = (_c = match.players.find((player) => player.color === "light")) != null ? _c : null;
+      bucket.count += 1;
+      if ((lightPlayer == null ? void 0 : lightPlayer.didWin) === true) {
+        bucket.wins += 1;
+      } else if ((lightPlayer == null ? void 0 : lightPlayer.didWin) === false) {
+        bucket.losses += 1;
+      }
+      lightSideWinsByMode.set(match.modeId, bucket);
+    }
+    const trackedCaptureCount = match.players.reduce((sum, player) => {
+      var _a2;
+      return sum + ((_a2 = player.capturesMade) != null ? _a2 : 0);
+    }, 0);
+    if (trackedCaptureCount > 0 || match.players.some((player) => player.capturesMade !== null)) {
+      captureCount += trackedCaptureCount;
+      captureMatchCount += 1;
+    }
+  });
+  startedMetrics.forEach((started) => {
+    var _a, _b, _c, _d, _e;
+    const dayKey = toDayKey(started.startedAt);
+    startedByDay.set(dayKey, ((_a = startedByDay.get(dayKey)) != null ? _a : 0) + 1);
+    const matched = (_b = matchById.get(started.matchId)) != null ? _b : null;
+    if (!matched) {
+      abandonedByDay.set(dayKey, ((_c = abandonedByDay.get(dayKey)) != null ? _c : 0) + 1);
+      return;
+    }
+    if (matched.reason === "completed") {
+      completedByDay.set(dayKey, ((_d = completedByDay.get(dayKey)) != null ? _d : 0) + 1);
+      return;
+    }
+    abandonedByDay.set(dayKey, ((_e = abandonedByDay.get(dayKey)) != null ? _e : 0) + 1);
+  });
+  const winRateSegments = Array.from(lightSideWinsByMode.entries()).map(([modeId, bucket]) => ({
+    key: modeId,
+    label: modeId,
+    count: bucket.count,
+    wins: bucket.wins,
+    losses: bucket.losses,
+    winRate: toPercentage(bucket.wins, Math.max(1, bucket.wins + bucket.losses))
+  })).sort((left, right) => right.count - left.count);
+  return {
+    matchesPerDay: {
+      availability: matchesPerDay.size > 0 ? available(matchesPerDay.size) : noData("No matches ended in this date range."),
+      points: buildCountPoints(matchesPerDay, context.filters)
+    },
+    startedVsCompleted: {
+      availability: startedMetrics.length > 0 ? available(startedMetrics.length) : context.eventsSupported ? noData("No started matches were recorded in this date range.") : partial(["Cross-mode start tracking is not available on this runtime."]),
+      points: buildDayKeys(context.filters).map((dayKey) => {
+        var _a, _b, _c;
+        return {
+          date: dayKey,
+          started: (_a = startedByDay.get(dayKey)) != null ? _a : 0,
+          completed: (_b = completedByDay.get(dayKey)) != null ? _b : 0,
+          abandoned: (_c = abandonedByDay.get(dayKey)) != null ? _c : 0
+        };
+      })
+    },
+    completionFunnel: {
+      availability: completionWindow.startedCount > 0 ? available(completionWindow.startedCount) : context.eventsSupported ? noData("No started matches were recorded in this date range.") : partial(["Cross-mode start tracking is not available on this runtime."]),
+      started: completionWindow.startedCount,
+      completed: completionWindow.completedCount,
+      disconnect: completionWindow.disconnectCount,
+      inactivity: completionWindow.inactivityCount,
+      abandoned: completionWindow.abandonedCount
+    },
+    durationDistribution: {
+      availability: durations.length === 0 ? noData("No completed matches with duration data are available in this date range.") : durations.length < 3 ? notEnoughData("Not enough completed matches yet to show a reliable duration distribution.", durations.length) : available(durations.length),
+      buckets: buildBucketDistribution(durations, MATCH_DURATION_BUCKETS)
+    },
+    winRateByMode: {
+      availability: winRateSegments.length > 0 ? available(winRateSegments.length) : noData("No completed matches with mode metadata are available in this date range."),
+      segments: winRateSegments
+    },
+    winRateByTurnOrder: {
+      availability: trackingMissing("Turn-order tracking is not implemented yet.")
+    },
+    disconnectRate: createMetric(
+      toPercentage(completionWindow.disconnectCount + completionWindow.inactivityCount, completionWindow.startedCount),
+      completionWindow.startedCount === 0 ? noData("No started matches are available for disconnect-rate reporting in this date range.") : completionWindow.startedCount < 3 ? notEnoughData("Not enough started matches yet for a stable disconnect rate.", completionWindow.startedCount) : available(completionWindow.startedCount),
+      {
+        numerator: completionWindow.disconnectCount + completionWindow.inactivityCount,
+        denominator: completionWindow.startedCount
+      }
+    ),
+    captureRate: createMetric(
+      captureMatchCount > 0 ? Math.round(captureCount / captureMatchCount * 100) / 100 : null,
+      captureMatchCount === 0 ? noData("Capture totals are not available for matches in this date range.") : captureMatchCount < 3 ? notEnoughData("Not enough matches with capture telemetry yet for a stable capture metric.", captureMatchCount) : available(captureMatchCount),
+      {
+        numerator: captureCount,
+        denominator: captureMatchCount
+      }
+    ),
+    recentMatches: {
+      availability: recentMatches.length > 0 ? available(recentMatches.length) : noData("No recent matches ended in this date range."),
+      rows: recentMatches.map((match) => {
+        var _a, _b, _c, _d, _e, _f, _g;
+        return {
+          id: match.matchId,
+          userId: null,
+          label: (_c = (_b = (_a = match.players.find((player) => player.userId === match.winnerUserId)) == null ? void 0 : _a.username) != null ? _b : match.winnerUserId) != null ? _c : "Unknown winner",
+          secondaryLabel: match.modeId,
+          metrics: {
+            winner: (_e = (_d = match.players.find((player) => player.userId === match.winnerUserId)) == null ? void 0 : _d.username) != null ? _e : match.winnerUserId,
+            loser: (_g = (_f = match.players.find((player) => player.userId === match.loserUserId)) == null ? void 0 : _f.username) != null ? _g : match.loserUserId,
+            reason: match.reason,
+            durationSeconds: match.durationSeconds,
+            totalMoves: match.totalMoves,
+            endedAt: match.endedAt
+          }
+        };
+      })
+    }
+  };
+};
+var buildTournamentsData = (context) => {
+  const createdByDay = /* @__PURE__ */ new Map();
+  const entrantCounts = context.runs.map((run) => run.registrations.length);
+  const dropoutByRound = /* @__PURE__ */ new Map();
+  const recentTournamentRows = context.runs.slice().sort((left, right) => {
+    var _a, _b;
+    return ((_a = right.finalizedAt) != null ? _a : right.updatedAt).localeCompare((_b = left.finalizedAt) != null ? _b : left.updatedAt);
+  }).slice(0, context.filters.limit);
+  const durationValues = context.runs.map((run) => {
+    var _a, _b, _c, _d;
+    const openedAtMs = parseIsoMs3((_a = run.openedAt) != null ? _a : run.createdAt);
+    const finalizedAtMs = parseIsoMs3((_d = (_c = run.finalizedAt) != null ? _c : (_b = run.bracket) == null ? void 0 : _b.finalizedAt) != null ? _d : null);
+    if (openedAtMs === null || finalizedAtMs === null || finalizedAtMs < openedAtMs) {
+      return null;
+    }
+    return Math.round((finalizedAtMs - openedAtMs) / 1e3);
+  }).filter((value) => typeof value === "number" && Number.isFinite(value));
+  const completedRuns = context.runs.filter((run) => Boolean(run.finalizedAt));
+  context.runs.forEach((run) => {
+    var _a;
+    if (isWithinRange(run.createdAt, context.filters)) {
+      const dayKey = toDayKey(run.createdAt);
+      createdByDay.set(dayKey, ((_a = createdByDay.get(dayKey)) != null ? _a : 0) + 1);
+    }
+  });
+  context.tournamentMatches.forEach((match) => {
+    var _a;
+    const round = readNumberField7(match, ["round"]);
+    const derivedRound = typeof round === "number" ? Math.max(1, Math.floor(round)) : (() => {
+      var _a2, _b, _c;
+      const run = context.runs.find((candidate) => candidate.runId === match.tournamentRunId);
+      const entry = (_b = (_a2 = run == null ? void 0 : run.bracket) == null ? void 0 : _a2.entries.find((candidate) => candidate.matchId === match.matchId)) != null ? _b : null;
+      return (_c = entry == null ? void 0 : entry.round) != null ? _c : null;
+    })();
+    if (derivedRound !== null && match.loserUserId) {
+      dropoutByRound.set(derivedRound, ((_a = dropoutByRound.get(derivedRound)) != null ? _a : 0) + 1);
+    }
+  });
+  const completionDenominator = context.runs.filter((run) => isWithinRange(run.createdAt, context.filters)).length;
+  const completionNumerator = context.runs.filter((run) => isWithinRange(run.finalizedAt, context.filters)).length;
+  return {
+    createdOverTime: {
+      availability: createdByDay.size > 0 ? available(createdByDay.size) : noData("No tournaments were created in this date range."),
+      points: buildCountPoints(createdByDay, context.filters)
+    },
+    participationCounts: {
+      availability: entrantCounts.length > 0 ? available(entrantCounts.length) : noData("No tournament participation data is available for the selected filters."),
+      buckets: buildBucketDistribution(entrantCounts, PARTICIPATION_BUCKETS)
+    },
+    completionRate: createMetric(
+      toPercentage(completionNumerator, completionDenominator),
+      completionDenominator === 0 ? noData("No tournaments were created in this date range.") : completionDenominator < 3 ? notEnoughData("Not enough tournaments yet for a stable completion-rate signal.", completionDenominator) : available(completionDenominator),
+      {
+        numerator: completionNumerator,
+        denominator: completionDenominator
+      }
+    ),
+    dropoutByRound: {
+      availability: dropoutByRound.size > 0 ? available(Array.from(dropoutByRound.values()).reduce((sum, count) => sum + count, 0)) : noData("No tournament match results are available to show round dropouts."),
+      buckets: Array.from(dropoutByRound.entries()).sort((left, right) => left[0] - right[0]).map(([round, count]) => ({
+        round,
+        label: `Round ${round}`,
+        count
+      }))
+    },
+    durationDistribution: {
+      availability: durationValues.length === 0 ? noData("No finalized tournaments with duration data are available.") : durationValues.length < 3 ? notEnoughData("Not enough finalized tournaments yet for a stable duration distribution.", durationValues.length) : available(durationValues.length),
+      buckets: buildBucketDistribution(durationValues, TOURNAMENT_DURATION_BUCKETS)
+    },
+    recentTournaments: {
+      availability: recentTournamentRows.length > 0 ? available(recentTournamentRows.length) : noData("No tournaments match the selected filters."),
+      rows: recentTournamentRows.map((run) => {
+        var _a, _b, _c, _d, _e, _f, _g;
+        const totalMatches = (_b = (_a = run.bracket) == null ? void 0 : _a.entries.length) != null ? _b : 0;
+        const completedMatches = (_d = (_c = run.bracket) == null ? void 0 : _c.entries.filter((entry) => entry.status === "completed").length) != null ? _d : 0;
+        return {
+          id: run.runId,
+          userId: null,
+          label: run.title,
+          secondaryLabel: getRunGameMode(run),
+          metrics: {
+            status: run.lifecycle,
+            entrants: run.registrations.length,
+            totalMatches,
+            completedMatches,
+            completionRate: toPercentage(completedMatches, Math.max(1, totalMatches)),
+            createdAt: run.createdAt,
+            openedAt: run.openedAt,
+            finalizedAt: (_g = (_f = run.finalizedAt) != null ? _f : (_e = run.bracket) == null ? void 0 : _e.finalizedAt) != null ? _g : null
+          }
+        };
+      })
+    }
+  };
+};
+var buildProgressionData = (context) => {
+  const eloRows = context.leaderboardRows.filter((row) => matchesEloFilter(row.eloRating, context.filters));
+  const eloDistribution = buildBucketDistribution(
+    eloRows.map((row) => row.eloRating),
+    ELO_BUCKETS
+  );
+  const rankCounts = /* @__PURE__ */ new Map();
+  const ratingMovementByDay = /* @__PURE__ */ new Map();
+  const ratedMatchesByDay = /* @__PURE__ */ new Map();
+  const xpAwardedByDay = /* @__PURE__ */ new Map();
+  const recentRankUps = context.xpAwardEvents.filter((event) => event.rankChanged && isWithinRange(event.occurredAt, context.filters)).sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)).slice(0, context.filters.limit);
+  context.usersById.forEach((user) => {
+    var _a;
+    if (!matchesEloFilter(user.eloRating, context.filters)) {
+      return;
+    }
+    if (user.currentRankTitle) {
+      rankCounts.set(user.currentRankTitle, ((_a = rankCounts.get(user.currentRankTitle)) != null ? _a : 0) + 1);
+    }
+  });
+  context.eloHistory.forEach((record) => {
+    var _a, _b, _c, _d;
+    if (!isWithinRange(record.processedAt, context.filters)) {
+      return;
+    }
+    const dayKey = toDayKey(record.processedAt);
+    const winnerDelta = Math.abs((_b = (_a = record.playerResults.find((player) => player.userId === record.winnerUserId)) == null ? void 0 : _a.delta) != null ? _b : 0);
+    if (!ratingMovementByDay.has(dayKey)) {
+      ratingMovementByDay.set(dayKey, []);
+    }
+    (_c = ratingMovementByDay.get(dayKey)) == null ? void 0 : _c.push(winnerDelta);
+    ratedMatchesByDay.set(dayKey, ((_d = ratedMatchesByDay.get(dayKey)) != null ? _d : 0) + 1);
+  });
+  context.xpAwardEvents.forEach((event) => {
+    var _a;
+    if (!isWithinRange(event.occurredAt, context.filters)) {
+      return;
+    }
+    const dayKey = toDayKey(event.occurredAt);
+    xpAwardedByDay.set(dayKey, ((_a = xpAwardedByDay.get(dayKey)) != null ? _a : 0) + event.awardedXp);
+  });
+  const ratingMovementPoints = buildDayKeys(context.filters).map((dayKey) => {
+    var _a, _b;
+    return {
+      date: dayKey,
+      medianAbsoluteDelta: median((_a = ratingMovementByDay.get(dayKey)) != null ? _a : []),
+      ratedMatches: (_b = ratedMatchesByDay.get(dayKey)) != null ? _b : 0
+    };
+  });
+  return {
+    eloDistribution: {
+      availability: eloRows.length > 0 ? available(eloRows.length) : noData("No Elo leaderboard records are available for the selected filters."),
+      buckets: eloDistribution
+    },
+    rankDistribution: {
+      availability: rankCounts.size > 0 ? available(rankCounts.size) : noData("No progression profiles are available for the selected filters."),
+      buckets: PROGRESSION_RANKS.map((rank) => {
+        var _a;
+        return {
+          key: rank.title,
+          label: rank.title,
+          count: (_a = rankCounts.get(rank.title)) != null ? _a : 0,
+          min: rank.threshold,
+          max: null
+        };
+      })
+    },
+    ratingMovement: {
+      availability: context.eloHistorySupported ? ratingMovementPoints.some((point) => point.ratedMatches > 0) ? available(ratingMovementPoints.reduce((sum, point) => sum + point.ratedMatches, 0)) : noData("No rated match history is available in this date range.") : trackingMissing("Ranked match history is not listable on this runtime."),
+      points: ratingMovementPoints
+    },
+    xpAwardedOverTime: {
+      availability: xpAwardedByDay.size > 0 ? available(Array.from(xpAwardedByDay.values()).reduce((sum, value) => sum + value, 0)) : noData("No XP award events are available in this date range."),
+      points: buildCountPoints(xpAwardedByDay, context.filters)
+    },
+    recentRankUps: {
+      availability: recentRankUps.length > 0 ? available(recentRankUps.length) : noData("No rank-up events were recorded in this date range."),
+      rows: recentRankUps.map((event) => {
+        var _a, _b;
+        const user = (_a = context.usersById.get(event.userId)) != null ? _a : null;
+        return {
+          id: event.eventId,
+          userId: event.userId,
+          label: (_b = user == null ? void 0 : user.username) != null ? _b : event.userId,
+          secondaryLabel: event.newRank,
+          metrics: {
+            awardedXp: event.awardedXp,
+            source: event.source,
+            previousRank: event.previousRank,
+            newRank: event.newRank,
+            occurredAt: event.occurredAt
+          }
+        };
+      })
+    }
+  };
+};
+var buildRealtimeData = (context) => {
+  const onlineSnapshot = getOnlinePresenceSnapshot();
+  const activeTrackedMatches = listActiveTrackedMatches();
+  const recentEvents = [...context.trackedMatchStarts, ...context.trackedMatchEnds, ...context.xpAwardEvents].sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)).slice(0, context.filters.limit);
+  const recentDisconnects = context.trackedMatchEnds.filter((event) => event.reason !== "completed").sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)).slice(0, context.filters.limit);
+  const activeTournamentsCount = context.runs.filter(
+    (run) => run.lifecycle === "open" || run.lifecycle === "closed" && !run.finalizedAt
+  ).length;
+  const lastEventAt = recentEvents.length > 0 ? recentEvents[0].occurredAt : null;
+  return {
+    onlinePlayers: createMetric(onlineSnapshot.onlineCount, available(onlineSnapshot.onlineCount)),
+    activeMatches: createMetric(activeTrackedMatches.length, available(activeTrackedMatches.length)),
+    activeTournaments: createMetric(activeTournamentsCount, available(activeTournamentsCount)),
+    queueSize: createMetric(null, trackingMissing("Queue-size tracking is not implemented yet.")),
+    queueWaitSeconds: createMetric(null, trackingMissing("Queue wait-time tracking is not implemented yet.")),
+    activeMatchRows: {
+      availability: activeTrackedMatches.length > 0 ? available(activeTrackedMatches.length) : noData("No active tracked matches are live right now."),
+      rows: activeTrackedMatches
+    },
+    recentEvents: {
+      availability: recentEvents.length > 0 ? available(recentEvents.length) : noData("No recent analytics events have been recorded yet."),
+      rows: recentEvents.map((event) => {
+        if (event.type === "match_start") {
+          return {
+            id: event.eventId,
+            type: event.type,
+            occurredAt: event.occurredAt,
+            label: `${event.modeId} match started`,
+            detail: event.players.map((player) => {
+              var _a;
+              return (_a = player.username) != null ? _a : player.userId;
+            }).join(" vs "),
+            status: "neutral"
+          };
+        }
+        if (event.type === "match_end") {
+          return {
+            id: event.eventId,
+            type: event.type,
+            occurredAt: event.occurredAt,
+            label: event.reason === "completed" ? "Match completed" : "Match ended early",
+            detail: `${event.modeId} \xB7 ${event.reason}`,
+            status: event.reason === "completed" ? "success" : "warning"
+          };
+        }
+        return {
+          id: event.eventId,
+          type: event.type,
+          occurredAt: event.occurredAt,
+          label: "XP awarded",
+          detail: `${event.awardedXp} XP \xB7 ${event.newRank}`,
+          status: event.rankChanged ? "success" : "neutral"
+        };
+      })
+    },
+    recentDisconnects: {
+      availability: recentDisconnects.length > 0 ? available(recentDisconnects.length) : noData("No recent disconnect or inactivity forfeits have been recorded."),
+      rows: recentDisconnects.map((event) => ({
+        id: event.eventId,
+        type: event.reason,
+        occurredAt: event.occurredAt,
+        label: event.reason === "forfeit_disconnect" ? "Disconnect forfeit" : "Inactivity forfeit",
+        detail: `${event.modeId} \xB7 ${event.players.map((player) => {
+          var _a;
+          return (_a = player.username) != null ? _a : player.userId;
+        }).join(" vs ")}`,
+        status: "danger"
+      }))
+    },
+    freshness: {
+      availability: available(),
+      lastEventAt,
+      generatedAt: context.generatedAt
+    }
+  };
+};
+var buildResponse = (context, data, availability, extraNotes = []) => ({
+  success: true,
+  filters: toResponseFilters(context.filters),
+  generatedAt: context.generatedAt,
+  dataAvailability: toResponseAvailability(
+    mergeAvailability(
+      availability,
+      extraNotes.length > 0 ? partial(extraNotes) : available(),
+      context.runtimeNotes.length > 0 ? partial(context.runtimeNotes) : available()
+    )
+  ),
+  data
+});
+var getAnalyticsSummary = (nk, logger2, payload) => {
+  const filters = parseAnalyticsFilters(payload);
+  const context = createAnalyticsContext(nk, logger2, filters);
+  const data = buildSummaryData(context);
+  const availability = mergeAvailability(
+    data.dau.availability,
+    data.wau.availability,
+    data.matchesPlayed.availability,
+    data.completionRate.availability,
+    data.medianMatchDurationSeconds.availability,
+    data.disconnectRate.availability
+  );
+  return buildResponse(context, data, availability);
+};
+var getAnalyticsOverview = (nk, logger2, payload) => {
+  const filters = parseAnalyticsFilters(payload);
+  const context = createAnalyticsContext(nk, logger2, filters);
+  const data = buildOverviewData(context);
+  const availability = mergeAvailability(
+    data.dauTrend.availability,
+    data.wauTrend.availability,
+    data.matchesPerDay.availability,
+    data.completionRateTrend.availability,
+    data.newVsReturningPlayers.availability
+  );
+  return buildResponse(context, data, availability);
+};
+var getAnalyticsPlayers = (nk, logger2, payload) => {
+  const filters = parseAnalyticsFilters(payload);
+  const context = createAnalyticsContext(nk, logger2, filters);
+  const data = buildPlayersData(context);
+  const availability = mergeAvailability(
+    data.uniquePlayers.availability,
+    data.newPlayersOverTime.availability,
+    data.returningPlayersOverTime.availability,
+    data.activityBuckets.availability,
+    data.topPlayers.availability,
+    data.retention.availability
+  );
+  return buildResponse(context, data, availability);
+};
+var getAnalyticsGameplay = (nk, logger2, payload) => {
+  const filters = parseAnalyticsFilters(payload);
+  const context = createAnalyticsContext(nk, logger2, filters);
+  const data = buildGameplayData(context);
+  const availability = mergeAvailability(
+    data.matchesPerDay.availability,
+    data.startedVsCompleted.availability,
+    data.completionFunnel.availability,
+    data.durationDistribution.availability,
+    data.winRateByMode.availability,
+    data.winRateByTurnOrder.availability,
+    data.disconnectRate.availability,
+    data.captureRate.availability
+  );
+  return buildResponse(context, data, availability);
+};
+var getAnalyticsTournaments = (nk, logger2, payload) => {
+  const filters = parseAnalyticsFilters(payload);
+  const context = createAnalyticsContext(nk, logger2, filters);
+  const data = buildTournamentsData(context);
+  const availability = mergeAvailability(
+    data.createdOverTime.availability,
+    data.participationCounts.availability,
+    data.completionRate.availability,
+    data.dropoutByRound.availability,
+    data.durationDistribution.availability,
+    data.recentTournaments.availability
+  );
+  return buildResponse(context, data, availability);
+};
+var getAnalyticsProgression = (nk, logger2, payload) => {
+  const filters = parseAnalyticsFilters(payload);
+  const context = createAnalyticsContext(nk, logger2, filters);
+  const data = buildProgressionData(context);
+  const availability = mergeAvailability(
+    data.eloDistribution.availability,
+    data.rankDistribution.availability,
+    data.ratingMovement.availability,
+    data.xpAwardedOverTime.availability,
+    data.recentRankUps.availability
+  );
+  return buildResponse(context, data, availability);
+};
+var getAnalyticsRealtime = (nk, logger2, payload) => {
+  const filters = parseAnalyticsFilters(payload);
+  const context = createAnalyticsContext(nk, logger2, filters);
+  const data = buildRealtimeData(context);
+  const availability = mergeAvailability(
+    data.onlinePlayers.availability,
+    data.activeMatches.availability,
+    data.activeTournaments.availability,
+    data.queueSize.availability,
+    data.queueWaitSeconds.availability,
+    data.activeMatchRows.availability,
+    data.recentEvents.availability,
+    data.recentDisconnects.availability,
+    data.freshness.availability
+  );
+  return buildResponse(context, data, availability);
+};
+
+// backend/modules/analytics/index.ts
+var RPC_ADMIN_GET_ANALYTICS_SUMMARY = "rpc_admin_get_analytics_summary";
+var RPC_ADMIN_GET_ANALYTICS_OVERVIEW = "rpc_admin_get_analytics_overview";
+var RPC_ADMIN_GET_ANALYTICS_PLAYERS = "rpc_admin_get_analytics_players";
+var RPC_ADMIN_GET_ANALYTICS_GAMEPLAY = "rpc_admin_get_analytics_gameplay";
+var RPC_ADMIN_GET_ANALYTICS_TOURNAMENTS = "rpc_admin_get_analytics_tournaments";
+var RPC_ADMIN_GET_ANALYTICS_PROGRESSION = "rpc_admin_get_analytics_progression";
+var RPC_ADMIN_GET_ANALYTICS_REALTIME = "rpc_admin_get_analytics_realtime";
+var withAdminAccess = (handler) => (ctx, logger2, nk, payload) => {
+  assertAdmin(ctx, "viewer", nk);
+  return JSON.stringify(handler(nk, logger2, payload));
+};
+var rpcAdminGetAnalyticsSummary = withAdminAccess(getAnalyticsSummary);
+var rpcAdminGetAnalyticsOverview = withAdminAccess(getAnalyticsOverview);
+var rpcAdminGetAnalyticsPlayers = withAdminAccess(getAnalyticsPlayers);
+var rpcAdminGetAnalyticsGameplay = withAdminAccess(getAnalyticsGameplay);
+var rpcAdminGetAnalyticsTournaments = withAdminAccess(getAnalyticsTournaments);
+var rpcAdminGetAnalyticsProgression = withAdminAccess(getAnalyticsProgression);
+var rpcAdminGetAnalyticsRealtime = withAdminAccess(getAnalyticsRealtime);
+var registerAnalyticsRpcs = (initializer) => {
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_SUMMARY, rpcAdminGetAnalyticsSummary);
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_OVERVIEW, rpcAdminGetAnalyticsOverview);
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_PLAYERS, rpcAdminGetAnalyticsPlayers);
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_GAMEPLAY, rpcAdminGetAnalyticsGameplay);
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_TOURNAMENTS, rpcAdminGetAnalyticsTournaments);
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_PROGRESSION, rpcAdminGetAnalyticsProgression);
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_REALTIME, rpcAdminGetAnalyticsRealtime);
+};
+
 // backend/modules/index.ts
 var TICK_RATE = 10;
 var MAX_PLAYERS = 2;
 var MAX_SNAPSHOT_HISTORY_ENTRIES = 12;
-var ONLINE_TTL_MS = 3e4;
 var ONLINE_TURN_DURATION_MS = 1e4;
 var ONLINE_AFK_FORFEIT_MS = 3e4;
 var ONLINE_DISCONNECT_GRACE_MS = 15e3;
 var ONLINE_RECONNECT_RESUME_MS = 5e3;
 var REMATCH_WINDOW_MS = 1e4;
 var BOT_TURN_DELAY_MS = 850;
-var SYSTEM_USER_ID4 = "00000000-0000-0000-0000-000000000000";
+var SYSTEM_USER_ID5 = "00000000-0000-0000-0000-000000000000";
 var RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 var RPC_GET_PROGRESSION_NAME = RPC_GET_PROGRESSION;
 var RPC_GET_USER_XP_PROGRESS_NAME = RPC_GET_USER_XP_PROGRESS;
@@ -9308,10 +11711,9 @@ var MATCH_HANDLER = "authoritative_match";
 var PRIVATE_MATCH_CODE_COLLECTION = "private_match_codes";
 var PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS = 12;
 var PRIVATE_MATCH_CODE_WRITE_ATTEMPTS = 4;
-var onlinePresenceByUser = /* @__PURE__ */ new Map();
-var asRecord4 = (value) => typeof value === "object" && value !== null ? value : null;
-var readStringField9 = (value, keys) => {
-  const record = asRecord4(value);
+var asRecord7 = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField12 = (value, keys) => {
+  const record = asRecord7(value);
   if (!record) {
     return null;
   }
@@ -9323,8 +11725,8 @@ var readStringField9 = (value, keys) => {
   }
   return null;
 };
-var readNumberField5 = (value, keys) => {
-  const record = asRecord4(value);
+var readNumberField8 = (value, keys) => {
+  const record = asRecord7(value);
   if (!record) {
     return null;
   }
@@ -9354,7 +11756,7 @@ var decodeMessageData = (data, nk) => {
   if (typeof data === "string") {
     return data;
   }
-  const binaryToString = (_a = asRecord4(nk)) == null ? void 0 : _a.binaryToString;
+  const binaryToString = (_a = asRecord7(nk)) == null ? void 0 : _a.binaryToString;
   if (typeof binaryToString === "function") {
     try {
       return String(binaryToString(data));
@@ -9372,9 +11774,9 @@ var decodeMessageData = (data, nk) => {
   }
   return String(data != null ? data : "");
 };
-var getPresenceUserId = (presence) => readStringField9(presence, ["userId", "user_id"]);
-var getPresenceSessionId = (presence) => readStringField9(presence, ["sessionId", "session_id"]);
-var getSenderUserId = (sender) => readStringField9(sender, ["userId", "user_id"]);
+var getPresenceUserId = (presence) => readStringField12(presence, ["userId", "user_id"]);
+var getPresenceSessionId = (presence) => readStringField12(presence, ["sessionId", "session_id"]);
+var getSenderUserId = (sender) => readStringField12(sender, ["userId", "user_id"]);
 var getPresenceKey = (presence) => {
   const sessionId = getPresenceSessionId(presence);
   if (sessionId) {
@@ -9385,10 +11787,10 @@ var getPresenceKey = (presence) => {
 };
 var getMatchId = (ctx) => {
   var _a;
-  return (_a = readStringField9(ctx, ["matchId", "match_id"])) != null ? _a : "";
+  return (_a = readStringField12(ctx, ["matchId", "match_id"])) != null ? _a : "";
 };
-var getMessageOpCode = (message) => readNumberField5(message, ["opCode", "op_code"]);
-var getContextUserId2 = (ctx) => readStringField9(ctx, ["userId", "user_id"]);
+var getMessageOpCode = (message) => readNumberField8(message, ["opCode", "op_code"]);
+var getContextUserId2 = (ctx) => readStringField12(ctx, ["userId", "user_id"]);
 var resolveMatchModeId = (value) => isMatchModeId(value) ? value : "standard";
 var resolveConfiguredRewardXp = (value) => {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -9412,18 +11814,6 @@ var buildMatchClassification = (params, modeId) => {
     experimental
   };
 };
-var pruneOnlinePresence = (nowMs) => {
-  onlinePresenceByUser.forEach((lastSeenMs, userId) => {
-    if (nowMs - lastSeenMs > ONLINE_TTL_MS) {
-      onlinePresenceByUser.delete(userId);
-    }
-  });
-};
-var encodeOnlinePresencePayload = (nowMs) => JSON.stringify({
-  onlineCount: onlinePresenceByUser.size,
-  onlineTtlMs: ONLINE_TTL_MS,
-  serverTimeMs: nowMs
-});
 var createPlayerTelemetry = () => ({
   playerMoveCount: 0,
   playerTurnCount: 0,
@@ -9585,21 +11975,21 @@ var parseRpcPayload = (payload) => {
     return {};
   }
   const data = JSON.parse(payload);
-  return (_a = asRecord4(data)) != null ? _a : {};
+  return (_a = asRecord7(data)) != null ? _a : {};
 };
 var normalizePrivateMatchCodeRecord = (value) => {
   var _a;
-  const record = asRecord4(value);
+  const record = asRecord7(value);
   if (!record) {
     return null;
   }
-  const code = normalizePrivateMatchCodeInput((_a = readStringField9(record, ["code"])) != null ? _a : "");
-  const matchId = readStringField9(record, ["matchId", "match_id"]);
+  const code = normalizePrivateMatchCodeInput((_a = readStringField12(record, ["code"])) != null ? _a : "");
+  const matchId = readStringField12(record, ["matchId", "match_id"]);
   const modeId = record.modeId;
-  const creatorUserId = readStringField9(record, ["creatorUserId", "creator_user_id"]);
-  const joinedUserId = readStringField9(record, ["joinedUserId", "joined_user_id"]);
-  const createdAt = readStringField9(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField9(record, ["updatedAt", "updated_at"]);
+  const creatorUserId = readStringField12(record, ["creatorUserId", "creator_user_id"]);
+  const joinedUserId = readStringField12(record, ["joinedUserId", "joined_user_id"]);
+  const createdAt = readStringField12(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField12(record, ["updatedAt", "updated_at"]);
   if (!isPrivateMatchCode(code) || !matchId || !isMatchModeId(modeId) || !creatorUserId || !createdAt || !updatedAt) {
     return null;
   }
@@ -9625,10 +12015,10 @@ var readPrivateMatchCodeObject = (nk, code) => {
     {
       collection: PRIVATE_MATCH_CODE_COLLECTION,
       key: normalizedCode,
-      userId: SYSTEM_USER_ID4
+      userId: SYSTEM_USER_ID5
     }
   ]);
-  const object = findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode, SYSTEM_USER_ID4);
+  const object = findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode, SYSTEM_USER_ID5);
   return {
     object,
     record: normalizePrivateMatchCodeRecord(object == null ? void 0 : object.value)
@@ -9641,8 +12031,8 @@ var writePrivateMatchCodeRecord = (nk, record, version) => {
       key: record.code,
       value: record,
       version,
-      permissionRead: STORAGE_PERMISSION_NONE,
-      permissionWrite: STORAGE_PERMISSION_NONE
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
     }
   ]);
 };
@@ -10151,7 +12541,7 @@ var syncRematchState = (logger2, nk, dispatcher, state, matchId, nowMs) => {
   }
 };
 var finalizeCompletedMatch = (logger2, nk, dispatcher, state, matchId) => {
-  var _a, _b;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
   if (!state.gameState.winner || state.resultRecorded) {
     return state.resultRecorded;
   }
@@ -10172,7 +12562,34 @@ var finalizeCompletedMatch = (logger2, nk, dispatcher, state, matchId) => {
     challengeProcessingResults
   });
   state.resultRecorded = true;
-  if (state.tournamentContext && tournamentProcessingResult && !tournamentProcessingResult.finalizationResult && Boolean((_b = (_a = tournamentProcessingResult.updatedRun) == null ? void 0 : _a.bracket) == null ? void 0 : _b.finalizedAt)) {
+  {
+    const endedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const durationSeconds = state.matchStartedAtMs !== null ? Math.max(0, Math.round((Date.now() - state.matchStartedAtMs) / 1e3)) : null;
+    recordMatchEndAnalyticsEvent(nk, logger2, {
+      matchId,
+      startedAt: state.matchStartedAtMs !== null ? new Date(state.matchStartedAtMs).toISOString() : null,
+      endedAt,
+      durationSeconds,
+      modeId: state.modeId,
+      reason: (_b = (_a = state.matchEnd) == null ? void 0 : _a.reason) != null ? _b : "completed",
+      classification: {
+        ranked: state.classification.ranked,
+        casual: state.classification.casual,
+        private: state.classification.private,
+        bot: state.classification.bot,
+        experimental: state.classification.experimental,
+        tournament: Boolean(state.tournamentContext)
+      },
+      tournamentRunId: (_d = (_c = state.tournamentContext) == null ? void 0 : _c.runId) != null ? _d : null,
+      tournamentId: (_f = (_e = state.tournamentContext) == null ? void 0 : _e.tournamentId) != null ? _f : null,
+      winnerUserId: (_h = (_g = state.matchEnd) == null ? void 0 : _g.winnerUserId) != null ? _h : null,
+      loserUserId: (_j = (_i = state.matchEnd) == null ? void 0 : _i.loserUserId) != null ? _j : null,
+      totalMoves: state.telemetry.totalMoves,
+      totalTurns: state.telemetry.totalTurns,
+      players: buildAnalyticsMatchPlayers(state)
+    });
+  }
+  if (state.tournamentContext && tournamentProcessingResult && !tournamentProcessingResult.finalizationResult && Boolean((_l = (_k = tournamentProcessingResult.updatedRun) == null ? void 0 : _k.bracket) == null ? void 0 : _l.finalizedAt)) {
     maybeFinalizeRecordedTournamentRun(logger2, nk, state, matchId, "result_recorded");
   }
   return true;
@@ -10210,6 +12627,7 @@ var markMatchStartedIfReady = (state, nowMs) => {
     return false;
   }
   state.started = true;
+  state.matchStartedAtMs = nowMs;
   resetTurnTimerForCurrentState(state, nowMs, "match_started");
   return true;
 };
@@ -10268,7 +12686,23 @@ var buildPlayerMatchSummary = (state, matchId, playerUserId, playerColor) => {
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   };
 };
-var getPresenceUsername = (presence) => readStringField9(presence, ["username", "displayName", "display_name", "name"]);
+var getPresenceUsername = (presence) => readStringField12(presence, ["username", "displayName", "display_name", "name"]);
+var buildAnalyticsMatchPlayers = (state) => Object.entries(state.assignments).map(([userId, color]) => {
+  var _a, _b;
+  const presence = getPrimaryUserPresence(state, userId);
+  const playerTelemetry = state.telemetry.players[color];
+  return {
+    userId,
+    username: (_b = (_a = getPresenceUsername(presence)) != null ? _a : state.playerTitles[userId]) != null ? _b : null,
+    color,
+    didWin: state.gameState.winner ? state.gameState.winner === color : null,
+    capturesMade: playerTelemetry.capturesMade,
+    capturesSuffered: playerTelemetry.capturesSuffered,
+    playerMoveCount: playerTelemetry.playerMoveCount,
+    finishedCount: state.gameState[color].finishedCount,
+    isBot: isConfiguredBotUser(state, userId)
+  };
+});
 var buildTournamentMatchCompletion = (state, matchId) => {
   var _a, _b, _c, _d;
   if (!state.tournamentContext) {
@@ -10376,6 +12810,7 @@ function InitModule(_ctx, logger2, nk, initializer) {
   initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT_STANDINGS, rpcGetPublicTournamentStandings);
   initializer.registerRpc(RPC_JOIN_PUBLIC_TOURNAMENT, rpcJoinPublicTournament);
   initializer.registerRpc(RPC_LAUNCH_TOURNAMENT_MATCH, rpcLaunchTournamentMatch);
+  registerAnalyticsRpcs(initializer);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,
@@ -10409,19 +12844,14 @@ function rpcPresenceHeartbeat(ctx, _logger, _nk, _payload) {
   if (!userId) {
     throw new Error("Authentication required.");
   }
-  const nowMs = Date.now();
-  onlinePresenceByUser.set(userId, nowMs);
-  pruneOnlinePresence(nowMs);
-  return encodeOnlinePresencePayload(nowMs);
+  return JSON.stringify(trackPresenceHeartbeat(userId));
 }
 function rpcPresenceCount(ctx, _logger, _nk, _payload) {
   const userId = getContextUserId2(ctx);
   if (!userId) {
     throw new Error("Authentication required.");
   }
-  const nowMs = Date.now();
-  pruneOnlinePresence(nowMs);
-  return encodeOnlinePresencePayload(nowMs);
+  return JSON.stringify(getOnlinePresenceSnapshot());
 }
 function rpcAuthLinkCustom(ctx, logger2, nk, payload) {
   if (!ctx.userId) {
@@ -10545,14 +12975,14 @@ function matchInit(_ctx, _logger, nk, params) {
   const privateCode = typeof params.privateCode === "string" ? normalizePrivateMatchCodeInput(params.privateCode) : "";
   const privateCreatorUserId = typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
   const privateGuestUserId = typeof params.privateGuestUserId === "string" ? params.privateGuestUserId : null;
-  const botUserId = readStringField9(params, ["botUserId", "bot_user_id"]);
-  const botDifficultyValue = readStringField9(params, ["botDifficulty", "bot_difficulty"]);
+  const botUserId = readStringField12(params, ["botUserId", "bot_user_id"]);
+  const botDifficultyValue = readStringField12(params, ["botDifficulty", "bot_difficulty"]);
   const botDifficulty = botDifficultyValue && isBotDifficulty(botDifficultyValue) ? botDifficultyValue : DEFAULT_BOT_DIFFICULTY;
-  const botDisplayName = (_a = readStringField9(params, ["botDisplayName", "bot_display_name"])) != null ? _a : `${botDifficulty.slice(0, 1).toUpperCase()}${botDifficulty.slice(1)} Bot`;
+  const botDisplayName = (_a = readStringField12(params, ["botDisplayName", "bot_display_name"])) != null ? _a : `${botDifficulty.slice(0, 1).toUpperCase()}${botDifficulty.slice(1)} Bot`;
   const winRewardSource = params.winRewardSource === "private_pvp_win" ? "private_pvp_win" : "pvp_win";
   const allowsChallengeRewards = params.allowsChallengeRewards !== false;
   const tournamentMatchWinXp = resolveConfiguredRewardXp(
-    readNumberField5(params, ["tournamentMatchWinXp", "tournament_match_win_xp"])
+    readNumberField8(params, ["tournamentMatchWinXp", "tournament_match_win_xp"])
   );
   const assignments = {};
   if (playerIds[0]) {
@@ -10606,6 +13036,7 @@ function matchInit(_ctx, _logger, nk, params) {
     rollDisplay: createMatchRollDisplayState(),
     telemetry: createMatchTelemetry(),
     timer: createMatchTimerState(),
+    matchStartedAtMs: null,
     afk: {
       light: createPlayerAfkState(),
       dark: createPlayerAfkState()
@@ -10652,6 +13083,7 @@ function matchJoinAttempt(_ctx, logger2, nk, _dispatcher, _tick, state, presence
   return { state, accept: true };
 }
 function matchJoin(ctx, logger2, nk, dispatcher, _tick, state, presences) {
+  var _a, _b, _c, _d;
   const nowMs = Date.now();
   let clearedDisconnectGrace = false;
   presences.forEach((presence) => {
@@ -10669,8 +13101,27 @@ function matchJoin(ctx, logger2, nk, dispatcher, _tick, state, presences) {
   if (state.started && clearedDisconnectGrace && !hasActiveDisconnectGrace(state)) {
     resumeTurnTimerAfterReconnect(state, nowMs);
   }
-  markMatchStartedIfReady(state, nowMs);
-  broadcastSnapshot(dispatcher, state, getMatchId(ctx));
+  const matchId = getMatchId(ctx);
+  const didStartMatch = markMatchStartedIfReady(state, nowMs);
+  if (didStartMatch && state.matchStartedAtMs !== null) {
+    recordMatchStartAnalyticsEvent(nk, logger2, {
+      matchId,
+      startedAt: new Date(state.matchStartedAtMs).toISOString(),
+      modeId: state.modeId,
+      classification: {
+        ranked: state.classification.ranked,
+        casual: state.classification.casual,
+        private: state.classification.private,
+        bot: state.classification.bot,
+        experimental: state.classification.experimental,
+        tournament: Boolean(state.tournamentContext)
+      },
+      tournamentRunId: (_b = (_a = state.tournamentContext) == null ? void 0 : _a.runId) != null ? _b : null,
+      tournamentId: (_d = (_c = state.tournamentContext) == null ? void 0 : _c.tournamentId) != null ? _d : null,
+      players: buildAnalyticsMatchPlayers(state)
+    });
+  }
+  broadcastSnapshot(dispatcher, state, matchId);
   return { state };
 }
 function matchLeave(ctx, logger2, nk, dispatcher, _tick, state, presences) {
@@ -10719,10 +13170,29 @@ var logMatchLoopError = (logger2, matchId, state, context, error) => {
   );
 };
 function matchLoop(ctx, logger2, nk, dispatcher, _tick, state, messages) {
+  var _a, _b, _c, _d;
   const matchId = getMatchId(ctx);
   const nowMs = Date.now();
   try {
-    markMatchStartedIfReady(state, nowMs);
+    const didStartMatch = markMatchStartedIfReady(state, nowMs);
+    if (didStartMatch && state.matchStartedAtMs !== null) {
+      recordMatchStartAnalyticsEvent(nk, logger2, {
+        matchId,
+        startedAt: new Date(state.matchStartedAtMs).toISOString(),
+        modeId: state.modeId,
+        classification: {
+          ranked: state.classification.ranked,
+          casual: state.classification.casual,
+          private: state.classification.private,
+          bot: state.classification.bot,
+          experimental: state.classification.experimental,
+          tournament: Boolean(state.tournamentContext)
+        },
+        tournamentRunId: (_b = (_a = state.tournamentContext) == null ? void 0 : _a.runId) != null ? _b : null,
+        tournamentId: (_d = (_c = state.tournamentContext) == null ? void 0 : _c.tournamentId) != null ? _d : null,
+        players: buildAnalyticsMatchPlayers(state)
+      });
+    }
     ensureTurnTimerForCurrentState(state, nowMs);
   } catch (error) {
     logMatchLoopError(logger2, matchId, state, "timer_sync", error);
@@ -10864,23 +13334,25 @@ function matchLoop(ctx, logger2, nk, dispatcher, _tick, state, messages) {
   return { state };
 }
 function matchTerminate(ctx, logger2, nk, dispatcher, _tick, state, _graceSeconds) {
+  const matchId = getMatchId(ctx);
   if (state.gameState.winner && !state.resultRecorded) {
     try {
-      finalizeCompletedMatch(logger2, nk, dispatcher, state, getMatchId(ctx));
+      finalizeCompletedMatch(logger2, nk, dispatcher, state, matchId);
     } catch (error) {
-      logMatchLoopError(logger2, getMatchId(ctx), state, "terminate_result_processing", error);
+      logMatchLoopError(logger2, matchId, state, "terminate_result_processing", error);
     }
   }
   if (state.gameState.winner && state.resultRecorded) {
     try {
-      syncRematchState(logger2, nk, dispatcher, state, getMatchId(ctx), Date.now());
+      syncRematchState(logger2, nk, dispatcher, state, matchId, Date.now());
     } catch (error) {
-      logMatchLoopError(logger2, getMatchId(ctx), state, "terminate_rematch_processing", error);
+      logMatchLoopError(logger2, matchId, state, "terminate_rematch_processing", error);
     }
   }
   if (state.gameState.winner && state.resultRecorded) {
-    maybeFinalizeRecordedTournamentRun(logger2, nk, state, getMatchId(ctx), "terminate");
+    maybeFinalizeRecordedTournamentRun(logger2, nk, state, matchId, "terminate");
   }
+  unregisterActiveMatch(matchId);
   return { state };
 }
 function matchSignal(ctx, _logger, _nk, dispatcher, _tick, state, data) {

@@ -11,6 +11,7 @@ import {
   XP_SOURCE_CONFIG,
   XpSource,
 } from "../../shared/progression";
+import { recordXpAwardAnalyticsEvent } from "./analytics/tracking";
 
 type RuntimeContext = any;
 type RuntimeLogger = any;
@@ -511,6 +512,20 @@ export const awardXp = (
         sourceId,
         newTotalXp
       );
+
+      recordXpAwardAnalyticsEvent(nk, logger, {
+        occurredAt: now,
+        userId,
+        awardedXp,
+        source: params.source,
+        sourceId,
+        matchId: params.matchId ?? null,
+        previousTotalXp,
+        newTotalXp,
+        previousRank,
+        newRank,
+        rankChanged: previousRank !== newRank,
+      });
 
       return response;
     } catch (error) {

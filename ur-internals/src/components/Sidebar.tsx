@@ -7,6 +7,7 @@ const navItems = [
   { label: 'Tournaments', to: '/tournaments', short: '02' },
   { label: 'Create Tournament', to: '/tournaments/new', short: '03' },
   { label: 'Audit Log', to: '/audit-log', short: '04' },
+  { label: 'Analytics', to: '/analytics', short: '05' },
 ]
 
 function getLinkClassName({ isActive }: NavLinkRenderProps) {
@@ -78,7 +79,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           </button>
         </div>
         <p className="sidebar__subtitle">
-          Tournament operations, queue monitoring, and direct Nakama admin control.
+          Tournament operations, analytics, and direct Nakama admin control.
         </p>
       </div>
 

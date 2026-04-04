@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom'
 import { PublicOnlyRoute, RequireAdminAuth } from './auth/RouteGuards'
 import { DashboardLayout } from './layout/DashboardLayout'
 import { AuditLogPage } from './pages/AuditLog'
+import { AnalyticsPage } from './pages/Analytics'
 import { CreateTournamentPage } from './pages/CreateTournament'
 import { LoginPage } from './pages/Login'
 import { OverviewPage } from './pages/Overview'
@@ -44,6 +45,10 @@ export const router = createBrowserRouter([
           {
             path: 'audit-log',
             element: <AuditLogPage />,
+          },
+          {
+            path: 'analytics',
+            element: <AnalyticsPage />,
           },
         ],
       },
