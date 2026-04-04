@@ -93,6 +93,7 @@ export type MatchEndPayload = {
 export type StateSnapshotPlayer = {
   userId: string | null;
   title: string | null;
+  rankTitle?: string | null;
 };
 
 export type StateSnapshotPlayers = Record<PlayerColor, StateSnapshotPlayer>;
@@ -242,7 +243,10 @@ const isNullableString = (value: unknown): value is string | null =>
   value === null || typeof value === "string";
 
 const isStateSnapshotPlayer = (value: unknown): value is StateSnapshotPlayer =>
-  isRecord(value) && isNullableString(value.userId) && isNullableString(value.title);
+  isRecord(value) &&
+  isNullableString(value.userId) &&
+  isNullableString(value.title) &&
+  isOptional(value.rankTitle, isNullableString);
 
 const isStateSnapshotPlayers = (value: unknown): value is StateSnapshotPlayers =>
   isRecord(value) && isStateSnapshotPlayer(value.light) && isStateSnapshotPlayer(value.dark);

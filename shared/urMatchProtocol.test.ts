@@ -23,10 +23,12 @@ describe('urMatchProtocol', () => {
           light: {
             userId: 'light-user',
             title: 'Michel',
+            rankTitle: 'Diviner',
           },
           dark: {
             userId: 'dark-user',
             title: 'Guest',
+            rankTitle: 'Laborer',
           },
         },
         rollDisplayValue: 3,
@@ -79,10 +81,12 @@ describe('urMatchProtocol', () => {
           light: {
             userId: 'light-user',
             title: 'Michel',
+            rankTitle: 'Diviner',
           },
           dark: {
             userId: 'dark-user',
             title: 'Guest',
+            rankTitle: 'Laborer',
           },
         },
       }),
@@ -98,6 +102,7 @@ describe('urMatchProtocol', () => {
           light: {
             userId: 'light-user',
             title: 'Michel',
+            rankTitle: 'Diviner',
           },
           dark: {
             userId: 'dark-user',
@@ -118,10 +123,12 @@ describe('urMatchProtocol', () => {
           light: {
             userId: 'light-user',
             title: 'Michel',
+            rankTitle: 'Diviner',
           },
           dark: {
             userId: 'dark-user',
             title: 'Guest',
+            rankTitle: 'Laborer',
           },
         },
         afkAccumulatedMs: {
@@ -141,13 +148,36 @@ describe('urMatchProtocol', () => {
           light: {
             userId: 'light-user',
             title: 'Michel',
+            rankTitle: 'Diviner',
           },
           dark: {
             userId: 'dark-user',
             title: 'Guest',
+            rankTitle: 'Laborer',
           },
         },
         rollDisplayValue: 5,
+      }),
+    ).toBe(false);
+
+    expect(
+      isStateSnapshotPayload({
+        type: 'state_snapshot',
+        matchId: 'match-1',
+        revision: 3,
+        gameState: createInitialState(),
+        players: {
+          light: {
+            userId: 'light-user',
+            title: 'Michel',
+            rankTitle: 42,
+          },
+          dark: {
+            userId: 'dark-user',
+            title: 'Guest',
+            rankTitle: 'Laborer',
+          },
+        },
       }),
     ).toBe(false);
   });

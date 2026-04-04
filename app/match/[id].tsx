@@ -894,6 +894,7 @@ export function GameRoom() {
   const scoreRankTitles = useMemo<Record<PlayerColor, string | null>>(
     () =>
       resolveMatchScoreRankTitles({
+        authoritativePlayers,
         isOffline,
         isOfflineLocalPvPMatch,
         humanScoreTitle,
@@ -901,7 +902,7 @@ export function GameRoom() {
         resolvedPlayerColor,
         scoreTitles,
       }),
-    [humanScoreTitle, isOffline, isOfflineLocalPvPMatch, playerRankTitle, resolvedPlayerColor, scoreTitles],
+    [authoritativePlayers, humanScoreTitle, isOffline, isOfflineLocalPvPMatch, playerRankTitle, resolvedPlayerColor, scoreTitles],
   );
   const practiceModeRewardLabel = isPracticeModeMatch ? getPracticeModeRewardLabel(effectiveMatchConfig) : null;
   const hasAssignedColor = resolvedPlayerColor === 'light' || resolvedPlayerColor === 'dark';
@@ -929,13 +930,13 @@ export function GameRoom() {
   const hasInteractiveColor = localInteractionColor === 'light' || localInteractionColor === 'dark';
   const isMyTurn = hasInteractiveColor && gameState.currentTurn === localInteractionColor;
   const activeTurnColor: PlayerColor = gameState.currentTurn;
-  const didPlayerWin =
-    resolveDidPlayerWin({
-      winnerColor: gameState.winner,
-      resolvedPlayerColor,
-      authoritativeMatchEnd,
-      userId: authenticatedUserId,
-    }) === true;
+  const resolvedDidPlayerWin = resolveDidPlayerWin({
+    winnerColor: gameState.winner,
+    resolvedPlayerColor,
+    authoritativeMatchEnd,
+    userId: authenticatedUserId,
+  });
+  const didPlayerWin = resolvedDidPlayerWin === true;
   const tournamentPlayerUserId = authenticatedUserId;
   const initialTournamentRound = useMemo(() => {
     if (!tournamentRoundParam) {
@@ -949,9 +950,11 @@ export function GameRoom() {
   const localPvPWinnerColor = isOfflineLocalPvPMatch && gameState.winner ? gameState.winner : null;
   const winModalTitle = localPvPWinnerColor
     ? `${scoreTitles[localPvPWinnerColor]} Wins`
-    : didPlayerWin
-      ? 'Victory'
-      : 'Defeat';
+    : resolvedDidPlayerWin === null
+      ? 'Match Complete'
+      : didPlayerWin
+        ? 'Victory'
+        : 'Defeat';
   const isOnlineForfeit =
     onlineMatchEnd?.reason === 'forfeit_inactivity' || onlineMatchEnd?.reason === 'forfeit_disconnect';
   const tournamentEliminationMessage =
@@ -1021,7 +1024,7 @@ export function GameRoom() {
   const hasTournamentBotOpponent = tournamentBotOpponentColor !== null;
   const hasOpponentJoined =
     !isOffline &&
-    (joinedPlayerCount >= 2 || gameState.winner !== null || hasTournamentBotOpponent);
+    (joinedPlayerCount >= 2 || gameState.winner !== null || authoritativeMatchEnd !== null || hasTournamentBotOpponent);
   const isOnlineHumanMatch = !isOffline && !hasTournamentBotOpponent;
   const isEligibleForRematch =
     isOnlineHumanMatch &&
@@ -1047,7 +1050,7 @@ export function GameRoom() {
   const isOpponentReadyToPlay = !hasReconnectGraceActive && (!requiresOpponentPresence || hasOpponentJoined);
   const isOnlineInteractionReady = isOffline || socketState === 'connected';
   const canRoll = isMyTurn && gameState.phase === 'rolling' && isOpponentReadyToPlay && isOnlineInteractionReady;
-  const isMatchFinished = gameState.winner !== null || gameState.phase === 'ended';
+  const isMatchFinished = gameState.winner !== null || gameState.phase === 'ended' || authoritativeMatchEnd !== null;
   const shouldFreezeForfeitMotion = !isOffline && isOnlineForfeit && isMatchFinished;
   const onlineMatchStatusPillText = useMemo(() => {
     if (isOffline) {
@@ -1126,7 +1129,7 @@ export function GameRoom() {
     'idle' | 'checking' | 'waiting' | 'terminal'
   >('idle');
   const [hasEnteredTournamentWaitingRoom, setHasEnteredTournamentWaitingRoom] = React.useState(false);
-  const [tournamentWaitingRoomCountdownMs, setTournamentWaitingRoomCountdownMs] = React.useState<number | null>(null);
+  const [postResultCountdownMs, setPostResultCountdownMs] = React.useState<number | null>(null);
   const [isValidatingTournamentExit, setIsValidatingTournamentExit] = React.useState(false);
   const [tournamentExitValidationFailed, setTournamentExitValidationFailed] = React.useState(false);
   const [showAudioSettings, setShowAudioSettings] = React.useState(false);
@@ -1548,6 +1551,10 @@ export function GameRoom() {
     tournamentOutcome === 'advancing' &&
     tournamentRewardSummary?.shouldEnterWaitingRoom === true &&
     !hasEnteredTournamentWaitingRoom;
+  const shouldPromptTournamentWaitingRoomAfterForfeit =
+    shouldResolveTournamentAdvanceBeforeModal &&
+    isOnlineForfeit &&
+    tournamentAdvanceResolutionState === 'waiting';
   const isCheckingTournamentAdvanceResolution =
     shouldResolveTournamentAdvanceBeforeModal &&
     (tournamentAdvanceResolutionState === 'idle' || tournamentAdvanceResolutionState === 'checking');
@@ -1568,6 +1575,7 @@ export function GameRoom() {
       (!isTournamentRewardSummaryPrimary &&
         tournamentRewardFallbackActive &&
         didPlayerWin &&
+        hasEnteredTournamentWaitingRoom &&
         !['eliminated', 'finalized'].includes(tournamentAdvanceFlow.phase)));
   const showTournamentFallbackPendingModal =
     showWinModal &&
@@ -1585,17 +1593,35 @@ export function GameRoom() {
       (!isTournamentRewardSummaryPrimary &&
         tournamentRewardFallbackActive &&
         (tournamentAdvanceFlow.phase === 'eliminated' || tournamentAdvanceFlow.phase === 'finalized')));
-  const shouldAutoExitTournamentResultModal = isTournamentResultModal && !didPlayerWin;
+  const shouldAutoExitTournamentResultModal = isTournamentResultModal;
+  const shouldAutoExitOnlineForfeitModal = showWinModal && isOnlineForfeit && !isTournamentMatch;
+  const postResultAutoAction = useMemo<'enter_waiting_room' | 'return_home' | null>(() => {
+    if (shouldPromptTournamentWaitingRoomAfterForfeit) {
+      return 'enter_waiting_room';
+    }
+
+    if (shouldAutoExitTournamentResultModal || shouldAutoExitOnlineForfeitModal) {
+      return 'return_home';
+    }
+
+    return null;
+  }, [
+    shouldAutoExitOnlineForfeitModal,
+    shouldAutoExitTournamentResultModal,
+    shouldPromptTournamentWaitingRoomAfterForfeit,
+  ]);
   const shouldRenderResultModal =
     showWinModal &&
     (!isTournamentMatch ||
       showTournamentAdvanceResolutionModal ||
+      shouldPromptTournamentWaitingRoomAfterForfeit ||
       showTournamentFallbackPendingModal ||
       isTournamentResultModal);
   const tournamentResultModalTitle = useMemo(() => {
     if (
       !isTournamentMatch ||
       (!showTournamentAdvanceResolutionModal &&
+        !shouldPromptTournamentWaitingRoomAfterForfeit &&
         !showTournamentFallbackPendingModal &&
         !isTournamentResultModal)
     ) {
@@ -1604,6 +1630,10 @@ export function GameRoom() {
 
     if (showTournamentAdvanceResolutionModal) {
       return 'Victory';
+    }
+
+    if (shouldPromptTournamentWaitingRoomAfterForfeit) {
+      return winModalTitle;
     }
 
     if (showTournamentFallbackPendingModal) {
@@ -1655,6 +1685,7 @@ export function GameRoom() {
     isTournamentMatch,
     isTournamentResultModal,
     isTournamentRewardSummaryPrimary,
+    shouldPromptTournamentWaitingRoomAfterForfeit,
     showTournamentFallbackPendingModal,
     showTournamentAdvanceResolutionModal,
     tournamentAdvanceFlow.isChampion,
@@ -1669,6 +1700,7 @@ export function GameRoom() {
     if (
       !isTournamentMatch ||
       (!showTournamentAdvanceResolutionModal &&
+        !shouldPromptTournamentWaitingRoomAfterForfeit &&
         !showTournamentFallbackPendingModal &&
         !isTournamentResultModal)
     ) {
@@ -1677,6 +1709,8 @@ export function GameRoom() {
 
     if (showTournamentAdvanceResolutionModal) {
       baseMessage = 'Finalizing your tournament result before deciding whether another round is needed.';
+    } else if (shouldPromptTournamentWaitingRoomAfterForfeit) {
+      baseMessage = `${winModalMessage} Head to the waiting room when you are ready for the next round.`;
     } else if (showTournamentFallbackPendingModal) {
       baseMessage = tournamentAdvanceFlow.subtleStatusText
         ? `${tournamentAdvanceFlow.statusText} ${tournamentAdvanceFlow.subtleStatusText}`
@@ -1727,6 +1761,7 @@ export function GameRoom() {
     isTournamentResultModal,
     isValidatingTournamentExit,
     isTournamentRewardSummaryPrimary,
+    shouldPromptTournamentWaitingRoomAfterForfeit,
     showTournamentFallbackPendingModal,
     showTournamentAdvanceResolutionModal,
     tournamentEliminationMessage,
@@ -1740,14 +1775,16 @@ export function GameRoom() {
     tournamentOutcome,
     winModalMessage,
   ]);
-  const tournamentCountdownLabel = useMemo(() => {
-    if (!shouldAutoExitTournamentResultModal || tournamentWaitingRoomCountdownMs === null) {
+  const resultCountdownLabel = useMemo(() => {
+    if (!postResultAutoAction || postResultCountdownMs === null) {
       return null;
     }
 
-    const remainingSeconds = Math.max(0, Math.ceil(tournamentWaitingRoomCountdownMs / 1000));
-    return `Returning to the home page automatically in ${remainingSeconds}s.`;
-  }, [shouldAutoExitTournamentResultModal, tournamentWaitingRoomCountdownMs]);
+    const remainingSeconds = Math.max(0, Math.ceil(postResultCountdownMs / 1000));
+    return postResultAutoAction === 'enter_waiting_room'
+      ? `Entering the waiting room automatically in ${remainingSeconds}s.`
+      : `Returning to the home page automatically in ${remainingSeconds}s.`;
+  }, [postResultAutoAction, postResultCountdownMs]);
   const resultModalActionLabel = useMemo(() => {
     if (showTournamentAdvanceResolutionModal) {
       return undefined;
@@ -1757,6 +1794,10 @@ export function GameRoom() {
       return undefined;
     }
 
+    if (shouldPromptTournamentWaitingRoomAfterForfeit) {
+      return 'Go to Waiting Room';
+    }
+
     if (isTournamentResultModal) {
       return tournamentExitValidationFailed ? 'Leave Anyway' : 'Return to Home Page';
     }
@@ -1764,6 +1805,7 @@ export function GameRoom() {
     return 'Return to Menu';
   }, [
     isTournamentResultModal,
+    shouldPromptTournamentWaitingRoomAfterForfeit,
     showTournamentFallbackPendingModal,
     showTournamentAdvanceResolutionModal,
     tournamentExitValidationFailed,
@@ -2501,7 +2543,11 @@ export function GameRoom() {
     tutorialPendingActionStep,
   ]);
   useEffect(() => {
-    if (!gameState.winner || storedMatchId !== matchId) {
+    const hasReachedResultState = isOffline
+      ? gameState.winner !== null
+      : authoritativeMatchEnd !== null || gameState.winner !== null || gameState.phase === 'ended';
+
+    if (!hasReachedResultState || storedMatchId !== matchId) {
       return;
     }
 
@@ -2555,8 +2601,10 @@ export function GameRoom() {
       cancelled = true;
     };
   }, [
+    authoritativeMatchEnd,
     didPlayerWin,
     gameState.winner,
+    gameState.phase,
     isOffline,
     matchId,
     onlineMatchEnd,
@@ -2580,7 +2628,7 @@ export function GameRoom() {
     pendingForfeitModalRevealKeyRef.current = null;
     enteringTournamentWaitingRoomRef.current = false;
     setHasEnteredTournamentWaitingRoom(false);
-    setTournamentWaitingRoomCountdownMs(null);
+    setPostResultCountdownMs(null);
     setIsValidatingTournamentExit(false);
     setTournamentExitValidationFailed(false);
   }, [matchId]);
@@ -2595,49 +2643,14 @@ export function GameRoom() {
 
     let cancelled = false;
 
-    const enterTournamentWaitingRoom = async () => {
-      if (cancelled || enteringTournamentWaitingRoomRef.current) {
-        return;
-      }
-
-      enteringTournamentWaitingRoomRef.current = true;
-
-      try {
-        const didStart = await runScreenTransition({
-          title: 'Advancing To Waiting Room',
-          message: 'Settling the bracket before the next round begins.',
-          variant: 'success',
-          preActionDelayMs: TOURNAMENT_WAITING_ROOM_TRANSITION_DELAY_MS,
-          postActionDelayMs: 180,
-          action: () => {
-            if (cancelled) {
-              return;
-            }
-
-            setTournamentTerminalOutcomeOverride(null);
-            setTournamentAdvanceResolutionState('waiting');
-            setHasEnteredTournamentWaitingRoom(true);
-          },
-        });
-
-        if (!didStart && !cancelled) {
-          setTournamentTerminalOutcomeOverride(null);
-          setTournamentAdvanceResolutionState('waiting');
-          setHasEnteredTournamentWaitingRoom(true);
-        }
-      } catch {
-        if (!cancelled) {
-          setTournamentTerminalOutcomeOverride(null);
-          setTournamentAdvanceResolutionState('waiting');
-          setHasEnteredTournamentWaitingRoom(true);
-        }
-      } finally {
-        enteringTournamentWaitingRoomRef.current = false;
-      }
-    };
-
     if (!tournamentRunIdParam) {
-      void enterTournamentWaitingRoom();
+      setTournamentTerminalOutcomeOverride(null);
+      setTournamentAdvanceResolutionState('waiting');
+
+      if (!isOnlineForfeit) {
+        void handleEnterTournamentWaitingRoom();
+      }
+
       return () => {
         cancelled = true;
       };
@@ -2662,14 +2675,24 @@ export function GameRoom() {
           return;
         }
 
-        void enterTournamentWaitingRoom();
+        setTournamentTerminalOutcomeOverride(null);
+        setTournamentAdvanceResolutionState('waiting');
+
+        if (!isOnlineForfeit) {
+          void handleEnterTournamentWaitingRoom();
+        }
       })
       .catch(() => {
         if (cancelled) {
           return;
         }
 
-        void enterTournamentWaitingRoom();
+        setTournamentTerminalOutcomeOverride(null);
+        setTournamentAdvanceResolutionState('waiting');
+
+        if (!isOnlineForfeit) {
+          void handleEnterTournamentWaitingRoom();
+        }
       });
 
     return () => {
@@ -2677,8 +2700,9 @@ export function GameRoom() {
     };
   }, [
     didPlayerWin,
+    handleEnterTournamentWaitingRoom,
     initialTournamentRound,
-    runScreenTransition,
+    isOnlineForfeit,
     shouldResolveTournamentAdvanceBeforeModal,
     tournamentRunIdParam,
   ]);
@@ -2824,6 +2848,41 @@ export function GameRoom() {
     [didPlayerWin, finalizeExitMatchToHome, runScreenTransition],
   );
 
+  const handleEnterTournamentWaitingRoom = React.useCallback(async () => {
+    if (enteringTournamentWaitingRoomRef.current || hasEnteredTournamentWaitingRoom) {
+      return;
+    }
+
+    enteringTournamentWaitingRoomRef.current = true;
+
+    try {
+      const didStart = await runScreenTransition({
+        title: 'Advancing To Waiting Room',
+        message: 'Settling the bracket before the next round begins.',
+        variant: 'success',
+        preActionDelayMs: TOURNAMENT_WAITING_ROOM_TRANSITION_DELAY_MS,
+        postActionDelayMs: 180,
+        action: () => {
+          setTournamentTerminalOutcomeOverride(null);
+          setTournamentAdvanceResolutionState('waiting');
+          setHasEnteredTournamentWaitingRoom(true);
+        },
+      });
+
+      if (!didStart) {
+        setTournamentTerminalOutcomeOverride(null);
+        setTournamentAdvanceResolutionState('waiting');
+        setHasEnteredTournamentWaitingRoom(true);
+      }
+    } catch {
+      setTournamentTerminalOutcomeOverride(null);
+      setTournamentAdvanceResolutionState('waiting');
+      setHasEnteredTournamentWaitingRoom(true);
+    } finally {
+      enteringTournamentWaitingRoomRef.current = false;
+    }
+  }, [hasEnteredTournamentWaitingRoom, runScreenTransition]);
+
   const validateTournamentResultBeforeExit = React.useCallback(async () => {
     if (!tournamentRunIdParam) {
       return false;
@@ -2912,6 +2971,11 @@ export function GameRoom() {
   ]);
 
   const handleExit = React.useCallback(() => {
+    if (shouldPromptTournamentWaitingRoomAfterForfeit) {
+      void handleEnterTournamentWaitingRoom();
+      return;
+    }
+
     if (isTournamentMatch && !isTournamentResultModal) {
       return;
     }
@@ -2934,35 +2998,54 @@ export function GameRoom() {
   }, [
     didPlayerWin,
     exitMatchToHome,
+    handleEnterTournamentWaitingRoom,
     handleTournamentResultExit,
     isTournamentMatch,
     isTournamentResultModal,
+    shouldPromptTournamentWaitingRoomAfterForfeit,
     showWinModal,
   ]);
 
   useEffect(() => {
-    if (!shouldAutoExitTournamentResultModal) {
-      setTournamentWaitingRoomCountdownMs(null);
+    if (!postResultAutoAction) {
+      setPostResultCountdownMs(null);
       return;
     }
 
     const startedAt = Date.now();
-    setTournamentWaitingRoomCountdownMs(TOURNAMENT_AUTO_RETURN_COUNTDOWN_MS);
+    setPostResultCountdownMs(TOURNAMENT_AUTO_RETURN_COUNTDOWN_MS);
 
     const interval = setInterval(() => {
       const remainingMs = Math.max(0, TOURNAMENT_AUTO_RETURN_COUNTDOWN_MS - (Date.now() - startedAt));
-      setTournamentWaitingRoomCountdownMs(remainingMs);
+      setPostResultCountdownMs(remainingMs);
 
       if (remainingMs <= 0) {
         clearInterval(interval);
-        void handleTournamentResultExit({ source: 'auto' });
+
+        if (postResultAutoAction === 'enter_waiting_room') {
+          void handleEnterTournamentWaitingRoom();
+          return;
+        }
+
+        if (isTournamentResultModal) {
+          void handleTournamentResultExit({ source: 'auto' });
+          return;
+        }
+
+        handleExit();
       }
     }, 250);
 
     return () => {
       clearInterval(interval);
     };
-  }, [handleTournamentResultExit, shouldAutoExitTournamentResultModal]);
+  }, [
+    handleEnterTournamentWaitingRoom,
+    handleExit,
+    handleTournamentResultExit,
+    isTournamentResultModal,
+    postResultAutoAction,
+  ]);
 
   useEffect(() => {
     if (!tournamentRewardSummary) {
@@ -4350,7 +4433,7 @@ export function GameRoom() {
         matchChallengeSummary={matchChallengeSummary}
         matchRewardsErrorMessage={matchRewardsErrorMessage}
         tournamentRewardSummary={isTournamentRewardSummaryPrimary ? tournamentRewardSummary : null}
-        tournamentCountdownLabel={shouldAutoExitTournamentResultModal ? tournamentCountdownLabel : null}
+        resultCountdownLabel={resultCountdownLabel}
       />
       {showWinModal && isEligibleForRematch && authoritativeRematch && authoritativeRematch.status !== 'idle' ? (
         <View style={styles.rematchCard}>

@@ -44,8 +44,8 @@ describe('transitionPresentation', () => {
     });
   });
 
-  it('exports the shortened tournament countdown defaults', () => {
-    expect(TOURNAMENT_AUTO_RETURN_COUNTDOWN_MS).toBe(5_000);
+  it('exports the 15-second tournament countdown defaults', () => {
+    expect(TOURNAMENT_AUTO_RETURN_COUNTDOWN_MS).toBe(15_000);
     expect(TOURNAMENT_READY_LAUNCH_COUNTDOWN_SECONDS).toBe(3);
   });
 });

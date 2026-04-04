@@ -23,6 +23,7 @@ import type { PublicTournamentSummary } from '@/src/tournaments/types';
 import React, { useEffect, useState } from 'react';
 import {
   ImageBackground,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -41,6 +42,8 @@ type TournamentCardProps = {
 };
 
 const tournamentPanelArt = require('../../assets/images/tournament_large_panel_cropped.png');
+const tournamentCardArt = require('../../assets/images/home_stat_card.png');
+const TOURNAMENT_CARD_ART_ASPECT_RATIO = 626 / 732;
 
 export const TournamentCard: React.FC<TournamentCardProps> = ({
   tournament,
@@ -68,7 +71,8 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
   const bodyFontFamily = resolveHomeFredokaFontFamily(fontLoaded);
   const isCompact = width < 760;
   const useStackedButtons = width < 560;
-  const useInlineCountdownRow = Boolean(lobbyCountdownLabel) && !useStackedButtons;
+  const useMobileWebJoinCardArt = Platform.OS === 'web' && width < 760 && primary.intent === 'join';
+  const useInlineCountdownRow = Boolean(lobbyCountdownLabel) && !useStackedButtons && !useMobileWebJoinCardArt;
 
   useEffect(() => {
     setNow(Date.now());
@@ -89,15 +93,22 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
   return (
     <View style={styles.cardShell}>
       <ImageBackground
-        source={tournamentPanelArt}
+        source={useMobileWebJoinCardArt ? tournamentCardArt : tournamentPanelArt}
         resizeMode="stretch"
-        style={[styles.panel, isCompact ? styles.panelCompact : styles.panelDesktop]}
+        style={[
+          styles.panel,
+          useMobileWebJoinCardArt ? styles.panelCard : isCompact ? styles.panelCompact : styles.panelDesktop,
+        ]}
         imageStyle={styles.panelImage}
       >
         <View
           style={[
             styles.panelViewport,
-            isCompact ? styles.panelViewportCompact : styles.panelViewportDesktop,
+            useMobileWebJoinCardArt
+              ? styles.panelViewportCard
+              : isCompact
+                ? styles.panelViewportCompact
+                : styles.panelViewportDesktop,
           ]}
         >
           <View style={styles.headerBlock}>
@@ -278,6 +289,10 @@ const styles = StyleSheet.create({
   panelCompact: {
     minHeight: 560,
   },
+  panelCard: {
+    aspectRatio: TOURNAMENT_CARD_ART_ASPECT_RATIO,
+    minHeight: 0,
+  },
   panelImage: {
     width: '100%',
     height: '100%',
@@ -298,6 +313,12 @@ const styles = StyleSheet.create({
     right: '11%',
     bottom: '12%',
     left: '11%',
+  },
+  panelViewportCard: {
+    top: '11.5%',
+    right: '13%',
+    bottom: '13%',
+    left: '13%',
   },
   headerBlock: {
     alignItems: 'center',

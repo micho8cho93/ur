@@ -158,6 +158,7 @@ type MatchState = {
   presences: Record<string, Record<string, nkruntime.Presence>>;
   assignments: Record<string, PlayerColor>;
   playerTitles: Record<string, string>;
+  playerRankTitles: Record<string, string | null>;
   bot: MatchBotState;
   gameState: GameState;
   revision: number;
@@ -1000,6 +1001,34 @@ const cacheAssignedPlayerTitle = (state: MatchState, nk: nkruntime.Nakama, userI
   state.playerTitles[userId] = resolveAssignedPlayerTitle(nk, userId);
 };
 
+const resolveAssignedPlayerRankTitle = (
+  nk: nkruntime.Nakama,
+  logger: nkruntime.Logger,
+  userId: string,
+  options?: { isBotUser?: boolean },
+): string | null => {
+  if (options?.isBotUser) {
+    return null;
+  }
+
+  try {
+    return getProgressionForUser(nk, logger, userId).currentRank;
+  } catch {
+    return null;
+  }
+};
+
+const cacheAssignedPlayerRankTitle = (
+  state: MatchState,
+  nk: nkruntime.Nakama,
+  logger: nkruntime.Logger,
+  userId: string,
+): void => {
+  state.playerRankTitles[userId] = resolveAssignedPlayerRankTitle(nk, logger, userId, {
+    isBotUser: isConfiguredBotUser(state, userId),
+  });
+};
+
 const buildSnapshotPlayer = (
   state: MatchState,
   color: PlayerColor,
@@ -1008,6 +1037,7 @@ const buildSnapshotPlayer = (
   return {
     userId,
     title: userId ? state.playerTitles[userId] ?? "Guest" : null,
+    rankTitle: userId ? state.playerRankTitles[userId] ?? null : null,
   };
 };
 
@@ -2041,9 +2071,13 @@ function matchInit(
   }
 
   const playerTitles: Record<string, string> = {};
+  const playerRankTitles: Record<string, string | null> = {};
   playerIds.forEach((userId) => {
     if (typeof userId === "string" && userId.length > 0) {
       playerTitles[userId] = resolveAssignedPlayerTitle(nk, userId);
+      playerRankTitles[userId] = resolveAssignedPlayerRankTitle(nk, logger, userId, {
+        isBotUser: userId === botUserId,
+      });
     }
   });
   const botColor =
@@ -2065,12 +2099,14 @@ function matchInit(
       : null;
   if (bot) {
     playerTitles[bot.userId] = bot.displayName;
+    playerRankTitles[bot.userId] = null;
   }
 
   const state: MatchState = {
     presences: {},
     assignments,
     playerTitles,
+    playerRankTitles,
     bot,
     gameState: createInitialState(getMatchConfig(modeId)),
     revision: 0,
@@ -2148,6 +2184,7 @@ function matchJoinAttempt(
   upsertPresence(state, presence);
   ensureAssignment(state, userId);
   cacheAssignedPlayerTitle(state, nk, userId);
+  cacheAssignedPlayerRankTitle(state, nk, logger, userId);
 
   return { state, accept: true };
 }
@@ -2173,6 +2210,7 @@ function matchJoin(
     upsertPresence(state, presence);
     ensureAssignment(state, userId);
     cacheAssignedPlayerTitle(state, nk, userId);
+    cacheAssignedPlayerRankTitle(state, nk, logger, userId);
     clearedDisconnectGrace = clearDisconnectGraceForUser(state, userId) || clearedDisconnectGrace;
   });
 
@@ -2297,6 +2335,7 @@ function matchLoop(
 
       upsertPresence(state, message.sender);
       cacheAssignedPlayerTitle(state, nk, senderUserId);
+      cacheAssignedPlayerRankTitle(state, nk, logger, senderUserId);
       const senderColor = state.assignments[senderUserId];
 
       if (!senderColor) {

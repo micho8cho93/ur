@@ -2842,6 +2842,51 @@ describe('GameRoom match dice stage', () => {
     ).toBe(true);
   });
 
+  it('shows the online forfeit result modal even before the local board snapshot marks a winner', async () => {
+    mockSearchParams.id = 'online-forfeit-late-snapshot';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-forfeit-late-snapshot',
+    });
+    mockStoreState.matchId = 'online-forfeit-late-snapshot';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.authoritativePlayers = makeSnapshotPlayers();
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'moving',
+      winner: null,
+    };
+    mockStoreState.authoritativeMatchEnd = {
+      reason: 'forfeit_disconnect',
+      winnerUserId: 'self-user',
+      loserUserId: 'opponent-user',
+      forfeitingUserId: 'opponent-user',
+      message: null,
+    };
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+    });
+
+    expect(
+      mockModal.mock.calls.some(
+        ([props]) =>
+          props.visible === true &&
+          props.title === 'Victory' &&
+          props.message === 'Opponent disconnected and did not return.',
+      ),
+    ).toBe(true);
+    expect(mockBoard.mock.calls.some(([props]) => props.freezeMotion === true)).toBe(true);
+  });
+
   it('refreshes Elo from RPC after a ranked online match ends', async () => {
     mockSearchParams.id = 'online-elo-refresh';
     mockSearchParams.offline = '0';
@@ -2918,7 +2963,7 @@ describe('GameRoom match dice stage', () => {
     expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
   });
 
-  it('auto-returns eliminated players to the home page after 20 seconds', async () => {
+  it('auto-returns eliminated players to the home page after 15 seconds', async () => {
     mockSearchParams.id = 'tournament-loss-auto-exit';
     mockSearchParams.offline = '0';
     mockSearchParams.tournamentRunId = 'run-1';
@@ -2960,7 +3005,7 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByText('Return to Home Page')).toBeTruthy();
 
     await act(async () => {
-      jest.advanceTimersByTime(20_000);
+      jest.advanceTimersByTime(15_000);
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
@@ -3083,6 +3128,102 @@ describe('GameRoom match dice stage', () => {
     expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
     expect(screen.getByText('Recording your victory in the standings...')).toBeTruthy();
     expect(screen.queryByText('Victory')).toBeNull();
+  });
+
+  it('shows a waiting-room prompt before sending a forfeit winner into the next tournament round', async () => {
+    mockSearchParams.id = 'tournament-forfeit-win';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-forfeit-win',
+    });
+    mockStoreState.matchId = 'tournament-forfeit-win';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockStoreState.authoritativeMatchEnd = {
+      reason: 'forfeit_disconnect',
+      winnerUserId: 'self-user',
+      loserUserId: 'opponent-user',
+      forfeitingUserId: 'opponent-user',
+      message: null,
+    };
+    mockRefreshProgression.mockImplementation(() => new Promise(() => {}));
+    mockRefreshChallenges.mockImplementation(() => new Promise(() => {}));
+    mockTournamentAdvanceFlowState = {
+      ...mockTournamentAdvanceFlowState,
+      phase: 'waiting',
+      statusText: 'Recording your victory in the standings...',
+    };
+    mockGetPublicTournamentStatus.mockResolvedValueOnce({
+      tournament: {
+        runId: 'run-1',
+        tournamentId: 'tournament-1',
+        name: 'Spring Open',
+        description: 'A public run.',
+        lifecycle: 'open',
+        startAt: '2026-03-27T09:00:00.000Z',
+        endAt: null,
+        updatedAt: '2026-03-27T10:00:00.000Z',
+        entrants: 8,
+        maxEntrants: 8,
+        gameMode: 'standard',
+        region: 'Global',
+        buyInLabel: 'Free',
+        prizeLabel: 'No prize listed',
+        currentRound: 2,
+        membership: {
+          isJoined: true,
+          joinedAt: '2026-03-27T09:00:00.000Z',
+        },
+        participation: {
+          state: 'waiting_next_round',
+          currentRound: 2,
+          currentEntryId: 'round-2-match-1',
+          activeMatchId: null,
+          finalPlacement: null,
+          lastResult: 'win',
+          canLaunch: false,
+        },
+      },
+      standings: [],
+    });
+
+    render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      emitTournamentRewardSummary('tournament-forfeit-win', {
+        tournamentOutcome: 'advancing',
+        shouldEnterWaitingRoom: true,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Victory')).toBeTruthy();
+    expect(screen.getByText('Go to Waiting Room')).toBeTruthy();
+    expect(screen.queryByTestId('mock-tournament-waiting-room')).toBeNull();
+
+    await act(async () => {
+      jest.advanceTimersByTime(15_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('mock-tournament-waiting-room')).toBeTruthy();
   });
 
   it('keeps a four-player semifinal winner in the waiting room instead of finalizing early', async () => {
@@ -4255,7 +4396,7 @@ describe('GameRoom match dice stage', () => {
     expect(screen.queryByText('Wait for the Next Round')).toBeNull();
 
     await act(async () => {
-      jest.advanceTimersByTime(20_000);
+      jest.advanceTimersByTime(14_000);
       await Promise.resolve();
       await Promise.resolve();
     });

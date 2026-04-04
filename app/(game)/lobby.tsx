@@ -532,7 +532,6 @@ export default function Lobby() {
                       disabled={isCreatingPrivateGame || isJoiningPrivateGame}
                       style={[
                         styles.primaryActionButton,
-                        styles.containedLightButton,
                         { maxWidth: findOpponentButtonMaxWidth },
                       ]}
                       onPress={handleStart}
@@ -602,7 +601,7 @@ export default function Lobby() {
                               onPress={() => void handleCopyPrivateCode()}
                               fontLoaded={fontsLoaded}
                               size="compact"
-                              style={[styles.actionRowButton, styles.containedLightButton]}
+                              style={styles.actionRowButton}
                             />
                           </View>
                           <View style={styles.actionRowCell}>
@@ -610,7 +609,7 @@ export default function Lobby() {
                               label="Start Game"
                               fontLoaded={fontsLoaded}
                               size="compact"
-                              style={[styles.actionRowButton, styles.containedLightButton]}
+                              style={styles.actionRowButton}
                               onPress={startCreatedPrivateMatch}
                             />
                           </View>
@@ -623,7 +622,7 @@ export default function Lobby() {
                             onPress={clearCreatedPrivateMatch}
                             fontLoaded={fontsLoaded}
                             size="compact"
-                            style={[styles.secondaryActionButton, styles.containedLightButton]}
+                            style={styles.secondaryActionButton}
                           />
                         </View>
                       </>
@@ -635,7 +634,7 @@ export default function Lobby() {
                               label={option.label}
                               fontLoaded={fontsLoaded}
                               size={isCompactLayout ? 'compact' : 'regular'}
-                              style={[styles.primaryActionButton, styles.containedLightButton]}
+                              style={styles.primaryActionButton}
                               loading={
                                 isCreatingPrivateGame &&
                                 pendingPrivateMode === option.modeId
@@ -699,7 +698,7 @@ export default function Lobby() {
                       size={isCompactLayout ? 'compact' : 'regular'}
                       loading={isJoiningPrivateGame}
                       disabled={!canJoinPrivateGame}
-                      style={[styles.primaryActionButton, styles.containedLightButton]}
+                      style={styles.primaryActionButton}
                       onPress={() => void handleJoinPrivateGame()}
                     />
                   </OnlineActionPanel>
@@ -970,9 +969,6 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 164,
     alignSelf: 'center',
-  },
-  containedLightButton: {
-    overflow: 'hidden',
   },
   primaryActionField: {
     width: '100%',

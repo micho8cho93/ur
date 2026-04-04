@@ -30,7 +30,7 @@ type MatchResultSummaryContentProps = {
   matchChallengeSummary: MatchChallengeRewardSummary | null;
   matchRewardsErrorMessage: string | null;
   tournamentRewardSummary?: TournamentMatchRewardSummaryPayload | null;
-  tournamentCountdownLabel?: string | null;
+  resultCountdownLabel?: string | null;
 };
 
 const formatSignedValue = (value: number) => `${value >= 0 ? '+' : ''}${Math.trunc(value)}`;
@@ -54,7 +54,7 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
   matchChallengeSummary,
   matchRewardsErrorMessage,
   tournamentRewardSummary = null,
-  tournamentCountdownLabel = null,
+  resultCountdownLabel = null,
 }) => {
   const { width } = useWindowDimensions();
   const useCompactRewardStats = width < 480;
@@ -105,9 +105,14 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
               </Text>
             </View>
           </View>
-          {tournamentCountdownLabel ? (
-            <Text style={styles.tournamentCountdownText}>{tournamentCountdownLabel}</Text>
+          {resultCountdownLabel ? (
+            <Text style={styles.tournamentCountdownText}>{resultCountdownLabel}</Text>
           ) : null}
+        </View>
+      ) : null}
+      {!tournamentRewardSummary && resultCountdownLabel ? (
+        <View style={styles.resultCountdownCard}>
+          <Text style={styles.resultCountdownText}>{resultCountdownLabel}</Text>
         </View>
       ) : null}
       {!isPlaythroughTutorialMatch && !tournamentRewardSummary ? (
@@ -231,6 +236,22 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
   tournamentCountdownText: {
+    color: 'rgba(216, 232, 251, 0.86)',
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
+  resultCountdownCard: {
+    width: '100%',
+    marginBottom: urTheme.spacing.sm,
+    borderRadius: urTheme.radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(216, 232, 251, 0.16)',
+    backgroundColor: 'rgba(9, 16, 24, 0.62)',
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.sm,
+  },
+  resultCountdownText: {
     color: 'rgba(216, 232, 251, 0.86)',
     fontSize: 12,
     lineHeight: 17,

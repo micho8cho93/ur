@@ -24,12 +24,21 @@ export const resolveDidPlayerWin = (params: {
   authoritativeMatchEnd: MatchEndPayload | null;
   userId: string | null;
 }): boolean | null => {
-  if (!params.winnerColor) {
-    return null;
-  }
-
   if (params.resolvedPlayerColor === 'light' || params.resolvedPlayerColor === 'dark') {
-    return params.winnerColor === params.resolvedPlayerColor;
+    if (params.winnerColor) {
+      return params.winnerColor === params.resolvedPlayerColor;
+    }
+
+    if (
+      params.userId &&
+      params.authoritativeMatchEnd &&
+      (params.authoritativeMatchEnd.winnerUserId === params.userId ||
+        params.authoritativeMatchEnd.loserUserId === params.userId)
+    ) {
+      return params.authoritativeMatchEnd.winnerUserId === params.userId;
+    }
+
+    return null;
   }
 
   if (!params.userId || !params.authoritativeMatchEnd) {

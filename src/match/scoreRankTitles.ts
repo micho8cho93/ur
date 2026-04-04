@@ -1,9 +1,11 @@
 import type { PlayerColor } from '@/logic/types';
+import type { StateSnapshotPlayers } from '@/shared/urMatchProtocol';
 
 type ScoreTitles = Record<PlayerColor, string>;
 type ScoreRankTitles = Record<PlayerColor, string | null>;
 
 type ResolveMatchScoreRankTitlesOptions = {
+  authoritativePlayers: StateSnapshotPlayers | null;
   isOffline: boolean;
   isOfflineLocalPvPMatch: boolean;
   humanScoreTitle: string;
@@ -16,6 +18,7 @@ const GUEST_SCORE_TITLE = 'Guest';
 const LABORER_RANK_TITLE = 'Laborer';
 
 const resolveOnlineSideRankTitle = ({
+  authoritativePlayers,
   side,
   humanScoreTitle,
   playerRankTitle,
@@ -23,11 +26,16 @@ const resolveOnlineSideRankTitle = ({
   scoreTitles,
 }: Pick<
   ResolveMatchScoreRankTitlesOptions,
-  'humanScoreTitle' | 'playerRankTitle' | 'resolvedPlayerColor' | 'scoreTitles'
+  'authoritativePlayers' | 'humanScoreTitle' | 'playerRankTitle' | 'resolvedPlayerColor' | 'scoreTitles'
 > & {
   side: PlayerColor;
 }): string | null => {
   const scoreTitle = scoreTitles[side].trim();
+  const snapshotRankTitle = authoritativePlayers?.[side]?.rankTitle ?? null;
+
+  if (snapshotRankTitle) {
+    return snapshotRankTitle;
+  }
 
   if (resolvedPlayerColor === side) {
     return playerRankTitle;
@@ -50,6 +58,7 @@ const resolveOnlineSideRankTitle = ({
 };
 
 export const resolveMatchScoreRankTitles = ({
+  authoritativePlayers,
   isOffline,
   isOfflineLocalPvPMatch,
   humanScoreTitle,
@@ -73,6 +82,7 @@ export const resolveMatchScoreRankTitles = ({
 
   return {
     light: resolveOnlineSideRankTitle({
+      authoritativePlayers,
       side: 'light',
       humanScoreTitle,
       playerRankTitle,
@@ -80,6 +90,7 @@ export const resolveMatchScoreRankTitles = ({
       scoreTitles,
     }),
     dark: resolveOnlineSideRankTitle({
+      authoritativePlayers,
       side: 'dark',
       humanScoreTitle,
       playerRankTitle,
