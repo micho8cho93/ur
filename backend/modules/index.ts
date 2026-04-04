@@ -133,7 +133,22 @@ import {
   rpcLaunchTournamentMatch,
   rpcListPublicTournaments,
 } from "./tournaments";
-import { registerAnalyticsRpcs } from "./analytics";
+import {
+  RPC_ADMIN_GET_ANALYTICS_GAMEPLAY,
+  RPC_ADMIN_GET_ANALYTICS_OVERVIEW,
+  RPC_ADMIN_GET_ANALYTICS_PLAYERS,
+  RPC_ADMIN_GET_ANALYTICS_PROGRESSION,
+  RPC_ADMIN_GET_ANALYTICS_REALTIME,
+  RPC_ADMIN_GET_ANALYTICS_SUMMARY,
+  RPC_ADMIN_GET_ANALYTICS_TOURNAMENTS,
+  rpcAdminGetAnalyticsGameplay,
+  rpcAdminGetAnalyticsOverview,
+  rpcAdminGetAnalyticsPlayers,
+  rpcAdminGetAnalyticsProgression,
+  rpcAdminGetAnalyticsRealtime,
+  rpcAdminGetAnalyticsSummary,
+  rpcAdminGetAnalyticsTournaments,
+} from "./analytics";
 import {
   getOnlinePresenceSnapshot,
   recordMatchEndAnalyticsEvent,
@@ -1838,7 +1853,13 @@ function InitModule(
   initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT_STANDINGS, rpcGetPublicTournamentStandings);
   initializer.registerRpc(RPC_JOIN_PUBLIC_TOURNAMENT, rpcJoinPublicTournament);
   initializer.registerRpc(RPC_LAUNCH_TOURNAMENT_MATCH, rpcLaunchTournamentMatch);
-  registerAnalyticsRpcs(initializer);
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_SUMMARY, rpcAdminGetAnalyticsSummary);
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_OVERVIEW, rpcAdminGetAnalyticsOverview);
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_PLAYERS, rpcAdminGetAnalyticsPlayers);
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_GAMEPLAY, rpcAdminGetAnalyticsGameplay);
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_TOURNAMENTS, rpcAdminGetAnalyticsTournaments);
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_PROGRESSION, rpcAdminGetAnalyticsProgression);
+  initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_REALTIME, rpcAdminGetAnalyticsRealtime);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,
