@@ -216,7 +216,13 @@ export default function AuthenticatedHome() {
       </View>
 
       <View style={[styles.stage, { width: stageWidth }]}>
-        <View style={[styles.stageGrid, isDesktopLayout ? styles.stageGridDesktop : styles.stageGridCompact]}>
+        <View
+          style={[
+            styles.stageGrid,
+            isDesktopLayout ? styles.stageGridDesktop : styles.stageGridCompact,
+            isCompactWebLayout ? styles.stageGridCompactWeb : null,
+          ]}
+        >
           <View style={[styles.stageColumn, isDesktopLayout ? styles.stageColumnDesktop : styles.stageColumnCompact]}>
             <ProgressionSummaryCard
               layoutVariant={layoutVariant}
@@ -230,7 +236,11 @@ export default function AuthenticatedHome() {
               fontLoaded={fontsLoaded}
               compact={!isDesktopLayout}
               onPress={() => router.push('/(game)/game-modes')}
-              style={[styles.stageActionButton, isDesktopLayout ? styles.stageActionButtonDesktop : styles.stageActionButtonCompact]}
+              style={[
+                styles.stageActionButton,
+                isDesktopLayout ? styles.stageActionButtonDesktop : styles.stageActionButtonCompact,
+                isCompactWebLayout ? styles.stageActionButtonCompactWeb : null,
+              ]}
             />
           </View>
 
@@ -246,7 +256,11 @@ export default function AuthenticatedHome() {
               fontLoaded={fontsLoaded}
               compact={!isDesktopLayout}
               onPress={() => router.push('/(game)/lobby?mode=online')}
-              style={[styles.stageActionButton, isDesktopLayout ? styles.stageActionButtonDesktop : styles.stageActionButtonCompact]}
+              style={[
+                styles.stageActionButton,
+                isDesktopLayout ? styles.stageActionButtonDesktop : styles.stageActionButtonCompact,
+                isCompactWebLayout ? styles.stageActionButtonCompactWeb : null,
+              ]}
             />
           </View>
 
@@ -262,7 +276,11 @@ export default function AuthenticatedHome() {
               fontLoaded={fontsLoaded}
               compact={!isDesktopLayout}
               onPress={handleTutorialPress}
-              style={[styles.stageActionButton, isDesktopLayout ? styles.stageActionButtonDesktop : styles.stageActionButtonCompact]}
+              style={[
+                styles.stageActionButton,
+                isDesktopLayout ? styles.stageActionButtonDesktop : styles.stageActionButtonCompact,
+                isCompactWebLayout ? styles.stageActionButtonCompactWeb : null,
+              ]}
             />
           </View>
         </View>
@@ -451,6 +469,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: urTheme.spacing.lg,
   },
+  stageGridCompactWeb: {
+    gap: urTheme.spacing.xl,
+  },
   stageColumn: {
     alignItems: 'center',
   },
@@ -476,5 +497,8 @@ const styles = StyleSheet.create({
   },
   stageActionButtonCompact: {
     width: '82%',
+  },
+  stageActionButtonCompactWeb: {
+    marginTop: 4,
   },
 });

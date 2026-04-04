@@ -396,7 +396,7 @@ export default function Lobby() {
               ) : null}
             </View>
 
-            <View style={styles.featuredSection}>
+            <View style={[styles.featuredSection, { maxWidth: actionsStageWidth }]}>
               {featuredTournaments.length > 0 ? (
                 <View style={styles.featuredHeaderAction}>
                   <SketchButton
