@@ -29,7 +29,6 @@ import {
 } from '@/components/game/rollResultHold';
 import { MatchResultSummaryContent } from '@/components/match/MatchResultSummaryContent';
 import { PieceRail, PieceRailFrameMeasurement, ReserveSlotMeasurement } from '@/components/game/PieceRail';
-import { CinematicXpRewardModal } from '@/components/progression/CinematicXpRewardModal';
 import { ReserveCascadeIntro, ReserveCascadePieceTarget } from '@/components/game/ReserveCascadeIntro';
 import { DEFAULT_DICE_ROLL_DURATION_MS } from '@/components/game/slotDiceShared';
 import { TournamentWaitingRoom } from '@/components/tournaments/TournamentWaitingRoom';
@@ -1216,7 +1215,7 @@ export function GameRoom() {
     React.useState<PostMatchPresentationStage>('hidden');
   const [xpRewardPresentation, setXpRewardPresentation] = React.useState<ResolvedXpRewardPresentation | null>(null);
   const [didPlayXpRewardReveal, setDidPlayXpRewardReveal] = React.useState(false);
-  const [preMatchTotalXp, setPreMatchTotalXp] = React.useState<number | null>(progression?.totalXp ?? null);
+  const [preMatchTotalXp, setPreMatchTotalXp] = React.useState<number | null>(null);
   const [tournamentRewardSummary, setTournamentRewardSummary] =
     React.useState<TournamentMatchRewardSummaryPayload | null>(null);
   const [tournamentRewardFallbackActive, setTournamentRewardFallbackActive] = React.useState(false);
@@ -1302,6 +1301,11 @@ export function GameRoom() {
   const isPostMatchFlowActive = postMatchPresentationStage !== 'hidden';
   const showCinematicXpRewardModal =
     postMatchPresentationStage === 'xp_reward_play' && xpRewardPresentation !== null;
+  const CinematicXpRewardModalComponent = showCinematicXpRewardModal
+    ? (
+        require('@/components/progression/CinematicXpRewardModal') as typeof import('@/components/progression/CinematicXpRewardModal')
+      ).CinematicXpRewardModal
+    : null;
   const isTournamentRewardSummaryPrimary = Boolean(tournamentRewardSummary) && !tournamentRewardFallbackActive;
   const tournamentOutcome = tournamentRewardSummary?.tournamentOutcome ?? null;
   const shouldTrackTournamentAdvanceFlow =
@@ -6774,12 +6778,14 @@ export function GameRoom() {
         maxWidth={520}
       />
 
-      <CinematicXpRewardModal
-        visible={showCinematicXpRewardModal}
-        previousTotalXp={xpRewardPresentation?.previousTotalXp ?? 0}
-        newTotalXp={xpRewardPresentation?.newTotalXp ?? 0}
-        onComplete={handleXpRewardPresentationComplete}
-      />
+      {CinematicXpRewardModalComponent ? (
+        <CinematicXpRewardModalComponent
+          visible={showCinematicXpRewardModal}
+          previousTotalXp={xpRewardPresentation?.previousTotalXp ?? 0}
+          newTotalXp={xpRewardPresentation?.newTotalXp ?? 0}
+          onComplete={handleXpRewardPresentationComplete}
+        />
+      ) : null}
 
       <Modal
         visible={shouldRenderResultModal}

@@ -20,6 +20,7 @@ const REVEAL_IN_DURATION_MS = 280;
 const REVEAL_STAGGER_DELAY_MS = 170;
 const REVEAL_COMPLETE_DELAY_MS = 700;
 const SWEEP_DURATION_MS = 800;
+const USE_NATIVE_DRIVER = false;
 
 const resolveFillDuration = (deltaXp: number): number =>
   Math.max(1_800, Math.min(3_300, 1_900 + Math.round(deltaXp * 4.5)));
@@ -125,14 +126,14 @@ export const CinematicXpRewardModal: React.FC<CinematicXpRewardModalProps> = ({
           toValue: 1,
           duration: 180,
           easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.spring(badgePulse, {
           toValue: 0,
           stiffness: 150,
           damping: 12,
           mass: 0.8,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]),
       Animated.sequence([
@@ -140,13 +141,13 @@ export const CinematicXpRewardModal: React.FC<CinematicXpRewardModalProps> = ({
           toValue: 1,
           duration: 260,
           easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(rankBurst, {
           toValue: 0,
           duration: 260,
           easing: Easing.in(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]),
     ]).start();
@@ -197,12 +198,12 @@ export const CinematicXpRewardModal: React.FC<CinematicXpRewardModalProps> = ({
           toValue: 1,
           duration: SWEEP_DURATION_MS,
           easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(sweepProgress, {
           toValue: 0,
           duration: 0,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]),
     );
@@ -212,20 +213,20 @@ export const CinematicXpRewardModal: React.FC<CinematicXpRewardModalProps> = ({
         toValue: 1,
         duration: REVEAL_IN_DURATION_MS,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }),
       Animated.timing(cardOpacity, {
         toValue: 1,
         duration: REVEAL_IN_DURATION_MS,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }),
       Animated.spring(cardScale, {
         toValue: 1,
         stiffness: 140,
         damping: 15,
         mass: 0.95,
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }),
     ]).start(() => {
       sweepLoopRef.current?.start();
@@ -245,13 +246,13 @@ export const CinematicXpRewardModal: React.FC<CinematicXpRewardModalProps> = ({
               toValue: 1,
               duration: 160,
               easing: Easing.out(Easing.quad),
-              useNativeDriver: true,
+              useNativeDriver: USE_NATIVE_DRIVER,
             }),
             Animated.timing(flashOpacity, {
               toValue: 0,
               duration: 260,
               easing: Easing.in(Easing.quad),
-              useNativeDriver: true,
+              useNativeDriver: USE_NATIVE_DRIVER,
             }),
           ]),
           Animated.sequence([
@@ -260,14 +261,14 @@ export const CinematicXpRewardModal: React.FC<CinematicXpRewardModalProps> = ({
               toValue: 1.035,
               duration: 160,
               easing: Easing.out(Easing.cubic),
-              useNativeDriver: true,
+              useNativeDriver: USE_NATIVE_DRIVER,
             }),
             Animated.spring(cardScale, {
               toValue: 1,
               stiffness: 160,
               damping: 13,
               mass: 0.85,
-              useNativeDriver: true,
+              useNativeDriver: USE_NATIVE_DRIVER,
             }),
           ]),
         ]),
