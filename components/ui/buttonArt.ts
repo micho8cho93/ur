@@ -1,0 +1,14 @@
+import type { ImageStyle } from 'react-native';
+
+export const CTA_BUTTON_VISIBLE_ASPECT_RATIO = 1130 / 384;
+export const CTA_BUTTON_VISIBLE_WIDTH_PERCENT = `${(1536 / 1271) * 100}%`;
+export const CTA_BUTTON_VISIBLE_HEIGHT_PERCENT = `${(1024 / 404) * 100}%`;
+export const CTA_BUTTON_VISIBLE_LEFT_PERCENT = `${(-131 / 1271) * 100}%`;
+export const CTA_BUTTON_VISIBLE_TOP_PERCENT = `${(-289 / 404) * 100}%`;
+
+export const CTA_BUTTON_VISIBLE_IMAGE_STYLE: ImageStyle = {
+  width: CTA_BUTTON_VISIBLE_WIDTH_PERCENT,
+  height: CTA_BUTTON_VISIBLE_HEIGHT_PERCENT,
+  left: CTA_BUTTON_VISIBLE_LEFT_PERCENT,
+  top: CTA_BUTTON_VISIBLE_TOP_PERCENT,
+};

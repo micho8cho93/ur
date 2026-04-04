@@ -1,6 +1,8 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React from 'react';
 import {
+  ImageBackground,
+  ImageStyle,
   Platform,
   Pressable,
   StyleProp,
@@ -11,7 +13,10 @@ import {
 
 import { urTextVariants } from '@/constants/urTheme';
 import { HOME_GROBOLD_FONT_FAMILY } from '@/src/home/homeTheme';
-import { RoyalPrimaryButtonFrame } from '@/components/ui/RoyalPrimaryButtonFrame';
+import { CTA_BUTTON_VISIBLE_IMAGE_STYLE } from '@/components/ui/buttonArt';
+
+const ctaButtonArt = require('../../assets/buttons/cta_button.png');
+const settingsButtonArt = require('../../assets/buttons/settings_button_square.png');
 
 type SketchButtonProps = {
   label: string;
@@ -26,6 +31,30 @@ type SketchButtonProps = {
   sizeScale?: number;
   style?: StyleProp<ViewStyle>;
 };
+
+type SketchButtonImageWebStyle = ImageStyle & {
+  filter?: string;
+  willChange?: string;
+};
+
+const SKETCH_BUTTON_IMAGE_SHADOW_STYLE =
+  Platform.select<SketchButtonImageWebStyle>({
+    web: {
+      filter:
+        'drop-shadow(0px 4px 0px rgba(86, 42, 0, 0.34)) drop-shadow(0px 10px 12px rgba(54, 22, 0, 0.18))',
+      willChange: 'filter, opacity',
+    },
+    default: {},
+  }) ?? {};
+
+const SKETCH_BUTTON_IMAGE_SHADOW_PRESSED_STYLE =
+  Platform.select<SketchButtonImageWebStyle>({
+    web: {
+      filter:
+        'drop-shadow(0px 2px 0px rgba(86, 42, 0, 0.28)) drop-shadow(0px 5px 6px rgba(54, 22, 0, 0.12))',
+    },
+    default: {},
+  }) ?? {};
 
 export function SketchButton({
   label,
@@ -46,8 +75,6 @@ export function SketchButton({
   const compactMinWidth = Math.round(104 * resolvedSizeScale);
   const surfaceCompactMinWidth = Math.round(116 * resolvedSizeScale);
   const surfaceCompactMinHeight = Math.round(48 * resolvedSizeScale);
-  const wideBodyMinHeight = Math.round(48 * resolvedSizeScale);
-  const surfaceBodyMinHeight = Math.round((wide ? 48 : iconOnly ? 42 : 44) * resolvedSizeScale);
   const contentMinHeight = Math.round((wide ? 48 : iconOnly ? 42 : 44) * resolvedSizeScale);
   const contentGap = Math.round(6 * resolvedSizeScale);
   const contentHorizontalPadding = Math.round((wide ? 20 : 16) * resolvedSizeScale);
@@ -84,46 +111,30 @@ export function SketchButton({
         disabled ? styles.pressableDisabled : null,
       ]}
     >
-      {({ pressed, hovered, focused }) => (
-        <RoyalPrimaryButtonFrame
-          pressed={pressed && !disabled}
-          hovered={hovered && !disabled}
-          focused={focused && !disabled}
-          disabled={disabled}
-          outerRadius={Math.round((iconOnly ? 23 : 20) * resolvedSizeScale)}
-          innerRadius={Math.round((iconOnly ? 20 : 17) * resolvedSizeScale)}
-          shellStyle={[
+      {({ pressed }) => (
+        <ImageBackground
+          source={iconOnly ? settingsButtonArt : ctaButtonArt}
+          resizeMode={iconOnly ? 'contain' : 'stretch'}
+          style={[
             styles.surface,
             iconOnly ? styles.surfaceIconOnly : wide ? styles.surfaceWide : styles.surfaceCompact,
             iconOnly
               ? {
                   width: iconOnlySize,
                   minWidth: iconOnlySize,
-                  minHeight: iconOnlySize,
+                  height: iconOnlySize,
                 }
               : wide
                 ? {
                     minHeight: Math.round(52 * resolvedSizeScale),
+                    minWidth: '100%',
                   }
                 : {
                     minWidth: surfaceCompactMinWidth,
                     minHeight: surfaceCompactMinHeight,
                   },
-          ]}
-          bodyStyle={[
-            iconOnly ? styles.surfaceBodyIconOnly : styles.surfaceBody,
-            wide ? styles.surfaceBodyWide : null,
-            {
-              minHeight: wide ? wideBodyMinHeight : surfaceBodyMinHeight,
-            },
-          ]}
-          contentStyle={[
-            iconOnly ? styles.contentIconOnly : styles.content,
-            wide ? styles.contentWide : null,
             iconOnly
-              ? {
-                  minHeight: Math.round(42 * resolvedSizeScale),
-                }
+              ? null
               : {
                   minHeight: contentMinHeight,
                   gap: contentGap,
@@ -131,8 +142,22 @@ export function SketchButton({
                   paddingVertical: contentVerticalPadding,
                 },
           ]}
+          imageStyle={[
+            iconOnly ? styles.surfaceImageIconOnly : styles.surfaceImage,
+            SKETCH_BUTTON_IMAGE_SHADOW_STYLE,
+            pressed && !disabled ? SKETCH_BUTTON_IMAGE_SHADOW_PRESSED_STYLE : null,
+            pressed && !disabled ? styles.surfaceImagePressed : null,
+            disabled ? styles.surfaceImageDisabled : null,
+          ]}
         >
-          {iconName ? <MaterialIcons name={iconName} size={scaledIconSize} color="#FFFFFF" /> : null}
+          {iconName ? (
+            <MaterialIcons
+              name={iconName}
+              size={scaledIconSize}
+              color="#FFFFFF"
+              style={iconOnly ? styles.iconOnlyGlyph : undefined}
+            />
+          ) : null}
           {!iconOnly ? (
             <Text
               numberOfLines={1}
@@ -150,7 +175,7 @@ export function SketchButton({
               {label}
             </Text>
           ) : null}
-        </RoyalPrimaryButtonFrame>
+        </ImageBackground>
       )}
     </Pressable>
   );
@@ -192,54 +217,47 @@ const styles = StyleSheet.create({
   },
   surface: {
     width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   surfaceCompact: {
     minWidth: 116,
     minHeight: 48,
+    flexDirection: 'row',
   },
   surfaceIconOnly: {
     width: 46,
     minWidth: 46,
-    minHeight: 46,
-  },
-  surfaceBody: {
-    minHeight: 44,
-  },
-  surfaceBodyIconOnly: {
-    minHeight: 42,
-  },
-  surfaceBodyWide: {
-    minHeight: 48,
-  },
-  content: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  contentIconOnly: {
-    minHeight: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-  },
-  contentWide: {
-    minHeight: 48,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    height: 46,
   },
   surfaceWide: {
     width: '100%',
     minHeight: 52,
+    flexDirection: 'row',
+  },
+  surfaceImage: {
+    ...CTA_BUTTON_VISIBLE_IMAGE_STYLE,
+  },
+  surfaceImageIconOnly: {
+    width: '100%',
+    height: '100%',
+  },
+  surfaceImagePressed: {
+    opacity: 0.97,
+  },
+  surfaceImageDisabled: {
+    opacity: 0.62,
   },
   label: {
     ...urTextVariants.buttonLabel,
     textAlign: 'center',
     letterSpacing: 0.3,
+    textShadowColor: 'rgba(86, 42, 0, 0.42)',
+    textShadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    textShadowRadius: 1.5,
   },
   labelCompact: {
     fontSize: 17,
@@ -248,5 +266,13 @@ const styles = StyleSheet.create({
   labelWide: {
     fontSize: 18,
     lineHeight: 20,
+  },
+  iconOnlyGlyph: {
+    textShadowColor: 'rgba(39, 20, 3, 0.5)',
+    textShadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    textShadowRadius: 1.5,
   },
 });
