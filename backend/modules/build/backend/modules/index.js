@@ -9804,10 +9804,6 @@ var toResponseFilters = (filters) => ({
 var DAY_BUCKET_MS = DAY_MS;
 
 // backend/modules/analytics/service.ts
-var DAY_BUCKET_LABEL_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric"
-});
 var MATCH_DURATION_BUCKETS = [
   { key: "under_5", label: "< 5m", min: 0, max: 5 * 60 },
   { key: "5_10", label: "5-10m", min: 5 * 60, max: 10 * 60 },
