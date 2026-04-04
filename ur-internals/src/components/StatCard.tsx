@@ -1,7 +1,9 @@
+import type { ReactNode } from 'react'
+
 interface StatCardProps {
   label: string
-  value: string
-  helper: string
+  value: ReactNode
+  helper: ReactNode
   tone?: 'default' | 'accent' | 'success' | 'warning'
 }
 

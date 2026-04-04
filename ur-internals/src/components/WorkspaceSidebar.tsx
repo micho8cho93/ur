@@ -34,6 +34,12 @@ export function WorkspaceSidebar({
 }: WorkspaceSidebarProps) {
   const { adminIdentity, logout, isAuthenticating } = useSession()
   const adminLabel = getAdminLabel(adminIdentity)
+  const shortTitle = workspaceTitle
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
   const adminSectionClassName = collapsed ? 'sidebar__admin sidebar__admin--collapsed' : 'sidebar__admin'
   const signOutButtonClassName = collapsed
     ? 'button button--secondary sidebar__admin-action'
@@ -47,7 +53,7 @@ export function WorkspaceSidebar({
         <div className="sidebar__brand-header">
           <div className="sidebar__brand-copy">
             <p className="sidebar__eyebrow">{workspaceLabel}</p>
-            <h1 className="sidebar__title">{collapsed ? workspaceTitle.slice(0, 2).toUpperCase() : workspaceTitle}</h1>
+            <h1 className="sidebar__title">{collapsed ? shortTitle || 'UR' : workspaceTitle}</h1>
           </div>
           <button
             className="sidebar__collapse-button"
@@ -57,7 +63,7 @@ export function WorkspaceSidebar({
             aria-pressed={collapsed}
             title={collapsed ? 'Expand navigation panel' : 'Collapse navigation panel'}
           >
-            {collapsed ? '>>' : '<<'}
+            {collapsed ? '›' : '‹'}
           </button>
         </div>
         <p className="sidebar__subtitle">{workspaceSubtitle}</p>
@@ -113,7 +119,7 @@ export function WorkspaceSidebar({
             </span>
             <span className="sidebar__link-label">{item.label}</span>
             <span className="sidebar__link-indicator" aria-hidden="true">
-              GO
+              •
             </span>
           </NavLink>
         ))}

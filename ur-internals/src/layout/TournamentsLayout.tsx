@@ -9,13 +9,13 @@ export function TournamentsLayout() {
       storageKey={SIDEBAR_COLLAPSED_STORAGE_KEY}
       workspaceEyebrow="Ur internals"
       workspaceTitle="Tournaments control center"
-      workspaceDescription="Manage live tournament operations, bracket health, run creation, and operator audit activity without analytics mixed into the navigation."
+      workspaceDescription="Operate live tournaments, manage draft runs, inspect bracket health, and review operator activity from a dedicated operations workspace."
       sidebarLabel="Ur Game"
       sidebarTitle="Tournaments"
-      sidebarSubtitle="Live tournament operations, bracket control, draft setup, and audit visibility."
+      sidebarSubtitle="Runs, brackets, launch state, draft setup, and audit visibility."
       footerLabel="Workspace focus"
       footerValue="Tournament operations"
-      footerCopy="Use this workspace for day-to-day run management, operator workflows, and bracket control."
+      footerCopy="Use this workspace for creation, monitoring, intervention, and closeout."
       navItems={tournamentsNavItems}
       theme="tournaments"
     />

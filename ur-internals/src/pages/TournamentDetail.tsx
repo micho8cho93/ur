@@ -12,6 +12,7 @@ import {
 } from '../api/tournaments'
 import { useSession } from '../auth/useSession'
 import { ActionToolbar } from '../components/ActionToolbar'
+import { EmptyState } from '../components/EmptyState'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
@@ -499,7 +500,13 @@ function renderTimelineChart(
   const maxValue = Math.max(...buckets.map((bucket) => bucket.count), 0)
 
   if (maxValue === 0) {
-    return <div className="empty-state">{emptyLabel}</div>
+    return (
+      <EmptyState
+        title="No timeline activity"
+        description={emptyLabel}
+        compact
+      />
+    )
   }
 
   return (
@@ -743,7 +750,13 @@ export function TournamentDetailPage() {
   )
 
   if (isLoading) {
-    return <div className="empty-state">Loading tournament detail...</div>
+    return (
+      <EmptyState
+        title="Loading tournament detail"
+        description="Refreshing the latest tournament configuration, bracket state, standings, and audit activity."
+        tone="info"
+      />
+    )
   }
 
   if (error) {
@@ -945,11 +958,15 @@ export function TournamentDetailPage() {
         actions={<span className="panel__status-note">Polling every 10s</span>}
       >
         {!liveDetail || liveDetail.roundStats.length === 0 ? (
-          <div className="empty-state">
-            {tournament.bracket
-              ? 'Round stats are still being assembled for this run.'
-              : 'Bracket stats appear once the field locks and pairings are seeded.'}
-          </div>
+          <EmptyState
+            title="Round data unavailable"
+            description={
+              tournament.bracket
+                ? 'Round stats are still being assembled for this run.'
+                : 'Bracket stats appear once the field locks and pairings are seeded.'
+            }
+            compact
+          />
         ) : (
           <div className="round-ops-grid">
             {liveDetail.roundStats.map((round) => (
@@ -1037,7 +1054,11 @@ export function TournamentDetailPage() {
           subtitle="Progress pressure across the current bracket."
         >
           {!liveDetail || liveDetail.roundStats.length === 0 ? (
-            <div className="empty-state">No round completion data yet.</div>
+            <EmptyState
+              title="No round completion data"
+              description="Round completion appears after bracket pairings are available."
+              compact
+            />
           ) : (
             renderProgressRows(
               liveDetail.roundStats.map((round) => ({
@@ -1063,7 +1084,11 @@ export function TournamentDetailPage() {
           defaultOpen={false}
         >
           {!liveDetail || liveDetail.matchDurationBuckets.every((bucket) => bucket.count === 0) ? (
-            <div className="empty-state">Completed matches will populate duration buckets here.</div>
+            <EmptyState
+              title="No duration distribution yet"
+              description="Completed matches will populate duration buckets here."
+              compact
+            />
           ) : (
             renderCountRows(
               liveDetail.matchDurationBuckets.map((bucket) => ({
@@ -1083,7 +1108,11 @@ export function TournamentDetailPage() {
           defaultOpen={false}
         >
           {!liveDetail || liveDetail.seedSurvival.length === 0 ? (
-            <div className="empty-state">Seed survival appears after the bracket is seeded.</div>
+            <EmptyState
+              title="Seed survival unavailable"
+              description="Seed survival appears after the bracket is seeded."
+              compact
+            />
           ) : (
             renderCountRows(
               liveDetail.seedSurvival.map((point) => ({
@@ -1106,7 +1135,11 @@ export function TournamentDetailPage() {
           subtitle="Live ready, pending, and active bracket entries."
         >
           {queueEntries.length === 0 ? (
-            <div className="empty-state">No queued or active matches right now.</div>
+            <EmptyState
+              title="Queue is clear"
+              description="No queued or active matches are waiting right now."
+              compact
+            />
           ) : (
             <div className="table-wrap table-wrap--edge">
               <table className="table table--dense table--operations">
@@ -1184,7 +1217,12 @@ export function TournamentDetailPage() {
           defaultOpen={blockedEntries.length > 0}
         >
           {blockedEntries.length === 0 ? (
-            <div className="empty-state">No blocked or stale states detected.</div>
+            <EmptyState
+              title="No blocked states"
+              description="No blocked or stale states are currently detected."
+              compact
+              tone="success"
+            />
           ) : (
             <div className="table-wrap table-wrap--edge">
               <table className="table table--dense table--operations">
@@ -1238,11 +1276,15 @@ export function TournamentDetailPage() {
           subtitle="Round-by-round summaries for recent and completed pairings."
         >
           {historyRounds.length === 0 ? (
-            <div className="empty-state">
-              {tournament.bracket
-                ? 'Bracket history is still being assembled for this run.'
-                : 'Round history appears once the field locks and bracket pairings are created.'}
-            </div>
+            <EmptyState
+              title="Bracket history unavailable"
+              description={
+                tournament.bracket
+                  ? 'Bracket history is still being assembled for this run.'
+                  : 'Round history appears once the field locks and bracket pairings are created.'
+              }
+              compact
+            />
           ) : (
             <div className="history-rounds">
               {historyRounds.map((round) => (
@@ -1298,11 +1340,15 @@ export function TournamentDetailPage() {
           defaultOpen={false}
         >
           {standings.entries.length === 0 ? (
-            <div className="empty-state">
-              {tournament.status === 'Draft'
-                ? 'Draft runs stay hidden from public players until you open the tournament.'
-                : 'No standings entries returned for this run.'}
-            </div>
+            <EmptyState
+              title="No standings snapshot"
+              description={
+                tournament.status === 'Draft'
+                  ? 'Draft runs stay hidden from public players until you open the tournament.'
+                  : 'No standings entries were returned for this run.'
+              }
+              compact
+            />
           ) : (
             <div className="table-wrap table-wrap--edge">
               <table className="table table--dense table--operations">
@@ -1348,7 +1394,11 @@ export function TournamentDetailPage() {
           defaultOpen={false}
         >
           {auditEntries.length === 0 ? (
-            <div className="empty-state">No audit entries returned for this run.</div>
+            <EmptyState
+              title="No audit trace entries"
+              description="No audit entries were returned for this run."
+              compact
+            />
           ) : (
             <ul className="list list--dense">
               {auditEntries.map((entry) => (
@@ -1375,7 +1425,11 @@ export function TournamentDetailPage() {
         defaultOpen={false}
       >
         {standings.entries.length === 0 ? (
-          <div className="empty-state">No entry records available yet.</div>
+          <EmptyState
+            title="No entry records yet"
+            description="Entry records will appear here after the tournament begins writing standings metadata."
+            compact
+          />
         ) : (
           <div className="table-wrap table-wrap--edge">
             <table className="table table--dense table--operations">

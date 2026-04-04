@@ -452,17 +452,23 @@ export const TournamentWaitingRoom: React.FC<TournamentWaitingRoomProps> = ({
     const htmlStyle = document.documentElement.style;
     const bodyStyle = document.body.style;
     const previousHtmlOverflow = htmlStyle.overflow;
+    const previousHtmlOverscrollBehavior = htmlStyle.overscrollBehavior;
+    const previousHtmlTouchAction = htmlStyle.touchAction;
     const previousBodyOverflow = bodyStyle.overflow;
     const previousBodyOverscrollBehavior = bodyStyle.overscrollBehavior;
     const previousBodyTouchAction = bodyStyle.touchAction;
 
     htmlStyle.overflow = 'hidden';
+    htmlStyle.overscrollBehavior = 'none';
+    htmlStyle.touchAction = 'none';
     bodyStyle.overflow = 'hidden';
     bodyStyle.overscrollBehavior = 'none';
     bodyStyle.touchAction = 'none';
 
     return () => {
       htmlStyle.overflow = previousHtmlOverflow;
+      htmlStyle.overscrollBehavior = previousHtmlOverscrollBehavior;
+      htmlStyle.touchAction = previousHtmlTouchAction;
       bodyStyle.overflow = previousBodyOverflow;
       bodyStyle.overscrollBehavior = previousBodyOverscrollBehavior;
       bodyStyle.touchAction = previousBodyTouchAction;
@@ -738,6 +744,7 @@ const styles = StyleSheet.create({
     zIndex: 60,
     elevation: 60,
     backgroundColor: '#070B10',
+    overflow: 'hidden',
   },
   backgroundImage: {
     ...StyleSheet.absoluteFillObject,
@@ -768,6 +775,7 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    overflow: 'hidden',
   },
   scrollContent: {
     flexGrow: 1,

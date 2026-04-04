@@ -29,6 +29,7 @@ import { AnalyticsSection } from '../components/analytics/AnalyticsSection'
 import { AnalyticsStatCard } from '../components/analytics/AnalyticsStatCard'
 import { AnalyticsTableCard, type AnalyticsTableColumn } from '../components/analytics/AnalyticsTableCard'
 import { AnalyticsUnavailableState } from '../components/analytics/AnalyticsUnavailableState'
+import { EmptyState } from '../components/EmptyState'
 import { RealtimeStatusCard } from '../components/analytics/RealtimeStatusCard'
 import env from '../config/env'
 import type {
@@ -48,6 +49,14 @@ const SECTION_NAV: Array<{ id: AnalyticsSectionId; label: string }> = [
   { id: 'progression', label: 'Progression' },
   { id: 'realtime', label: 'Realtime Ops' },
 ]
+
+const CHART_COLORS = {
+  blue: 'var(--chart-blue)',
+  indigo: 'var(--chart-indigo)',
+  teal: 'var(--chart-teal)',
+  amber: 'var(--chart-amber)',
+  rose: 'var(--chart-rose)',
+} as const
 
 function getMetricNumber(row: AnalyticsTableRow, key: string) {
   const value = row.metrics[key]
@@ -614,9 +623,16 @@ export function AnalyticsPage() {
             />
           </>
         ) : (
-          <div className="empty-state">
-            {isLoading ? 'Loading analytics summary...' : 'Analytics summary is unavailable.'}
-          </div>
+          <EmptyState
+            title={isLoading ? 'Loading analytics summary' : 'Analytics summary unavailable'}
+            description={
+              isLoading
+                ? 'Fetching live summary metrics for the current filter set.'
+                : 'No analytics summary was returned for the selected filters.'
+            }
+            compact
+            tone={isLoading ? 'info' : 'warning'}
+          />
         )}
       </section>
 
@@ -640,7 +656,7 @@ export function AnalyticsPage() {
                     {
                       key: 'dau',
                       label: 'DAU',
-                      color: '#2b6bff',
+                      color: CHART_COLORS.blue,
                       values: bundle.overview.data.dauTrend.points.map((point) => point.value),
                     },
                   ]}
@@ -658,7 +674,7 @@ export function AnalyticsPage() {
                     {
                       key: 'wau',
                       label: 'WAU',
-                      color: '#6b52e5',
+                      color: CHART_COLORS.indigo,
                       values: bundle.overview.data.wauTrend.points.map((point) => point.value),
                     },
                   ]}
@@ -676,7 +692,7 @@ export function AnalyticsPage() {
                     {
                       key: 'matches',
                       label: 'Matches',
-                      color: '#1f9b62',
+                      color: CHART_COLORS.teal,
                       values: bundle.overview.data.matchesPerDay.points.map((point) => point.value),
                     },
                   ]}
@@ -694,7 +710,7 @@ export function AnalyticsPage() {
                     {
                       key: 'completionRate',
                       label: 'Completion rate',
-                      color: '#c48718',
+                      color: CHART_COLORS.amber,
                       values: bundle.overview.data.completionRateTrend.points.map((point) => point.value),
                     },
                   ]}
@@ -713,13 +729,13 @@ export function AnalyticsPage() {
                     {
                       key: 'new',
                       label: 'New',
-                      color: '#2b6bff',
+                      color: CHART_COLORS.blue,
                       values: bundle.overview.data.newVsReturningPlayers.points.map((point) => point.primary),
                     },
                     {
                       key: 'returning',
                       label: 'Returning',
-                      color: '#6b52e5',
+                      color: CHART_COLORS.indigo,
                       values: bundle.overview.data.newVsReturningPlayers.points.map((point) => point.secondary),
                     },
                   ]}
@@ -773,7 +789,7 @@ export function AnalyticsPage() {
                     {
                       key: 'newPlayers',
                       label: 'New players',
-                      color: '#2b6bff',
+                      color: CHART_COLORS.blue,
                       values: bundle.players.data.newPlayersOverTime.points.map((point) => point.value),
                     },
                   ]}
@@ -791,7 +807,7 @@ export function AnalyticsPage() {
                     {
                       key: 'returningPlayers',
                       label: 'Returning players',
-                      color: '#6b52e5',
+                      color: CHART_COLORS.indigo,
                       values: bundle.players.data.returningPlayersOverTime.points.map((point) => point.value),
                     },
                   ]}
@@ -809,7 +825,7 @@ export function AnalyticsPage() {
                     {
                       key: 'activityBuckets',
                       label: 'Players',
-                      color: '#1f9b62',
+                      color: CHART_COLORS.teal,
                       values: bundle.players.data.activityBuckets.buckets.map((bucket) => bucket.count),
                     },
                   ]}
@@ -879,7 +895,7 @@ export function AnalyticsPage() {
                     {
                       key: 'matchesPerDay',
                       label: 'Matches',
-                      color: '#2b6bff',
+                      color: CHART_COLORS.blue,
                       values: bundle.gameplay.data.matchesPerDay.points.map((point) => point.value),
                     },
                   ]}
@@ -897,19 +913,19 @@ export function AnalyticsPage() {
                     {
                       key: 'started',
                       label: 'Started',
-                      color: '#2b6bff',
+                      color: CHART_COLORS.blue,
                       values: bundle.gameplay.data.startedVsCompleted.points.map((point) => point.started),
                     },
                     {
                       key: 'completed',
                       label: 'Completed',
-                      color: '#1f9b62',
+                      color: CHART_COLORS.teal,
                       values: bundle.gameplay.data.startedVsCompleted.points.map((point) => point.completed),
                     },
                     {
                       key: 'abandoned',
                       label: 'Abandoned',
-                      color: '#d54d6c',
+                      color: CHART_COLORS.rose,
                       values: bundle.gameplay.data.startedVsCompleted.points.map((point) => point.abandoned),
                     },
                   ]}
@@ -966,7 +982,7 @@ export function AnalyticsPage() {
                     {
                       key: 'durations',
                       label: 'Matches',
-                      color: '#6b52e5',
+                      color: CHART_COLORS.indigo,
                       values: bundle.gameplay.data.durationDistribution.buckets.map((bucket) => bucket.count),
                     },
                   ]}
@@ -1044,7 +1060,7 @@ export function AnalyticsPage() {
                     {
                       key: 'created',
                       label: 'Created',
-                      color: '#2b6bff',
+                      color: CHART_COLORS.blue,
                       values: bundle.tournaments.data.createdOverTime.points.map((point) => point.value),
                     },
                   ]}
@@ -1062,7 +1078,7 @@ export function AnalyticsPage() {
                     {
                       key: 'participation',
                       label: 'Tournaments',
-                      color: '#1f9b62',
+                      color: CHART_COLORS.teal,
                       values: bundle.tournaments.data.participationCounts.buckets.map((bucket) => bucket.count),
                     },
                   ]}
@@ -1080,7 +1096,7 @@ export function AnalyticsPage() {
                     {
                       key: 'dropout',
                       label: 'Dropouts',
-                      color: '#d54d6c',
+                      color: CHART_COLORS.rose,
                       values: bundle.tournaments.data.dropoutByRound.buckets.map((bucket) => bucket.count),
                     },
                   ]}
@@ -1098,7 +1114,7 @@ export function AnalyticsPage() {
                     {
                       key: 'duration',
                       label: 'Tournaments',
-                      color: '#6b52e5',
+                      color: CHART_COLORS.indigo,
                       values: bundle.tournaments.data.durationDistribution.buckets.map((bucket) => bucket.count),
                     },
                   ]}
@@ -1157,7 +1173,7 @@ export function AnalyticsPage() {
                     {
                       key: 'elo',
                       label: 'Players',
-                      color: '#2b6bff',
+                      color: CHART_COLORS.blue,
                       values: bundle.progression.data.eloDistribution.buckets.map((bucket) => bucket.count),
                     },
                   ]}
@@ -1175,7 +1191,7 @@ export function AnalyticsPage() {
                     {
                       key: 'ranks',
                       label: 'Players',
-                      color: '#1f9b62',
+                      color: CHART_COLORS.teal,
                       values: bundle.progression.data.rankDistribution.buckets.map((bucket) => bucket.count),
                     },
                   ]}
@@ -1193,13 +1209,13 @@ export function AnalyticsPage() {
                     {
                       key: 'medianDelta',
                       label: 'Median delta',
-                      color: '#6b52e5',
+                      color: CHART_COLORS.indigo,
                       values: bundle.progression.data.ratingMovement.points.map((point) => point.medianAbsoluteDelta),
                     },
                     {
                       key: 'ratedMatches',
                       label: 'Rated matches',
-                      color: '#c48718',
+                      color: CHART_COLORS.amber,
                       values: bundle.progression.data.ratingMovement.points.map((point) => point.ratedMatches),
                     },
                   ]}
@@ -1217,7 +1233,7 @@ export function AnalyticsPage() {
                     {
                       key: 'xpAwarded',
                       label: 'XP awarded',
-                      color: '#d54d6c',
+                      color: CHART_COLORS.rose,
                       values: bundle.progression.data.xpAwardedOverTime.points.map((point) => point.value),
                     },
                   ]}
@@ -1378,9 +1394,16 @@ export function AnalyticsPage() {
                 </div>
               </>
             ) : (
-              <div className="empty-state">
-                {isRealtimeLoading ? 'Loading realtime analytics...' : 'Realtime analytics are unavailable.'}
-              </div>
+              <EmptyState
+                title={isRealtimeLoading ? 'Loading realtime analytics' : 'Realtime analytics unavailable'}
+                description={
+                  isRealtimeLoading
+                    ? 'Collecting the latest live presence, match, and event telemetry.'
+                    : 'No realtime analytics response was returned for the current filters.'
+                }
+                compact
+                tone={isRealtimeLoading ? 'info' : 'warning'}
+              />
             )}
           </AnalyticsSection>
         </>

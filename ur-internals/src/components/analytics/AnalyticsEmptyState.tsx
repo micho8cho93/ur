@@ -1,3 +1,5 @@
+import { EmptyState } from '../EmptyState'
+
 interface AnalyticsEmptyStateProps {
   title: string
   description: string
@@ -5,9 +7,12 @@ interface AnalyticsEmptyStateProps {
 
 export function AnalyticsEmptyState({ title, description }: AnalyticsEmptyStateProps) {
   return (
-    <div className="analytics-empty-state">
-      <strong>{title}</strong>
-      <p>{description}</p>
-    </div>
+    <EmptyState
+      title={title}
+      description={description}
+      className="analytics-empty-state"
+      compact
+      tone="info"
+    />
   )
 }

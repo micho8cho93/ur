@@ -9,13 +9,13 @@ export function AnalyticsLayout() {
       storageKey={SIDEBAR_COLLAPSED_STORAGE_KEY}
       workspaceEyebrow="Ur internals"
       workspaceTitle="Analytics control center"
-      workspaceDescription="Read live product, player, tournament, progression, and realtime intelligence through an analytics-first workspace designed for diagnosis instead of operations."
+      workspaceDescription="Inspect product health, player behavior, tournament performance, progression, and realtime telemetry from a single operator-facing analytics workspace."
       sidebarLabel="Ur Game"
       sidebarTitle="Analytics"
-      sidebarSubtitle="Executive KPIs, player health, gameplay trends, tournament performance, and realtime signals."
+      sidebarSubtitle="Executive KPIs, retention, gameplay health, progression, and realtime telemetry."
       footerLabel="Workspace focus"
-      footerValue="Live analytics only"
-      footerCopy="This workspace stays dedicated to interpretation, trend reading, and operational diagnosis."
+      footerValue="Analytics and diagnosis"
+      footerCopy="Use this workspace to monitor trends, validate changes, and investigate live issues."
       navItems={analyticsNavItems}
       theme="analytics"
     />

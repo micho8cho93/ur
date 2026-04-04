@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSession } from '../auth/useSession'
 import { listAuditLog } from '../api/auditLog'
+import { EmptyState } from '../components/EmptyState'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
@@ -98,9 +99,18 @@ export function AuditLogPage() {
         subtitle="Flattened and sorted across visible tournament runs."
       >
         {isLoading ? (
-          <div className="empty-state">Loading audit log...</div>
+          <EmptyState
+            title="Loading audit log"
+            description="Collecting the most recent operator actions across visible runs."
+            compact
+            tone="info"
+          />
         ) : auditLog.length === 0 ? (
-          <div className="empty-state">No audit entries returned for this admin session.</div>
+          <EmptyState
+            title="No audit events found"
+            description="No audit entries were returned for this admin session."
+            compact
+          />
         ) : (
           <div className="table-wrap table-wrap--edge">
             <table className="table table--dense table--logs">

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { deleteTournament, listTournaments, openTournament } from '../api/tournaments'
 import { ActionToolbar } from '../components/ActionToolbar'
+import { EmptyState } from '../components/EmptyState'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
@@ -161,9 +162,18 @@ export function TournamentsPage() {
         subtitle="Backed by `rpc_admin_list_tournaments`."
       >
         {isLoading ? (
-          <div className="empty-state">Loading tournaments...</div>
+          <EmptyState
+            title="Loading tournaments"
+            description="Fetching the latest run list from the tournament admin RPC."
+            compact
+            tone="info"
+          />
         ) : tournaments.length === 0 ? (
-          <div className="empty-state">No tournament runs returned for this admin session.</div>
+          <EmptyState
+            title="No tournament runs found"
+            description="The admin list RPC returned no tournament runs for this session."
+            compact
+          />
         ) : (
           <div className="table-wrap table-wrap--edge">
             <table className="table table--dense table--operations">

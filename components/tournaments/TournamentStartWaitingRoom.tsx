@@ -285,6 +285,37 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
     };
   }, [isLaunching, tournament.lobbyDeadlineAt, tournament.participation.canLaunch]);
 
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') {
+      return;
+    }
+
+    const htmlStyle = document.documentElement.style;
+    const bodyStyle = document.body.style;
+    const previousHtmlOverflow = htmlStyle.overflow;
+    const previousHtmlOverscrollBehavior = htmlStyle.overscrollBehavior;
+    const previousHtmlTouchAction = htmlStyle.touchAction;
+    const previousBodyOverflow = bodyStyle.overflow;
+    const previousBodyOverscrollBehavior = bodyStyle.overscrollBehavior;
+    const previousBodyTouchAction = bodyStyle.touchAction;
+
+    htmlStyle.overflow = 'hidden';
+    htmlStyle.overscrollBehavior = 'none';
+    htmlStyle.touchAction = 'none';
+    bodyStyle.overflow = 'hidden';
+    bodyStyle.overscrollBehavior = 'none';
+    bodyStyle.touchAction = 'none';
+
+    return () => {
+      htmlStyle.overflow = previousHtmlOverflow;
+      htmlStyle.overscrollBehavior = previousHtmlOverscrollBehavior;
+      htmlStyle.touchAction = previousHtmlTouchAction;
+      bodyStyle.overflow = previousBodyOverflow;
+      bodyStyle.overscrollBehavior = previousBodyOverscrollBehavior;
+      bodyStyle.touchAction = previousBodyTouchAction;
+    };
+  }, []);
+
   return (
     <View testID="tournament-start-waiting-room" style={styles.screen}>
       <Image
@@ -306,11 +337,12 @@ export const TournamentStartWaitingRoom: React.FC<TournamentStartWaitingRoomProp
           isDesktopViewport && styles.scrollContentDesktop,
           isTightDesktopViewport && styles.scrollContentDesktopTight,
           isWideViewport && styles.scrollContentWide,
-          { minHeight: height },
+          { height },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         bounces={false}
+        scrollEnabled={false}
       >
         <View
           style={[
@@ -448,6 +480,7 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#070B10',
+    overflow: 'hidden',
   },
   backgroundImage: {
     ...StyleSheet.absoluteFillObject,
@@ -478,6 +511,7 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    overflow: 'hidden',
   },
   scrollContent: {
     flexGrow: 1,

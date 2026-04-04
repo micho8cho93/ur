@@ -139,7 +139,8 @@ export function AnalyticsLineChart({
         {series[0] ? (
           <path
             d={buildAreaPath(series[0].values, maxValue)}
-            fill={`${series[0].color}22`}
+            fill={series[0].color}
+            fillOpacity="0.08"
             stroke="none"
           />
         ) : null}
@@ -150,7 +151,7 @@ export function AnalyticsLineChart({
             d={buildSeriesPath(entry.values, maxValue)}
             fill="none"
             stroke={entry.color}
-            strokeWidth="3"
+            strokeWidth="2"
             strokeLinejoin="round"
             strokeLinecap="round"
           />
@@ -167,7 +168,7 @@ export function AnalyticsLineChart({
                 key={`${entry.key}-${labels[index] ?? index}`}
                 cx={getPointX(index, entry.values.length)}
                 cy={getPointY(value, maxValue)}
-                r="4"
+                r="3"
                 fill={entry.color}
               />
             )

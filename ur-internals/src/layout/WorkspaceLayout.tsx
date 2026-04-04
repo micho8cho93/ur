@@ -3,6 +3,7 @@ import { Link, Outlet } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import env from '../config/env'
 import { WorkspaceSidebar } from '../components/WorkspaceSidebar'
+import { getTargetLabel } from './workspaceMeta'
 import type { WorkspaceNavItem } from '../routes'
 
 function getAdminStatusLabel(role: string | null | undefined) {
@@ -92,9 +93,11 @@ export function WorkspaceLayout({
           </div>
 
           <div className="topbar__meta">
-            <Link className="button button--secondary" to="/">
-              Switch workspace
-            </Link>
+            <div className="topbar__meta-card">
+              <span className="meta-label">API target</span>
+              <strong>{getTargetLabel()}</strong>
+              <span>{env.useMockData ? 'Simulation transport enabled' : 'Live admin transport'}</span>
+            </div>
 
             <div className="topbar__status">
               <span
@@ -110,6 +113,10 @@ export function WorkspaceLayout({
                 <span>{statusLabel}</span>
               </div>
             </div>
+
+            <Link className="button button--secondary" to="/">
+              Switch workspace
+            </Link>
           </div>
         </header>
 

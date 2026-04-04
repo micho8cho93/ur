@@ -1,9 +1,10 @@
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { boxShadow } from '@/constants/styleEffects';
-import { urTheme } from '@/constants/urTheme';
+import { urTextColors, urTheme } from '@/constants/urTheme';
 import { useAuth } from '@/src/auth/useAuth';
 import { HOME_GROBOLD_FONT_FAMILY } from '@/src/home/homeTheme';
+import { CTA_BUTTON_VISIBLE_IMAGE_STYLE } from '@/components/ui/buttonArt';
 import React from 'react';
 import {
   ActivityIndicator,
@@ -20,39 +21,15 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type PendingAction = 'guest' | 'google' | null;
-type ButtonTone = 'guest' | 'google';
+type ButtonVariant = 'light' | 'cta';
 
 const BUTTON_PANEL_ASPECT_RATIO = 1214 / 536;
 const DESKTOP_BACKGROUND = require('../../assets/images/bg_login.png');
 const MOBILE_BACKGROUND = require('../../assets/images/bg_login_mobile.png');
 const BUTTON_PANEL_ART = require('../../assets/images/login_large_panel_trimmed.png');
 const LOGO_ART = require('../../assets/images/login_logo_legacy.png');
-
-const BUTTON_TONES: Record<
-  ButtonTone,
-  {
-    lip: string;
-    face: string;
-    border: string;
-    gloss: string;
-    text: string;
-  }
-> = {
-  guest: {
-    lip: '#0B7A86',
-    face: '#19C7D8',
-    border: '#79F5FF',
-    gloss: 'rgba(255, 255, 255, 0.24)',
-    text: '#F7FFFF',
-  },
-  google: {
-    lip: '#D96710',
-    face: '#FFC82B',
-    border: '#FFF1A8',
-    gloss: 'rgba(255, 255, 255, 0.24)',
-    text: '#9D4100',
-  },
-};
+const LIGHT_BUTTON_ART = require('../../assets/buttons/button_light_cropped.png');
+const CTA_BUTTON_ART = require('../../assets/buttons/cta_button.png');
 
 const getErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
@@ -71,7 +48,7 @@ type LoginActionButtonProps = {
   compact: boolean;
   mobileWeb?: boolean;
   accessibilityLabel: string;
-  tone: ButtonTone;
+  variant: ButtonVariant;
 };
 
 function LoginActionButton({
@@ -83,15 +60,16 @@ function LoginActionButton({
   compact,
   mobileWeb = false,
   accessibilityLabel,
-  tone,
+  variant,
 }: LoginActionButtonProps) {
-  const palette = BUTTON_TONES[tone];
+  const labelColor = variant === 'light' ? urTextColors.buttonOnStone : urTheme.colors.ivory;
   const textStyle = [
     styles.actionLabel,
     compact ? styles.actionLabelCompact : styles.actionLabelRegular,
     mobileWeb && styles.actionLabelMobileWeb,
     styles.actionLabelGrobold,
-    { color: palette.text },
+    variant === 'light' ? styles.actionLabelLight : styles.actionLabelCta,
+    { color: labelColor },
     disabled && styles.actionLabelDisabled,
   ];
 
@@ -112,20 +90,24 @@ function LoginActionButton({
         disabled && styles.actionButtonDisabled,
       ]}
     >
-      <View style={[styles.actionButtonBase, { backgroundColor: palette.lip }]}>
-        <View
+      {({ pressed }) => (
+        <ImageBackground
+          source={variant === 'light' ? LIGHT_BUTTON_ART : CTA_BUTTON_ART}
+          resizeMode="stretch"
           style={[
-            styles.actionButtonFace,
-            {
-              backgroundColor: palette.face,
-              borderColor: palette.border,
-            },
+            styles.actionButtonFrame,
+            variant === 'light' ? styles.actionButtonFrameLight : styles.actionButtonFrameCta,
+          ]}
+          imageStyle={[
+            styles.actionButtonImage,
+            variant === 'cta' ? styles.actionButtonImageCta : null,
+            pressed ? styles.actionButtonImagePressed : null,
+            disabled ? styles.actionButtonImageDisabled : null,
           ]}
         >
-          <View style={[styles.actionButtonGloss, { backgroundColor: palette.gloss }]} />
           {loading ? (
             <View style={styles.actionButtonLoading}>
-              <ActivityIndicator color={palette.text} size="small" />
+              <ActivityIndicator color={labelColor} size="small" />
               <Text style={textStyle}>{title}</Text>
             </View>
           ) : (
@@ -133,8 +115,8 @@ function LoginActionButton({
               {title}
             </Text>
           )}
-        </View>
-      </View>
+        </ImageBackground>
+      )}
     </Pressable>
   );
 }
@@ -147,11 +129,14 @@ export default function LoginScreen() {
   const showMobileBackground = useMobileBackground();
   const isCompactLayout = width < 760;
   const isWeb = Platform.OS === 'web';
+  const isDesktopWeb = isWeb && !isCompactLayout;
   const isMobileWeb = isWeb && isCompactLayout;
   const buttonPanelWidth = Math.min(width - (isCompactLayout ? 28 : 72), isCompactLayout ? 392 : 600);
   const baseButtonWidth = Math.min(buttonPanelWidth * (isCompactLayout ? 0.72 : 0.68), isCompactLayout ? 280 : 420);
   const buttonWidth = isMobileWeb ? Math.round(baseButtonWidth * 0.8) : baseButtonWidth;
-  const logoWidth = Math.min(width * (isCompactLayout ? 0.62 : 0.28), isCompactLayout ? 250 : 340);
+  const logoWidth = showWideBackground
+    ? Math.min(width * 0.27, height * 0.43, 420)
+    : Math.min(width * (isCompactLayout ? 0.62 : 0.28), isCompactLayout ? 250 : 340);
   const panelArtStyle = isMobileWeb
     ? styles.buttonPanelArtMobileWeb
     : isWeb
@@ -213,7 +198,7 @@ export default function LoginScreen() {
           styles.scrollContent,
           {
             minHeight: height,
-            paddingTop: insets.top + (isCompactLayout ? 26 : 36),
+            paddingTop: insets.top + (isMobileWeb ? 26 : isDesktopWeb ? 18 : 36),
             paddingBottom: insets.bottom + (isCompactLayout ? 24 : 32),
           },
         ]}
@@ -226,7 +211,7 @@ export default function LoginScreen() {
             resizeMode="contain"
             accessibilityRole="image"
             accessibilityLabel="UR Legacy"
-            style={[styles.logo, { width: logoWidth, height: logoWidth * 0.88 }]}
+            style={[styles.logo, isDesktopWeb && styles.logoDesktopWeb, { width: logoWidth, height: logoWidth * 0.88 }]}
           />
 
           <View style={[styles.buttonColumn, isCompactLayout && styles.buttonColumnCompact]}>
@@ -247,7 +232,7 @@ export default function LoginScreen() {
                   width={buttonWidth}
                   compact={isCompactLayout}
                   mobileWeb={isMobileWeb}
-                  tone="guest"
+                  variant="light"
                 />
                 <LoginActionButton
                   title="Sign In With Google"
@@ -258,7 +243,7 @@ export default function LoginScreen() {
                   width={buttonWidth}
                   compact={isCompactLayout}
                   mobileWeb={isMobileWeb}
-                  tone="google"
+                  variant="cta"
                 />
               </View>
             </ImageBackground>
@@ -333,6 +318,9 @@ const styles = StyleSheet.create({
       elevation: 10,
     }),
   },
+  logoDesktopWeb: {
+    marginTop: -40,
+  },
   buttonColumn: {
     width: '100%',
     alignItems: 'center',
@@ -390,35 +378,32 @@ const styles = StyleSheet.create({
   actionButtonDisabled: {
     opacity: 0.68,
   },
-  actionButtonBase: {
+  actionButtonFrame: {
     width: '100%',
     height: '100%',
-    borderRadius: 20,
-    paddingBottom: 6,
-    ...boxShadow({
-      color: '#000',
-      opacity: 0.18,
-      offset: { width: 0, height: 8 },
-      blurRadius: 12,
-      elevation: 4,
-    }),
-  },
-  actionButtonFace: {
-    flex: 1,
-    borderRadius: 18,
-    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
+  },
+  actionButtonFrameLight: {
     paddingHorizontal: urTheme.spacing.md,
   },
-  actionButtonGloss: {
-    position: 'absolute',
-    top: 0,
-    left: 3,
-    right: 3,
-    height: '56%',
-    borderRadius: 16,
+  actionButtonFrameCta: {
+    paddingHorizontal: urTheme.spacing.md,
+    paddingTop: 6,
+    paddingBottom: 8,
+  },
+  actionButtonImage: {
+    width: '100%',
+    height: '100%',
+  },
+  actionButtonImageCta: {
+    ...CTA_BUTTON_VISIBLE_IMAGE_STYLE,
+  },
+  actionButtonImagePressed: {
+    opacity: 0.97,
+  },
+  actionButtonImageDisabled: {
+    opacity: 0.62,
   },
   actionButtonLoading: {
     flexDirection: 'row',
@@ -429,10 +414,15 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     textAlign: 'center',
-    textShadowColor: 'rgba(42, 24, 12, 0.18)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 1,
     width: '96%',
+  },
+  actionLabelLight: {
+    textShadowColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  actionLabelCta: {
+    textShadowColor: 'rgba(86, 42, 0, 0.42)',
   },
   actionLabelRegular: {
     fontSize: 18,

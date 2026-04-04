@@ -4,6 +4,7 @@ import { listAuditLog } from '../api/auditLog'
 import { getTournamentLiveOverview } from '../api/liveStatus'
 import { useSession } from '../auth/useSession'
 import { ActionToolbar } from '../components/ActionToolbar'
+import { EmptyState } from '../components/EmptyState'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
 import { StatCard } from '../components/StatCard'
@@ -151,7 +152,13 @@ function renderTimelineChart(
   const maxValue = Math.max(...buckets.map((bucket) => bucket.count), 0)
 
   if (maxValue === 0) {
-    return <div className="empty-state">{emptyLabel}</div>
+    return (
+      <EmptyState
+        title="No timeline activity"
+        description={emptyLabel}
+        compact
+      />
+    )
   }
 
   return (
@@ -299,9 +306,18 @@ export function OverviewPage() {
         }
       >
         {isLoading ? (
-          <div className="empty-state">Loading live tournament status...</div>
+          <EmptyState
+            title="Loading live tournament status"
+            description="Refreshing the latest bracket pressure, queue state, and operator alerts."
+            compact
+            tone="info"
+          />
         ) : summaries.length === 0 ? (
-          <div className="empty-state">No active or recent tournament runs were returned.</div>
+          <EmptyState
+            title="No runs to monitor"
+            description="No active or recent tournament runs were returned for this admin session."
+            compact
+          />
         ) : (
           <div className="table-wrap table-wrap--edge">
             <table className="table table--dense table--queue">
@@ -372,7 +388,11 @@ export function OverviewPage() {
           subtitle="How far each visible run has advanced through its bracket."
         >
           {summaries.length === 0 ? (
-            <div className="empty-state">Bracket progress appears once runs are available.</div>
+            <EmptyState
+              title="No bracket progress yet"
+              description="Bracket progress appears once visible runs are available."
+              compact
+            />
           ) : (
             renderProgressRows(
               summaries.map((summary) => ({
@@ -400,7 +420,11 @@ export function OverviewPage() {
           subtitle="Cross-run heat map of where live play is currently concentrated."
         >
           {activeMatchesByRound.length === 0 ? (
-            <div className="empty-state">No rounds currently have active matches.</div>
+            <EmptyState
+              title="No active rounds"
+              description="No rounds currently have active matches."
+              compact
+            />
           ) : (
             renderCountRows(
               activeMatchesByRound.map((row) => ({
@@ -420,7 +444,11 @@ export function OverviewPage() {
           subtitle="Current entrant pressure against configured bracket size."
         >
           {summaries.length === 0 ? (
-            <div className="empty-state">No capacity data available yet.</div>
+            <EmptyState
+              title="Capacity data unavailable"
+              description="Registration fill appears after runs are returned from the admin API."
+              compact
+            />
           ) : (
             renderProgressRows(
               summaries.map((summary) => ({
@@ -462,9 +490,18 @@ export function OverviewPage() {
           }
         >
           {isLoading ? (
-            <div className="empty-state">Loading activity...</div>
+            <EmptyState
+              title="Loading recent activity"
+              description="Fetching the latest operator actions across visible runs."
+              compact
+              tone="info"
+            />
           ) : auditLog.length === 0 ? (
-            <div className="empty-state">No audit entries returned yet.</div>
+            <EmptyState
+              title="No audit activity yet"
+              description="Recent operator events will appear here once actions are recorded."
+              compact
+            />
           ) : (
             <ul className="list list--dense">
               {auditLog.slice(0, 6).map((entry) => (
