@@ -162,17 +162,18 @@ const MOVE_SLIDE_STEP_DURATION_MS = 110;
 const MOVE_SLIDE_MAX_DURATION_MS = 640;
 const AUTO_COMMIT_SELECTED_MOVE_MS = 180;
 const SHOW_BOARD_ALIGNMENT_DEBUG = false;
-// Keep these as normalized tile ratios so board landing anchors scale with every
-// board size we render on mobile web, native mobile, and desktop web.
-const VERTICAL_BOARD_ROW_FOCUS_CENTER_Y_RATIOS = [
-  0.512,
-  0.516,
-  0.518,
-  0.514,
-  0.504,
-  0.5,
-  0.494,
-  0.488,
+// Display-row/display-column visual centers for the current vertical board art.
+// These are tuned to where the tile reads as centered on-screen, not just the
+// geometric center of the gameplay cell or the legacy board shell.
+const VERTICAL_BOARD_TILE_FOCUS_CENTER_RATIOS = [
+  [{ x: 0.516, y: 0.55 }, { x: 0.502, y: 0.554 }, { x: 0.508, y: 0.55 }],
+  [{ x: 0.514, y: 0.536 }, { x: 0.502, y: 0.54 }, { x: 0.508, y: 0.536 }],
+  [{ x: 0.512, y: 0.526 }, { x: 0.5, y: 0.528 }, { x: 0.51, y: 0.526 }],
+  [{ x: 0.51, y: 0.516 }, { x: 0.5, y: 0.518 }, { x: 0.51, y: 0.516 }],
+  [{ x: 0.51, y: 0.504 }, { x: 0.5, y: 0.506 }, { x: 0.51, y: 0.504 }],
+  [{ x: 0.508, y: 0.466 }, { x: 0.5, y: 0.47 }, { x: 0.512, y: 0.466 }],
+  [{ x: 0.51, y: 0.43 }, { x: 0.5, y: 0.434 }, { x: 0.51, y: 0.43 }],
+  [{ x: 0.512, y: 0.392 }, { x: 0.5, y: 0.396 }, { x: 0.508, y: 0.392 }],
 ] as const;
 const VERTICAL_BOARD_ROW_FOCUS_HEIGHT_RATIOS = [
   0.7,
@@ -183,11 +184,6 @@ const VERTICAL_BOARD_ROW_FOCUS_HEIGHT_RATIOS = [
   0.75,
   0.72,
   0.7,
-] as const;
-const VERTICAL_BOARD_COLUMN_FOCUS_CENTER_X_RATIOS = [
-  0.508,
-  0.5,
-  0.492,
 ] as const;
 const VERTICAL_BOARD_COLUMN_FOCUS_WIDTH_RATIOS = [
   0.72,
@@ -252,8 +248,9 @@ export const getBoardTileFocusFrame = ({
   const displayCol = BOARD_ROWS - 1 - row;
   const widthRatio = VERTICAL_BOARD_COLUMN_FOCUS_WIDTH_RATIOS[displayCol] ?? 0.7;
   const heightRatio = VERTICAL_BOARD_ROW_FOCUS_HEIGHT_RATIOS[displayRow] ?? 0.74;
-  const centerXRatio = VERTICAL_BOARD_COLUMN_FOCUS_CENTER_X_RATIOS[displayCol] ?? 0.5;
-  const centerYRatio = VERTICAL_BOARD_ROW_FOCUS_CENTER_Y_RATIOS[displayRow] ?? 0.5;
+  const centerRatio = VERTICAL_BOARD_TILE_FOCUS_CENTER_RATIOS[displayRow]?.[displayCol];
+  const centerXRatio = centerRatio?.x ?? 0.5;
+  const centerYRatio = centerRatio?.y ?? 0.5;
   const width = Math.round(cellSize * widthRatio * 100) / 100;
   const height = Math.round(cellSize * heightRatio * 100) / 100;
   const rawLeft = cellSize * centerXRatio - width / 2;

@@ -34,9 +34,9 @@ describe('getBoardPieceRenderMetrics', () => {
       }).y,
     );
 
-    expect(new Set(offsets).size).toBeGreaterThan(4);
-    expect(offsets[0]).toBeLessThan(offsets[3]);
-    expect(offsets[4]).toBeGreaterThan(offsets[7]);
+    expect(new Set(offsets).size).toBeGreaterThan(6);
+    expect(offsets[0]).toBeGreaterThan(offsets[3]);
+    expect(offsets[3]).toBeGreaterThan(offsets[6]);
     expect(offsets[7]).toBeLessThan(0);
   });
 
@@ -72,7 +72,9 @@ describe('getBoardPieceRenderMetrics', () => {
 
     expect(leftOuter.width).not.toBe(centerLane.width);
     expect(leftOuter.height).not.toBe(centerLane.height);
-    expect(leftOuter.centerX).toBeGreaterThan(50);
+    expect(leftOuter.centerX).toBeGreaterThan(centerLane.centerX);
+    expect(centerLane.centerY).toBeGreaterThan(50);
+    expect(bottomOuter.centerX).toBeGreaterThan(50);
     expect(bottomOuter.centerY).toBeLessThan(50);
   });
 

@@ -278,6 +278,18 @@ describe('tournament rpc parsing', () => {
     await expect(joinPublicTournament('spring-open')).rejects.toThrow('This tournament is already full.');
   });
 
+  it('reads tournament rpc messages from response-style errors', async () => {
+    mockRpc.mockRejectedValue({
+      status: 500,
+      statusText: 'Internal Server Error',
+      clone: () => ({
+        text: async () => JSON.stringify({ message: 'Unable to create authoritative match.' }),
+      }),
+    });
+
+    await expect(launchTournamentMatch('spring-open')).rejects.toThrow('Unable to create authoritative match.');
+  });
+
   it('retries tournament rpc calls once after an unauthorized response', async () => {
     const recoveredSession = {
       user_id: 'user-1',

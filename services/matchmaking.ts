@@ -60,21 +60,80 @@ type StatusLikeError = {
   headers?: {
     get?: (name: string) => string | null;
   };
+  json?: () => Promise<unknown>;
+  text?: () => Promise<string>;
+  clone?: () => {
+    json?: () => Promise<unknown>;
+    text?: () => Promise<string>;
+  };
 };
 
-const normalizeMatchmakingError = (error: unknown): Error => {
+const readRpcErrorMessage = async (error: StatusLikeError): Promise<string | null> => {
+  const directMessage =
+    typeof error.message === "string" && error.message.trim().length > 0
+      ? error.message.trim()
+      : typeof error.error === "string" && error.error.trim().length > 0
+        ? error.error.trim()
+        : null;
+
+  if (directMessage) {
+    return directMessage;
+  }
+
+  const responseLike = typeof error.clone === "function" ? error.clone() : error;
+  if (typeof responseLike.json === "function") {
+    try {
+      const payload = await responseLike.json();
+      if (typeof payload === "object" && payload !== null) {
+        const record = payload as { message?: unknown; error?: unknown };
+        if (typeof record.message === "string" && record.message.trim().length > 0) {
+          return record.message.trim();
+        }
+        if (typeof record.error === "string" && record.error.trim().length > 0) {
+          return record.error.trim();
+        }
+      }
+    } catch {
+      // Fall back to plain text when the response body is not valid JSON.
+    }
+  }
+
+  if (typeof responseLike.text === "function") {
+    try {
+      const text = await responseLike.text();
+      if (!text || text.trim().length === 0) {
+        return null;
+      }
+
+      try {
+        const payload = JSON.parse(text) as { message?: unknown; error?: unknown };
+        if (typeof payload.message === "string" && payload.message.trim().length > 0) {
+          return payload.message.trim();
+        }
+        if (typeof payload.error === "string" && payload.error.trim().length > 0) {
+          return payload.error.trim();
+        }
+      } catch {
+        // Use the raw response text when it is not JSON.
+      }
+
+      return text.trim();
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+};
+
+const normalizeMatchmakingError = async (error: unknown): Promise<Error> => {
   if (error instanceof Error) {
     return error;
   }
 
   if (typeof error === "object" && error !== null) {
     const responseLike = error as StatusLikeError;
-    const message =
-      typeof responseLike.message === "string" && responseLike.message.trim().length > 0
-        ? responseLike.message.trim()
-        : typeof responseLike.error === "string" && responseLike.error.trim().length > 0
-          ? responseLike.error.trim()
-          : null;
+    const message = await readRpcErrorMessage(responseLike);
     const status = responseLike.status;
     const statusText = responseLike.statusText;
     const authenticateHeader =
@@ -251,7 +310,7 @@ export const findMatch = async (handlers?: MatchmakingHandlers): Promise<MatchRe
   } catch (error) {
     await cancelMatchmaking();
     nakamaService.disconnectSocket(false);
-    throw normalizeMatchmakingError(error);
+    throw await normalizeMatchmakingError(error);
   }
 };
 
@@ -275,7 +334,7 @@ export const createPrivateMatch = async (modeId: MatchModeId = "standard"): Prom
       userId: session.user_id,
     };
   } catch (error) {
-    throw normalizeMatchmakingError(error);
+    throw await normalizeMatchmakingError(error);
   }
 };
 
@@ -304,7 +363,7 @@ export const joinPrivateMatch = async (code: string): Promise<PrivateMatchResult
       userId: session.user_id,
     };
   } catch (error) {
-    throw normalizeMatchmakingError(error);
+    throw await normalizeMatchmakingError(error);
   }
 };
 
@@ -328,6 +387,6 @@ export const getPrivateMatchStatus = async (code: string): Promise<PrivateMatchS
       hasGuestJoined: Boolean(payload.hasGuestJoined),
     };
   } catch (error) {
-    throw normalizeMatchmakingError(error);
+    throw await normalizeMatchmakingError(error);
   }
 };

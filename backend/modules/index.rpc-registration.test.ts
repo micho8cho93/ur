@@ -48,6 +48,19 @@ describe("InitModule tournament RPC registration", () => {
         "rpc_admin_list_tournaments",
       ]),
     );
+    expect(initializer.registerMatch).toHaveBeenCalledWith(
+      "authoritative_match",
+      expect.objectContaining({
+        matchInit: expect.any(Function),
+        matchJoinAttempt: expect.any(Function),
+        matchJoin: expect.any(Function),
+        matchLeave: expect.any(Function),
+        matchLoop: expect.any(Function),
+        matchTerminate: expect.any(Function),
+        matchSignal: expect.any(Function),
+      }),
+    );
+    expect(initializer.registerMatchmakerMatched).toHaveBeenCalledWith(expect.any(Function));
   });
 
   it("keeps tournament admin RPCs directly registered inside InitModule for Nakama runtime compatibility", () => {
@@ -65,6 +78,15 @@ describe("InitModule tournament RPC registration", () => {
     );
     expect(entrypointSource).toContain(
       "initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_LIVE_STATUS, rpcAdminGetTournamentLiveStatus);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerMatch(MATCH_HANDLER, {",
+    );
+    expect(entrypointSource).toContain(
+      "matchInit: matchInitHandler,",
+    );
+    expect(entrypointSource).toContain(
+      "matchJoinAttempt: matchJoinAttemptHandler,",
     );
   });
 });

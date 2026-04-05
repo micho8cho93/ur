@@ -1123,7 +1123,7 @@ var normalizeStorageListResult = (value) => {
     cursor: readStringField(record, ["cursor", "nextCursor", "next_cursor"])
   };
 };
-var writeEvent = (nk, logger2, event) => {
+var writeEvent = (nk, logger, event) => {
   try {
     nk.storageWrite([
       {
@@ -1137,7 +1137,7 @@ var writeEvent = (nk, logger2, event) => {
       }
     ]);
   } catch (error) {
-    logger2.warn("Unable to write analytics event %s: %s", event.eventId, getErrorMessage(error));
+    logger.warn("Unable to write analytics event %s: %s", event.eventId, getErrorMessage(error));
   }
 };
 var trackPresenceHeartbeat = (userId) => {
@@ -1159,7 +1159,7 @@ var getOnlinePresenceSnapshot = () => {
     serverTimeMs: nowMs
   };
 };
-var recordMatchStartAnalyticsEvent = (nk, logger2, event) => {
+var recordMatchStartAnalyticsEvent = (nk, logger, event) => {
   const occurredAt = event.startedAt;
   const normalizedEvent = __spreadValues({
     eventId: buildEventId("match_start", occurredAt, event.matchId),
@@ -1177,9 +1177,9 @@ var recordMatchStartAnalyticsEvent = (nk, logger2, event) => {
       return (_a = player.username) != null ? _a : player.userId;
     }).filter((playerLabel) => playerLabel.length > 0)
   });
-  writeEvent(nk, logger2, normalizedEvent);
+  writeEvent(nk, logger, normalizedEvent);
 };
-var recordMatchEndAnalyticsEvent = (nk, logger2, event) => {
+var recordMatchEndAnalyticsEvent = (nk, logger, event) => {
   const occurredAt = event.endedAt;
   const normalizedEvent = __spreadValues({
     eventId: buildEventId("match_end", occurredAt, event.matchId),
@@ -1187,9 +1187,9 @@ var recordMatchEndAnalyticsEvent = (nk, logger2, event) => {
     occurredAt
   }, event);
   activeMatchesById.delete(event.matchId);
-  writeEvent(nk, logger2, normalizedEvent);
+  writeEvent(nk, logger, normalizedEvent);
 };
-var recordXpAwardAnalyticsEvent = (nk, logger2, event) => {
+var recordXpAwardAnalyticsEvent = (nk, logger, event) => {
   var _a;
   const occurredAt = (_a = event.occurredAt) != null ? _a : (/* @__PURE__ */ new Date()).toISOString();
   const normalizedEvent = {
@@ -1207,13 +1207,13 @@ var recordXpAwardAnalyticsEvent = (nk, logger2, event) => {
     newRank: event.newRank,
     rankChanged: event.rankChanged
   };
-  writeEvent(nk, logger2, normalizedEvent);
+  writeEvent(nk, logger, normalizedEvent);
 };
 var unregisterActiveMatch = (matchId) => {
   activeMatchesById.delete(matchId);
 };
 var listActiveTrackedMatches = () => Array.from(activeMatchesById.values()).sort((left, right) => left.startedAt.localeCompare(right.startedAt) * -1);
-var listAnalyticsEvents = (nk, logger2) => {
+var listAnalyticsEvents = (nk, logger) => {
   if (typeof nk.storageList !== "function") {
     return {
       supported: false,
@@ -1238,7 +1238,7 @@ var listAnalyticsEvents = (nk, logger2) => {
       }
       cursor = result.cursor;
     } catch (error) {
-      logger2.warn("Unable to list analytics events: %s", getErrorMessage(error));
+      logger.warn("Unable to list analytics events: %s", getErrorMessage(error));
       return {
         supported: false,
         notes: ["Analytics event storage could not be listed from the current runtime."],
@@ -1462,7 +1462,7 @@ var buildXpRewardLedgerRecord = (userId, reward, previousTotalXp, newTotalXp, aw
     progression: buildProgressionSnapshot(newTotalXp)
   };
 };
-var ensureProgressionProfile = (nk, logger2, userId) => {
+var ensureProgressionProfile = (nk, logger, userId) => {
   var _a;
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const existingObject = readProgressionProfileObject(nk, userId);
@@ -1475,7 +1475,7 @@ var ensureProgressionProfile = (nk, logger2, userId) => {
         writeProgressionProfile(nk, userId, normalizedProfile, (_a = getStorageObjectVersion(existingObject)) != null ? _a : "");
         return normalizedProfile;
       } catch (error) {
-        logger2.warn(
+        logger.warn(
           "Progression profile repair attempt %d/%d failed for user %s: %s",
           attempt,
           MAX_WRITE_ATTEMPTS,
@@ -1490,7 +1490,7 @@ var ensureProgressionProfile = (nk, logger2, userId) => {
       writeProgressionProfile(nk, userId, defaultProfile, "*");
       return defaultProfile;
     } catch (error) {
-      logger2.warn(
+      logger.warn(
         "Progression profile init attempt %d/%d failed for user %s: %s",
         attempt,
         MAX_WRITE_ATTEMPTS,
@@ -1501,8 +1501,8 @@ var ensureProgressionProfile = (nk, logger2, userId) => {
   }
   throw new Error(`Unable to initialize progression for user ${userId}.`);
 };
-var getProgressionForUser = (nk, logger2, userId) => buildProgressionSnapshot(ensureProgressionProfile(nk, logger2, userId).totalXp);
-var awardXp = (nk, logger2, params) => {
+var getProgressionForUser = (nk, logger, userId) => buildProgressionSnapshot(ensureProgressionProfile(nk, logger, userId).totalXp);
+var awardXp = (nk, logger, params) => {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i;
   const userId = (_a = params.userId) == null ? void 0 : _a.trim();
   const ledgerKey = (_b = params.ledgerKey) == null ? void 0 : _b.trim();
@@ -1590,7 +1590,7 @@ var awardXp = (nk, logger2, params) => {
           permissionWrite: STORAGE_PERMISSION_NONE2
         }
       ]);
-      logger2.info(
+      logger.info(
         "Awarded %d XP to user %s for %s (%s). total=%d",
         awardedXp,
         userId,
@@ -1598,7 +1598,7 @@ var awardXp = (nk, logger2, params) => {
         sourceId,
         newTotalXp
       );
-      recordXpAwardAnalyticsEvent(nk, logger2, {
+      recordXpAwardAnalyticsEvent(nk, logger, {
         occurredAt: now,
         userId,
         awardedXp,
@@ -1628,7 +1628,7 @@ var awardXp = (nk, logger2, params) => {
           }
         );
       }
-      logger2.warn(
+      logger.warn(
         "XP award write attempt %d/%d failed for user %s (%s/%s): %s",
         attempt,
         MAX_WRITE_ATTEMPTS,
@@ -1656,11 +1656,11 @@ var buildMatchWinAwardResponse = (result) => {
     progression: result.progression
   };
 };
-var awardXpForMatchWin = (nk, logger2, params) => {
+var awardXpForMatchWin = (nk, logger, params) => {
   var _a;
   const source = (_a = params.source) != null ? _a : "pvp_win";
   return buildMatchWinAwardResponse(
-    awardXp(nk, logger2, {
+    awardXp(nk, logger, {
       userId: params.userId,
       ledgerKey: `${source}:${params.matchId}`,
       source,
@@ -1670,13 +1670,13 @@ var awardXpForMatchWin = (nk, logger2, params) => {
     })
   );
 };
-var awardXpForTournamentChampion = (nk, logger2, params) => {
+var awardXpForTournamentChampion = (nk, logger, params) => {
   var _a;
   const runId = (_a = params.runId) == null ? void 0 : _a.trim();
   if (!runId) {
     throw new Error("Cannot award tournament champion XP without a run ID.");
   }
-  return awardXp(nk, logger2, {
+  return awardXp(nk, logger, {
     userId: params.userId,
     ledgerKey: `tournament_champion:${runId}`,
     source: "tournament_champion",
@@ -1687,11 +1687,11 @@ var awardXpForTournamentChampion = (nk, logger2, params) => {
 var createProgressionAwardNotification = (response) => __spreadValues({
   type: "progression_award"
 }, response);
-var rpcGetXpProgress = (ctx, logger2, nk, _payload) => {
+var rpcGetXpProgress = (ctx, logger, nk, _payload) => {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
-  return JSON.stringify(getProgressionForUser(nk, logger2, ctx.userId));
+  return JSON.stringify(getProgressionForUser(nk, logger, ctx.userId));
 };
 var rpcGetProgression = rpcGetXpProgress;
 var rpcGetUserXpProgress = rpcGetXpProgress;
@@ -2095,7 +2095,7 @@ var requireCompletedUsernameOnboarding = (nk, userId) => {
   }
   throw new Error("Choose a username before accessing multiplayer or social features.");
 };
-var rpcGetUsernameOnboardingStatus = (ctx, logger2, nk, payload) => {
+var rpcGetUsernameOnboardingStatus = (ctx, logger, nk, payload) => {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
@@ -2110,10 +2110,10 @@ var rpcGetUsernameOnboardingStatus = (ctx, logger2, nk, payload) => {
     currentUsername: null,
     suggestedUsername: suggestAvailableUsername(nk, request, ctx.userId)
   };
-  logger2.info("Username onboarding status requested for user %s (complete=%s).", ctx.userId, response.onboardingComplete);
+  logger.info("Username onboarding status requested for user %s (complete=%s).", ctx.userId, response.onboardingComplete);
   return JSON.stringify(response);
 };
-var rpcClaimUsername = (ctx, logger2, nk, payload) => {
+var rpcClaimUsername = (ctx, logger, nk, payload) => {
   var _a, _b, _c, _d;
   if (!ctx.userId) {
     throw new Error("Authentication required.");
@@ -2198,10 +2198,10 @@ var rpcClaimUsername = (ctx, logger2, nk, payload) => {
           permissionWrite: STORAGE_PERMISSION_NONE2
         }
       ]);
-      logger2.info("User %s claimed username %s.", ctx.userId, validation.display);
+      logger.info("User %s claimed username %s.", ctx.userId, validation.display);
       return JSON.stringify(buildClaimUsernameSuccess(validation.display));
     } catch (error) {
-      logger2.warn(
+      logger.warn(
         "Username claim write attempt %d/%d failed for user %s (%s): %s",
         attempt,
         MAX_WRITE_ATTEMPTS,
@@ -2351,7 +2351,7 @@ var readEloProfileObject = (nk, userId) => {
   ]);
   return findStorageObject(objects, ELO_PROFILE_COLLECTION, ELO_PROFILE_KEY, userId);
 };
-var ensureEloProfileObject = (nk, logger2, userId) => {
+var ensureEloProfileObject = (nk, logger, userId) => {
   var _a;
   const usernameDisplay = getRequiredUsernameDisplay(nk, userId);
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
@@ -2371,7 +2371,7 @@ var ensureEloProfileObject = (nk, logger2, userId) => {
           profile: normalized
         };
       } catch (error) {
-        logger2.warn(
+        logger.warn(
           "Elo profile repair attempt %d/%d failed for user %s: %s",
           attempt,
           MAX_WRITE_ATTEMPTS,
@@ -2389,7 +2389,7 @@ var ensureEloProfileObject = (nk, logger2, userId) => {
         profile: nextProfile
       };
     } catch (error) {
-      logger2.warn(
+      logger.warn(
         "Elo profile init attempt %d/%d failed for user %s: %s",
         attempt,
         MAX_WRITE_ATTEMPTS,
@@ -2417,10 +2417,10 @@ var buildLeaderboardEntryFromProfile = (profile, rank) => ({
   provisional: profile.provisional,
   rank
 });
-var getEloRatingProfileForUser = (nk, logger2, userId) => {
+var getEloRatingProfileForUser = (nk, logger, userId) => {
   var _a;
-  const profileState = ensureEloProfileObject(nk, logger2, userId);
-  const rank = (_a = syncEloLeaderboardRecords(nk, logger2, [profileState.profile])[userId]) != null ? _a : null;
+  const profileState = ensureEloProfileObject(nk, logger, userId);
+  const rank = (_a = syncEloLeaderboardRecords(nk, logger, [profileState.profile])[userId]) != null ? _a : null;
   return __spreadProps(__spreadValues({
     leaderboardId: ELO_LEADERBOARD_ID
   }, buildLeaderboardEntryFromProfile(profileState.profile, rank)), {
@@ -2439,7 +2439,7 @@ var getLeaderboardRecordMetadata = (record) => {
   return asRecord2(data == null ? void 0 : data.metadata);
 };
 var getLeaderboardRecordUsername = (record) => readStringField4(record, ["username"]);
-var syncEloLeaderboardRecord = (nk, logger2, profile) => {
+var syncEloLeaderboardRecord = (nk, logger, profile) => {
   try {
     const record = nk.leaderboardRecordWrite(
       ELO_LEADERBOARD_ID,
@@ -2451,7 +2451,7 @@ var syncEloLeaderboardRecord = (nk, logger2, profile) => {
     );
     return getLeaderboardRecordRank(record);
   } catch (error) {
-    logger2.error(
+    logger.error(
       "Failed to write Elo leaderboard record for user %s: %s",
       profile.userId,
       getErrorMessage2(error)
@@ -2459,9 +2459,9 @@ var syncEloLeaderboardRecord = (nk, logger2, profile) => {
     return null;
   }
 };
-var syncEloLeaderboardRecords = (nk, logger2, profiles) => profiles.reduce(
+var syncEloLeaderboardRecords = (nk, logger, profiles) => profiles.reduce(
   (entries, profile) => {
-    entries[profile.userId] = syncEloLeaderboardRecord(nk, logger2, profile);
+    entries[profile.userId] = syncEloLeaderboardRecord(nk, logger, profile);
     return entries;
   },
   {}
@@ -2594,9 +2594,9 @@ var createEloRatingChangeNotification = (result, userId, ranksByUserId, duplicat
     opponent: createMatchParticipantView(opponentResult, (_b = ranksByUserId[opponentResult.userId]) != null ? _b : null)
   };
 };
-var syncLeaderboardFromProcessedMatch = (nk, logger2, result) => syncEloLeaderboardRecords(
+var syncLeaderboardFromProcessedMatch = (nk, logger, result) => syncEloLeaderboardRecords(
   nk,
-  logger2,
+  logger,
   result.playerResults.map((playerResult) => ({
     userId: playerResult.userId,
     usernameDisplay: playerResult.usernameDisplay,
@@ -2611,7 +2611,7 @@ var syncLeaderboardFromProcessedMatch = (nk, logger2, result) => syncEloLeaderbo
     updatedAt: playerResult.lastRatedAt
   }))
 );
-var ensureEloLeaderboard = (nk, logger2) => {
+var ensureEloLeaderboard = (nk, logger) => {
   try {
     nk.leaderboardCreate(
       ELO_LEADERBOARD_ID,
@@ -2627,10 +2627,10 @@ var ensureEloLeaderboard = (nk, logger2) => {
       true
     );
   } catch (error) {
-    logger2.warn("Unable to ensure Elo leaderboard exists: %s", getErrorMessage2(error));
+    logger.warn("Unable to ensure Elo leaderboard exists: %s", getErrorMessage2(error));
   }
 };
-var processRankedMatchResult = (nk, logger2, params) => {
+var processRankedMatchResult = (nk, logger, params) => {
   var _a, _b;
   if (!params.ranked || params.botMatch || params.casualMatch || params.experimentalMode) {
     return null;
@@ -2654,11 +2654,11 @@ var processRankedMatchResult = (nk, logger2, params) => {
         leaderboardId: existingProcessed.leaderboardId,
         matchId: existingProcessed.matchId,
         playerResults: existingProcessed.playerResults,
-        ranksByUserId: syncLeaderboardFromProcessedMatch(nk, logger2, existingProcessed)
+        ranksByUserId: syncLeaderboardFromProcessedMatch(nk, logger, existingProcessed)
       };
     }
-    const winnerProfileState = ensureEloProfileObject(nk, logger2, winnerUserId);
-    const loserProfileState = ensureEloProfileObject(nk, logger2, loserUserId);
+    const winnerProfileState = ensureEloProfileObject(nk, logger, winnerUserId);
+    const loserProfileState = ensureEloProfileObject(nk, logger, loserUserId);
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const computation = computeEloRatingUpdate({
       playerARating: winnerProfileState.profile.eloRating,
@@ -2756,7 +2756,7 @@ var processRankedMatchResult = (nk, logger2, params) => {
           permissionWrite: STORAGE_PERMISSION_NONE2
         }
       ]);
-      logger2.info(
+      logger.info(
         "Processed ranked Elo result for match %s (%s beat %s).",
         matchId,
         winnerUserId,
@@ -2768,7 +2768,7 @@ var processRankedMatchResult = (nk, logger2, params) => {
         leaderboardId: ELO_LEADERBOARD_ID,
         matchId,
         playerResults: processedRecord.playerResults,
-        ranksByUserId: syncEloLeaderboardRecords(nk, logger2, [nextWinnerProfile, nextLoserProfile])
+        ranksByUserId: syncEloLeaderboardRecords(nk, logger, [nextWinnerProfile, nextLoserProfile])
       };
     } catch (error) {
       const refreshedProcessedObject = readProcessedMatchResultObject(nk, matchId);
@@ -2780,10 +2780,10 @@ var processRankedMatchResult = (nk, logger2, params) => {
           leaderboardId: refreshedProcessed.leaderboardId,
           matchId: refreshedProcessed.matchId,
           playerResults: refreshedProcessed.playerResults,
-          ranksByUserId: syncLeaderboardFromProcessedMatch(nk, logger2, refreshedProcessed)
+          ranksByUserId: syncLeaderboardFromProcessedMatch(nk, logger, refreshedProcessed)
         };
       }
-      logger2.warn(
+      logger.warn(
         "Ranked Elo processing attempt %d/%d failed for match %s: %s",
         attempt,
         MAX_WRITE_ATTEMPTS,
@@ -2857,16 +2857,16 @@ var normalizeLeaderboardListResponse = (result) => {
 var requireLeaderboardAccess = (nk, userId) => {
   getRequiredUsernameDisplay(nk, userId);
 };
-var rpcGetMyRatingProfile = (ctx, logger2, nk, _payload) => {
+var rpcGetMyRatingProfile = (ctx, logger, nk, _payload) => {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
   requireLeaderboardAccess(nk, ctx.userId);
-  const profileState = ensureEloProfileObject(nk, logger2, ctx.userId);
+  const profileState = ensureEloProfileObject(nk, logger, ctx.userId);
   let ownerRecord = readOwnerLeaderboardRecord(nk, ctx.userId);
   let rank = getLeaderboardRecordRank(ownerRecord);
   if (!ownerRecord) {
-    rank = syncEloLeaderboardRecord(nk, logger2, profileState.profile);
+    rank = syncEloLeaderboardRecord(nk, logger, profileState.profile);
     ownerRecord = readOwnerLeaderboardRecord(nk, ctx.userId);
     rank = rank != null ? rank : getLeaderboardRecordRank(ownerRecord);
   }
@@ -2904,17 +2904,17 @@ var rpcListTopEloPlayers = (ctx, _logger, nk, payload) => {
   };
   return JSON.stringify(response);
 };
-var rpcGetEloLeaderboardAroundMe = (ctx, logger2, nk, payload) => {
+var rpcGetEloLeaderboardAroundMe = (ctx, logger, nk, payload) => {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
   requireLeaderboardAccess(nk, ctx.userId);
   const request = parseAroundMeRequest(payload);
   const limit = clampLimit(request.limit, DEFAULT_HAYSTACK_SIZE);
-  const profileState = ensureEloProfileObject(nk, logger2, ctx.userId);
+  const profileState = ensureEloProfileObject(nk, logger, ctx.userId);
   let ownerRecord = readOwnerLeaderboardRecord(nk, ctx.userId);
   if (!ownerRecord) {
-    syncEloLeaderboardRecord(nk, logger2, profileState.profile);
+    syncEloLeaderboardRecord(nk, logger, profileState.profile);
     ownerRecord = readOwnerLeaderboardRecord(nk, ctx.userId);
   }
   const rawResult = nk.leaderboardRecordsHaystack(ELO_LEADERBOARD_ID, ctx.userId, limit, "", 0);
@@ -3922,7 +3922,7 @@ var writeChallengeProgressObject = (nk, userId, progress, version) => {
     }
   ]);
 };
-var ensureChallengeDefinitions = (nk, logger2) => {
+var ensureChallengeDefinitions = (nk, logger) => {
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const existingObjects = nk.storageRead(
       CHALLENGE_DEFINITIONS.map((definition) => ({
@@ -3959,10 +3959,10 @@ var ensureChallengeDefinitions = (nk, logger2) => {
     }
     try {
       nk.storageWrite(writes);
-      logger2.info("Synchronized %d challenge definitions into Nakama storage.", writes.length);
+      logger.info("Synchronized %d challenge definitions into Nakama storage.", writes.length);
       return;
     } catch (error) {
-      logger2.warn(
+      logger.warn(
         "Challenge definition sync attempt %d/%d failed: %s",
         attempt,
         MAX_WRITE_ATTEMPTS,
@@ -3972,11 +3972,11 @@ var ensureChallengeDefinitions = (nk, logger2) => {
   }
   throw new Error("Unable to synchronize challenge definitions into Nakama storage.");
 };
-var ensureUserChallengeProgress = (nk, logger2, userId) => {
+var ensureUserChallengeProgress = (nk, logger, userId) => {
   var _a;
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const existingObject = readChallengeProgressObject(nk, userId);
-    const progressionProfile = ensureProgressionProfile(nk, logger2, userId);
+    const progressionProfile = ensureProgressionProfile(nk, logger, userId);
     if (existingObject) {
       const normalized = normalizeChallengeProgressSnapshot(
         getStorageObjectValue(existingObject),
@@ -3989,7 +3989,7 @@ var ensureUserChallengeProgress = (nk, logger2, userId) => {
         writeChallengeProgressObject(nk, userId, normalized, (_a = getStorageObjectVersion(existingObject)) != null ? _a : "");
         return normalized;
       } catch (error) {
-        logger2.warn(
+        logger.warn(
           "Challenge progress repair attempt %d/%d failed for user %s: %s",
           attempt,
           MAX_WRITE_ATTEMPTS,
@@ -4007,7 +4007,7 @@ var ensureUserChallengeProgress = (nk, logger2, userId) => {
       writeChallengeProgressObject(nk, userId, defaults, "*");
       return defaults;
     } catch (error) {
-      logger2.warn(
+      logger.warn(
         "Challenge progress init attempt %d/%d failed for user %s: %s",
         attempt,
         MAX_WRITE_ATTEMPTS,
@@ -4021,7 +4021,7 @@ var ensureUserChallengeProgress = (nk, logger2, userId) => {
 var getChallengeDefinitionsResponse = () => ({
   challenges: [...CHALLENGE_DEFINITIONS]
 });
-var getUserChallengeProgress = (nk, logger2, userId) => ensureUserChallengeProgress(nk, logger2, userId);
+var getUserChallengeProgress = (nk, logger, userId) => ensureUserChallengeProgress(nk, logger, userId);
 var normalizeProcessedMatchResult = (rawValue) => {
   if (typeof rawValue !== "object" || rawValue === null) {
     return null;
@@ -4101,7 +4101,7 @@ var readMatchProcessingObjects = (nk, userId, matchId) => {
     rewardLedgerObjectsByChallengeId
   };
 };
-var processCompletedMatch = (nk, logger2, summary) => {
+var processCompletedMatch = (nk, logger, summary) => {
   var _a, _b, _c;
   if (!isCompletedMatchSummary(summary)) {
     throw new Error("Completed match summary payload is invalid.");
@@ -4119,7 +4119,7 @@ var processCompletedMatch = (nk, logger2, summary) => {
       processedMatchObject,
       rewardLedgerObjectsByChallengeId
     } = readMatchProcessingObjects(nk, userId, matchId);
-    const currentProfile = profileObject ? normalizeProgressionProfile(getStorageObjectValue(profileObject), now) : ensureProgressionProfile(nk, logger2, userId);
+    const currentProfile = profileObject ? normalizeProgressionProfile(getStorageObjectValue(profileObject), now) : ensureProgressionProfile(nk, logger, userId);
     const currentProgress = challengeProgressObject ? normalizeChallengeProgressSnapshot(getStorageObjectValue(challengeProgressObject), currentProfile.totalXp, now) : decorateChallengeProgressSnapshot(createDefaultUserChallengeProgressSnapshot(now), currentProfile.totalXp);
     const existingProcessedMatch = normalizeProcessedMatchResult(getStorageObjectValue(processedMatchObject));
     if (existingProcessedMatch) {
@@ -4256,7 +4256,7 @@ var processCompletedMatch = (nk, logger2, summary) => {
     ];
     try {
       nk.storageWrite(writes);
-      logger2.info(
+      logger.info(
         "Processed completed match %s for user %s: %d challenge completions, %d XP awarded.",
         matchId,
         userId,
@@ -4283,7 +4283,7 @@ var processCompletedMatch = (nk, logger2, summary) => {
           progressionRank: getRankForXp(refreshedProfile.totalXp).title
         };
       }
-      logger2.warn(
+      logger.warn(
         "Completed-match processing attempt %d/%d failed for user %s on match %s: %s",
         attempt,
         MAX_WRITE_ATTEMPTS,
@@ -4301,7 +4301,7 @@ var rpcGetChallengeDefinitions = (ctx, _logger, _nk, _payload) => {
   }
   return JSON.stringify(getChallengeDefinitionsResponse());
 };
-var rpcSubmitCompletedBotMatch = (ctx, logger2, nk, payload) => {
+var rpcSubmitCompletedBotMatch = (ctx, logger, nk, payload) => {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
@@ -4325,21 +4325,21 @@ var rpcSubmitCompletedBotMatch = (ctx, logger2, nk, payload) => {
   const summary = __spreadProps(__spreadValues({}, requestPayload.summary), {
     playerUserId: ctx.userId
   });
-  const progressionAward = summary.didWin ? awardXpForMatchWin(nk, logger2, {
+  const progressionAward = summary.didWin ? awardXpForMatchWin(nk, logger, {
     userId: ctx.userId,
     matchId: summary.matchId,
     source: matchConfig.offlineWinRewardSource
   }) : null;
   if (rewardMode !== "base_win_only") {
-    processCompletedMatch(nk, logger2, summary);
+    processCompletedMatch(nk, logger, summary);
   }
   return JSON.stringify({ progressionAward });
 };
-var rpcGetUserChallengeProgress = (ctx, logger2, nk, _payload) => {
+var rpcGetUserChallengeProgress = (ctx, logger, nk, _payload) => {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
-  return JSON.stringify(getUserChallengeProgress(nk, logger2, ctx.userId));
+  return JSON.stringify(getUserChallengeProgress(nk, logger, ctx.userId));
 };
 
 // shared/urMatchProtocol.ts
@@ -4752,7 +4752,7 @@ var writeTournamentObject = (nk, tournament, version) => {
     }
   ]);
 };
-var updateTournamentWithRetry = (nk, logger2, tournamentId, updater) => {
+var updateTournamentWithRetry = (nk, logger, tournamentId, updater) => {
   var _a, _b;
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const object = readTournamentObject(nk, tournamentId);
@@ -4768,7 +4768,7 @@ var updateTournamentWithRetry = (nk, logger2, tournamentId, updater) => {
       if (attempt === MAX_WRITE_ATTEMPTS) {
         throw error;
       }
-      logger2.warn(
+      logger.warn(
         "Retrying tournament write for %s after storage conflict: %s",
         tournamentId,
         getErrorMessage2(error)
@@ -4903,7 +4903,7 @@ var maybeBootstrapTestAdminRole = (nk, userId) => {
   ]);
   return TEST_ADMIN_ROLE;
 };
-var rpcAdminWhoAmI = (ctx, logger2, nk, payload) => {
+var rpcAdminWhoAmI = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk) => {
       const role = assertAdmin(_ctx, "viewer", _nk);
@@ -4924,7 +4924,7 @@ var rpcAdminWhoAmI = (ctx, logger2, nk, payload) => {
       targetName: "Current admin user"
     },
     ctx,
-    logger2,
+    logger,
     nk,
     payload
   );
@@ -5072,7 +5072,7 @@ var buildAuditEntry = (ctx, target, action, payloadSummary) => {
     metadata: summary
   };
 };
-var appendTournamentAuditEntry = (ctx, logger2, nk, target, action, payloadSummary) => {
+var appendTournamentAuditEntry = (ctx, logger, nk, target, action, payloadSummary) => {
   const entry = buildAuditEntry(ctx, target, action, payloadSummary);
   try {
     const currentState = readAuditLogState(nk);
@@ -5082,7 +5082,7 @@ var appendTournamentAuditEntry = (ctx, logger2, nk, target, action, payloadSumma
     };
     writeAuditLogState(nk, nextLog, getStorageObjectVersion(currentState.object));
   } catch (error) {
-    logger2.warn("Unable to append tournament audit entry for %s: %s", target.id, getErrorMessage2(error));
+    logger.warn("Unable to append tournament audit entry for %s: %s", target.id, getErrorMessage2(error));
   }
   return entry;
 };
@@ -5128,24 +5128,24 @@ var safeParsePayload = (payload) => {
     return {};
   }
 };
-var appendAutomatedAdminAuditEntry = (ctx, logger2, nk, action, targetId, targetName, payloadSummary) => {
+var appendAutomatedAdminAuditEntry = (ctx, logger, nk, action, targetId, targetName, payloadSummary) => {
   try {
-    appendTournamentAuditEntry(ctx, logger2, nk, { id: targetId, name: targetName }, action, payloadSummary);
+    appendTournamentAuditEntry(ctx, logger, nk, { id: targetId, name: targetName }, action, payloadSummary);
   } catch (error) {
-    logger2.warn("Unable to append automated admin audit entry for %s: %s", targetId, getErrorMessage2(error));
+    logger.warn("Unable to append automated admin audit entry for %s: %s", targetId, getErrorMessage2(error));
   }
 };
-var runAuditedAdminRpc = (handler, options, ctx, logger2, nk, payload) => {
+var runAuditedAdminRpc = (handler, options, ctx, logger, nk, payload) => {
   var _a;
   const parsedPayload = safeParsePayload(payload);
   try {
-    const response = handler(ctx, logger2, nk, payload);
+    const response = handler(ctx, logger, nk, payload);
     const parsedResponse = parseResponseRecord(response);
     const targetId = resolveTargetId(ctx, parsedPayload, parsedResponse, options.targetId);
     const targetName = resolveTargetName(ctx, parsedPayload, parsedResponse, targetId, options.targetName);
     appendAutomatedAdminAuditEntry(
       ctx,
-      logger2,
+      logger,
       nk,
       options.action,
       targetId,
@@ -5158,7 +5158,7 @@ var runAuditedAdminRpc = (handler, options, ctx, logger2, nk, payload) => {
     const targetName = resolveTargetName(ctx, parsedPayload, null, targetId, options.targetName);
     appendAutomatedAdminAuditEntry(
       ctx,
-      logger2,
+      logger,
       nk,
       (_a = options.failureAction) != null ? _a : `${options.action}.failed`,
       targetId,
@@ -5932,7 +5932,7 @@ var writeRunIndex = (nk, index, version) => {
     }, version)
   ]);
 };
-var updateRunWithRetry = (nk, logger2, runId, updater) => {
+var updateRunWithRetry = (nk, logger, runId, updater) => {
   var _a, _b;
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const object = readRunObject(nk, runId);
@@ -5948,7 +5948,7 @@ var updateRunWithRetry = (nk, logger2, runId, updater) => {
       if (attempt === MAX_WRITE_ATTEMPTS) {
         throw error;
       }
-      logger2.warn(
+      logger.warn(
         "Retrying tournament run write for %s after storage conflict: %s",
         runId,
         getErrorMessage2(error)
@@ -6057,7 +6057,7 @@ var buildTournamentBotRegistrations = (runId, difficulty, startingSeed, count, j
     });
   });
 };
-var joinTournamentBots = (nk, logger2, tournamentId, registrations) => {
+var joinTournamentBots = (nk, logger, tournamentId, registrations) => {
   registrations.forEach((registration) => {
     try {
       nk.tournamentJoin(tournamentId, registration.userId, registration.displayName);
@@ -6066,7 +6066,7 @@ var joinTournamentBots = (nk, logger2, tournamentId, registrations) => {
       if (/already|joined|duplicate|exists|member/i.test(message)) {
         return;
       }
-      logger2.warn(
+      logger.warn(
         "Unable to join tournament bot %s into %s: %s",
         registration.userId,
         tournamentId,
@@ -6093,7 +6093,7 @@ var hasRunLobbyFillCountdownExpired = (run, nakamaTournament, nowMs = Date.now()
   const deadlineMs = getTournamentLobbyDeadlineMs(run.openedAt);
   return deadlineMs !== null && deadlineMs <= nowMs;
 };
-var maybeAutoFinalizeRunForLobbyTimeout = (logger2, nk, run, nakamaTournament) => {
+var maybeAutoFinalizeRunForLobbyTimeout = (logger, nk, run, nakamaTournament) => {
   var _a;
   const resolvedTournament = nakamaTournament === void 0 ? getNakamaTournamentById(nk, run.tournamentId) : nakamaTournament;
   if (!hasRunLobbyFillCountdownExpired(run, resolvedTournament, Date.now())) {
@@ -6113,7 +6113,7 @@ var maybeAutoFinalizeRunForLobbyTimeout = (logger2, nk, run, nakamaTournament) =
         missingSeats,
         filledAt
       );
-      const updatedRun = updateRunWithRetry(nk, logger2, run.runId, (current) => {
+      const updatedRun = updateRunWithRetry(nk, logger, run.runId, (current) => {
         var _a2;
         if (current.bracket || current.lifecycle !== "open") {
           return current;
@@ -6146,11 +6146,11 @@ var maybeAutoFinalizeRunForLobbyTimeout = (logger2, nk, run, nakamaTournament) =
       if (updatedRun.bracket) {
         joinTournamentBots(
           nk,
-          logger2,
+          logger,
           updatedRun.tournamentId,
           updatedRun.registrations.filter((registration) => isTournamentBotUserId(registration.userId))
         );
-        logger2.info(
+        logger.info(
           "Filled %d tournament bot seats for run %s after the lobby fill countdown expired.",
           botRegistrations.length,
           updatedRun.runId
@@ -6158,7 +6158,7 @@ var maybeAutoFinalizeRunForLobbyTimeout = (logger2, nk, run, nakamaTournament) =
         return updatedRun;
       }
     } catch (error) {
-      logger2.warn(
+      logger.warn(
         "Unable to fill tournament run %s with bots after the lobby fill countdown expired: %s",
         run.runId,
         getErrorMessage2(error)
@@ -6167,14 +6167,14 @@ var maybeAutoFinalizeRunForLobbyTimeout = (logger2, nk, run, nakamaTournament) =
     }
   }
   try {
-    const result = finalizeTournamentRun(logger2, nk, run.runId, {});
-    logger2.info(
+    const result = finalizeTournamentRun(logger, nk, run.runId, {});
+    logger.info(
       "Auto-finalized tournament run %s after the lobby fill countdown expired.",
       result.run.runId
     );
     return result.run;
   } catch (error) {
-    logger2.warn(
+    logger.warn(
       "Unable to auto-finalize tournament run %s after the lobby fill countdown expired: %s",
       run.runId,
       getErrorMessage2(error)
@@ -6700,7 +6700,7 @@ var buildBracketStandingsFallbackSnapshot = (run, overrideExpiry, generatedAt) =
     nextCursor: null
   };
 };
-var finalizeTournamentRun = (logger2, nk, runId, options = {}) => {
+var finalizeTournamentRun = (logger, nk, runId, options = {}) => {
   var _a, _b, _c, _d, _e;
   const runBeforeUpdate = readRunOrThrow(nk, runId);
   const nakamaTournament = getNakamaTournamentById(nk, runBeforeUpdate.tournamentId);
@@ -6721,7 +6721,7 @@ var finalizeTournamentRun = (logger2, nk, runId, options = {}) => {
         finalizationTimestamp
       );
     } catch (error) {
-      logger2.warn(
+      logger.warn(
         "Unable to reconstruct counted-match standings for %s during finalization: %s",
         runBeforeUpdate.runId,
         getErrorMessage2(error)
@@ -6742,20 +6742,20 @@ var finalizeTournamentRun = (logger2, nk, runId, options = {}) => {
       );
       if (!snapshotMatchesFinalizedBracket(standingsSnapshot, runBeforeUpdate)) {
         if (reconstructedSnapshot && snapshotMatchesFinalizedBracket(reconstructedSnapshot, runBeforeUpdate)) {
-          logger2.warn(
+          logger.warn(
             "Standings snapshot for %s disagreed with finalized bracket, using counted-match reconstruction.",
             runBeforeUpdate.runId
           );
           return reconstructedSnapshot;
         }
-        logger2.warn(
+        logger.warn(
           "Standings snapshot for %s disagreed with finalized bracket, using bracket fallback.",
           runBeforeUpdate.runId
         );
         return bracketFallbackSnapshot;
       }
       if (reconstructedSnapshot && !snapshotMatchesReconstructedCountedData(standingsSnapshot, reconstructedSnapshot)) {
-        logger2.warn(
+        logger.warn(
           "Standings snapshot for %s looked stale compared with counted match results, using counted-match reconstruction.",
           runBeforeUpdate.runId
         );
@@ -6764,14 +6764,14 @@ var finalizeTournamentRun = (logger2, nk, runId, options = {}) => {
       return standingsSnapshot;
     } catch (error) {
       if (reconstructedSnapshot && snapshotMatchesFinalizedBracket(reconstructedSnapshot, runBeforeUpdate)) {
-        logger2.warn(
+        logger.warn(
           "Unable to build final standings snapshot for %s during finalization, using counted-match reconstruction: %s",
           runBeforeUpdate.runId,
           getErrorMessage2(error)
         );
         return reconstructedSnapshot;
       }
-      logger2.warn(
+      logger.warn(
         "Unable to build final standings snapshot for %s during finalization, using bracket fallback: %s",
         runBeforeUpdate.runId,
         getErrorMessage2(error)
@@ -6784,13 +6784,13 @@ var finalizeTournamentRun = (logger2, nk, runId, options = {}) => {
     nk.tournamentRanksDisable(runBeforeUpdate.tournamentId);
     disabledRanks = true;
   } catch (error) {
-    logger2.warn(
+    logger.warn(
       "Unable to disable ranks for %s during finalization: %s",
       runBeforeUpdate.runId,
       String(error)
     );
   }
-  const run = updateRunWithRetry(nk, logger2, runId, (current) => {
+  const run = updateRunWithRetry(nk, logger, runId, (current) => {
     var _a2, _b2, _c2;
     return __spreadProps(__spreadValues({}, current), {
       lifecycle: "finalized",
@@ -6804,20 +6804,20 @@ var finalizeTournamentRun = (logger2, nk, runId, options = {}) => {
   const championUserId = (_e = (_d = resolveChampionUserId(effectiveSnapshot)) != null ? _d : (_c = run.bracket) == null ? void 0 : _c.winnerUserId) != null ? _e : null;
   let championRewardResult = null;
   if (championUserId && isTournamentBotUserId(championUserId)) {
-    logger2.info("Skipping tournament champion XP for synthetic bot %s on run %s.", championUserId, run.runId);
+    logger.info("Skipping tournament champion XP for synthetic bot %s on run %s.", championUserId, run.runId);
   } else if (championUserId) {
     const rewardSettings = resolveTournamentXpRewardSettings(run.metadata);
     if (rewardSettings.xpForTournamentChampion <= 0) {
-      logger2.info("Skipping tournament champion XP for %s because the configured reward is zero.", run.runId);
+      logger.info("Skipping tournament champion XP for %s because the configured reward is zero.", run.runId);
     } else {
       try {
-        championRewardResult = awardXpForTournamentChampion(nk, logger2, {
+        championRewardResult = awardXpForTournamentChampion(nk, logger, {
           userId: championUserId,
           runId: run.runId,
           awardedXp: rewardSettings.xpForTournamentChampion
         });
         if (!championRewardResult.duplicate) {
-          logger2.info(
+          logger.info(
             "Awarded tournament champion XP to %s for run %s. total=%d",
             championUserId,
             run.runId,
@@ -6825,7 +6825,7 @@ var finalizeTournamentRun = (logger2, nk, runId, options = {}) => {
           );
         }
       } catch (error) {
-        logger2.warn(
+        logger.warn(
           "Unable to award tournament champion XP for %s to %s: %s",
           run.runId,
           championUserId,
@@ -6834,7 +6834,7 @@ var finalizeTournamentRun = (logger2, nk, runId, options = {}) => {
       }
     }
   } else if (effectiveSnapshot.records.length > 0) {
-    logger2.warn("Unable to resolve champion user ID for finalized tournament %s.", run.runId);
+    logger.warn("Unable to resolve champion user ID for finalized tournament %s.", run.runId);
   }
   return {
     run,
@@ -6857,16 +6857,16 @@ var buildRunResponse = (nk, run, nakamaTournament) => ({
   run: buildAdminTournamentRunResponse(nk, run),
   nakamaTournament
 });
-var maybeAutoFinalizeAdminRun = (logger2, nk, run) => {
+var maybeAutoFinalizeAdminRun = (logger, nk, run) => {
   var _a;
-  const maybeTimedOutRun = maybeAutoFinalizeRunForLobbyTimeout(logger2, nk, run);
+  const maybeTimedOutRun = maybeAutoFinalizeRunForLobbyTimeout(logger, nk, run);
   if (maybeTimedOutRun.lifecycle === "finalized" || !((_a = maybeTimedOutRun.bracket) == null ? void 0 : _a.finalizedAt)) {
     return maybeTimedOutRun;
   }
   try {
-    return finalizeTournamentRun(logger2, nk, maybeTimedOutRun.runId, {}).run;
+    return finalizeTournamentRun(logger, nk, maybeTimedOutRun.runId, {}).run;
   } catch (error) {
-    logger2.warn(
+    logger.warn(
       "Unable to auto-finalize admin tournament run %s while serving internals: %s",
       maybeTimedOutRun.runId,
       getErrorMessage2(error)
@@ -6874,7 +6874,7 @@ var maybeAutoFinalizeAdminRun = (logger2, nk, run) => {
     return readRunOrThrow(nk, maybeTimedOutRun.runId);
   }
 };
-var deleteRunWithRetry = (nk, logger2, run) => {
+var deleteRunWithRetry = (nk, logger, run) => {
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const indexState = readRunIndexState(nk);
     const nextIndex = {
@@ -6904,7 +6904,7 @@ var deleteRunWithRetry = (nk, logger2, run) => {
       if (attempt === MAX_WRITE_ATTEMPTS) {
         throw error;
       }
-      logger2.warn(
+      logger.warn(
         "Retrying tournament run delete for %s after storage conflict: %s",
         run.runId,
         getErrorMessage2(error)
@@ -6913,7 +6913,7 @@ var deleteRunWithRetry = (nk, logger2, run) => {
   }
   throw new Error(`Unable to delete tournament run '${run.runId}'.`);
 };
-var rpcAdminListTournaments = (ctx, logger2, nk, payload) => {
+var rpcAdminListTournaments = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
@@ -6948,12 +6948,12 @@ var rpcAdminListTournaments = (ctx, logger2, nk, payload) => {
       targetName: "Tournament runs"
     },
     ctx,
-    logger2,
+    logger,
     nk,
     payload
   );
 };
-var rpcAdminGetTournamentRun = (ctx, logger2, nk, payload) => {
+var rpcAdminGetTournamentRun = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       var _a, _b;
@@ -6983,12 +6983,12 @@ var rpcAdminGetTournamentRun = (ctx, logger2, nk, payload) => {
       action: RPC_ADMIN_GET_TOURNAMENT_RUN
     },
     ctx,
-    logger2,
+    logger,
     nk,
     payload
   );
 };
-var rpcAdminCreateTournamentRun = (ctx, logger2, nk, payload) => {
+var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       var _a, _b, _c, _d, _e;
@@ -7077,12 +7077,12 @@ var rpcAdminCreateTournamentRun = (ctx, logger2, nk, payload) => {
       action: RPC_ADMIN_CREATE_TOURNAMENT_RUN
     },
     ctx,
-    logger2,
+    logger,
     nk,
     payload
   );
 };
-var rpcAdminOpenTournament = (ctx, logger2, nk, payload) => {
+var rpcAdminOpenTournament = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "operator", _nk);
@@ -7139,12 +7139,12 @@ var rpcAdminOpenTournament = (ctx, logger2, nk, payload) => {
       action: RPC_ADMIN_OPEN_TOURNAMENT
     },
     ctx,
-    logger2,
+    logger,
     nk,
     payload
   );
 };
-var rpcAdminDeleteTournament = (ctx, logger2, nk, payload) => {
+var rpcAdminDeleteTournament = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "admin", _nk);
@@ -7181,12 +7181,12 @@ var rpcAdminDeleteTournament = (ctx, logger2, nk, payload) => {
       action: RPC_ADMIN_DELETE_TOURNAMENT
     },
     ctx,
-    logger2,
+    logger,
     nk,
     payload
   );
 };
-var rpcAdminCloseTournament = (ctx, logger2, nk, payload) => {
+var rpcAdminCloseTournament = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "operator", _nk);
@@ -7216,12 +7216,12 @@ var rpcAdminCloseTournament = (ctx, logger2, nk, payload) => {
       action: RPC_ADMIN_CLOSE_TOURNAMENT
     },
     ctx,
-    logger2,
+    logger,
     nk,
     payload
   );
 };
-var rpcAdminFinalizeTournament = (ctx, logger2, nk, payload) => {
+var rpcAdminFinalizeTournament = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "admin", _nk);
@@ -7246,12 +7246,12 @@ var rpcAdminFinalizeTournament = (ctx, logger2, nk, payload) => {
       action: RPC_ADMIN_FINALIZE_TOURNAMENT
     },
     ctx,
-    logger2,
+    logger,
     nk,
     payload
   );
 };
-var rpcAdminGetTournamentStandings = (ctx, logger2, nk, payload) => {
+var rpcAdminGetTournamentStandings = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
@@ -7279,12 +7279,12 @@ var rpcAdminGetTournamentStandings = (ctx, logger2, nk, payload) => {
       action: RPC_ADMIN_GET_TOURNAMENT_STANDINGS
     },
     ctx,
-    logger2,
+    logger,
     nk,
     payload
   );
 };
-var rpcAdminGetTournamentAuditLog = (ctx, logger2, nk, payload) => {
+var rpcAdminGetTournamentAuditLog = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
@@ -7311,7 +7311,7 @@ var rpcAdminGetTournamentAuditLog = (ctx, logger2, nk, payload) => {
       targetName: "Tournament audit log"
     },
     ctx,
-    logger2,
+    logger,
     nk,
     payload
   );
@@ -7442,7 +7442,7 @@ var normalizeUsersArray = (value) => Array.isArray(value) ? value.map((entry) =>
   var _a;
   return (_a = asRecord2(entry)) != null ? _a : {};
 }).filter((entry) => Object.keys(entry).length > 0) : [];
-var resolveUsernames = (nk, logger2, players, run) => {
+var resolveUsernames = (nk, logger, players, run) => {
   const usernames = {};
   const tournamentBotDisplayNames = run ? buildTournamentBotDisplayNames(
     players.map((player) => player.userId),
@@ -7471,7 +7471,7 @@ var resolveUsernames = (nk, logger2, players, run) => {
         }
       });
     } catch (error) {
-      logger2.warn(
+      logger.warn(
         "Unable to resolve tournament usernames for %s: %s",
         unresolvedUserIds.join(","),
         getErrorMessage2(error)
@@ -7489,7 +7489,7 @@ var isIgnorableTournamentJoinError = (error) => {
   const message = getErrorMessage2(error);
   return /already|joined|duplicate|exists|member/i.test(message);
 };
-var ensureTournamentJoined = (nk, logger2, run, players, usernames) => {
+var ensureTournamentJoined = (nk, logger, run, players, usernames) => {
   if (!run.joinRequired) {
     return;
   }
@@ -7505,7 +7505,7 @@ var ensureTournamentJoined = (nk, logger2, run, players, usernames) => {
       nk.tournamentJoin(run.tournamentId, player.userId, (_a = usernames[player.userId]) != null ? _a : player.userId);
     } catch (error) {
       if (isIgnorableTournamentJoinError(error)) {
-        logger2.info(
+        logger.info(
           "Skipping redundant tournamentJoin for run %s user %s: %s",
           run.runId,
           player.userId,
@@ -7565,7 +7565,7 @@ var writeTournamentMatchResultRecord = (nk, record, version = null) => {
     }, version)
   ]);
 };
-var updateTournamentRunMetadata = (nk, logger2, runId, result) => {
+var updateTournamentRunMetadata = (nk, logger, runId, result) => {
   var _a, _b;
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const currentState = readTournamentRunState(nk, runId);
@@ -7618,7 +7618,7 @@ var updateTournamentRunMetadata = (nk, logger2, runId, result) => {
       if (attempt === MAX_WRITE_ATTEMPTS) {
         throw error;
       }
-      logger2.warn(
+      logger.warn(
         "Retrying tournament run metadata update for %s after storage conflict: %s",
         runId,
         getErrorMessage2(error)
@@ -7702,7 +7702,7 @@ var buildBotOnlyTournamentCompletion = (run, entryId) => {
     ]
   };
 };
-var processPendingBotOnlyTournamentMatches = (nk, logger2, runId) => {
+var processPendingBotOnlyTournamentMatches = (nk, logger, runId) => {
   var _a, _b, _c, _d, _e;
   let currentRun = readTournamentRunState(nk, runId).run;
   const maxIterations = Math.max(1, (_b = (_a = currentRun == null ? void 0 : currentRun.bracket) == null ? void 0 : _a.entries.length) != null ? _b : 1);
@@ -7720,7 +7720,7 @@ var processPendingBotOnlyTournamentMatches = (nk, logger2, runId) => {
     if (!completion) {
       break;
     }
-    const result = processCompletedAuthoritativeTournamentMatch(nk, logger2, completion);
+    const result = processCompletedAuthoritativeTournamentMatch(nk, logger, completion);
     currentRun = (_e = (_d = (_c = result.finalizationResult) == null ? void 0 : _c.run) != null ? _d : result.updatedRun) != null ? _e : readTournamentRunState(nk, runId).run;
     if (result.retryableFailure) {
       break;
@@ -7728,11 +7728,11 @@ var processPendingBotOnlyTournamentMatches = (nk, logger2, runId) => {
   }
   return currentRun;
 };
-var updateTournamentRunBracket = (nk, logger2, completion) => {
+var updateTournamentRunBracket = (nk, logger, completion) => {
   if (!completion.context || !completion.winnerUserId || !completion.loserUserId) {
     return null;
   }
-  return updateRunWithRetry(nk, logger2, completion.context.runId, (current) => {
+  return updateRunWithRetry(nk, logger, completion.context.runId, (current) => {
     var _a, _b, _c, _d;
     if (!current.bracket) {
       return current;
@@ -7750,7 +7750,7 @@ var updateTournamentRunBracket = (nk, logger2, completion) => {
     });
   });
 };
-var maybeAutoFinalizeTournamentRunById = (nk, logger2, runId) => {
+var maybeAutoFinalizeTournamentRunById = (nk, logger, runId) => {
   var _a, _b, _c;
   const runState = readTournamentRunState(nk, runId);
   let run = runState.run;
@@ -7758,18 +7758,18 @@ var maybeAutoFinalizeTournamentRunById = (nk, logger2, runId) => {
     return null;
   }
   if (run.bracket && !run.bracket.finalizedAt) {
-    run = (_a = processPendingBotOnlyTournamentMatches(nk, logger2, runId)) != null ? _a : run;
+    run = (_a = processPendingBotOnlyTournamentMatches(nk, logger, runId)) != null ? _a : run;
   }
   if ((_b = run.bracket) == null ? void 0 : _b.finalizedAt) {
     try {
-      const result = finalizeTournamentRun(logger2, nk, run.runId, {});
-      logger2.info(
+      const result = finalizeTournamentRun(logger, nk, run.runId, {});
+      logger.info(
         "Auto-finalized tournament run %s after bracket completion.",
         result.run.runId
       );
       return result;
     } catch (error) {
-      logger2.warn(
+      logger.warn(
         "Unable to auto-finalize tournament run %s after bracket completion: %s",
         run.runId,
         getErrorMessage2(error)
@@ -7786,8 +7786,8 @@ var maybeAutoFinalizeTournamentRunById = (nk, logger2, runId) => {
     return null;
   }
   try {
-    const result = finalizeTournamentRun(logger2, nk, run.runId, {});
-    logger2.info(
+    const result = finalizeTournamentRun(logger, nk, run.runId, {});
+    logger.info(
       "Auto-finalized tournament run %s after %d counted matches for %d entrants.",
       result.run.runId,
       countedMatchCount,
@@ -7795,7 +7795,7 @@ var maybeAutoFinalizeTournamentRunById = (nk, logger2, runId) => {
     );
     return result;
   } catch (error) {
-    logger2.warn(
+    logger.warn(
       "Unable to auto-finalize tournament run %s after match completion: %s",
       run.runId,
       getErrorMessage2(error)
@@ -7803,9 +7803,9 @@ var maybeAutoFinalizeTournamentRunById = (nk, logger2, runId) => {
   }
   return null;
 };
-var logRetryableTournamentSyncFailure = (logger2, completion, stage, error) => {
+var logRetryableTournamentSyncFailure = (logger, completion, stage, error) => {
   var _a, _b, _c, _d;
-  logger2.warn(
+  logger.warn(
     "Deferring tournament synchronization for run %s match %s entry %s during %s: %s",
     (_b = (_a = completion.context) == null ? void 0 : _a.runId) != null ? _b : "",
     completion.matchId,
@@ -7814,16 +7814,16 @@ var logRetryableTournamentSyncFailure = (logger2, completion, stage, error) => {
     getErrorMessage2(error)
   );
 };
-var synchronizeTournamentRunFromRecord = (nk, logger2, completion, record, fallbackRun) => {
+var synchronizeTournamentRunFromRecord = (nk, logger, completion, record, fallbackRun) => {
   var _a, _b, _c, _d, _e;
   let updatedRun = fallbackRun;
   let finalizationResult = null;
   const shouldAdvanceBracket = record.valid === true && !record.invalidReason && Boolean(completion.winnerUserId) && Boolean(completion.loserUserId);
   try {
-    updateTournamentRunMetadata(nk, logger2, record.runId, record);
+    updateTournamentRunMetadata(nk, logger, record.runId, record);
     updatedRun = (_a = readTournamentRunState(nk, record.runId).run) != null ? _a : updatedRun;
   } catch (error) {
-    logRetryableTournamentSyncFailure(logger2, completion, "run_metadata", error);
+    logRetryableTournamentSyncFailure(logger, completion, "run_metadata", error);
     return {
       updatedRun,
       finalizationResult: null,
@@ -7832,9 +7832,9 @@ var synchronizeTournamentRunFromRecord = (nk, logger2, completion, record, fallb
   }
   if (shouldAdvanceBracket) {
     try {
-      updatedRun = (_c = (_b = updateTournamentRunBracket(nk, logger2, completion)) != null ? _b : readTournamentRunState(nk, record.runId).run) != null ? _c : updatedRun;
+      updatedRun = (_c = (_b = updateTournamentRunBracket(nk, logger, completion)) != null ? _b : readTournamentRunState(nk, record.runId).run) != null ? _c : updatedRun;
     } catch (error) {
-      logRetryableTournamentSyncFailure(logger2, completion, "bracket_update", error);
+      logRetryableTournamentSyncFailure(logger, completion, "bracket_update", error);
       return {
         updatedRun,
         finalizationResult: null,
@@ -7842,9 +7842,9 @@ var synchronizeTournamentRunFromRecord = (nk, logger2, completion, record, fallb
       };
     }
     try {
-      finalizationResult = maybeAutoFinalizeTournamentRunById(nk, logger2, record.runId);
+      finalizationResult = maybeAutoFinalizeTournamentRunById(nk, logger, record.runId);
     } catch (error) {
-      logRetryableTournamentSyncFailure(logger2, completion, "auto_finalization", error);
+      logRetryableTournamentSyncFailure(logger, completion, "auto_finalization", error);
       return {
         updatedRun,
         finalizationResult: null,
@@ -7895,7 +7895,7 @@ var resolveTournamentMatchContextFromParams = (params) => {
     eliminationRisk: params.tournamentEliminationRisk === true
   };
 };
-var processCompletedAuthoritativeTournamentMatch = (nk, logger2, completion) => {
+var processCompletedAuthoritativeTournamentMatch = (nk, logger, completion) => {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
   if (!completion.context) {
     return {
@@ -7913,9 +7913,9 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger2, completion) => 
   const existingRecord = existingResultState.record;
   const canRetryPendingRecord = (existingRecord == null ? void 0 : existingRecord.valid) === true && existingRecord.counted === false && existingRecord.invalidReason === null;
   if (existingRecord && !canRetryPendingRecord) {
-    logger2.info("Skipping duplicate tournament result for %s", resultId);
+    logger.info("Skipping duplicate tournament result for %s", resultId);
     const duplicateRun = readTournamentRunState(nk, completion.context.runId).run;
-    const duplicateSync = existingRecord.counted ? synchronizeTournamentRunFromRecord(nk, logger2, completion, existingRecord, duplicateRun) : {
+    const duplicateSync = existingRecord.counted ? synchronizeTournamentRunFromRecord(nk, logger, completion, existingRecord, duplicateRun) : {
       updatedRun: duplicateRun,
       finalizationResult: null,
       retryableFailure: false
@@ -7937,11 +7937,11 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger2, completion) => 
   let errorMessage = null;
   if (!invalidReason && runState.run) {
     try {
-      const usernames = resolveUsernames(nk, logger2, completion.players, runState.run);
-      ensureTournamentJoined(nk, logger2, runState.run, completion.players, usernames);
+      const usernames = resolveUsernames(nk, logger, completion.players, runState.run);
+      ensureTournamentJoined(nk, logger, runState.run, completion.players, usernames);
       tournamentRecordWrites = submitTournamentScores(nk, runState.run, completion, usernames);
     } catch (error) {
-      logRetryableTournamentSyncFailure(logger2, completion, "score_sync", error);
+      logRetryableTournamentSyncFailure(logger, completion, "score_sync", error);
       if (!((_d = runState.run) == null ? void 0 : _d.bracket) || !completion.winnerUserId || !completion.loserUserId) {
         return {
           skipped: false,
@@ -7991,9 +7991,9 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger2, completion) => 
   } catch (error) {
     const concurrentResultState = readTournamentMatchResultState(nk, resultId);
     if (concurrentResultState.record) {
-      logger2.info("Skipping duplicate tournament result after concurrent write for %s", resultId);
+      logger.info("Skipping duplicate tournament result after concurrent write for %s", resultId);
       const duplicateRun = readTournamentRunState(nk, completion.context.runId).run;
-      const duplicateSync = concurrentResultState.record.counted ? synchronizeTournamentRunFromRecord(nk, logger2, completion, concurrentResultState.record, duplicateRun) : {
+      const duplicateSync = concurrentResultState.record.counted ? synchronizeTournamentRunFromRecord(nk, logger, completion, concurrentResultState.record, duplicateRun) : {
         updatedRun: duplicateRun,
         finalizationResult: null,
         retryableFailure: false
@@ -8011,7 +8011,7 @@ var processCompletedAuthoritativeTournamentMatch = (nk, logger2, completion) => 
     }
     throw error;
   }
-  const synchronizedRunState = runState.run ? synchronizeTournamentRunFromRecord(nk, logger2, completion, record, runState.run) : {
+  const synchronizedRunState = runState.run ? synchronizeTournamentRunFromRecord(nk, logger, completion, record, runState.run) : {
     updatedRun: runState.run,
     finalizationResult: null,
     retryableFailure: false
@@ -8068,14 +8068,14 @@ var readTournamentMatchResults = (nk, resultIds) => {
     }
   ).filter((entry) => Boolean(entry));
 };
-var resolveExportableRun = (logger2, nk, runId) => {
+var resolveExportableRun = (logger, nk, runId) => {
   var _a;
   const existingRun = readRunOrThrow(nk, runId);
   if (existingRun.lifecycle === "finalized") {
     return existingRun;
   }
   if ((_a = existingRun.bracket) == null ? void 0 : _a.finalizedAt) {
-    return finalizeTournamentRun(logger2, nk, runId, {}).run;
+    return finalizeTournamentRun(logger, nk, runId, {}).run;
   }
   throw new Error("Tournament export is only available after the run is finalized.");
 };
@@ -8092,7 +8092,7 @@ var resolveFinalStandingsSnapshot = (nk, run, nakamaTournament) => {
     resolveOverrideExpiry(null, nakamaTournament)
   );
 };
-var rpcAdminExportTournament = (ctx, logger2, nk, payload) => {
+var rpcAdminExportTournament = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
@@ -8133,7 +8133,7 @@ var rpcAdminExportTournament = (ctx, logger2, nk, payload) => {
       action: RPC_ADMIN_EXPORT_TOURNAMENT
     },
     ctx,
-    logger2,
+    logger,
     nk,
     payload
   );
@@ -8713,7 +8713,7 @@ var assertTournamentJoinAllowed = (tournament) => {
     throw new Error(`Tournament '${tournament.name}' is no longer accepting joins.`);
   }
 };
-var rpcJoinTournament = (ctx, logger2, nk, payload) => {
+var rpcJoinTournament = (ctx, logger, nk, payload) => {
   var _a, _b, _c;
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
@@ -8728,7 +8728,7 @@ var rpcJoinTournament = (ctx, logger2, nk, payload) => {
   assertTournamentJoinAllowed(current);
   const displayName = resolveDisplayName(ctx, (_c = request.displayName) != null ? _c : null, userId);
   let joined = false;
-  const tournament = updateTournamentWithRetry(nk, logger2, request.tournamentId, (existing) => {
+  const tournament = updateTournamentWithRetry(nk, logger, request.tournamentId, (existing) => {
     assertTournamentJoinAllowed(existing);
     const existingParticipant = existing.participants.find((participant3) => participant3.userId === userId);
     if (existingParticipant) {
@@ -8779,7 +8779,7 @@ var rpcJoinTournament = (ctx, logger2, nk, payload) => {
     throw new Error("Unable to resolve joined participant.");
   }
   if (joined) {
-    appendTournamentAuditEntry(ctx, logger2, nk, tournament, "tournament.joined", {
+    appendTournamentAuditEntry(ctx, logger, nk, tournament, "tournament.joined", {
       joinedUserId: userId,
       displayName: participant.displayName
     });
@@ -9234,7 +9234,7 @@ var listPublicRuns = (nk) => {
   const indexState = readRunIndexState(nk);
   return readRunsByIds(nk, indexState.index.runIds);
 };
-var ensureRunRegistration = (nk, logger2, run, membership) => updateRunWithRetry(nk, logger2, run.runId, (current) => {
+var ensureRunRegistration = (nk, logger, run, membership) => updateRunWithRetry(nk, logger, run.runId, (current) => {
   var _a;
   const existing = (_a = current.registrations.find((entry) => entry.userId === membership.userId)) != null ? _a : null;
   if (existing && existing.displayName === membership.displayName) {
@@ -9251,7 +9251,7 @@ var ensureRunRegistration = (nk, logger2, run, membership) => updateRunWithRetry
     registrations: result.registrations
   });
 });
-var maybeStartBracketForRun = (nk, logger2, run) => {
+var maybeStartBracketForRun = (nk, logger, run) => {
   if (run.bracket || run.lifecycle !== "open") {
     return run;
   }
@@ -9259,7 +9259,7 @@ var maybeStartBracketForRun = (nk, logger2, run) => {
   if (!isPublicRunFull(run, nakamaTournament)) {
     return run;
   }
-  return updateRunWithRetry(nk, logger2, run.runId, (current) => {
+  return updateRunWithRetry(nk, logger, run.runId, (current) => {
     if (current.bracket) {
       return current;
     }
@@ -9283,16 +9283,16 @@ var buildTournamentLaunchResponse = (params) => JSON.stringify({
   queueStatus: params.queueStatus,
   statusMessage: params.statusMessage
 });
-var maybeFinalizePublicRun = (logger2, nk, run) => {
+var maybeFinalizePublicRun = (logger, nk, run) => {
   var _a, _b;
-  const maybeTimedOutRun = maybeAutoFinalizeRunForLobbyTimeout(logger2, nk, run);
+  const maybeTimedOutRun = maybeAutoFinalizeRunForLobbyTimeout(logger, nk, run);
   if (maybeTimedOutRun.lifecycle === "finalized") {
     return maybeTimedOutRun;
   }
   try {
-    return (_b = (_a = maybeAutoFinalizeTournamentRunById(nk, logger2, maybeTimedOutRun.runId)) == null ? void 0 : _a.run) != null ? _b : maybeTimedOutRun;
+    return (_b = (_a = maybeAutoFinalizeTournamentRunById(nk, logger, maybeTimedOutRun.runId)) == null ? void 0 : _a.run) != null ? _b : maybeTimedOutRun;
   } catch (error) {
-    logger2.warn(
+    logger.warn(
       "Unable to auto-finalize public tournament run %s while serving player status: %s",
       maybeTimedOutRun.runId,
       String(error)
@@ -9300,15 +9300,15 @@ var maybeFinalizePublicRun = (logger2, nk, run) => {
     return readRunOrThrow(nk, maybeTimedOutRun.runId);
   }
 };
-var rpcListPublicTournaments = (ctx, logger2, nk, payload) => {
+var rpcListPublicTournaments = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
   const limit = clampInteger(parsed.limit, DEFAULT_PUBLIC_LIST_LIMIT, 1, 100);
   const runs = listPublicRuns(nk).map(
     (run) => maybeFinalizePublicRun(
-      logger2,
+      logger,
       nk,
-      maybeStartBracketForRun(nk, logger2, run)
+      maybeStartBracketForRun(nk, logger, run)
     )
   );
   const tournamentsById = getNakamaTournamentsById(
@@ -9343,7 +9343,7 @@ var rpcListPublicTournaments = (ctx, logger2, nk, payload) => {
     totalCount: visibleRuns.length
   });
 };
-var rpcGetPublicTournament = (ctx, logger2, nk, payload) => {
+var rpcGetPublicTournament = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
   const runId = readStringField7(parsed, [
@@ -9358,8 +9358,8 @@ var rpcGetPublicTournament = (ctx, logger2, nk, payload) => {
     throw new Error("runId is required.");
   }
   let run = readRunOrThrow(nk, runId);
-  run = maybeStartBracketForRun(nk, logger2, run);
-  run = maybeFinalizePublicRun(logger2, nk, run);
+  run = maybeStartBracketForRun(nk, logger, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   assertPublicRunReadable(run, nakamaTournament, membership);
@@ -9372,7 +9372,7 @@ var rpcGetPublicTournament = (ctx, logger2, nk, payload) => {
     )
   });
 };
-var rpcGetPublicTournamentStandings = (ctx, logger2, nk, payload) => {
+var rpcGetPublicTournamentStandings = (ctx, logger, nk, payload) => {
   var _a;
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
@@ -9388,8 +9388,8 @@ var rpcGetPublicTournamentStandings = (ctx, logger2, nk, payload) => {
     throw new Error("runId is required.");
   }
   let run = readRunOrThrow(nk, runId);
-  run = maybeStartBracketForRun(nk, logger2, run);
-  run = maybeFinalizePublicRun(logger2, nk, run);
+  run = maybeStartBracketForRun(nk, logger, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const membership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   assertPublicRunReadable(run, nakamaTournament, membership);
@@ -9407,7 +9407,7 @@ var rpcGetPublicTournamentStandings = (ctx, logger2, nk, payload) => {
     standings
   });
 };
-var rpcJoinPublicTournament = (ctx, logger2, nk, payload) => {
+var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
   const parsed = parseJsonPayload(payload);
@@ -9423,8 +9423,8 @@ var rpcJoinPublicTournament = (ctx, logger2, nk, payload) => {
     throw new Error("runId is required.");
   }
   let run = readRunOrThrow(nk, runId);
-  run = maybeStartBracketForRun(nk, logger2, run);
-  run = maybeFinalizePublicRun(logger2, nk, run);
+  run = maybeStartBracketForRun(nk, logger, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
   const nakamaTournamentBeforeJoin = getNakamaTournamentById(nk, run.tournamentId);
   assertPublicRunVisible(run, nakamaTournamentBeforeJoin);
   const existingMembership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
@@ -9444,7 +9444,7 @@ var rpcJoinPublicTournament = (ctx, logger2, nk, payload) => {
     nk.tournamentJoin(run.tournamentId, userId, displayName);
     membership = writeMembership(nk, run, userId, displayName);
     joined = true;
-    appendTournamentAuditEntry(ctx, logger2, nk, { id: run.runId, name: run.title }, "tournament.public_joined", {
+    appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.public_joined", {
       joinedUserId: userId,
       displayName
     });
@@ -9452,9 +9452,9 @@ var rpcJoinPublicTournament = (ctx, logger2, nk, payload) => {
   if (!membership) {
     throw new Error("Unable to resolve tournament membership.");
   }
-  run = ensureRunRegistration(nk, logger2, run, membership);
-  run = maybeStartBracketForRun(nk, logger2, run);
-  run = maybeFinalizePublicRun(logger2, nk, run);
+  run = ensureRunRegistration(nk, logger, run, membership);
+  run = maybeStartBracketForRun(nk, logger, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
   return JSON.stringify({
     ok: true,
     joined,
@@ -9465,7 +9465,7 @@ var rpcJoinPublicTournament = (ctx, logger2, nk, payload) => {
     )
   });
 };
-var rpcLaunchTournamentMatch = (ctx, logger2, nk, payload) => {
+var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
@@ -9486,9 +9486,9 @@ var rpcLaunchTournamentMatch = (ctx, logger2, nk, payload) => {
   if (!membership) {
     throw new Error("Join this tournament before launching a match.");
   }
-  run = ensureRunRegistration(nk, logger2, run, membership);
-  run = maybeStartBracketForRun(nk, logger2, run);
-  run = maybeFinalizePublicRun(logger2, nk, run);
+  run = ensureRunRegistration(nk, logger, run, membership);
+  run = maybeStartBracketForRun(nk, logger, run);
+  run = maybeFinalizePublicRun(logger, nk, run);
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   const participation = buildPublicParticipationState(run, membership);
   const isTerminalRun = run.lifecycle === "closed" || run.lifecycle === "finalized" || run.finalizedAt != null || ((_a = run.bracket) == null ? void 0 : _a.finalizedAt) != null;
@@ -9612,7 +9612,7 @@ var rpcLaunchTournamentMatch = (ctx, logger2, nk, payload) => {
     botDisplayName
   } : {}));
   const launchedAt = (/* @__PURE__ */ new Date()).toISOString();
-  run = updateRunWithRetry(nk, logger2, run.runId, (current) => {
+  run = updateRunWithRetry(nk, logger, run.runId, (current) => {
     if (!current.bracket) {
       return current;
     }
@@ -9628,7 +9628,7 @@ var rpcLaunchTournamentMatch = (ctx, logger2, nk, payload) => {
   const activeParticipant = run.bracket ? getTournamentBracketParticipant(run.bracket, userId) : null;
   const activeEntry = (activeParticipant == null ? void 0 : activeParticipant.currentEntryId) && run.bracket ? getTournamentBracketEntry(run.bracket, activeParticipant.currentEntryId) : null;
   const resolvedMatchId = (_k = (_j = activeParticipant == null ? void 0 : activeParticipant.activeMatchId) != null ? _j : activeEntry == null ? void 0 : activeEntry.matchId) != null ? _k : matchId;
-  appendTournamentAuditEntry(ctx, logger2, nk, { id: run.runId, name: run.title }, "tournament.match_launch.created", {
+  appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.match_launch.created", {
     matchId: resolvedMatchId,
     entryId: entry.entryId,
     round: entry.round,
@@ -10050,7 +10050,7 @@ var normalizeStorageListResult2 = (value) => {
     cursor: readStringField11(record, ["cursor", "nextCursor", "next_cursor"])
   };
 };
-var listAllGlobalObjects = (nk, logger2, collection, userId) => {
+var listAllGlobalObjects = (nk, logger, collection, userId) => {
   if (typeof nk.storageList !== "function") {
     return {
       supported: false,
@@ -10070,7 +10070,7 @@ var listAllGlobalObjects = (nk, logger2, collection, userId) => {
       }
       cursor = result.cursor;
     } catch (error) {
-      logger2.warn("Unable to list storage collection %s: %s", collection, getErrorMessage3(error));
+      logger.warn("Unable to list storage collection %s: %s", collection, getErrorMessage3(error));
       return {
         supported: false,
         notes: [`Collection listing failed for '${collection}'.`],
@@ -10228,8 +10228,8 @@ var loadTournamentMatchHistory = (nk, runs) => {
     };
   });
 };
-var loadTrackedAnalyticsEvents = (nk, logger2) => {
-  const result = listAnalyticsEvents(nk, logger2);
+var loadTrackedAnalyticsEvents = (nk, logger) => {
+  const result = listAnalyticsEvents(nk, logger);
   return {
     supported: result.supported,
     notes: result.notes,
@@ -10277,9 +10277,9 @@ var buildTrackedMatchHistory = (trackedMatchEnds, filters) => trackedMatchEnds.f
     isBot: player.isBot
   }))
 }));
-var loadEloHistory = (nk, logger2, filters) => {
+var loadEloHistory = (nk, logger, filters) => {
   const leaderboardRows = listAllLeaderboardRows(nk);
-  const historyResult = listAllGlobalObjects(nk, logger2, "elo_match_results", "00000000-0000-0000-0000-000000000000");
+  const historyResult = listAllGlobalObjects(nk, logger, "elo_match_results", "00000000-0000-0000-0000-000000000000");
   const eloHistory = historyResult.objects.map((object) => {
     var _a;
     return normalizeEloHistoryRecord((_a = object.value) != null ? _a : null);
@@ -10540,13 +10540,13 @@ var buildUserPerformance = (usersById, unifiedMatches, runs, firstSeenByUserId) 
   });
   return performanceByUserId;
 };
-var createAnalyticsContext = (nk, logger2, filters) => {
+var createAnalyticsContext = (nk, logger, filters) => {
   const generatedAt = (/* @__PURE__ */ new Date()).toISOString();
   const runs = loadRuns(nk, filters);
   const tournamentMatches = loadTournamentMatchHistory(nk, runs);
-  const trackedResult = loadTrackedAnalyticsEvents(nk, logger2);
+  const trackedResult = loadTrackedAnalyticsEvents(nk, logger);
   const trackedMatches = buildTrackedMatchHistory(trackedResult.trackedMatchEnds, filters);
-  const eloResult = loadEloHistory(nk, logger2, filters);
+  const eloResult = loadEloHistory(nk, logger, filters);
   const unifiedMatches = buildUnifiedMatches(trackedMatches, tournamentMatches, eloResult.eloMatches);
   const userIds = unique(
     [
@@ -11547,9 +11547,9 @@ var buildResponse = (context, data, availability, extraNotes = []) => ({
   ),
   data
 });
-var getAnalyticsSummary = (nk, logger2, payload) => {
+var getAnalyticsSummary = (nk, logger, payload) => {
   const filters = parseAnalyticsFilters(payload);
-  const context = createAnalyticsContext(nk, logger2, filters);
+  const context = createAnalyticsContext(nk, logger, filters);
   const data = buildSummaryData(context);
   const availability = mergeAvailability(
     data.dau.availability,
@@ -11561,9 +11561,9 @@ var getAnalyticsSummary = (nk, logger2, payload) => {
   );
   return buildResponse(context, data, availability);
 };
-var getAnalyticsOverview = (nk, logger2, payload) => {
+var getAnalyticsOverview = (nk, logger, payload) => {
   const filters = parseAnalyticsFilters(payload);
-  const context = createAnalyticsContext(nk, logger2, filters);
+  const context = createAnalyticsContext(nk, logger, filters);
   const data = buildOverviewData(context);
   const availability = mergeAvailability(
     data.dauTrend.availability,
@@ -11574,9 +11574,9 @@ var getAnalyticsOverview = (nk, logger2, payload) => {
   );
   return buildResponse(context, data, availability);
 };
-var getAnalyticsPlayers = (nk, logger2, payload) => {
+var getAnalyticsPlayers = (nk, logger, payload) => {
   const filters = parseAnalyticsFilters(payload);
-  const context = createAnalyticsContext(nk, logger2, filters);
+  const context = createAnalyticsContext(nk, logger, filters);
   const data = buildPlayersData(context);
   const availability = mergeAvailability(
     data.uniquePlayers.availability,
@@ -11588,9 +11588,9 @@ var getAnalyticsPlayers = (nk, logger2, payload) => {
   );
   return buildResponse(context, data, availability);
 };
-var getAnalyticsGameplay = (nk, logger2, payload) => {
+var getAnalyticsGameplay = (nk, logger, payload) => {
   const filters = parseAnalyticsFilters(payload);
-  const context = createAnalyticsContext(nk, logger2, filters);
+  const context = createAnalyticsContext(nk, logger, filters);
   const data = buildGameplayData(context);
   const availability = mergeAvailability(
     data.matchesPerDay.availability,
@@ -11604,9 +11604,9 @@ var getAnalyticsGameplay = (nk, logger2, payload) => {
   );
   return buildResponse(context, data, availability);
 };
-var getAnalyticsTournaments = (nk, logger2, payload) => {
+var getAnalyticsTournaments = (nk, logger, payload) => {
   const filters = parseAnalyticsFilters(payload);
-  const context = createAnalyticsContext(nk, logger2, filters);
+  const context = createAnalyticsContext(nk, logger, filters);
   const data = buildTournamentsData(context);
   const availability = mergeAvailability(
     data.createdOverTime.availability,
@@ -11618,9 +11618,9 @@ var getAnalyticsTournaments = (nk, logger2, payload) => {
   );
   return buildResponse(context, data, availability);
 };
-var getAnalyticsProgression = (nk, logger2, payload) => {
+var getAnalyticsProgression = (nk, logger, payload) => {
   const filters = parseAnalyticsFilters(payload);
-  const context = createAnalyticsContext(nk, logger2, filters);
+  const context = createAnalyticsContext(nk, logger, filters);
   const data = buildProgressionData(context);
   const availability = mergeAvailability(
     data.eloDistribution.availability,
@@ -11631,9 +11631,9 @@ var getAnalyticsProgression = (nk, logger2, payload) => {
   );
   return buildResponse(context, data, availability);
 };
-var getAnalyticsRealtime = (nk, logger2, payload) => {
+var getAnalyticsRealtime = (nk, logger, payload) => {
   const filters = parseAnalyticsFilters(payload);
-  const context = createAnalyticsContext(nk, logger2, filters);
+  const context = createAnalyticsContext(nk, logger, filters);
   const data = buildRealtimeData(context);
   const availability = mergeAvailability(
     data.onlinePlayers.availability,
@@ -11657,30 +11657,30 @@ var RPC_ADMIN_GET_ANALYTICS_GAMEPLAY = "rpc_admin_get_analytics_gameplay";
 var RPC_ADMIN_GET_ANALYTICS_TOURNAMENTS = "rpc_admin_get_analytics_tournaments";
 var RPC_ADMIN_GET_ANALYTICS_PROGRESSION = "rpc_admin_get_analytics_progression";
 var RPC_ADMIN_GET_ANALYTICS_REALTIME = "rpc_admin_get_analytics_realtime";
-var runAnalyticsRpc = (ctx, nk, logger2, payload, handler) => {
+var runAnalyticsRpc = (ctx, nk, logger, payload, handler) => {
   assertAdmin(ctx, "viewer", nk);
-  return JSON.stringify(handler(nk, logger2, payload));
+  return JSON.stringify(handler(nk, logger, payload));
 };
-function rpcAdminGetAnalyticsSummary(ctx, logger2, nk, payload) {
-  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsSummary);
+function rpcAdminGetAnalyticsSummary(ctx, logger, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsSummary);
 }
-function rpcAdminGetAnalyticsOverview(ctx, logger2, nk, payload) {
-  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsOverview);
+function rpcAdminGetAnalyticsOverview(ctx, logger, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsOverview);
 }
-function rpcAdminGetAnalyticsPlayers(ctx, logger2, nk, payload) {
-  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsPlayers);
+function rpcAdminGetAnalyticsPlayers(ctx, logger, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsPlayers);
 }
-function rpcAdminGetAnalyticsGameplay(ctx, logger2, nk, payload) {
-  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsGameplay);
+function rpcAdminGetAnalyticsGameplay(ctx, logger, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsGameplay);
 }
-function rpcAdminGetAnalyticsTournaments(ctx, logger2, nk, payload) {
-  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsTournaments);
+function rpcAdminGetAnalyticsTournaments(ctx, logger, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsTournaments);
 }
-function rpcAdminGetAnalyticsProgression(ctx, logger2, nk, payload) {
-  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsProgression);
+function rpcAdminGetAnalyticsProgression(ctx, logger, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsProgression);
 }
-function rpcAdminGetAnalyticsRealtime(ctx, logger2, nk, payload) {
-  return runAnalyticsRpc(ctx, nk, logger2, payload, getAnalyticsRealtime);
+function rpcAdminGetAnalyticsRealtime(ctx, logger, nk, payload) {
+  return runAnalyticsRpc(ctx, nk, logger, payload, getAnalyticsRealtime);
 }
 
 // backend/modules/index.ts
@@ -12005,6 +12005,7 @@ var normalizePrivateMatchCodeRecord = (value) => {
   };
 };
 var readPrivateMatchCodeObject = (nk, code) => {
+  var _a;
   const normalizedCode = normalizePrivateMatchCodeInput(code);
   if (!isPrivateMatchCode(normalizedCode)) {
     return {
@@ -12017,9 +12018,13 @@ var readPrivateMatchCodeObject = (nk, code) => {
       collection: PRIVATE_MATCH_CODE_COLLECTION,
       key: normalizedCode,
       userId: SYSTEM_USER_ID5
+    },
+    {
+      collection: PRIVATE_MATCH_CODE_COLLECTION,
+      key: normalizedCode
     }
   ]);
-  const object = findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode, SYSTEM_USER_ID5);
+  const object = (_a = findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode, SYSTEM_USER_ID5)) != null ? _a : findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode);
   return {
     object,
     record: normalizePrivateMatchCodeRecord(object == null ? void 0 : object.value)
@@ -12030,6 +12035,7 @@ var writePrivateMatchCodeRecord = (nk, record, version) => {
     {
       collection: PRIVATE_MATCH_CODE_COLLECTION,
       key: record.code,
+      userId: SYSTEM_USER_ID5,
       value: record,
       version,
       permissionRead: STORAGE_PERMISSION_NONE2,
@@ -12213,18 +12219,18 @@ var resolveAssignedPlayerTitle = (nk, userId) => {
 var cacheAssignedPlayerTitle = (state, nk, userId) => {
   state.playerTitles[userId] = resolveAssignedPlayerTitle(nk, userId);
 };
-var resolveAssignedPlayerRankTitle = (nk, logger2, userId, options) => {
+var resolveAssignedPlayerRankTitle = (nk, logger, userId, options) => {
   if (options == null ? void 0 : options.isBotUser) {
     return null;
   }
   try {
-    return getProgressionForUser(nk, logger2, userId).currentRank;
+    return getProgressionForUser(nk, logger, userId).currentRank;
   } catch (e) {
     return null;
   }
 };
-var cacheAssignedPlayerRankTitle = (state, nk, logger2, userId) => {
-  state.playerRankTitles[userId] = resolveAssignedPlayerRankTitle(nk, logger2, userId, {
+var cacheAssignedPlayerRankTitle = (state, nk, logger, userId) => {
+  state.playerRankTitles[userId] = resolveAssignedPlayerRankTitle(nk, logger, userId, {
     isBotUser: isConfiguredBotUser(state, userId)
   });
 };
@@ -12493,7 +12499,7 @@ var buildRematchMatchParams = (state, privateCode) => {
   }
   return params;
 };
-var maybeCreateRematchMatch = (logger2, nk, state, currentMatchId) => {
+var maybeCreateRematchMatch = (logger, nk, state, currentMatchId) => {
   if (state.rematch.status !== "pending" || state.rematch.nextMatchId !== null || !haveAllRematchPlayersAccepted(state)) {
     return false;
   }
@@ -12518,7 +12524,7 @@ var maybeCreateRematchMatch = (logger2, nk, state, currentMatchId) => {
         nextPrivateCode
       );
     } catch (error) {
-      logger2.warn(
+      logger.warn(
         "Created private rematch %s from match %s but failed to persist private code reservation: %s",
         nextMatchId,
         currentMatchId,
@@ -12526,37 +12532,37 @@ var maybeCreateRematchMatch = (logger2, nk, state, currentMatchId) => {
       );
     }
   }
-  logger2.info("Created authoritative rematch %s from completed match %s.", nextMatchId, currentMatchId);
+  logger.info("Created authoritative rematch %s from completed match %s.", nextMatchId, currentMatchId);
   return true;
 };
-var syncRematchState = (logger2, nk, dispatcher, state, matchId, nowMs) => {
+var syncRematchState = (logger, nk, dispatcher, state, matchId, nowMs) => {
   let didChange = false;
   didChange = openRematchWindow(state, nowMs) || didChange;
   if (state.rematch.status === "pending" && state.rematch.deadlineMs !== null && nowMs >= state.rematch.deadlineMs) {
     didChange = expireRematchWindow(state) || didChange;
   } else if (state.rematch.status === "pending") {
-    didChange = maybeCreateRematchMatch(logger2, nk, state, matchId) || didChange;
+    didChange = maybeCreateRematchMatch(logger, nk, state, matchId) || didChange;
   }
   if (didChange) {
     broadcastSnapshot(dispatcher, state, matchId);
   }
 };
-var finalizeCompletedMatch = (logger2, nk, dispatcher, state, matchId) => {
+var finalizeCompletedMatch = (logger, nk, dispatcher, state, matchId) => {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
   if (!state.gameState.winner || state.resultRecorded) {
     return state.resultRecorded;
   }
   syncCompletedMatchEnd(state);
-  const ratingProcessingResult = processCompletedMatchRatings(logger2, nk, dispatcher, state, matchId);
-  const winnerProgressionAward = awardWinnerProgression(logger2, nk, dispatcher, state, matchId);
-  const tournamentProcessingResult = processCompletedTournamentMatch(logger2, nk, state, matchId);
-  const challengeProcessingResults = processCompletedMatchSummaries(logger2, nk, state, matchId);
+  const ratingProcessingResult = processCompletedMatchRatings(logger, nk, dispatcher, state, matchId);
+  const winnerProgressionAward = awardWinnerProgression(logger, nk, dispatcher, state, matchId);
+  const tournamentProcessingResult = processCompletedTournamentMatch(logger, nk, state, matchId);
+  const challengeProcessingResults = processCompletedMatchSummaries(logger, nk, state, matchId);
   if (state.tournamentContext && (!tournamentProcessingResult || tournamentProcessingResult.retryableFailure)) {
-    logger2.warn("Deferring final result lock for match %s until tournament synchronization succeeds.", matchId);
+    logger.warn("Deferring final result lock for match %s until tournament synchronization succeeds.", matchId);
     state.resultRecorded = false;
     return false;
   }
-  broadcastTournamentMatchRewardSummaries(logger2, nk, dispatcher, state, matchId, {
+  broadcastTournamentMatchRewardSummaries(logger, nk, dispatcher, state, matchId, {
     ratingProcessingResult,
     winnerProgressionAward,
     tournamentProcessingResult,
@@ -12566,7 +12572,7 @@ var finalizeCompletedMatch = (logger2, nk, dispatcher, state, matchId) => {
   {
     const endedAt = (/* @__PURE__ */ new Date()).toISOString();
     const durationSeconds = state.matchStartedAtMs !== null ? Math.max(0, Math.round((Date.now() - state.matchStartedAtMs) / 1e3)) : null;
-    recordMatchEndAnalyticsEvent(nk, logger2, {
+    recordMatchEndAnalyticsEvent(nk, logger, {
       matchId,
       startedAt: state.matchStartedAtMs !== null ? new Date(state.matchStartedAtMs).toISOString() : null,
       endedAt,
@@ -12591,22 +12597,22 @@ var finalizeCompletedMatch = (logger2, nk, dispatcher, state, matchId) => {
     });
   }
   if (state.tournamentContext && tournamentProcessingResult && !tournamentProcessingResult.finalizationResult && Boolean((_l = (_k = tournamentProcessingResult.updatedRun) == null ? void 0 : _k.bracket) == null ? void 0 : _l.finalizedAt)) {
-    maybeFinalizeRecordedTournamentRun(logger2, nk, state, matchId, "result_recorded");
+    maybeFinalizeRecordedTournamentRun(logger, nk, state, matchId, "result_recorded");
   }
   return true;
 };
-var maybeFinalizeRecordedTournamentRun = (logger2, nk, state, matchId, source) => {
+var maybeFinalizeRecordedTournamentRun = (logger, nk, state, matchId, source) => {
   if (!state.tournamentContext || !state.gameState.winner) {
     return;
   }
   try {
     const finalizationResult = maybeAutoFinalizeTournamentRunById(
       nk,
-      logger2,
+      logger,
       state.tournamentContext.runId
     );
     if (finalizationResult) {
-      logger2.info(
+      logger.info(
         "Auto-finalized tournament run %s after %s processing for completed match %s.",
         finalizationResult.run.runId,
         source,
@@ -12614,7 +12620,7 @@ var maybeFinalizeRecordedTournamentRun = (logger2, nk, state, matchId, source) =
       );
     }
   } catch (error) {
-    logger2.warn(
+    logger.warn(
       "Unable to auto-finalize tournament run %s after %s processing for match %s: %s",
       state.tournamentContext.runId,
       source,
@@ -12749,7 +12755,7 @@ var buildTournamentMatchCompletion = (state, matchId) => {
     players
   };
 };
-function processCompletedTournamentMatch(logger2, nk, state, matchId) {
+function processCompletedTournamentMatch(logger, nk, state, matchId) {
   if (!state.tournamentContext) {
     return null;
   }
@@ -12758,9 +12764,9 @@ function processCompletedTournamentMatch(logger2, nk, state, matchId) {
     if (!completion) {
       return null;
     }
-    return processCompletedAuthoritativeTournamentMatch(nk, logger2, completion);
+    return processCompletedAuthoritativeTournamentMatch(nk, logger, completion);
   } catch (error) {
-    logger2.error(
+    logger.error(
       "Failed to process tournament result for match %s: %s",
       matchId,
       error instanceof Error ? error.message : String(error)
@@ -12775,7 +12781,7 @@ var matchLeaveHandler = matchLeave;
 var matchLoopHandler = matchLoop;
 var matchTerminateHandler = matchTerminate;
 var matchSignalHandler = matchSignal;
-function InitModule(_ctx, logger2, nk, initializer) {
+function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_AUTH_LINK_CUSTOM, rpcAuthLinkCustom);
   initializer.registerRpc(RPC_GET_PROGRESSION_NAME, rpcGetProgression);
   initializer.registerRpc(RPC_GET_USER_XP_PROGRESS_NAME, rpcGetUserXpProgress);
@@ -12829,22 +12835,22 @@ function InitModule(_ctx, logger2, nk, initializer) {
   });
   initializer.registerMatchmakerMatched(matchmakerMatched);
   try {
-    ensureEloLeaderboard(nk, logger2);
+    ensureEloLeaderboard(nk, logger);
   } catch (error) {
-    logger2.warn(
+    logger.warn(
       "Skipping Elo leaderboard setup on startup: %s",
       error instanceof Error ? error.message : String(error)
     );
   }
   try {
-    ensureChallengeDefinitions(nk, logger2);
+    ensureChallengeDefinitions(nk, logger);
   } catch (error) {
-    logger2.warn(
+    logger.warn(
       "Skipping challenge definition sync on startup: %s",
       error instanceof Error ? error.message : String(error)
     );
   }
-  logger2.info("Nakama runtime module loaded.");
+  logger.info("Nakama runtime module loaded.");
 }
 function rpcPresenceHeartbeat(ctx, _logger, _nk, _payload) {
   const userId = getContextUserId2(ctx);
@@ -12860,7 +12866,7 @@ function rpcPresenceCount(ctx, _logger, _nk, _payload) {
   }
   return JSON.stringify(getOnlinePresenceSnapshot());
 }
-function rpcAuthLinkCustom(ctx, logger2, nk, payload) {
+function rpcAuthLinkCustom(ctx, logger, nk, payload) {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
@@ -12871,7 +12877,7 @@ function rpcAuthLinkCustom(ctx, logger2, nk, payload) {
     throw new Error("customId is required.");
   }
   nk.linkCustom(ctx.userId, customId, username);
-  logger2.info("Linked custom ID to user %s", ctx.userId);
+  logger.info("Linked custom ID to user %s", ctx.userId);
   return JSON.stringify({
     userId: ctx.userId,
     customId
@@ -12958,10 +12964,10 @@ function rpcGetPrivateMatchStatus(ctx, _logger, nk, payload) {
     Boolean(record.joinedUserId)
   );
 }
-function matchmakerMatched(_ctx, logger2, nk, matched) {
+function matchmakerMatched(_ctx, logger, nk, matched) {
   const users = Array.isArray(matched.users) ? matched.users : [];
   const playerIds = users.map((user) => getPresenceUserId(user == null ? void 0 : user.presence)).filter((userId) => Boolean(userId)).slice(0, MAX_PLAYERS);
-  logger2.info("Matchmaker matched %s players", playerIds.length);
+  logger.info("Matchmaker matched %s players", playerIds.length);
   return nk.matchCreate(MATCH_HANDLER, {
     playerIds,
     modeId: "standard",
@@ -12973,7 +12979,7 @@ function matchmakerMatched(_ctx, logger2, nk, matched) {
     allowsChallengeRewards: true
   });
 }
-function matchInit(_ctx, _logger, nk, params) {
+function matchInit(_ctx, logger, nk, params) {
   var _a;
   const playerIds = Array.isArray(params.playerIds) ? params.playerIds : [];
   const modeId = resolveMatchModeId(params.modeId);
@@ -13058,10 +13064,10 @@ function matchInit(_ctx, _logger, nk, params) {
   };
   return { state, tickRate: TICK_RATE, label: MATCH_HANDLER };
 }
-function matchJoinAttempt(_ctx, logger2, nk, _dispatcher, _tick, state, presence) {
+function matchJoinAttempt(_ctx, logger, nk, _dispatcher, _tick, state, presence) {
   const userId = getPresenceUserId(presence);
   if (!userId) {
-    logger2.warn("Rejecting join attempt with missing user ID.");
+    logger.warn("Rejecting join attempt with missing user ID.");
     return { state, accept: false, rejectMessage: "Unable to identify player." };
   }
   try {
@@ -13086,23 +13092,23 @@ function matchJoinAttempt(_ctx, logger2, nk, _dispatcher, _tick, state, presence
   upsertPresence(state, presence);
   ensureAssignment(state, userId);
   cacheAssignedPlayerTitle(state, nk, userId);
-  cacheAssignedPlayerRankTitle(state, nk, logger2, userId);
+  cacheAssignedPlayerRankTitle(state, nk, logger, userId);
   return { state, accept: true };
 }
-function matchJoin(ctx, logger2, nk, dispatcher, _tick, state, presences) {
+function matchJoin(ctx, logger, nk, dispatcher, _tick, state, presences) {
   var _a, _b, _c, _d;
   const nowMs = Date.now();
   let clearedDisconnectGrace = false;
   presences.forEach((presence) => {
     const userId = getPresenceUserId(presence);
     if (!userId) {
-      logger2.warn("Skipping join presence with missing user ID.");
+      logger.warn("Skipping join presence with missing user ID.");
       return;
     }
     upsertPresence(state, presence);
     ensureAssignment(state, userId);
     cacheAssignedPlayerTitle(state, nk, userId);
-    cacheAssignedPlayerRankTitle(state, nk, logger2, userId);
+    cacheAssignedPlayerRankTitle(state, nk, logger, userId);
     clearedDisconnectGrace = clearDisconnectGraceForUser(state, userId) || clearedDisconnectGrace;
   });
   if (state.started && clearedDisconnectGrace && !hasActiveDisconnectGrace(state)) {
@@ -13111,7 +13117,7 @@ function matchJoin(ctx, logger2, nk, dispatcher, _tick, state, presences) {
   const matchId = getMatchId(ctx);
   const didStartMatch = markMatchStartedIfReady(state, nowMs);
   if (didStartMatch && state.matchStartedAtMs !== null) {
-    recordMatchStartAnalyticsEvent(nk, logger2, {
+    recordMatchStartAnalyticsEvent(nk, logger, {
       matchId,
       startedAt: new Date(state.matchStartedAtMs).toISOString(),
       modeId: state.modeId,
@@ -13131,13 +13137,13 @@ function matchJoin(ctx, logger2, nk, dispatcher, _tick, state, presences) {
   broadcastSnapshot(dispatcher, state, matchId);
   return { state };
 }
-function matchLeave(ctx, logger2, nk, dispatcher, _tick, state, presences) {
+function matchLeave(ctx, logger, nk, dispatcher, _tick, state, presences) {
   const nowMs = Date.now();
   let shouldBroadcastSnapshot = false;
   presences.forEach((presence) => {
     const userId = getPresenceUserId(presence);
     if (!userId) {
-      logger2.warn("Skipping leave presence with missing user ID.");
+      logger.warn("Skipping leave presence with missing user ID.");
       return;
     }
     removePresence(state, presence);
@@ -13148,25 +13154,25 @@ function matchLeave(ctx, logger2, nk, dispatcher, _tick, state, presences) {
   }
   if (state.gameState.winner && !state.resultRecorded) {
     try {
-      finalizeCompletedMatch(logger2, nk, dispatcher, state, getMatchId(ctx));
+      finalizeCompletedMatch(logger, nk, dispatcher, state, getMatchId(ctx));
     } catch (error) {
-      logMatchLoopError(logger2, getMatchId(ctx), state, "leave_result_processing", error);
+      logMatchLoopError(logger, getMatchId(ctx), state, "leave_result_processing", error);
     }
   }
   if (state.gameState.winner && state.resultRecorded) {
     try {
-      syncRematchState(logger2, nk, dispatcher, state, getMatchId(ctx), nowMs);
+      syncRematchState(logger, nk, dispatcher, state, getMatchId(ctx), nowMs);
     } catch (error) {
-      logMatchLoopError(logger2, getMatchId(ctx), state, "leave_rematch_processing", error);
+      logMatchLoopError(logger, getMatchId(ctx), state, "leave_rematch_processing", error);
     }
   }
   if (state.gameState.winner && state.resultRecorded) {
-    maybeFinalizeRecordedTournamentRun(logger2, nk, state, getMatchId(ctx), "leave");
+    maybeFinalizeRecordedTournamentRun(logger, nk, state, getMatchId(ctx), "leave");
   }
   return { state };
 }
-var logMatchLoopError = (logger2, matchId, state, context, error) => {
-  logger2.error(
+var logMatchLoopError = (logger, matchId, state, context, error) => {
+  logger.error(
     "Authoritative match error in %s during %s (revision %d, phase %s, turn %s): %s",
     matchId,
     context,
@@ -13176,14 +13182,14 @@ var logMatchLoopError = (logger2, matchId, state, context, error) => {
     error instanceof Error ? error.message : String(error)
   );
 };
-function matchLoop(ctx, logger2, nk, dispatcher, _tick, state, messages) {
+function matchLoop(ctx, logger, nk, dispatcher, _tick, state, messages) {
   var _a, _b, _c, _d;
   const matchId = getMatchId(ctx);
   const nowMs = Date.now();
   try {
     const didStartMatch = markMatchStartedIfReady(state, nowMs);
     if (didStartMatch && state.matchStartedAtMs !== null) {
-      recordMatchStartAnalyticsEvent(nk, logger2, {
+      recordMatchStartAnalyticsEvent(nk, logger, {
         matchId,
         startedAt: new Date(state.matchStartedAtMs).toISOString(),
         modeId: state.modeId,
@@ -13202,32 +13208,32 @@ function matchLoop(ctx, logger2, nk, dispatcher, _tick, state, messages) {
     }
     ensureTurnTimerForCurrentState(state, nowMs);
   } catch (error) {
-    logMatchLoopError(logger2, matchId, state, "timer_sync", error);
+    logMatchLoopError(logger, matchId, state, "timer_sync", error);
     return { state };
   }
   try {
     const expiredDisconnectedColor = getExpiredDisconnectedColor(state, nowMs);
     if (expiredDisconnectedColor) {
-      forfeitPlayerForDisconnect(logger2, nk, dispatcher, state, matchId, expiredDisconnectedColor);
+      forfeitPlayerForDisconnect(logger, nk, dispatcher, state, matchId, expiredDisconnectedColor);
     }
   } catch (error) {
-    logMatchLoopError(logger2, matchId, state, "disconnect_processing", error);
+    logMatchLoopError(logger, matchId, state, "disconnect_processing", error);
     try {
       broadcastSnapshot(dispatcher, state, matchId);
     } catch (snapshotError) {
-      logMatchLoopError(logger2, matchId, state, "disconnect_recovery_snapshot", snapshotError);
+      logMatchLoopError(logger, matchId, state, "disconnect_recovery_snapshot", snapshotError);
     }
   }
   messages.forEach((message) => {
     try {
       const senderUserId = getSenderUserId(message.sender);
       if (!senderUserId) {
-        logger2.warn("Ignoring message with missing sender user ID.");
+        logger.warn("Ignoring message with missing sender user ID.");
         return;
       }
       upsertPresence(state, message.sender);
       cacheAssignedPlayerTitle(state, nk, senderUserId);
-      cacheAssignedPlayerRankTitle(state, nk, logger2, senderUserId);
+      cacheAssignedPlayerRankTitle(state, nk, logger, senderUserId);
       const senderColor = state.assignments[senderUserId];
       if (!senderColor) {
         sendError(
@@ -13262,7 +13268,7 @@ function matchLoop(ctx, logger2, nk, dispatcher, _tick, state, messages) {
           sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Roll payload is invalid.");
           return;
         }
-        applyRollRequest(logger2, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
+        applyRollRequest(logger, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
         return;
       }
       if (opCode === MatchOpCode.MOVE_REQUEST) {
@@ -13270,7 +13276,7 @@ function matchLoop(ctx, logger2, nk, dispatcher, _tick, state, messages) {
           sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Move payload is invalid.");
           return;
         }
-        applyMoveRequest(logger2, nk, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
+        applyMoveRequest(logger, nk, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
         return;
       }
       if (opCode === MatchOpCode.EMOJI_REACTION) {
@@ -13299,11 +13305,11 @@ function matchLoop(ctx, logger2, nk, dispatcher, _tick, state, messages) {
       }
       sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", `Unsupported opcode ${opCode}.`);
     } catch (error) {
-      logMatchLoopError(logger2, matchId, state, "message_processing", error);
+      logMatchLoopError(logger, matchId, state, "message_processing", error);
       try {
         broadcastSnapshot(dispatcher, state, matchId);
       } catch (snapshotError) {
-        logMatchLoopError(logger2, matchId, state, "message_recovery_snapshot", snapshotError);
+        logMatchLoopError(logger, matchId, state, "message_recovery_snapshot", snapshotError);
       }
     }
   });
@@ -13311,53 +13317,53 @@ function matchLoop(ctx, logger2, nk, dispatcher, _tick, state, messages) {
     ensureTurnTimerForCurrentState(state, Date.now());
     const timerExpired = state.timer.turnDeadlineMs !== null && Date.now() >= state.timer.turnDeadlineMs && !state.gameState.winner && state.gameState.phase !== "ended";
     if (timerExpired) {
-      applyTimedTurnTimeout(logger2, nk, dispatcher, state, matchId, Date.now());
+      applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, Date.now());
     }
   } catch (error) {
-    logMatchLoopError(logger2, matchId, state, "timeout_processing", error);
+    logMatchLoopError(logger, matchId, state, "timeout_processing", error);
     try {
       broadcastSnapshot(dispatcher, state, matchId);
     } catch (snapshotError) {
-      logMatchLoopError(logger2, matchId, state, "timeout_recovery_snapshot", snapshotError);
+      logMatchLoopError(logger, matchId, state, "timeout_recovery_snapshot", snapshotError);
     }
   }
   if (state.gameState.winner && !state.resultRecorded) {
     try {
-      finalizeCompletedMatch(logger2, nk, dispatcher, state, matchId);
+      finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
     } catch (error) {
-      logMatchLoopError(logger2, matchId, state, "result_processing", error);
+      logMatchLoopError(logger, matchId, state, "result_processing", error);
     }
   }
   try {
-    syncRematchState(logger2, nk, dispatcher, state, matchId, Date.now());
+    syncRematchState(logger, nk, dispatcher, state, matchId, Date.now());
   } catch (error) {
-    logMatchLoopError(logger2, matchId, state, "rematch_processing", error);
+    logMatchLoopError(logger, matchId, state, "rematch_processing", error);
     try {
       broadcastSnapshot(dispatcher, state, matchId);
     } catch (snapshotError) {
-      logMatchLoopError(logger2, matchId, state, "rematch_recovery_snapshot", snapshotError);
+      logMatchLoopError(logger, matchId, state, "rematch_recovery_snapshot", snapshotError);
     }
   }
   return { state };
 }
-function matchTerminate(ctx, logger2, nk, dispatcher, _tick, state, _graceSeconds) {
+function matchTerminate(ctx, logger, nk, dispatcher, _tick, state, _graceSeconds) {
   const matchId = getMatchId(ctx);
   if (state.gameState.winner && !state.resultRecorded) {
     try {
-      finalizeCompletedMatch(logger2, nk, dispatcher, state, matchId);
+      finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
     } catch (error) {
-      logMatchLoopError(logger2, matchId, state, "terminate_result_processing", error);
+      logMatchLoopError(logger, matchId, state, "terminate_result_processing", error);
     }
   }
   if (state.gameState.winner && state.resultRecorded) {
     try {
-      syncRematchState(logger2, nk, dispatcher, state, matchId, Date.now());
+      syncRematchState(logger, nk, dispatcher, state, matchId, Date.now());
     } catch (error) {
-      logMatchLoopError(logger2, matchId, state, "terminate_rematch_processing", error);
+      logMatchLoopError(logger, matchId, state, "terminate_rematch_processing", error);
     }
   }
   if (state.gameState.winner && state.resultRecorded) {
-    maybeFinalizeRecordedTournamentRun(logger2, nk, state, matchId, "terminate");
+    maybeFinalizeRecordedTournamentRun(logger, nk, state, matchId, "terminate");
   }
   unregisterActiveMatch(matchId);
   return { state };
@@ -13428,7 +13434,7 @@ function applyValidatedMove(state, playerColor, move) {
   }
   completePlayerTurnTelemetry(state, playerColor, { didCapture, unusableRoll: false });
 }
-function forfeitPlayerForInactivity(logger2, nk, dispatcher, state, matchId, forfeitingColor) {
+function forfeitPlayerForInactivity(logger, nk, dispatcher, state, matchId, forfeitingColor) {
   const winnerColor = getOtherPlayerColor(forfeitingColor);
   state.afk[forfeitingColor].accumulatedMs = ONLINE_AFK_FORFEIT_MS;
   clearDisconnectGraceForColor(state, "light");
@@ -13442,7 +13448,7 @@ function forfeitPlayerForInactivity(logger2, nk, dispatcher, state, matchId, for
   state.matchEnd = buildMatchEndPayload(state, "forfeit_inactivity", winnerColor, forfeitingColor);
   clearTurnTimer(state, "forfeit_inactivity");
   state.revision += 1;
-  logger2.info(
+  logger.info(
     "Forfeited %s for inactivity in match %s after %dms (revision %d)",
     forfeitingColor,
     matchId,
@@ -13450,9 +13456,9 @@ function forfeitPlayerForInactivity(logger2, nk, dispatcher, state, matchId, for
     state.revision
   );
   broadcastSnapshot(dispatcher, state, matchId);
-  finalizeCompletedMatch(logger2, nk, dispatcher, state, matchId);
+  finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
 }
-function forfeitPlayerForDisconnect(logger2, nk, dispatcher, state, matchId, forfeitingColor) {
+function forfeitPlayerForDisconnect(logger, nk, dispatcher, state, matchId, forfeitingColor) {
   const winnerColor = getOtherPlayerColor(forfeitingColor);
   clearDisconnectGraceForColor(state, "light");
   clearDisconnectGraceForColor(state, "dark");
@@ -13465,16 +13471,16 @@ function forfeitPlayerForDisconnect(logger2, nk, dispatcher, state, matchId, for
   state.matchEnd = buildMatchEndPayload(state, "forfeit_disconnect", winnerColor, forfeitingColor);
   clearTurnTimer(state, "forfeit_disconnect");
   state.revision += 1;
-  logger2.info(
+  logger.info(
     "Forfeited %s for disconnect in match %s after missing reconnect deadline (revision %d)",
     forfeitingColor,
     matchId,
     state.revision
   );
   broadcastSnapshot(dispatcher, state, matchId);
-  finalizeCompletedMatch(logger2, nk, dispatcher, state, matchId);
+  finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
 }
-function applyTimedTurnTimeout(logger2, nk, dispatcher, state, matchId, nowMs) {
+function applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, nowMs) {
   var _a, _b, _c;
   const activePlayerColor = (_a = state.timer.activePlayerColor) != null ? _a : state.gameState.currentTurn;
   if (!activePlayerColor || state.gameState.winner || state.gameState.phase === "ended") {
@@ -13539,14 +13545,14 @@ function applyTimedTurnTimeout(logger2, nk, dispatcher, state, matchId, nowMs) {
     }
     resetTurnTimerForCurrentState(state, nowMs, "bot_turn_delay");
     state.revision += 1;
-    logger2.debug("Applied configured bot turn for %s (revision %d)", activePlayerColor, state.revision);
+    logger.debug("Applied configured bot turn for %s (revision %d)", activePlayerColor, state.revision);
     broadcastSnapshot(dispatcher, state, matchId);
-    finalizeCompletedMatch(logger2, nk, dispatcher, state, matchId);
+    finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
     return;
   }
   const accumulatedInactivityMs = recordTimeoutWindow(state, activePlayerColor, nowMs);
   if (accumulatedInactivityMs >= ONLINE_AFK_FORFEIT_MS) {
-    forfeitPlayerForInactivity(logger2, nk, dispatcher, state, matchId, activePlayerColor);
+    forfeitPlayerForInactivity(logger, nk, dispatcher, state, matchId, activePlayerColor);
     return;
   }
   if (state.gameState.phase === "rolling") {
@@ -13579,11 +13585,11 @@ function applyTimedTurnTimeout(logger2, nk, dispatcher, state, matchId, nowMs) {
   }
   resetTurnTimerForCurrentState(state, nowMs, "timeout_autoplay");
   state.revision += 1;
-  logger2.debug("Applied authoritative timeout for %s (revision %d)", activePlayerColor, state.revision);
+  logger.debug("Applied authoritative timeout for %s (revision %d)", activePlayerColor, state.revision);
   broadcastSnapshot(dispatcher, state, matchId);
-  finalizeCompletedMatch(logger2, nk, dispatcher, state, matchId);
+  finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
 }
-function applyRollRequest(logger2, dispatcher, state, userId, playerColor, payload, matchId) {
+function applyRollRequest(logger, dispatcher, state, userId, playerColor, payload, matchId) {
   if (state.gameState.winner) {
     sendError(dispatcher, state, userId, "INVALID_PHASE", "The match has already ended.");
     return;
@@ -13608,10 +13614,10 @@ function applyRollRequest(logger2, dispatcher, state, userId, playerColor, paylo
   state.matchEnd = null;
   resetTurnTimerForCurrentState(state, nowMs, "player_roll");
   state.revision += 1;
-  logger2.debug("Applied roll for %s (revision %d)", userId, state.revision);
+  logger.debug("Applied roll for %s (revision %d)", userId, state.revision);
   broadcastSnapshot(dispatcher, state, matchId);
 }
-function applyMoveRequest(logger2, nk, dispatcher, state, userId, playerColor, payload, matchId) {
+function applyMoveRequest(logger, nk, dispatcher, state, userId, playerColor, payload, matchId) {
   if (state.gameState.winner) {
     sendError(dispatcher, state, userId, "INVALID_PHASE", "The match has already ended.");
     return;
@@ -13643,9 +13649,9 @@ function applyMoveRequest(logger2, nk, dispatcher, state, userId, playerColor, p
   syncCompletedMatchEnd(state);
   resetTurnTimerForCurrentState(state, nowMs, "player_move");
   state.revision += 1;
-  logger2.debug("Applied move for %s (revision %d)", userId, state.revision);
+  logger.debug("Applied move for %s (revision %d)", userId, state.revision);
   broadcastSnapshot(dispatcher, state, matchId);
-  finalizeCompletedMatch(logger2, nk, dispatcher, state, matchId);
+  finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
 }
 function applyEmojiReactionRequest(dispatcher, state, userId, playerColor, payload) {
   var _a;
@@ -13751,7 +13757,7 @@ function applyRematchResponse(dispatcher, state, userId, payload, matchId) {
   state.revision += 1;
   broadcastSnapshot(dispatcher, state, matchId);
 }
-function processCompletedMatchRatings(logger2, nk, dispatcher, state, matchId) {
+function processCompletedMatchRatings(logger, nk, dispatcher, state, matchId) {
   const winnerColor = state.gameState.winner;
   if (!winnerColor) {
     return null;
@@ -13759,13 +13765,13 @@ function processCompletedMatchRatings(logger2, nk, dispatcher, state, matchId) {
   const winnerEntry = Object.entries(state.assignments).find(([, color]) => color === winnerColor);
   const loserEntry = Object.entries(state.assignments).find(([, color]) => color !== winnerColor);
   if (!winnerEntry || !loserEntry) {
-    logger2.warn("Match %s could not resolve both Elo participants.", matchId);
+    logger.warn("Match %s could not resolve both Elo participants.", matchId);
     return null;
   }
   const [winnerUserId] = winnerEntry;
   const [loserUserId] = loserEntry;
   try {
-    const ratingResult = processRankedMatchResult(nk, logger2, {
+    const ratingResult = processRankedMatchResult(nk, logger, {
       matchId,
       winnerUserId,
       loserUserId,
@@ -13794,7 +13800,7 @@ function processCompletedMatchRatings(logger2, nk, dispatcher, state, matchId) {
     ratingResult.record.playerResults.forEach((playerResult) => {
       const targetPresences = getUserPresenceTargets(state, playerResult.userId);
       if (targetPresences.length === 0) {
-        logger2.info(
+        logger.info(
           "Ranked Elo processed for user %s on match %s, but no live presence was available for notification.",
           playerResult.userId,
           matchId
@@ -13818,7 +13824,7 @@ function processCompletedMatchRatings(logger2, nk, dispatcher, state, matchId) {
       byUserId
     };
   } catch (error) {
-    logger2.error(
+    logger.error(
       "Failed to process ranked Elo result for match %s: %s",
       matchId,
       error instanceof Error ? error.message : String(error)
@@ -13826,19 +13832,19 @@ function processCompletedMatchRatings(logger2, nk, dispatcher, state, matchId) {
     return null;
   }
 }
-function awardWinnerProgression(logger2, nk, dispatcher, state, matchId) {
+function awardWinnerProgression(logger, nk, dispatcher, state, matchId) {
   const winnerColor = state.gameState.winner;
   if (!winnerColor) {
     return null;
   }
   const winnerEntry = Object.entries(state.assignments).find(([, color]) => color === winnerColor);
   if (!winnerEntry) {
-    logger2.warn("Match %s ended with winner color %s but no assigned user was found.", matchId, winnerColor);
+    logger.warn("Match %s ended with winner color %s but no assigned user was found.", matchId, winnerColor);
     return null;
   }
   const [winnerUserId] = winnerEntry;
   if (isTournamentBotUserId(winnerUserId)) {
-    logger2.info("Skipping progression award for synthetic tournament bot winner %s on match %s.", winnerUserId, matchId);
+    logger.info("Skipping progression award for synthetic tournament bot winner %s on match %s.", winnerUserId, matchId);
     return null;
   }
   const configuredTournamentMatchWinXp = state.tournamentContext && typeof state.tournamentMatchWinXp === "number" ? state.tournamentMatchWinXp : null;
@@ -13846,7 +13852,7 @@ function awardWinnerProgression(logger2, nk, dispatcher, state, matchId) {
     return null;
   }
   try {
-    const awardResponse = awardXpForMatchWin(nk, logger2, __spreadValues({
+    const awardResponse = awardXpForMatchWin(nk, logger, __spreadValues({
       userId: winnerUserId,
       matchId,
       source: state.winRewardSource
@@ -13856,7 +13862,7 @@ function awardWinnerProgression(logger2, nk, dispatcher, state, matchId) {
     }
     const winnerPresence = getPrimaryUserPresence(state, winnerUserId);
     if (!winnerPresence) {
-      logger2.info(
+      logger.info(
         "Progression updated for winner %s on match %s, but no live presence was available for notification.",
         winnerUserId,
         matchId
@@ -13870,7 +13876,7 @@ function awardWinnerProgression(logger2, nk, dispatcher, state, matchId) {
     );
     return awardResponse;
   } catch (error) {
-    logger2.error(
+    logger.error(
       "Failed to award progression for winner %s on match %s: %s",
       winnerUserId,
       matchId,
@@ -13879,14 +13885,14 @@ function awardWinnerProgression(logger2, nk, dispatcher, state, matchId) {
     return null;
   }
 }
-function processCompletedMatchSummaries(logger2, nk, state, matchId) {
+function processCompletedMatchSummaries(logger, nk, state, matchId) {
   var _a, _b;
   const results = {};
   if (!state.allowsChallengeRewards) {
     return results;
   }
   if (((_a = state.matchEnd) == null ? void 0 : _a.reason) === "forfeit_inactivity" || ((_b = state.matchEnd) == null ? void 0 : _b.reason) === "forfeit_disconnect") {
-    logger2.info("Skipping challenge completion processing for forfeited match %s.", matchId);
+    logger.info("Skipping challenge completion processing for forfeited match %s.", matchId);
     return results;
   }
   Object.entries(state.assignments).forEach(([playerUserId, playerColor]) => {
@@ -13895,9 +13901,9 @@ function processCompletedMatchSummaries(logger2, nk, state, matchId) {
     }
     try {
       const summary = buildPlayerMatchSummary(state, matchId, playerUserId, playerColor);
-      results[playerUserId] = processCompletedMatch(nk, logger2, summary);
+      results[playerUserId] = processCompletedMatch(nk, logger, summary);
     } catch (error) {
-      logger2.error(
+      logger.error(
         "Failed to process challenge summary for user %s on match %s: %s",
         playerUserId,
         matchId,
@@ -13963,7 +13969,7 @@ var resolveTerminalTournamentRewardOutcome = (params) => {
   }
   return null;
 };
-var buildTournamentRewardSummaryPayload = (logger2, nk, state, matchId, playerUserId, didWin, context) => {
+var buildTournamentRewardSummaryPayload = (logger, nk, state, matchId, playerUserId, didWin, context) => {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
   if (!state.tournamentContext) {
     return null;
@@ -13984,12 +13990,12 @@ var buildTournamentRewardSummaryPayload = (logger2, nk, state, matchId, playerUs
   const winnerUserId = (_f = (_e = state.matchEnd) == null ? void 0 : _e.winnerUserId) != null ? _f : state.gameState.winner ? getUserIdForColor(state, state.gameState.winner) : null;
   const winnerBaseXpDelta = playerUserId === winnerUserId ? (_h = (_g = context.winnerProgressionAward) == null ? void 0 : _g.awardedXp) != null ? _h : 0 : 0;
   const championXpDelta = ((_i = context.tournamentProcessingResult.finalizationResult) == null ? void 0 : _i.championUserId) === playerUserId ? (_k = (_j = context.tournamentProcessingResult.finalizationResult.championRewardResult) == null ? void 0 : _j.awardedXp) != null ? _k : 0 : 0;
-  const progression = getProgressionForUser(nk, logger2, playerUserId);
-  const challengeProgress = getUserChallengeProgress(nk, logger2, playerUserId);
+  const progression = getProgressionForUser(nk, logger, playerUserId);
+  const challengeProgress = getUserChallengeProgress(nk, logger, playerUserId);
   const totalXpDelta = winnerBaseXpDelta + championXpDelta + challengeXpDelta;
   const totalXpNew = progression.totalXp;
   const totalXpOld = Math.max(0, totalXpNew - totalXpDelta);
-  const eloProfile = getEloRatingProfileForUser(nk, logger2, playerUserId);
+  const eloProfile = getEloRatingProfileForUser(nk, logger, playerUserId);
   const ratingSummary = (_m = (_l = context.ratingProcessingResult) == null ? void 0 : _l.byUserId[playerUserId]) != null ? _m : {
     oldRating: eloProfile.eloRating,
     newRating: eloProfile.eloRating,
@@ -14018,7 +14024,7 @@ var buildTournamentRewardSummaryPayload = (logger2, nk, state, matchId, playerUs
     challengeProgress
   };
 };
-function broadcastTournamentMatchRewardSummaries(logger2, nk, dispatcher, state, matchId, context) {
+function broadcastTournamentMatchRewardSummaries(logger, nk, dispatcher, state, matchId, context) {
   const tournamentProcessingResult = context.tournamentProcessingResult;
   if (!state.tournamentContext || !tournamentProcessingResult) {
     return;
@@ -14030,7 +14036,7 @@ function broadcastTournamentMatchRewardSummaries(logger2, nk, dispatcher, state,
     }
     try {
       const payload = buildTournamentRewardSummaryPayload(
-        logger2,
+        logger,
         nk,
         state,
         matchId,
@@ -14052,7 +14058,7 @@ function broadcastTournamentMatchRewardSummaries(logger2, nk, dispatcher, state,
         targets
       );
     } catch (error) {
-      logger2.error(
+      logger.error(
         "Failed to build tournament reward summary for user %s on match %s: %s",
         playerUserId,
         matchId,

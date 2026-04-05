@@ -747,8 +747,14 @@ const readPrivateMatchCodeObject = (
       key: normalizedCode,
       userId: SYSTEM_USER_ID,
     },
+    {
+      collection: PRIVATE_MATCH_CODE_COLLECTION,
+      key: normalizedCode,
+    },
   ]) as RuntimeStorageObject[];
-  const object = findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode, SYSTEM_USER_ID);
+  const object =
+    findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode, SYSTEM_USER_ID) ??
+    findStorageObject(objects, PRIVATE_MATCH_CODE_COLLECTION, normalizedCode);
 
   return {
     object,
@@ -765,6 +771,7 @@ const writePrivateMatchCodeRecord = (
     {
       collection: PRIVATE_MATCH_CODE_COLLECTION,
       key: record.code,
+      userId: SYSTEM_USER_ID,
       value: record,
       version,
       permissionRead: STORAGE_PERMISSION_NONE,
@@ -2094,7 +2101,7 @@ function matchmakerMatched(
 
 function matchInit(
   _ctx: nkruntime.Context,
-  _logger: nkruntime.Logger,
+  logger: nkruntime.Logger,
   nk: nkruntime.Nakama,
   params: Record<string, unknown>
 ): { state: MatchState; tickRate: number; label: string } {

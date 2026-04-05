@@ -11,6 +11,16 @@ type RuntimeGlobals = typeof globalThis & {
     },
     payload: string
   ) => string;
+  matchInit: (
+    ctx: Record<string, unknown>,
+    logger: { info: jest.Mock; warn: jest.Mock; error?: jest.Mock },
+    nk: {
+      storageRead: jest.Mock;
+      storageWrite: jest.Mock;
+      matchCreate: jest.Mock;
+    },
+    params: Record<string, unknown>
+  ) => { state: Record<string, unknown>; tickRate: number; label: string };
   rpcJoinPrivateMatch: (
     ctx: { userId?: string | null },
     logger: { info: jest.Mock; warn: jest.Mock; error?: jest.Mock },
@@ -56,6 +66,71 @@ describe('private match RPC payloads', () => {
       code: 'AAAAAAAA',
       privateCode: 'AAAAAAAA',
     });
+    expect(nk.storageWrite).toHaveBeenCalledWith([
+      expect.objectContaining({
+        collection: 'private_match_codes',
+        key: 'AAAAAAAA',
+        userId: '00000000-0000-0000-0000-000000000000',
+      }),
+    ]);
+  });
+
+  it('can initialize the authoritative private match when matchCreate invokes matchInit immediately', () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0);
+
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = {
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+    const storage = new Map<string, { collection: string; key: string; userId: string; version: string; value: unknown }>();
+    const nk = {
+      storageRead: jest.fn((requests: { collection: string; key: string; userId?: string }[]) =>
+        requests
+          .map((request) => storage.get(`${request.collection}:${request.key}:${request.userId ?? ''}`))
+          .filter(Boolean),
+      ),
+      storageWrite: jest.fn((writes: { collection: string; key: string; value: unknown; userId?: string }[]) => {
+        writes.forEach((write, index) => {
+          const userId = write.userId ?? '00000000-0000-0000-0000-000000000000';
+          storage.set(`${write.collection}:${write.key}:${userId}`, {
+            collection: write.collection,
+            key: write.key,
+            userId,
+            version: `version-${storage.size + index + 1}`,
+            value: write.value,
+          });
+        });
+      }),
+      matchCreate: jest.fn((handlerName: string, params: Record<string, unknown>) => {
+        expect(handlerName).toBe('authoritative_match');
+        const initialized = runtime.matchInit({ matchId: 'match-1' }, logger, nk, params);
+        expect(initialized.label).toBe('authoritative_match');
+        expect(initialized.state).toEqual(
+          expect.objectContaining({
+            modeId: 'gameMode_capture',
+            privateMatch: true,
+          }),
+        );
+        return 'match-1';
+      }),
+    };
+
+    const response = runtime.rpcCreatePrivateMatch(
+      { userId: 'host-1' },
+      logger,
+      nk,
+      JSON.stringify({ modeId: 'gameMode_capture' }),
+    );
+
+    expect(JSON.parse(response)).toEqual(
+      expect.objectContaining({
+        matchId: 'match-1',
+        modeId: 'gameMode_capture',
+        code: 'AAAAAAAA',
+      }),
+    );
   });
 
   it('marks standard private tables as rated and alternate private tables as unrated', () => {
@@ -161,11 +236,16 @@ describe('private match RPC payloads', () => {
         key: created.code,
         userId: '00000000-0000-0000-0000-000000000000',
       },
+      {
+        collection: 'private_match_codes',
+        key: created.code,
+      },
     ]);
     expect(nk.storageWrite).toHaveBeenCalledWith([
       expect.objectContaining({
         collection: 'private_match_codes',
         key: created.code,
+        userId: '00000000-0000-0000-0000-000000000000',
         version: 'version-1',
         value: expect.objectContaining({
           code: created.code,

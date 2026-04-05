@@ -158,4 +158,18 @@ describe('matchmaking private RPC parsing', () => {
 
     await expect(joinPrivateMatch('ABCD2345')).rejects.toThrow('Private game code not found.');
   });
+
+  it('reads backend rpc messages from response-style errors', async () => {
+    mockRpc.mockRejectedValue({
+      status: 500,
+      statusText: 'Internal Server Error',
+      clone: () => ({
+        text: async () => JSON.stringify({ message: 'Authoritative match handler failed to start.' }),
+      }),
+    });
+
+    await expect(createPrivateMatch('gameMode_capture')).rejects.toThrow(
+      'Authoritative match handler failed to start.',
+    );
+  });
 });

@@ -25,6 +25,12 @@ type StatusLikeError = {
   error?: string;
   status?: number;
   statusText?: string;
+  json?: () => Promise<unknown>;
+  text?: () => Promise<string>;
+  clone?: () => {
+    json?: () => Promise<unknown>;
+    text?: () => Promise<string>;
+  };
 };
 
 const isUnauthorizedTournamentError = (error: unknown): boolean => {
@@ -40,19 +46,72 @@ const isUnauthorizedTournamentError = (error: unknown): boolean => {
   return typeof candidate.message === 'string' && /unauthorized|expired|token/i.test(candidate.message);
 };
 
-const normalizeTournamentError = (error: unknown): Error => {
+const readRpcErrorMessage = async (error: StatusLikeError): Promise<string | null> => {
+  const directMessage =
+    typeof error.message === 'string' && error.message.trim().length > 0
+      ? error.message.trim()
+      : typeof error.error === 'string' && error.error.trim().length > 0
+        ? error.error.trim()
+        : null;
+
+  if (directMessage) {
+    return directMessage;
+  }
+
+  const responseLike = typeof error.clone === 'function' ? error.clone() : error;
+  if (typeof responseLike.json === 'function') {
+    try {
+      const payload = await responseLike.json();
+      if (typeof payload === 'object' && payload !== null) {
+        const record = payload as { message?: unknown; error?: unknown };
+        if (typeof record.message === 'string' && record.message.trim().length > 0) {
+          return record.message.trim();
+        }
+        if (typeof record.error === 'string' && record.error.trim().length > 0) {
+          return record.error.trim();
+        }
+      }
+    } catch {
+      // Fall back to plain text when the response body is not valid JSON.
+    }
+  }
+
+  if (typeof responseLike.text === 'function') {
+    try {
+      const text = await responseLike.text();
+      if (!text || text.trim().length === 0) {
+        return null;
+      }
+
+      try {
+        const payload = JSON.parse(text) as { message?: unknown; error?: unknown };
+        if (typeof payload.message === 'string' && payload.message.trim().length > 0) {
+          return payload.message.trim();
+        }
+        if (typeof payload.error === 'string' && payload.error.trim().length > 0) {
+          return payload.error.trim();
+        }
+      } catch {
+        // Use the raw response text when it is not JSON.
+      }
+
+      return text.trim();
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+};
+
+const normalizeTournamentError = async (error: unknown): Promise<Error> => {
   if (error instanceof Error) {
     return error;
   }
 
   if (typeof error === 'object' && error !== null) {
     const responseLike = error as StatusLikeError;
-    const message =
-      typeof responseLike.message === 'string' && responseLike.message.trim().length > 0
-        ? responseLike.message.trim()
-        : typeof responseLike.error === 'string' && responseLike.error.trim().length > 0
-          ? responseLike.error.trim()
-          : null;
+    const message = await readRpcErrorMessage(responseLike);
 
     if (message) {
       return new Error(message);
@@ -312,15 +371,15 @@ const callTournamentRpc = async (rpcName: string, payload: Record<string, unknow
             const retryResponse = await client.rpc(session, rpcName, payload);
             return normalizeRpcPayload(retryResponse.payload);
           } catch (retryError) {
-            throw normalizeTournamentError(retryError);
+            throw await normalizeTournamentError(retryError);
           }
         }
       } catch (recoveryError) {
-        throw normalizeTournamentError(recoveryError);
+        throw await normalizeTournamentError(recoveryError);
       }
     }
 
-    throw normalizeTournamentError(error);
+    throw await normalizeTournamentError(error);
   }
 };
 
@@ -439,14 +498,14 @@ export const launchTournamentMatch = async (runId: string): Promise<TournamentMa
             const retryResponse = await client.rpc(session, RPC_LAUNCH_TOURNAMENT_MATCH, { runId });
             return normalizeLaunchTournamentMatchResponse(normalizeRpcPayload(retryResponse.payload), session, runId);
           } catch (retryError) {
-            throw normalizeTournamentError(retryError);
+            throw await normalizeTournamentError(retryError);
           }
         }
       } catch (recoveryError) {
-        throw normalizeTournamentError(recoveryError);
+        throw await normalizeTournamentError(recoveryError);
       }
     }
 
-    throw normalizeTournamentError(error);
+    throw await normalizeTournamentError(error);
   }
 };
