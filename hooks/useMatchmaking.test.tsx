@@ -175,6 +175,14 @@ describe('useMatchmaking', () => {
     expect(mockPush).toHaveBeenCalledWith(
       '/match/match-private-host-1?modeId=gameMode_capture&privateMatch=1&privateHost=1&privateCode=CAPTURE1',
     );
+    expect(result.current.createdPrivateMatch).toEqual(
+      expect.objectContaining({
+        matchId: 'match-private-host-1',
+        modeId: 'gameMode_capture',
+        code: 'CAPTURE1',
+        hasGuestJoined: false,
+      }),
+    );
   });
 
   it('keeps the created private code visible when opening the host table fails', async () => {

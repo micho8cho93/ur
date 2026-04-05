@@ -2960,6 +2960,83 @@ describe('GameRoom match dice stage', () => {
     expect(mockBoard.mock.calls.some(([props]) => props.freezeMotion === true)).toBe(true);
   });
 
+  it('keeps the live forfeit transition and result modal active across follow-up snapshot rerenders', async () => {
+    mockSearchParams.id = 'online-forfeit-rerender';
+    mockSearchParams.offline = '0';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'online-forfeit-rerender',
+    });
+    mockStoreState.matchId = 'online-forfeit-rerender';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.authoritativePlayers = makeSnapshotPlayers();
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+    mockStoreState.authoritativeMatchEnd = {
+      reason: 'forfeit_disconnect',
+      winnerUserId: 'self-user',
+      loserUserId: 'opponent-user',
+      forfeitingUserId: 'opponent-user',
+      message: null,
+    };
+
+    let deferredTransitionAction: (() => void | Promise<void>) | null = null;
+    mockRunScreenTransition.mockImplementationOnce(async (request?: { action?: () => void | Promise<void> }) => {
+      deferredTransitionAction = request?.action ?? null;
+      return true;
+    });
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    mockStoreState.authoritativeMatchEnd = {
+      reason: 'forfeit_disconnect',
+      winnerUserId: 'self-user',
+      loserUserId: 'opponent-user',
+      forfeitingUserId: 'opponent-user',
+      message: 'follow-up snapshot',
+    };
+
+    await act(async () => {
+      view.rerender(<GameRoom />);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await deferredTransitionAction?.();
+      await Promise.resolve();
+    });
+
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(
+        mockModal.mock.calls.some(
+          ([props]) =>
+            props.visible === true &&
+            props.title === 'Victory' &&
+            props.message === 'Opponent disconnected and did not return.',
+        ),
+      ).toBe(true),
+    );
+  });
+
   it('refreshes Elo from RPC after a ranked online match ends', async () => {
     mockSearchParams.id = 'online-elo-refresh';
     mockSearchParams.offline = '0';

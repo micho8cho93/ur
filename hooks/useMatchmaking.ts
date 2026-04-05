@@ -196,7 +196,6 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
               ...(isHost ? { privateHost: true } : {}),
             }),
           );
-          setCreatedPrivateMatch(null);
           setPendingPrivateMode(null);
           setSocketState('idle');
           setStatus('matched');

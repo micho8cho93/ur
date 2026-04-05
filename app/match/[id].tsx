@@ -1342,6 +1342,7 @@ export function GameRoom() {
   const xpRewardWaitStartedAtRef = useRef<number | null>(null);
   const lastSentPieceSelectionRef = useRef<string | null | undefined>(undefined);
   const pendingForfeitModalRevealKeyRef = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
   const enteringTournamentWaitingRoomRef = useRef(false);
   const matchCueIdRef = useRef(0);
   const offlineMatchTelemetryRef = useRef(createOfflineMatchTelemetry());
@@ -1956,6 +1957,11 @@ export function GameRoom() {
     xpRewardWaitStartedAtRef.current = null;
     setPostMatchPresentationStage('result');
   }, [postMatchPresentationStage, shouldAttemptWinnerXpReveal]);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
   const revealXpRewardPresentation = React.useCallback((presentation: ResolvedXpRewardPresentation) => {
     xpRewardWaitStartedAtRef.current = null;
     setXpRewardPresentation((current) => {
@@ -2742,13 +2748,28 @@ export function GameRoom() {
     }
 
     pendingForfeitModalRevealKeyRef.current = transitionKey;
-    let cancelled = false;
+    const scheduledMatchId = matchId ?? null;
 
     void (async () => {
       const copy = buildForfeitTransitionCopy({
         didPlayerWin,
         reason: forfeitReason,
       });
+      const revealModalIfStillRelevant = () => {
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        if (activeRouteMatchIdRef.current !== scheduledMatchId) {
+          return;
+        }
+
+        if (pendingForfeitModalRevealKeyRef.current !== transitionKey) {
+          return;
+        }
+
+        beginPostMatchPresentation();
+      };
 
       try {
         const didStart = await runScreenTransition({
@@ -2757,26 +2778,16 @@ export function GameRoom() {
           variant: 'warning',
           preActionDelayMs: FORFEIT_RESULT_TRANSITION_DELAY_MS,
           postActionDelayMs: 0,
-          action: () => {
-            if (!cancelled) {
-              beginPostMatchPresentation();
-            }
-          },
+          action: revealModalIfStillRelevant,
         });
 
-        if (!didStart && !cancelled) {
-          beginPostMatchPresentation();
+        if (!didStart) {
+          revealModalIfStillRelevant();
         }
       } catch {
-        if (!cancelled) {
-          beginPostMatchPresentation();
-        }
+        revealModalIfStillRelevant();
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     authoritativeMatchEnd,
     didPlayerWin,
