@@ -147,6 +147,7 @@ export function HomeLightButton({
     >
       {({ pressed }) => (
         <ImageBackground
+          pointerEvents="none"
           source={lightButtonArt}
           resizeMode="stretch"
           style={styles.image}
@@ -218,6 +219,7 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
