@@ -191,6 +191,41 @@ describe('Lobby private game join input', () => {
     expect(view.getByText('Enter Private Code')).toBeTruthy();
   });
 
+  it('removes the extra create-private copy once a private room has been created', () => {
+    mockUseMatchmaking.mockReturnValue({
+      startMatch: jest.fn(),
+      startPrivateMatch: jest.fn(),
+      startCreatedPrivateMatch: jest.fn(),
+      joinPrivateMatchByCode: mockJoinPrivateMatchByCode,
+      clearCreatedPrivateMatch: jest.fn(),
+      status: 'idle',
+      errorMessage: null,
+      onlineCount: 2,
+      activeAction: null,
+      pendingPrivateMode: null,
+      createdPrivateMatch: {
+        matchId: 'private-1',
+        modeId: 'gameMode_capture',
+        code: 'CAPTURE1',
+        session: { user_id: 'host-1' },
+        userId: 'host-1',
+        hasGuestJoined: false,
+      },
+    });
+
+    const view = render(<Lobby />);
+
+    expect(view.queryByText('Make a shareable room code for a friend.')).toBeNull();
+    expect(
+      view.queryByText(
+        'Your code is ready. Share it now, then start the game whenever you want. The board stays locked until your friend arrives.',
+      ),
+    ).toBeNull();
+    expect(view.getByText('Copy Code')).toBeTruthy();
+    expect(view.getByText('Start Game')).toBeTruthy();
+    expect(view.getByText('Pick Another Ruleset')).toBeTruthy();
+  });
+
   it('renders the tournaments button inside the empty featured state card', () => {
     mockUseTournamentList.mockReturnValue({
       tournaments: [],

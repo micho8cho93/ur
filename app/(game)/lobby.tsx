@@ -110,14 +110,16 @@ function OnlineActionPanel({
           >
             {title}
           </Text>
-          <Text
-            style={[
-              styles.modePanelSubtitle,
-              { fontFamily: bodyFontFamily },
-            ]}
-          >
-            {subtitle}
-          </Text>
+          {subtitle.trim().length > 0 ? (
+            <Text
+              style={[
+                styles.modePanelSubtitle,
+                { fontFamily: bodyFontFamily },
+              ]}
+            >
+              {subtitle}
+            </Text>
+          ) : null}
 
           <View style={styles.modePanelBody}>{children}</View>
         </View>
@@ -297,12 +299,6 @@ export default function Lobby() {
   })();
 
   const privateStatusLabel = (() => {
-    if (createdPrivateMatch) {
-      return createdPrivateMatch.hasGuestJoined
-        ? 'Friend connected. Start when you are ready. The board will unlock once both of you are inside.'
-        : 'Your code is ready. Share it now, then start the game whenever you want. The board stays locked until your friend arrives.';
-    }
-
     if (isCreatingPrivateGame) {
       return pendingPrivateOption
         ? `Preparing a ${pendingPrivateOption.label.toLowerCase()} private table...`
@@ -548,7 +544,7 @@ export default function Lobby() {
                 >
                   <OnlineActionPanel
                     title="Create Private Game"
-                    subtitle="Make a shareable room code for a friend."
+                    subtitle={createdPrivateMatch ? '' : 'Make a shareable room code for a friend.'}
                     titleFontFamily={titleFontFamily}
                     bodyFontFamily={bodyFontFamily}
                     compact={isCompactLayout}
@@ -1046,19 +1042,18 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     width: '100%',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: 'column',
+    alignItems: 'center',
     gap: 8,
   },
   actionRowCell: {
-    minWidth: 108,
-    flexGrow: 1,
-    maxWidth: 164,
+    width: '100%',
+    maxWidth: 170,
   },
   secondaryActionWrap: {
     width: '100%',
     alignItems: 'center',
-    marginTop: 2,
+    marginTop: 0,
     maxWidth: 170,
     alignSelf: 'center',
   },
