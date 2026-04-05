@@ -1,12 +1,14 @@
-import { analyticsNavItems, appRoutes, tournamentsNavItems } from './routes'
+import { analyticsSectionNavItems, appRoutes, primaryNavItems } from './routes'
 
-describe('workspace routes', () => {
-  it('keeps tournaments and analytics on separate primary paths', () => {
+describe('console routes', () => {
+  it('keeps existing primary paths stable while adding settings and analytics sections', () => {
     expect(appRoutes.chooser).toBe('/')
     expect(appRoutes.tournaments.home).toBe('/tournaments')
     expect(appRoutes.tournaments.runs).toBe('/tournaments/runs')
     expect(appRoutes.tournaments.create).toBe('/tournaments/runs/new')
     expect(appRoutes.analytics.home).toBe('/analytics')
+    expect(appRoutes.analytics.section('players')).toBe('/analytics/players')
+    expect(appRoutes.settings).toBe('/settings')
   })
 
   it('preserves legacy redirects for old bookmarks', () => {
@@ -15,24 +17,27 @@ describe('workspace routes', () => {
     expect(appRoutes.legacy.tournaments.detail('spring-open')).toBe('/tournaments/spring-open')
   })
 
-  it('removes analytics from the tournaments workspace navigation', () => {
-    expect(tournamentsNavItems.map((item) => item.label)).toEqual([
+  it('defines a compact admin primary navigation', () => {
+    expect(primaryNavItems.map((item) => item.label)).toEqual([
       'Overview',
+      'Tournaments',
       'Runs',
-      'Create Tournament',
+      'Matches',
+      'Players',
+      'Analytics',
       'Audit Log',
+      'Settings',
     ])
-    expect(tournamentsNavItems.some((item) => item.to === appRoutes.analytics.home)).toBe(false)
   })
 
-  it('keeps analytics on its own workspace navigation', () => {
-    expect(analyticsNavItems).toEqual([
-      {
-        label: 'Executive view',
-        to: '/analytics',
-        short: 'AN',
-        end: true,
-      },
+  it('splits analytics into focused subviews', () => {
+    expect(analyticsSectionNavItems.map((item) => item.label)).toEqual([
+      'Executive Summary',
+      'Player Growth',
+      'Match Health',
+      'Tournament Performance',
+      'Progression',
+      'Realtime Ops',
     ])
   })
 })

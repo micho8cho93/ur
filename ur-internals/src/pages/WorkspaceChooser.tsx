@@ -12,9 +12,9 @@ export function WorkspaceChooserPage() {
       <section className="chooser-hero">
         <div className="chooser-hero__copy">
           <p className="meta-label">Ur Game Internals</p>
-          <h1>Choose your control center</h1>
+          <h1>Open the console</h1>
           <p className="chooser-hero__description">
-            Tournament operations and analytics now live as separate workspaces so each job can stay focused.
+            UR Internals now runs as one compact admin console with focused sections for operations, analytics, governance, and system controls.
           </p>
         </div>
 
@@ -40,30 +40,48 @@ export function WorkspaceChooserPage() {
 
       <section className="chooser-grid" aria-label="Workspace choices">
         <Link className="chooser-card chooser-card--tournaments" to={appRoutes.tournaments.home}>
-          <span className="chooser-card__eyebrow">Workspace 01</span>
-          <strong>Tournaments</strong>
+          <span className="chooser-card__eyebrow">Section 01</span>
+          <strong>Overview</strong>
           <p>
-            Open runs, create tournaments, manage control rooms, and review audit activity without analytics in the sidebar.
+            Live tournament pressure, queue health, finalize readiness, and the most urgent operational surfaces above the fold.
           </p>
-          <span className="chooser-card__cta">Open tournaments control center</span>
+          <span className="chooser-card__cta">Open operations overview</span>
         </Link>
 
-        <Link className="chooser-card chooser-card--analytics" to={appRoutes.analytics.home}>
-          <span className="chooser-card__eyebrow">Workspace 02</span>
+        <Link className="chooser-card chooser-card--analytics" to={appRoutes.tournaments.runs}>
+          <span className="chooser-card__eyebrow">Section 02</span>
+          <strong>Runs</strong>
+          <p>
+            Compact run queue, lifecycle status, entrant pressure, and control-room access for currently managed tournaments.
+          </p>
+          <span className="chooser-card__cta">Open run queue</span>
+        </Link>
+
+        <Link className="chooser-card chooser-card--analytics" to={appRoutes.analytics.section('overview')}>
+          <span className="chooser-card__eyebrow">Section 03</span>
           <strong>Analytics</strong>
           <p>
-            Read executive KPIs, growth, gameplay health, tournament performance, progression, and realtime telemetry in a dedicated analytics experience.
+            Executive summary, player growth, match health, tournament performance, progression, and realtime operations in focused tab views.
           </p>
-          <span className="chooser-card__cta">Open analytics control center</span>
+          <span className="chooser-card__cta">Open analytics</span>
+        </Link>
+
+        <Link className="chooser-card chooser-card--tournaments" to={appRoutes.settings}>
+          <span className="chooser-card__eyebrow">Section 04</span>
+          <strong>Settings</strong>
+          <p>
+            Session, environment, and operator context for the live admin console.
+          </p>
+          <span className="chooser-card__cta">Open settings</span>
         </Link>
       </section>
 
       <section className="chooser-footer">
         <div className="chooser-footer__note">
           <p className="meta-label">Why this split</p>
-          <strong>Cleaner separation of concerns</strong>
+          <strong>Sharper operational scanning</strong>
           <span>
-            Operations stays focused on running tournaments, while analytics stays focused on reading the state of the game.
+            Each section stays narrow, dense, and easier to scan, while still sharing the same compact admin shell.
           </span>
         </div>
 

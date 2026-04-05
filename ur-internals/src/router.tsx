@@ -1,13 +1,13 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { PublicOnlyRoute, RequireAdminAuth } from './auth/RouteGuards'
-import { AnalyticsLayout } from './layout/AnalyticsLayout'
-import { TournamentsLayout } from './layout/TournamentsLayout'
+import { AppShell } from './components/AppShell'
 import { AuditLogPage } from './pages/AuditLog'
 import { AnalyticsPage } from './pages/Analytics'
 import { CreateTournamentPage } from './pages/CreateTournament'
 import { LegacyTournamentDetailRedirect } from './pages/LegacyTournamentDetailRedirect'
 import { LoginPage } from './pages/Login'
 import { OverviewPage } from './pages/Overview'
+import { SettingsPage } from './pages/Settings'
 import { TournamentDetailPage } from './pages/TournamentDetail'
 import { TournamentsPage } from './pages/Tournaments'
 import { WorkspaceChooserPage } from './pages/WorkspaceChooser'
@@ -31,38 +31,39 @@ export const router = createBrowserRouter([
         element: <WorkspaceChooserPage />,
       },
       {
-        path: appRoutes.tournaments.home,
-        element: <TournamentsLayout />,
+        element: <AppShell />,
         children: [
           {
-            index: true,
+            path: appRoutes.tournaments.home,
             element: <OverviewPage />,
           },
           {
-            path: 'runs',
+            path: appRoutes.tournaments.runs,
             element: <TournamentsPage />,
           },
           {
-            path: 'runs/new',
+            path: appRoutes.tournaments.create,
             element: <CreateTournamentPage />,
           },
           {
-            path: 'runs/:tournamentId',
+            path: appRoutes.tournaments.detail(':tournamentId'),
             element: <TournamentDetailPage />,
           },
           {
-            path: 'audit-log',
+            path: appRoutes.tournaments.auditLog,
             element: <AuditLogPage />,
           },
-        ],
-      },
-      {
-        path: appRoutes.analytics.home,
-        element: <AnalyticsLayout />,
-        children: [
           {
-            index: true,
+            path: appRoutes.analytics.home,
+            element: <Navigate to={appRoutes.analytics.section('overview')} replace />,
+          },
+          {
+            path: appRoutes.analytics.section(':sectionId'),
             element: <AnalyticsPage />,
+          },
+          {
+            path: appRoutes.settings,
+            element: <SettingsPage />,
           },
         ],
       },

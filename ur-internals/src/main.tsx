@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { SessionProvider } from './auth/SessionContext.tsx'
 import './index.css'
+import './admin-theme.css'
 import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { KpiStatCard } from './KpiStatCard'
 
 interface StatCardProps {
   label: string
@@ -13,13 +14,12 @@ export function StatCard({
   helper,
   tone = 'default',
 }: StatCardProps) {
-  const className = tone === 'default' ? 'stat-card' : `stat-card stat-card--${tone}`
-
   return (
-    <article className={className}>
-      <p className="stat-card__label">{label}</p>
-      <p className="stat-card__value">{value}</p>
-      <p className="stat-card__helper">{helper}</p>
-    </article>
+    <KpiStatCard
+      label={label}
+      value={value}
+      helper={helper}
+      tone={tone}
+    />
   )
 }

@@ -1,5 +1,6 @@
 import { formatMetricChange, formatMetricValue, getMetricTone, type MetricFormat } from '../../analytics/utils'
 import type { AnalyticsMetric } from '../../types/analytics'
+import { KpiStatCard } from '../KpiStatCard'
 
 interface AnalyticsStatCardProps {
   label: string
@@ -17,8 +18,6 @@ export function AnalyticsStatCard({
   detail,
 }: AnalyticsStatCardProps) {
   const tone = getMetricTone(metric)
-  const className =
-    tone === 'default' ? 'analytics-stat-card' : `analytics-stat-card analytics-stat-card--${tone}`
   const detailText =
     detail ??
     (metric.availability.status === 'available'
@@ -26,11 +25,14 @@ export function AnalyticsStatCard({
       : metric.availability.notes[0] ?? formatMetricChange(metric, format))
 
   return (
-    <article className={className}>
-      <p className="stat-card__label">{label}</p>
-      <p className="analytics-stat-card__value">{formatMetricValue(metric, format)}</p>
-      <p className="analytics-stat-card__helper">{helper}</p>
-      <p className="analytics-stat-card__detail">{detailText}</p>
-    </article>
+    <KpiStatCard
+      className={tone === 'default' ? 'analytics-stat-card' : `analytics-stat-card analytics-stat-card--${tone}`}
+      label={label}
+      value={formatMetricValue(metric, format)}
+      helper={helper}
+      detail={detailText}
+      tone={tone}
+      valueClassName="analytics-stat-card__value"
+    />
   )
 }

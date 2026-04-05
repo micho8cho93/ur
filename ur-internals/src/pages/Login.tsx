@@ -26,7 +26,7 @@ export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { authError, clearAuthError, isAuthenticating, loginWithUsername } = useSession()
-  const [username, setUsername] = useState('admin')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
   const redirectTo = resolveRedirectTo(location.state)
@@ -53,8 +53,8 @@ export function LoginPage() {
             <p className="meta-label">Ur Game Internals</p>
             <h1>Operator access</h1>
             <p className="auth-copy">
-              Sign in with the hardcoded admin account, verify access through{' '}
-              <code>rpc_admin_whoami</code>, and then choose the workspace you want to enter.
+              Sign in with an authorized operator account, verify access through{' '}
+              <code>rpc_admin_whoami</code>, and then enter the internals console.
             </p>
           </div>
 
@@ -65,7 +65,7 @@ export function LoginPage() {
             </div>
             <div className="metric-card">
               <span className="meta-label">Access</span>
-              <strong>Hardcoded admin account</strong>
+              <strong>Operator credentials</strong>
             </div>
           </div>
 
@@ -74,12 +74,6 @@ export function LoginPage() {
               <strong>Session verification</strong>
               <span className="muted">Successful auth stores the Nakama session token locally and restores it on reload when possible.</span>
             </li>
-            <li className="list__item">
-              <strong>Quick credentials</strong>
-              <span className="muted">
-                <code>admin</code> / <code>password</code>
-              </span>
-            </li>
           </ul>
         </div>
 
@@ -87,7 +81,7 @@ export function LoginPage() {
           <div className="auth-panel__form-copy">
             <p className="meta-label">Secure access</p>
             <h2>Admin sign-in</h2>
-            <p className="auth-footnote">Use the shared hardcoded admin credentials to enter the tournaments or analytics control center.</p>
+            <p className="auth-footnote">Use your operator credentials to enter the UR Internals console.</p>
           </div>
 
           {errorMessage ? <div className="alert alert--error">{errorMessage}</div> : null}
@@ -102,7 +96,7 @@ export function LoginPage() {
                 autoComplete="username"
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
-                placeholder="admin"
+                placeholder="Enter your username"
                 required
               />
             </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createDefaultAnalyticsFilters, trimGameModeLabel } from '../../analytics/utils'
 import type { AnalyticsQueryFilters, AnalyticsTournamentFilterOption } from '../../types/analytics'
+import { FilterBar } from '../FilterBar'
 
 interface AnalyticsFiltersProps {
   filters: AnalyticsQueryFilters
@@ -40,12 +41,12 @@ export function AnalyticsFilters({
   }
 
   return (
-    <section className="analytics-filters">
+    <FilterBar className="analytics-filters">
       <div className="analytics-filters__header">
         <div>
           <p className="meta-label">Global filters</p>
-          <strong>Owner-focused, real-data only</strong>
-          <span>Filters apply across summary, behavior, tournaments, and realtime views.</span>
+          <strong>Live data scope</strong>
+          <span>Filters apply to the selected analytics tab and never backfill with seed data.</span>
         </div>
 
         <div className="analytics-filter-presets" aria-label="Date range presets">
@@ -175,7 +176,7 @@ export function AnalyticsFilters({
 
       <div className="analytics-filters__footer">
         <span className="analytics-filters__note">
-          Missing filter options simply mean no live values are available yet. Analytics never falls back to seeded data.
+          Missing options usually mean the selected live range is still sparse or the related backend tracking is not populated yet.
         </span>
 
         <div className="action-toolbar">
@@ -199,6 +200,6 @@ export function AnalyticsFilters({
           </button>
         </div>
       </div>
-    </section>
+    </FilterBar>
   )
 }

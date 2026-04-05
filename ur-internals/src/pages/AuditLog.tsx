@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSession } from '../auth/useSession'
 import { listAuditLog } from '../api/auditLog'
+import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
@@ -22,6 +23,60 @@ export function AuditLogPage() {
   const uniqueActors = new Set(auditLog.map((entry) => entry.actorUserId)).size
   const uniqueTargets = new Set(auditLog.map((entry) => entry.tournamentId)).size
   const latestTimestamp = auditLog[0]?.createdAt ?? null
+  const columns: DataTableColumn<AuditLogEntry>[] = [
+    {
+      key: 'action',
+      header: 'Action',
+      render: (entry) => (
+        <div className="stack stack--compact">
+          <strong className="mono">{entry.action}</strong>
+          <span className="muted mono">{entry.id}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'actor',
+      header: 'Actor',
+      render: (entry) => (
+        <div className="stack stack--compact">
+          <strong>{entry.actor}</strong>
+          <span className="muted mono">{entry.actorUserId}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'target',
+      header: 'Tournament',
+      render: (entry) => (
+        <div className="stack stack--compact">
+          <strong>{entry.target}</strong>
+          <span className="muted mono">{entry.tournamentId}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'summary',
+      header: 'Summary',
+      render: (entry) => (
+        <div className="stack stack--compact">
+          <span>{entry.summary}</span>
+          <span className="muted">
+            {Object.keys(entry.metadata).length} metadata field
+            {Object.keys(entry.metadata).length === 1 ? '' : 's'}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: 'when',
+      header: 'When',
+      render: (entry) => (
+        <div className="stack stack--compact">
+          <strong>{formatDateTime(entry.createdAt)}</strong>
+        </div>
+      ),
+    },
+  ]
 
   useEffect(() => {
     let active = true
@@ -64,7 +119,7 @@ export function AuditLogPage() {
       <PageHeader
         eyebrow="Audit Log"
         title="Admin activity log"
-        description="Aggregated audit trail built from the per-run Nakama admin audit RPC."
+        description="Aggregated operator trail built from the per-run Nakama admin audit RPC."
       />
 
       {error ? <div className="alert alert--error">{error}</div> : null}
@@ -112,57 +167,12 @@ export function AuditLogPage() {
             compact
           />
         ) : (
-          <div className="table-wrap table-wrap--edge">
-            <table className="table table--dense table--logs">
-              <thead>
-                <tr>
-                  <th>Action</th>
-                  <th>Actor</th>
-                  <th>Tournament</th>
-                  <th>Summary</th>
-                  <th>When</th>
-                </tr>
-              </thead>
-              <tbody>
-                {auditLog.map((entry) => (
-                  <tr key={entry.id} className="table__row">
-                    <td>
-                      <div className="stack stack--compact">
-                        <strong className="mono">{entry.action}</strong>
-                        <span className="muted mono">{entry.id}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="stack stack--compact">
-                        <strong>{entry.actor}</strong>
-                        <span className="muted mono">{entry.actorUserId}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="stack stack--compact">
-                        <strong>{entry.target}</strong>
-                        <span className="muted mono">{entry.tournamentId}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="stack stack--compact">
-                        <span>{entry.summary}</span>
-                        <span className="muted">
-                          {Object.keys(entry.metadata).length} metadata field
-                          {Object.keys(entry.metadata).length === 1 ? '' : 's'}
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="stack stack--compact">
-                        <strong>{formatDateTime(entry.createdAt)}</strong>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={columns}
+            rows={auditLog}
+            rowKey={(entry) => entry.id}
+            rowClassName={() => 'table__row'}
+          />
         )}
       </SectionPanel>
     </>

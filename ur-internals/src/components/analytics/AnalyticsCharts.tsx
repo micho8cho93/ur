@@ -75,27 +75,6 @@ function buildSeriesPath(values: Array<number | null>, maxValue: number) {
   return path
 }
 
-function buildAreaPath(values: Array<number | null>, maxValue: number) {
-  const numericIndexes = values
-    .map((value, index) => ({ value, index }))
-    .filter((entry): entry is { value: number; index: number } => entry.value !== null)
-
-  if (numericIndexes.length === 0) {
-    return ''
-  }
-
-  const first = numericIndexes[0]
-  const last = numericIndexes[numericIndexes.length - 1]
-  let path = `M ${getPointX(first.index, values.length)} ${SVG_HEIGHT - PADDING_Y}`
-
-  numericIndexes.forEach((entry) => {
-    path += ` L ${getPointX(entry.index, values.length)} ${getPointY(entry.value, maxValue)}`
-  })
-
-  path += ` L ${getPointX(last.index, values.length)} ${SVG_HEIGHT - PADDING_Y} Z`
-  return path
-}
-
 export function AnalyticsLineChart({
   labels,
   series,
@@ -136,24 +115,15 @@ export function AnalyticsLineChart({
           )
         })}
 
-        {series[0] ? (
-          <path
-            d={buildAreaPath(series[0].values, maxValue)}
-            fill={series[0].color}
-            fillOpacity="0.08"
-            stroke="none"
-          />
-        ) : null}
-
         {series.map((entry) => (
           <path
             key={entry.key}
             d={buildSeriesPath(entry.values, maxValue)}
             fill="none"
             stroke={entry.color}
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
+            strokeWidth="1.75"
+            strokeLinejoin="miter"
+            strokeLinecap="square"
           />
         ))}
 
@@ -168,7 +138,7 @@ export function AnalyticsLineChart({
                 key={`${entry.key}-${labels[index] ?? index}`}
                 cx={getPointX(index, entry.values.length)}
                 cy={getPointY(value, maxValue)}
-                r="3"
+                r="2.5"
                 fill={entry.color}
               />
             )
