@@ -1355,6 +1355,7 @@ export function GameRoom() {
   const suppressMatchCuesUntilInteractionRef = useRef(false);
   const hasShownOpeningCueRef = useRef<string | null>(null);
   const floatingReactionIdRef = useRef(0);
+  const initializedRouteMatchIdRef = useRef<string | null>(null);
   const previousStateRef = useRef<{ matchId: string | null; state: GameState; historyCount: number }>({
     matchId: matchId ?? null,
     state: gameState,
@@ -3867,9 +3868,21 @@ export function GameRoom() {
   }, [gameState.phase, gameState.winner, isMyTurn, isOfflineBotMatch, isOpponentReadyToPlay, makeMove, validMoves]);
   useEffect(() => {
     if (!matchId) return;
+
+    // Tournament round launches can prepare the next match in the shared store
+    // before this route actually swaps over. Only sync store state when the
+    // route match id itself changes so the current screen cannot reinitialize
+    // the previous board during that handoff window.
+    if (initializedRouteMatchIdRef.current === matchId) {
+      return;
+    }
+
+    initializedRouteMatchIdRef.current = matchId;
+
     if (storedMatchId !== matchId) {
       initGame(matchId, { botDifficulty: resolvedBotDifficulty, matchConfig: resolvedMatchConfig });
     }
+
     setMatchId(matchId);
   }, [initGame, matchId, resolvedBotDifficulty, resolvedMatchConfig, setMatchId, storedMatchId]);
 

@@ -5044,6 +5044,51 @@ describe('GameRoom match dice stage', () => {
     expect(screen.queryByText('Recording your victory in the standings...')).toBeNull();
   });
 
+  it('does not reinitialize the current route while tournament launch state prepares the next match', async () => {
+    mockSearchParams.id = 'tournament-transition-source';
+    mockSearchParams.offline = '0';
+    mockSearchParams.tournamentRunId = 'run-1';
+    mockSearchParams.tournamentId = 'tournament-1';
+    mockSearchParams.tournamentName = 'Spring Open';
+    mockSearchParams.tournamentReturnTarget = 'detail';
+    mockHasNakamaConfig.mockReturnValue(true);
+    mockIsNakamaEnabled.mockReturnValue(true);
+    mockSocketJoinMatch.mockResolvedValue({
+      self: { user_id: 'self-user' },
+      presences: [],
+      match_id: 'tournament-transition-source',
+    });
+    mockStoreState.matchId = 'tournament-transition-source';
+    mockStoreState.userId = 'self-user';
+    mockStoreState.playerColor = 'light';
+    mockStoreState.gameState = {
+      ...baseGameState,
+      phase: 'ended',
+      winner: 'light',
+    };
+
+    const view = render(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    mockInitGame.mockClear();
+    mockSetMatchId.mockClear();
+
+    mockStoreState.matchId = 'tournament-transition-next';
+    view.rerender(<GameRoom />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockInitGame).not.toHaveBeenCalled();
+    expect(mockSetMatchId).not.toHaveBeenCalled();
+  });
+
   it('does not open a stale result modal when the store winner belongs to a different match than the route', async () => {
     mockSearchParams.id = 'tournament-final-active';
     mockSearchParams.offline = '0';
