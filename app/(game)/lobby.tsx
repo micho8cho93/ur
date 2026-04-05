@@ -37,7 +37,6 @@ import {
   ImageBackground,
   Platform,
   ScrollView,
-  Share,
   StyleProp,
   StyleSheet,
   Text,
@@ -136,7 +135,6 @@ export default function Lobby() {
   const router = useRouter();
   const [confirmJoinRunId, setConfirmJoinRunId] = useState<string | null>(null);
   const [privateCodeInput, setPrivateCodeInput] = useState('');
-  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const {
     startMatch,
     startPrivateMatch,
@@ -196,20 +194,6 @@ export default function Lobby() {
     }
   }, [mode, router]);
 
-  useEffect(() => {
-    if (!copyFeedback) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      setCopyFeedback(null);
-    }, 1_800);
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [copyFeedback]);
-
   if (mode === 'bot') {
     return null;
   }
@@ -229,32 +213,6 @@ export default function Lobby() {
 
   const handleJoinPrivateGame = async () => {
     await joinPrivateMatchByCode(privateCodeInput);
-  };
-
-  const handleCopyPrivateCode = async () => {
-    if (!createdPrivateMatch) {
-      return;
-    }
-
-    const code = createdPrivateMatch.code;
-
-    try {
-      if (Platform.OS === 'web') {
-        const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
-        if (clipboard?.writeText) {
-          await clipboard.writeText(code);
-          setCopyFeedback('Code copied.');
-          return;
-        }
-      }
-
-      await Share.share({
-        message: `Join my Royal Game of Ur private game with code ${code}.`,
-      });
-      setCopyFeedback('Share sheet opened.');
-    } catch {
-      setCopyFeedback('Select the code and copy it manually.');
-    }
   };
 
   const isBusy = status === 'connecting' || status === 'searching';
@@ -568,11 +526,11 @@ export default function Lobby() {
                             {createdPrivateMatch.code}
                           </Text>
                           <View style={styles.privatePresenceRow}>
-                            <View
-                              style={[
-                                styles.privatePresenceDot,
-                                createdPrivateMatch.hasGuestJoined
-                                  ? styles.privatePresenceDotReady
+                          <View
+                            style={[
+                              styles.privatePresenceDot,
+                              createdPrivateMatch.hasGuestJoined
+                                ? styles.privatePresenceDotReady
                                   : null,
                               ]}
                             />
@@ -582,24 +540,9 @@ export default function Lobby() {
                                 : 'Waiting for friend'}
                             </Text>
                           </View>
-                          {copyFeedback ? (
-                            <Text style={[styles.copyFeedbackText, { fontFamily: bodyFontFamily }]}>
-                              {copyFeedback}
-                            </Text>
-                          ) : null}
                         </View>
 
                         <View style={styles.actionRow}>
-                          <View style={styles.actionRowCell}>
-                            <HomeLightButton
-                              label="Copy Code"
-                              accessibilityLabel="Copy code"
-                              onPress={() => void handleCopyPrivateCode()}
-                              fontLoaded={fontsLoaded}
-                              size="compact"
-                              style={styles.actionRowButton}
-                            />
-                          </View>
                           <View style={styles.actionRowCell}>
                             <HomeLightButton
                               label="Start Game"
@@ -1029,13 +972,6 @@ const styles = StyleSheet.create({
   privatePresenceText: {
     color: urTextColors.bodyOnPanel,
     fontSize: 13,
-    lineHeight: 16,
-    textAlign: 'center',
-    ...urTextVariants.body,
-  },
-  copyFeedbackText: {
-    color: '#4C6F28',
-    fontSize: 12,
     lineHeight: 16,
     textAlign: 'center',
     ...urTextVariants.body,

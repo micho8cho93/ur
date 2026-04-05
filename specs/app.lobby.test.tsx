@@ -221,7 +221,7 @@ describe('Lobby private game join input', () => {
         'Your code is ready. Share it now, then start the game whenever you want. The board stays locked until your friend arrives.',
       ),
     ).toBeNull();
-    expect(view.getByText('Copy Code')).toBeTruthy();
+    expect(view.queryByText('Copy Code')).toBeNull();
     expect(view.getByText('Start Game')).toBeTruthy();
     expect(view.getByText('Pick Another Ruleset')).toBeTruthy();
   });
