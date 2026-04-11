@@ -63,6 +63,69 @@ describe('NakamaService', () => {
     });
   });
 
+  it('clears the cached socket when the socket disconnect callback fires', async () => {
+    const service = new NakamaService();
+    const session = {
+      token: 'active-token',
+      refresh_token: 'active-refresh',
+      isexpired: jest.fn(() => false),
+    } as never;
+    const firstSocket = {
+      connect: jest.fn().mockResolvedValue(session),
+      disconnect: jest.fn(),
+    };
+    const secondSocket = {
+      connect: jest.fn().mockResolvedValue(session),
+      disconnect: jest.fn(),
+    };
+
+    mockCreateSocket.mockReset();
+    mockCreateSocket.mockReturnValueOnce(firstSocket).mockReturnValueOnce(secondSocket);
+    (service as unknown as { session: unknown }).session = session;
+
+    await expect(service.connectSocket()).resolves.toBe(firstSocket);
+    firstSocket.ondisconnect?.({} as Event);
+    expect(service.getSocket()).toBeNull();
+
+    await expect(service.connectSocket()).resolves.toBe(secondSocket);
+    expect(mockCreateSocket).toHaveBeenCalledTimes(2);
+  });
+
+  it('recreates the cached socket when transport is no longer open', async () => {
+    const service = new NakamaService();
+    const session = {
+      token: 'active-token',
+      refresh_token: 'active-refresh',
+      isexpired: jest.fn(() => false),
+    } as never;
+    let firstSocketOpen = true;
+    const firstSocket = {
+      connect: jest.fn().mockResolvedValue(session),
+      disconnect: jest.fn(),
+      adapter: {
+        isOpen: jest.fn(() => firstSocketOpen),
+      },
+    };
+    const secondSocket = {
+      connect: jest.fn().mockResolvedValue(session),
+      disconnect: jest.fn(),
+      adapter: {
+        isOpen: jest.fn(() => true),
+      },
+    };
+
+    mockCreateSocket.mockReset();
+    mockCreateSocket.mockReturnValueOnce(firstSocket).mockReturnValueOnce(secondSocket);
+    (service as unknown as { session: unknown }).session = session;
+
+    await expect(service.connectSocket()).resolves.toBe(firstSocket);
+    firstSocketOpen = false;
+
+    await expect(service.connectSocket()).resolves.toBe(secondSocket);
+    expect(firstSocket.disconnect).toHaveBeenCalledWith(false);
+    expect(mockCreateSocket).toHaveBeenCalledTimes(2);
+  });
+
   it('refreshes an expired in-memory session before returning it', async () => {
     const service = new NakamaService();
     const expiredSession = {

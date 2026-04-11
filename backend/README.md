@@ -25,6 +25,8 @@ Expected values:
 - `NAKAMA_SOCKET_SERVER_KEY`
 - `NAKAMA_HTTP_KEY`
 
+`backend/docker-compose.yml` now requires all three values and will fail fast when they are missing.
+
 ## Build + Run
 
 From repo root:
@@ -41,9 +43,9 @@ npm run backend:dev
 
 ## Exposed ports
 
-- `7350` Nakama API + socket
-- `7351` Nakama console
-- `5432` Postgres
+- `127.0.0.1:7350` Nakama API + socket
+- `127.0.0.1:7351` Nakama console
+- `127.0.0.1:5432` Postgres
 
 ## Production deployment (Vercel web clients)
 

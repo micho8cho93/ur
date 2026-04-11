@@ -18,6 +18,12 @@ export type StoredSession = {
   refreshToken: string;
 };
 
+type SocketWithAdapter = Socket & {
+  adapter?: {
+    isOpen?: () => boolean;
+  };
+};
+
 const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -46,6 +52,7 @@ export class NakamaService {
   private client: Client | null = null;
   private session: Session | null = null;
   private socket: Socket | null = null;
+  private socketConnected = false;
   private sessionRefreshPromise: Promise<Session | null> | null = null;
 
   getClient(): Client {
@@ -197,14 +204,27 @@ export class NakamaService {
       throw new Error("No Nakama session available. Authenticate first.");
     }
 
-    if (this.socket) {
+    if (this.socket && this.socketConnected && this.isSocketOpen(this.socket)) {
       return this.socket;
+    }
+
+    if (this.socket) {
+      this.disconnectSocket(false);
     }
 
     const config = getNakamaConfig();
     const socket = this.getClient().createSocket(config.useSSL, false);
-    await socket.connect(session, createStatus);
+    this.registerSocketLifecycleHandlers(socket);
+
+    try {
+      await socket.connect(session, createStatus);
+    } catch (error) {
+      this.handleSocketDisconnected(socket);
+      throw error;
+    }
+
     this.socket = socket;
+    this.socketConnected = true;
     return socket;
   }
 
@@ -252,8 +272,10 @@ export class NakamaService {
   }
 
   disconnectSocket(fireDisconnectEvent = true): void {
-    this.socket?.disconnect(fireDisconnectEvent);
+    const socket = this.socket;
     this.socket = null;
+    this.socketConnected = false;
+    socket?.disconnect(fireDisconnectEvent);
   }
 
   async clearSession(): Promise<void> {
@@ -312,6 +334,49 @@ export class NakamaService {
   private async canFallbackToDeviceAuth(): Promise<boolean> {
     const storedUser = await loadStoredUser();
     return storedUser?.provider !== "google";
+  }
+
+  private registerSocketLifecycleHandlers(socket: Socket): void {
+    const previousOnDisconnect = socket.ondisconnect?.bind(socket);
+    const previousOnError = socket.onerror?.bind(socket);
+    const previousOnHeartbeatTimeout = socket.onheartbeattimeout?.bind(socket);
+
+    socket.ondisconnect = (event: Event) => {
+      this.handleSocketDisconnected(socket);
+      previousOnDisconnect?.(event);
+    };
+
+    socket.onerror = (event: Event) => {
+      if (!this.isSocketOpen(socket)) {
+        this.handleSocketDisconnected(socket);
+      }
+      previousOnError?.(event);
+    };
+
+    socket.onheartbeattimeout = () => {
+      this.handleSocketDisconnected(socket);
+      previousOnHeartbeatTimeout?.();
+    };
+  }
+
+  private handleSocketDisconnected(socket: Socket): void {
+    if (this.socket === socket) {
+      this.socket = null;
+    }
+    this.socketConnected = false;
+  }
+
+  private isSocketOpen(socket: Socket): boolean {
+    const socketWithAdapter = socket as SocketWithAdapter;
+    if (socketWithAdapter.adapter && typeof socketWithAdapter.adapter.isOpen === "function") {
+      try {
+        return socketWithAdapter.adapter.isOpen();
+      } catch {
+        return this.socketConnected;
+      }
+    }
+
+    return this.socketConnected;
   }
 }
 

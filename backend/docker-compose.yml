@@ -8,11 +8,11 @@ services:
     environment:
       POSTGRES_DB: nakama
       POSTGRES_USER: nakama
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nakama}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
 
   nakama:
     image: heroiclabs/nakama:3.37.0
@@ -24,12 +24,12 @@ services:
       - ./nakama.yml:/nakama/data/nakama.yml:ro
       - ./modules:/nakama/data/modules:ro
     environment:
-      NAKAMA_DATABASE_ADDRESS: "nakama:${POSTGRES_PASSWORD:-nakama}@postgres:5432/nakama?sslmode=disable"
-      NAKAMA_SOCKET_SERVER_KEY: ${NAKAMA_SOCKET_SERVER_KEY:-defaultkey}
-      NAKAMA_HTTP_KEY: ${NAKAMA_HTTP_KEY:-changeme}
+      NAKAMA_DATABASE_ADDRESS: "nakama:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}@postgres:5432/nakama?sslmode=disable"
+      NAKAMA_SOCKET_SERVER_KEY: ${NAKAMA_SOCKET_SERVER_KEY:?Set NAKAMA_SOCKET_SERVER_KEY in backend/.env}
+      NAKAMA_HTTP_KEY: ${NAKAMA_HTTP_KEY:?Set NAKAMA_HTTP_KEY in backend/.env}
     ports:
-      - "7350:7350"
-      - "7351:7351"
+      - "127.0.0.1:7350:7350"
+      - "127.0.0.1:7351:7351"
     entrypoint:
       - "/bin/sh"
       - "-ecx"

@@ -16,8 +16,8 @@ Copy `.env.example` to the repo-root `.env.local` if you want to override defaul
 
 ```bash
 VITE_NAKAMA_BASE_URL=https://nakama.urgame.live
-# Match the backend NAKAMA_SOCKET_SERVER_KEY. The local canonical backend defaults to defaultkey.
-VITE_NAKAMA_SOCKET_SERVER_KEY=defaultkey
+# Match backend/.env -> NAKAMA_SOCKET_SERVER_KEY.
+VITE_NAKAMA_SOCKET_SERVER_KEY=<same value as backend/.env NAKAMA_SOCKET_SERVER_KEY>
 VITE_API_TIMEOUT_MS=10000
 VITE_USE_MOCK_DATA=true
 ```
