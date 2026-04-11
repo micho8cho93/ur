@@ -417,6 +417,8 @@ export const Board: React.FC<BoardProps> = ({
   const previousGameStateRef = React.useRef<GameState | null>(null);
   const previousHistoryCountRef = React.useRef<number>(historyEntryCount);
   const lastAnimatedMoveSignatureRef = React.useRef<string | null>(null);
+  const previousLayoutHistoryRef = React.useRef<readonly string[]>(gameState.history);
+  const previousLayoutHistoryCountRef = React.useRef<number>(historyEntryCount);
   const autoCommitMoveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const animatedExternalHighlightRef = React.useRef<{ pieceId: string; color: PlayerColor } | null>(null);
   const highlightedPieceIdRef = React.useRef<string | null>(highlightedPieceId);
@@ -503,12 +505,12 @@ export const Board: React.FC<BoardProps> = ({
 
   const isGapCell = (r: number, c: number) => (r === 0 || r === 2) && (c === 4 || c === 5);
 
-  const mapIndexToCoord = (color: 'light' | 'dark', index: number, r: number, c: number) => {
+  const mapIndexToCoord = React.useCallback((color: 'light' | 'dark', index: number, r: number, c: number) => {
     const path = getPathForColor(color);
     const coord = path[index];
     if (!coord) return false;
     return coord.row === r && coord.col === c;
-  };
+  }, [getPathForColor]);
 
   const getCellCenter = React.useCallback((r: number, c: number): Point => {
     const displayCoord = mapLogicalToDisplayCoord(r, c);
@@ -577,7 +579,6 @@ export const Board: React.FC<BoardProps> = ({
     if (!coord) return null;
     return getCellCenter(coord.row, coord.col);
   }, [
-    boardLayout.cellSize,
     getCellCenter,
     getPathForColor,
     pathLength,
@@ -669,10 +670,15 @@ export const Board: React.FC<BoardProps> = ({
         totalDistance,
       };
     },
-    [buildPathPoints],
+    [buildPathPoints, pathLength],
   );
+  const buildAnimatedMoveRef = React.useRef(buildAnimatedMove);
 
-  const getPieceAt = (r: number, c: number): BoardOccupant | undefined => {
+  useEffect(() => {
+    buildAnimatedMoveRef.current = buildAnimatedMove;
+  }, [buildAnimatedMove]);
+
+  const getPieceAt = React.useCallback((r: number, c: number): BoardOccupant | undefined => {
     const lightPiece = gameState.light.pieces.find(
       (piece) =>
         !piece.isFinished && piece.position !== -1 && mapIndexToCoord('light', piece.position, r, c),
@@ -685,14 +691,17 @@ export const Board: React.FC<BoardProps> = ({
     if (darkPiece) return { id: darkPiece.id, color: 'dark', position: darkPiece.position };
 
     return undefined;
-  };
+  }, [gameState.dark.pieces, gameState.light.pieces, mapIndexToCoord]);
 
   const assignedPlayerColor: 'light' | 'dark' | null = playerColor === 'light' || playerColor === 'dark'
     ? playerColor
     : null;
 
-  const mapAssignedIndexToCoord = (index: number, r: number, c: number) =>
-    assignedPlayerColor ? mapIndexToCoord(assignedPlayerColor, index, r, c) : false;
+  const mapAssignedIndexToCoord = React.useCallback(
+    (index: number, r: number, c: number) =>
+      assignedPlayerColor ? mapIndexToCoord(assignedPlayerColor, index, r, c) : false,
+    [assignedPlayerColor, mapIndexToCoord],
+  );
 
   const isMyTurn = assignedPlayerColor !== null && gameState.currentTurn === assignedPlayerColor;
   const isInteractiveTurn = !freezeMotion && allowInteraction && isMyTurn;
@@ -885,11 +894,26 @@ export const Board: React.FC<BoardProps> = ({
 
   useEffect(() => {
     if (freezeMotion) {
+      previousLayoutHistoryRef.current = gameState.history;
+      previousLayoutHistoryCountRef.current = historyEntryCount;
       return;
     }
 
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-  }, [freezeMotion, historyEntryCount]);
+    const newHistoryEntries = getAppendedHistoryEntries(
+      previousLayoutHistoryRef.current,
+      previousLayoutHistoryCountRef.current,
+      gameState.history,
+      historyEntryCount,
+    );
+    const didApplyMove = newHistoryEntries.some((entry) => entry.includes('moved to'));
+
+    if (didApplyMove) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+
+    previousLayoutHistoryRef.current = gameState.history;
+    previousLayoutHistoryCountRef.current = historyEntryCount;
+  }, [freezeMotion, gameState.history, historyEntryCount]);
 
   useEffect(() => {
     if (freezeMotion || !spawnMove) {
@@ -1014,9 +1038,22 @@ export const Board: React.FC<BoardProps> = ({
       return;
     }
 
+    const previousHistoryCount = previousHistoryCountRef.current;
+    if (historyEntryCount === previousHistoryCount) {
+      previousGameStateRef.current = gameState;
+      return;
+    }
+
+    if (historyEntryCount < previousHistoryCount) {
+      previousGameStateRef.current = gameState;
+      previousHistoryCountRef.current = historyEntryCount;
+      lastAnimatedMoveSignatureRef.current = null;
+      return;
+    }
+
     const newHistoryEntries = getAppendedHistoryEntries(
       previousGameState.history,
-      previousHistoryCountRef.current,
+      previousHistoryCount,
       gameState.history,
       historyEntryCount,
     );
@@ -1049,7 +1086,7 @@ export const Board: React.FC<BoardProps> = ({
       });
 
       if (movedPiece && previousPiece) {
-        const nextAnimatedMove = buildAnimatedMove(
+        const nextAnimatedMove = buildAnimatedMoveRef.current(
           movingColor,
           movedPiece.id,
           previousPiece.position,
@@ -1082,7 +1119,7 @@ export const Board: React.FC<BoardProps> = ({
 
     previousGameStateRef.current = gameState;
     previousHistoryCountRef.current = historyEntryCount;
-  }, [buildAnimatedMove, clearAnimatedMove, clearAutoCommitMoveTimer, freezeMotion, gameState, historyEntryCount]);
+  }, [clearAnimatedMove, clearAutoCommitMoveTimer, freezeMotion, gameState, historyEntryCount]);
 
   useEffect(() => {
     if (freezeMotion || !animatedMove) {
@@ -1203,7 +1240,7 @@ export const Board: React.FC<BoardProps> = ({
     clearAutoCommitMoveTimer();
   }, [clearAutoCommitMoveTimer]);
 
-  const executeMove = (move: MoveAction) => {
+  const executeMove = React.useCallback((move: MoveAction) => {
     console.info('[Board][executeMove]', {
       pieceId: move.pieceId,
       fromIndex: move.fromIndex,
@@ -1217,7 +1254,13 @@ export const Board: React.FC<BoardProps> = ({
     makeMove(move);
     setSelectedMove(null);
     setHoveredMove(null);
-  };
+  }, [
+    gameState.phase,
+    gameState.currentTurn,
+    assignedPlayerColor,
+    clearAutoCommitMoveTimer,
+    makeMove,
+  ]);
 
   const beginMoveSelection = React.useCallback(
     (move: MoveAction) => {
@@ -1316,7 +1359,7 @@ export const Board: React.FC<BoardProps> = ({
     executeMove(validPreview);
   };
 
-  const handleTilePress = (r: number, c: number) => {
+  const handleTilePress = React.useCallback((r: number, c: number) => {
     notifyInteraction();
     if (!assignedPlayerColor || !isInteractiveTurn || gameState.phase !== 'moving') return;
     const occupant = getPieceAt(r, c);
@@ -1385,28 +1428,42 @@ export const Board: React.FC<BoardProps> = ({
     setHoveredMove(null);
     clearInvalidPieceFeedback();
     setBlockedPreview(null);
-  };
+  }, [
+    notifyInteraction,
+    assignedPlayerColor,
+    isInteractiveTurn,
+    gameState.phase,
+    getPieceAt,
+    mapAssignedIndexToCoord,
+    validMoves,
+    selectedMove,
+    clearInvalidPieceFeedback,
+    executeMove,
+    beginMoveSelection,
+    pathLength,
+    gameState.rollValue,
+    clearAutoCommitMoveTimer,
+    triggerInvalidPieceFeedback,
+  ]);
 
-  const handleTileHoverIn = (moveFromTile?: MoveAction) => {
+  const handleTileHoverIn = React.useCallback((r: number, c: number) => {
+    const moveFromTile = validMoves.find(
+      (move) => move.fromIndex >= 0 && mapAssignedIndexToCoord(move.fromIndex, r, c),
+    );
     if (!moveFromTile || !isInteractiveTurn || gameState.phase !== 'moving' || !!selectedMove) return;
     setBlockedPreview(null);
     setHoveredMove(moveFromTile);
-  };
+  }, [gameState.phase, isInteractiveTurn, mapAssignedIndexToCoord, selectedMove, validMoves]);
 
-  const handleTileHoverOut = (moveFromTile?: MoveAction) => {
-    if (!moveFromTile) return;
+  const handleTileHoverOut = React.useCallback((r: number, c: number) => {
     setHoveredMove((current) => {
       if (!current) return null;
-      if (
-        current.pieceId === moveFromTile.pieceId &&
-        current.fromIndex === moveFromTile.fromIndex &&
-        current.toIndex === moveFromTile.toIndex
-      ) {
+      if (current.fromIndex >= 0 && mapAssignedIndexToCoord(current.fromIndex, r, c)) {
         return null;
       }
       return current;
     });
-  };
+  }, [mapAssignedIndexToCoord]);
 
   const cueAnimatedStyle = useAnimatedStyle(() => ({
     opacity: 0.3 + cuePulse.value * 0.7,
@@ -1635,9 +1692,9 @@ export const Board: React.FC<BoardProps> = ({
               isInteractive={isInteractable}
               highlightMode={highlightMode}
               skin="transparent"
-              onPress={() => handleTilePress(r, c)}
-              onHoverIn={() => handleTileHoverIn(moveFromTile)}
-              onHoverOut={() => handleTileHoverOut(moveFromTile)}
+              onPress={handleTilePress}
+              onHoverIn={handleTileHoverIn}
+              onHoverOut={handleTileHoverOut}
             />
           </View>,
         );

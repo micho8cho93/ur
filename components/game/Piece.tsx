@@ -32,6 +32,19 @@ interface PieceProps {
   state?: 'idle' | 'active' | 'captured';
 }
 
+const arePiecePropsEqual = (prev: PieceProps, next: PieceProps): boolean =>
+  prev.color === next.color &&
+  prev.highlight === next.highlight &&
+  prev.highlightTone === next.highlightTone &&
+  prev.invalidSelectionToken === next.invalidSelectionToken &&
+  prev.size === next.size &&
+  prev.pixelSize === next.pixelSize &&
+  prev.artScale === next.artScale &&
+  prev.artOffsetX === next.artOffsetX &&
+  prev.artOffsetY === next.artOffsetY &&
+  prev.variant === next.variant &&
+  prev.state === next.state;
+
 const PIECE_SIZE_PRESETS = {
   sm: 34,
   md: 38,
@@ -52,7 +65,7 @@ const PIECE_ART_VISUAL_CENTER_OFFSET_Y_RATIOS = {
   dark: -0.031,
 } as const;
 
-export const Piece: React.FC<PieceProps> = ({
+const PieceComponent: React.FC<PieceProps> = ({
   color,
   highlight = false,
   highlightTone = 'gold',
@@ -287,6 +300,9 @@ export const Piece: React.FC<PieceProps> = ({
     </Animated.View>
   );
 };
+
+export const Piece = React.memo(PieceComponent, arePiecePropsEqual);
+Piece.displayName = 'Piece';
 
 const styles = StyleSheet.create({
   wrap: {

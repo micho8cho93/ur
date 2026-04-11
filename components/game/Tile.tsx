@@ -2,7 +2,7 @@ import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures } from '@/constants/urTheme';
 import { isRosette, isWarZone } from '@/logic/constants';
 import { PlayerColor } from '@/logic/types';
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Polygon } from 'react-native-svg';
 import Animated, {
@@ -33,12 +33,50 @@ interface TileProps {
   isValidTarget?: boolean;
   isSelectedPiece?: boolean;
   isInteractive?: boolean;
-  onPress?: () => void;
-  onHoverIn?: () => void;
-  onHoverOut?: () => void;
+  onPress?: (row: number, col: number) => void;
+  onHoverIn?: (row: number, col: number) => void;
+  onHoverOut?: (row: number, col: number) => void;
   highlightMode?: 'subtle' | 'theatrical';
   skin?: 'default' | 'transparent';
 }
+
+const areTilePiecesEqual = (
+  first: TileProps['piece'],
+  second: TileProps['piece'],
+): boolean => {
+  if (!first && !second) {
+    return true;
+  }
+
+  if (!first || !second) {
+    return false;
+  }
+
+  return first.id === second.id && first.color === second.color;
+};
+
+const areTilePropsEqual = (prev: TileProps, next: TileProps): boolean =>
+  prev.row === next.row &&
+  prev.col === next.col &&
+  prev.cellSize === next.cellSize &&
+  prev.piecePixelSize === next.piecePixelSize &&
+  prev.pieceOffsetX === next.pieceOffsetX &&
+  prev.pieceOffsetY === next.pieceOffsetY &&
+  prev.pieceArtScale === next.pieceArtScale &&
+  prev.pieceArtOffsetX === next.pieceArtOffsetX &&
+  prev.pieceArtOffsetY === next.pieceArtOffsetY &&
+  areTilePiecesEqual(prev.piece, next.piece) &&
+  prev.pieceHighlight === next.pieceHighlight &&
+  prev.pieceHighlightTone === next.pieceHighlightTone &&
+  prev.pieceInvalidSelectionToken === next.pieceInvalidSelectionToken &&
+  prev.isValidTarget === next.isValidTarget &&
+  prev.isSelectedPiece === next.isSelectedPiece &&
+  prev.isInteractive === next.isInteractive &&
+  prev.onPress === next.onPress &&
+  prev.onHoverIn === next.onHoverIn &&
+  prev.onHoverOut === next.onHoverOut &&
+  prev.highlightMode === next.highlightMode &&
+  prev.skin === next.skin;
 
 const RosetteArtwork: React.FC<{ size: number }> = ({ size }) => {
   const cx = size / 2;
@@ -135,7 +173,7 @@ const WarArtwork: React.FC<{ size: number }> = ({ size }) => {
   );
 };
 
-export const Tile: React.FC<TileProps> = ({
+const TileComponent: React.FC<TileProps> = ({
   row,
   col,
   cellSize = 44,
@@ -293,12 +331,21 @@ export const Tile: React.FC<TileProps> = ({
       ? `rgb(${154 + toneOffset}, ${106 + Math.floor(toneOffset / 2)}, ${66 + Math.floor(toneOffset / 3)})`
       : `rgb(${210 + toneOffset}, ${187 + Math.floor(toneOffset / 2)}, ${147 + Math.floor(toneOffset / 3)})`;
   const borderColor = rosette ? 'rgba(246, 214, 151, 0.38)' : 'rgba(90, 63, 39, 0.28)';
+  const handlePress = useCallback(() => {
+    onPress?.(row, col);
+  }, [col, onPress, row]);
+  const handleHoverIn = useCallback(() => {
+    onHoverIn?.(row, col);
+  }, [col, onHoverIn, row]);
+  const handleHoverOut = useCallback(() => {
+    onHoverOut?.(row, col);
+  }, [col, onHoverOut, row]);
 
   return (
     <Pressable
-      onPress={onPress}
-      onHoverIn={onHoverIn}
-      onHoverOut={onHoverOut}
+      onPress={handlePress}
+      onHoverIn={handleHoverIn}
+      onHoverOut={handleHoverOut}
       disabled={!isInteractive}
       style={tileStyle}
     >
@@ -384,6 +431,9 @@ export const Tile: React.FC<TileProps> = ({
     </Pressable>
   );
 };
+
+export const Tile = React.memo(TileComponent, areTilePropsEqual);
+Tile.displayName = 'Tile';
 
 const styles = StyleSheet.create({
   tile: {

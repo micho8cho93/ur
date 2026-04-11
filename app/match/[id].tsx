@@ -101,6 +101,7 @@ import { resolveMatchScoreRankTitles } from '@/src/match/scoreRankTitles';
 import { isTournamentBotUserId } from '@/shared/tournamentBots';
 import { getAppendedHistoryEntries } from '@/shared/historyWindow';
 import { useGameStore } from '@/store/useGameStore';
+import { useShallow } from 'zustand/react/shallow';
 import {
   resolveMatchStageBoardScale,
   resolveMobileBoardRowInset,
@@ -887,54 +888,107 @@ export function GameRoom() {
     [matchId, offlineParam],
   );
 
-  const gameState = useGameStore((state) => state.gameState);
-  const roll = useGameStore((state) => state.roll);
-  const makeMove = useGameStore((state) => state.makeMove);
-  const validMoves = useGameStore((state) => state.validMoves);
-  const reset = useGameStore((state) => state.reset);
-  const userId = useGameStore((state) => state.userId);
-  const playerColor = useGameStore((state) => state.playerColor);
-  const matchPresences = useGameStore((state) => state.matchPresences);
-  const lastProgressionAward = useGameStore((state) => state.lastProgressionAward);
-  const lastEloRatingChange = useGameStore((state) => state.lastEloRatingChange);
-  const initGame = useGameStore((state) => state.initGame);
-  const setMatchId = useGameStore((state) => state.setMatchId);
-  const storedMatchId = useGameStore((state) => state.matchId);
-  const matchToken = useGameStore((state) => state.matchToken);
-  const serverRevision = useGameStore((state) => state.serverRevision);
-  const authoritativeServerTimeMs = useGameStore((state) => state.authoritativeServerTimeMs);
-  const authoritativeTurnDurationMs = useGameStore((state) => state.authoritativeTurnDurationMs);
-  const authoritativeTurnDeadlineMs = useGameStore((state) => state.authoritativeTurnDeadlineMs);
-  const authoritativeTurnRemainingMs = useGameStore((state) => state.authoritativeTurnRemainingMs);
-  const authoritativeActiveTimedPlayerColor = useGameStore((state) => state.authoritativeActiveTimedPlayerColor);
-  const authoritativeActiveTimedPhase = useGameStore((state) => state.authoritativeActiveTimedPhase);
-  const authoritativeHistoryCount = useGameStore((state) => state.authoritativeHistoryCount) ?? 0;
-  const authoritativePlayers = useGameStore((state) => state.authoritativePlayers);
-  const authoritativeRollDisplayValue = useGameStore((state) => state.authoritativeRollDisplayValue);
-  const authoritativeRollDisplayLabel = useGameStore((state) => state.authoritativeRollDisplayLabel);
-  const authoritativeReconnectingPlayerColor = useGameStore((state) => state.authoritativeReconnectingPlayerColor);
-  const authoritativeReconnectGraceDurationMs = useGameStore((state) => state.authoritativeReconnectGraceDurationMs);
-  const authoritativeReconnectDeadlineMs = useGameStore((state) => state.authoritativeReconnectDeadlineMs);
-  const authoritativeReconnectRemainingMs = useGameStore((state) => state.authoritativeReconnectRemainingMs);
-  const authoritativeMatchEnd = useGameStore((state) => state.authoritativeMatchEnd);
-  const authoritativeRematch = useGameStore((state) => state.authoritativeRematch);
-  const authoritativeSnapshotReceivedAtMs = useGameStore((state) => state.authoritativeSnapshotReceivedAtMs);
-  const applyServerSnapshot = useGameStore((state) => state.applyServerSnapshot);
-  const setGameStateFromServer = useGameStore((state) => state.setGameStateFromServer);
-  const setPlayerColor = useGameStore((state) => state.setPlayerColor);
-  const setUserId = useGameStore((state) => state.setUserId);
-  const setOnlineMode = useGameStore((state) => state.setOnlineMode);
-  const setMatchPresences = useGameStore((state) => state.setMatchPresences);
-  const updateMatchPresences = useGameStore((state) => state.updateMatchPresences);
-  const setLastProgressionAward = useGameStore((state) => state.setLastProgressionAward);
-  const setLastProgressionSnapshot = useGameStore((state) => state.setLastProgressionSnapshot);
-  const setLastEloRatingChange = useGameStore((state) => state.setLastEloRatingChange);
-  const setLastEloRatingProfileSnapshot = useGameStore((state) => state.setLastEloRatingProfileSnapshot);
-  const setLastChallengeProgressSnapshot = useGameStore((state) => state.setLastChallengeProgressSnapshot);
-  const setSocketState = useGameStore((state) => state.setSocketState);
-  const socketState = useGameStore((state) => state.socketState);
-  const setRollCommandSender = useGameStore((state) => state.setRollCommandSender);
-  const setMoveCommandSender = useGameStore((state) => state.setMoveCommandSender);
+  const {
+    gameState,
+    roll,
+    makeMove,
+    validMoves,
+    reset,
+    userId,
+    playerColor,
+    matchPresences,
+    lastProgressionAward,
+    lastEloRatingChange,
+    initGame,
+    setMatchId,
+    matchId: storedMatchId,
+    matchToken,
+    serverRevision,
+    authoritativeServerTimeMs,
+    authoritativeTurnDurationMs,
+    authoritativeTurnDeadlineMs,
+    authoritativeTurnRemainingMs,
+    authoritativeActiveTimedPlayerColor,
+    authoritativeActiveTimedPhase,
+    authoritativeHistoryCount = 0,
+    authoritativePlayers,
+    authoritativeRollDisplayValue,
+    authoritativeRollDisplayLabel,
+    authoritativeReconnectingPlayerColor,
+    authoritativeReconnectGraceDurationMs,
+    authoritativeReconnectDeadlineMs,
+    authoritativeReconnectRemainingMs,
+    authoritativeMatchEnd,
+    authoritativeRematch,
+    authoritativeSnapshotReceivedAtMs,
+    applyServerSnapshot,
+    setGameStateFromServer,
+    setPlayerColor,
+    setUserId,
+    setOnlineMode,
+    setMatchPresences,
+    updateMatchPresences,
+    setLastProgressionAward,
+    setLastProgressionSnapshot,
+    setLastEloRatingChange,
+    setLastEloRatingProfileSnapshot,
+    setLastChallengeProgressSnapshot,
+    setSocketState,
+    socketState,
+    setRollCommandSender,
+    setMoveCommandSender,
+  } = useGameStore(
+    useShallow((state) => ({
+      gameState: state.gameState,
+      roll: state.roll,
+      makeMove: state.makeMove,
+      validMoves: state.validMoves,
+      reset: state.reset,
+      userId: state.userId,
+      playerColor: state.playerColor,
+      matchPresences: state.matchPresences,
+      lastProgressionAward: state.lastProgressionAward,
+      lastEloRatingChange: state.lastEloRatingChange,
+      initGame: state.initGame,
+      setMatchId: state.setMatchId,
+      matchId: state.matchId,
+      matchToken: state.matchToken,
+      serverRevision: state.serverRevision,
+      authoritativeServerTimeMs: state.authoritativeServerTimeMs,
+      authoritativeTurnDurationMs: state.authoritativeTurnDurationMs,
+      authoritativeTurnDeadlineMs: state.authoritativeTurnDeadlineMs,
+      authoritativeTurnRemainingMs: state.authoritativeTurnRemainingMs,
+      authoritativeActiveTimedPlayerColor: state.authoritativeActiveTimedPlayerColor,
+      authoritativeActiveTimedPhase: state.authoritativeActiveTimedPhase,
+      authoritativeHistoryCount: state.authoritativeHistoryCount,
+      authoritativePlayers: state.authoritativePlayers,
+      authoritativeRollDisplayValue: state.authoritativeRollDisplayValue,
+      authoritativeRollDisplayLabel: state.authoritativeRollDisplayLabel,
+      authoritativeReconnectingPlayerColor: state.authoritativeReconnectingPlayerColor,
+      authoritativeReconnectGraceDurationMs: state.authoritativeReconnectGraceDurationMs,
+      authoritativeReconnectDeadlineMs: state.authoritativeReconnectDeadlineMs,
+      authoritativeReconnectRemainingMs: state.authoritativeReconnectRemainingMs,
+      authoritativeMatchEnd: state.authoritativeMatchEnd,
+      authoritativeRematch: state.authoritativeRematch,
+      authoritativeSnapshotReceivedAtMs: state.authoritativeSnapshotReceivedAtMs,
+      applyServerSnapshot: state.applyServerSnapshot,
+      setGameStateFromServer: state.setGameStateFromServer,
+      setPlayerColor: state.setPlayerColor,
+      setUserId: state.setUserId,
+      setOnlineMode: state.setOnlineMode,
+      setMatchPresences: state.setMatchPresences,
+      updateMatchPresences: state.updateMatchPresences,
+      setLastProgressionAward: state.setLastProgressionAward,
+      setLastProgressionSnapshot: state.setLastProgressionSnapshot,
+      setLastEloRatingChange: state.setLastEloRatingChange,
+      setLastEloRatingProfileSnapshot: state.setLastEloRatingProfileSnapshot,
+      setLastChallengeProgressSnapshot: state.setLastChallengeProgressSnapshot,
+      setSocketState: state.setSocketState,
+      socketState: state.socketState,
+      setRollCommandSender: state.setRollCommandSender,
+      setMoveCommandSender: state.setMoveCommandSender,
+    })),
+  );
   const { progression, refresh: refreshProgression, errorMessage: progressionError } = useProgression();
   const { ratingProfile, refresh: refreshElo } = useEloRating();
   const {
