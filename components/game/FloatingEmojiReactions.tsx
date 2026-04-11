@@ -30,6 +30,11 @@ function FloatingEmojiReactionBubble({
   travelDistance: number;
 }) {
   const progress = useRef(new Animated.Value(0)).current;
+  const onCompleteRef = useRef(onComplete);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   useEffect(() => {
     const animation = Animated.timing(progress, {
@@ -41,14 +46,14 @@ function FloatingEmojiReactionBubble({
 
     animation.start(({ finished }) => {
       if (finished) {
-        onComplete(reaction.id);
+        onCompleteRef.current(reaction.id);
       }
     });
 
     return () => {
       animation.stop();
     };
-  }, [onComplete, progress, reaction.id]);
+  }, [progress, reaction.id]);
 
   const opacity = progress.interpolate({
     inputRange: [0, 0.12, 0.78, 1],

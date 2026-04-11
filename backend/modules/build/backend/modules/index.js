@@ -519,10 +519,10 @@ var createInitialState = (matchConfig = DEFAULT_MATCH_CONFIG) => ({
   winner: null,
   history: []
 });
-var rollDice = () => {
+var rollDice = (randomSource = Math.random) => {
   let sum = 0;
   for (let i = 0; i < 4; i++) {
-    if (Math.random() >= 0.5) sum++;
+    if (randomSource() >= 0.5) sum++;
   }
   return sum;
 };
@@ -11782,7 +11782,28 @@ var MATCH_HANDLER = "authoritative_match";
 var PRIVATE_MATCH_CODE_COLLECTION = "private_match_codes";
 var PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS = 12;
 var PRIVATE_MATCH_CODE_WRITE_ATTEMPTS = 4;
+var SECURE_RANDOM_UINT32_DIVISOR = 4294967296;
+var SECURE_RANDOM_FALLBACK_HEX_LENGTH = 8;
 var asRecord7 = (value) => typeof value === "object" && value !== null ? value : null;
+var hasCryptoGetRandomValues = (value) => typeof value === "object" && value !== null && typeof value.getRandomValues === "function";
+var getSecureRandomUnit = (nk) => {
+  const cryptoApi = globalThis.crypto;
+  if (hasCryptoGetRandomValues(cryptoApi)) {
+    const randomValues = cryptoApi.getRandomValues(new Uint32Array(1));
+    return randomValues[0] / SECURE_RANDOM_UINT32_DIVISOR;
+  }
+  if (nk && typeof nk.uuidv4 === "function") {
+    const uuid = nk.uuidv4().replace(/-/g, "");
+    if (uuid.length >= SECURE_RANDOM_FALLBACK_HEX_LENGTH) {
+      const fallbackValue = Number.parseInt(uuid.slice(0, SECURE_RANDOM_FALLBACK_HEX_LENGTH), 16);
+      if (Number.isFinite(fallbackValue)) {
+        return fallbackValue / SECURE_RANDOM_UINT32_DIVISOR;
+      }
+    }
+  }
+  throw new Error("Authoritative dice roll requires a cryptographically secure random source.");
+};
+var rollAuthoritativeDice = (nk) => rollDice(() => getSecureRandomUnit(nk));
 var readStringField12 = (value, keys) => {
   const record = asRecord7(value);
   if (!record) {
@@ -13431,7 +13452,7 @@ function matchLoop(ctx, logger, nk, dispatcher, _tick, state, messages) {
           sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Roll payload is invalid.");
           return;
         }
-        applyRollRequest(logger, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
+        applyRollRequest(logger, nk, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
         return;
       }
       if (opCode === MatchOpCode.MOVE_REQUEST) {
@@ -13652,7 +13673,7 @@ function applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, nowMs) {
   }
   if (isConfiguredBotColor(state, activePlayerColor) && state.bot) {
     if (state.gameState.phase === "rolling") {
-      const rolledValue = rollDice();
+      const rolledValue = rollAuthoritativeDice(nk);
       const validMoves = applyRollOutcome(state, activePlayerColor, rolledValue);
       if (validMoves.length > 0) {
         const botMove = (_b = getBotMove(state.gameState, rolledValue, state.bot.difficulty)) != null ? _b : validMoves[0];
@@ -13719,7 +13740,7 @@ function applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, nowMs) {
     return;
   }
   if (state.gameState.phase === "rolling") {
-    const validMoves = applyRollOutcome(state, activePlayerColor, rollDice());
+    const validMoves = applyRollOutcome(state, activePlayerColor, rollAuthoritativeDice(nk));
     if (validMoves.length > 0) {
       applyValidatedMove(state, activePlayerColor, validMoves[0]);
     }
@@ -13752,7 +13773,7 @@ function applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, nowMs) {
   broadcastSnapshot(dispatcher, state, matchId);
   finalizeCompletedMatch(logger, nk, dispatcher, state, matchId);
 }
-function applyRollRequest(logger, dispatcher, state, userId, playerColor, payload, matchId) {
+function applyRollRequest(logger, nk, dispatcher, state, userId, playerColor, payload, matchId) {
   if (state.gameState.winner) {
     sendError(dispatcher, state, userId, "INVALID_PHASE", "The match has already ended.");
     return;
@@ -13773,7 +13794,7 @@ function applyRollRequest(logger, dispatcher, state, userId, playerColor, payloa
   if (payload.autoTriggered !== true) {
     resetAfkOnMeaningfulAction(state, playerColor, nowMs);
   }
-  applyRollOutcome(state, playerColor, rollDice());
+  applyRollOutcome(state, playerColor, rollAuthoritativeDice(nk));
   state.matchEnd = null;
   resetTurnTimerForCurrentState(state, nowMs, "player_roll");
   state.revision += 1;

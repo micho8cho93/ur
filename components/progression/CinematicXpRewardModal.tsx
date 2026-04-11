@@ -92,7 +92,7 @@ export const CinematicXpRewardModal: React.FC<CinematicXpRewardModalProps> = ({
         clearTimeout(completionTimerRef.current);
       }
     };
-  }, [backdropOpacity, badgePulse, cardOpacity, cardScale, flashOpacity, rankBurst, sweepProgress, xpValue]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- cleanup-only effect with stable refs
 
   const liveSnapshot = buildDisplayedProgressionSnapshot(displayedXp);
   const previousSnapshot = buildDisplayedProgressionSnapshot(previousTotalXp);

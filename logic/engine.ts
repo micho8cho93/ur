@@ -31,10 +31,12 @@ export const createInitialState = (matchConfig: MatchConfig = DEFAULT_MATCH_CONF
     history: [],
 });
 
-export const rollDice = (): number => {
+export type DiceRandomSource = () => number;
+
+export const rollDice = (randomSource: DiceRandomSource = Math.random): number => {
     let sum = 0;
     for (let i = 0; i < 4; i++) {
-        if (Math.random() >= 0.5) sum++;
+        if (randomSource() >= 0.5) sum++;
     }
     return sum;
 };

@@ -364,9 +364,42 @@ const MATCH_HANDLER = "authoritative_match";
 const PRIVATE_MATCH_CODE_COLLECTION = "private_match_codes";
 const PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS = 12;
 const PRIVATE_MATCH_CODE_WRITE_ATTEMPTS = 4;
+const SECURE_RANDOM_UINT32_DIVISOR = 4_294_967_296;
+const SECURE_RANDOM_FALLBACK_HEX_LENGTH = 8;
+
+type CryptoWithGetRandomValues = {
+  getRandomValues: (array: Uint32Array) => Uint32Array;
+};
 
 const asRecord = (value: unknown): RuntimeRecord | null =>
   typeof value === "object" && value !== null ? (value as RuntimeRecord) : null;
+
+const hasCryptoGetRandomValues = (value: unknown): value is CryptoWithGetRandomValues =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as { getRandomValues?: unknown }).getRandomValues === "function";
+
+const getSecureRandomUnit = (nk?: nkruntime.Nakama): number => {
+  const cryptoApi = (globalThis as { crypto?: unknown }).crypto;
+  if (hasCryptoGetRandomValues(cryptoApi)) {
+    const randomValues = cryptoApi.getRandomValues(new Uint32Array(1));
+    return randomValues[0] / SECURE_RANDOM_UINT32_DIVISOR;
+  }
+
+  if (nk && typeof nk.uuidv4 === "function") {
+    const uuid = nk.uuidv4().replace(/-/g, "");
+    if (uuid.length >= SECURE_RANDOM_FALLBACK_HEX_LENGTH) {
+      const fallbackValue = Number.parseInt(uuid.slice(0, SECURE_RANDOM_FALLBACK_HEX_LENGTH), 16);
+      if (Number.isFinite(fallbackValue)) {
+        return fallbackValue / SECURE_RANDOM_UINT32_DIVISOR;
+      }
+    }
+  }
+
+  throw new Error("Authoritative dice roll requires a cryptographically secure random source.");
+};
+
+const rollAuthoritativeDice = (nk?: nkruntime.Nakama): number => rollDice(() => getSecureRandomUnit(nk));
 
 const readStringField = (value: unknown, keys: string[]): string | null => {
   const record = asRecord(value);
@@ -2601,7 +2634,7 @@ function matchLoop(
           return;
         }
 
-        applyRollRequest(logger, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
+        applyRollRequest(logger, nk, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
         return;
       }
 
@@ -2902,7 +2935,7 @@ function applyTimedTurnTimeout(
 
   if (isConfiguredBotColor(state, activePlayerColor) && state.bot) {
     if (state.gameState.phase === "rolling") {
-      const rolledValue = rollDice();
+      const rolledValue = rollAuthoritativeDice(nk);
       const validMoves = applyRollOutcome(state, activePlayerColor, rolledValue);
       if (validMoves.length > 0) {
         const botMove = getBotMove(state.gameState, rolledValue, state.bot.difficulty) ?? validMoves[0];
@@ -2975,7 +3008,7 @@ function applyTimedTurnTimeout(
   }
 
   if (state.gameState.phase === "rolling") {
-    const validMoves = applyRollOutcome(state, activePlayerColor, rollDice());
+    const validMoves = applyRollOutcome(state, activePlayerColor, rollAuthoritativeDice(nk));
     if (validMoves.length > 0) {
       applyValidatedMove(state, activePlayerColor, validMoves[0]);
     }
@@ -3014,6 +3047,7 @@ function applyTimedTurnTimeout(
 
 function applyRollRequest(
   logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
   dispatcher: nkruntime.MatchDispatcher,
   state: MatchState,
   userId: string,
@@ -3045,7 +3079,7 @@ function applyRollRequest(
   if (payload.autoTriggered !== true) {
     resetAfkOnMeaningfulAction(state, playerColor, nowMs);
   }
-  applyRollOutcome(state, playerColor, rollDice());
+  applyRollOutcome(state, playerColor, rollAuthoritativeDice(nk));
   state.matchEnd = null;
   resetTurnTimerForCurrentState(state, nowMs, "player_roll");
   state.revision += 1;
