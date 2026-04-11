@@ -1,8 +1,17 @@
 import { boxShadow, textShadow } from '@/constants/styleEffects';
 import { urTheme } from '@/constants/urTheme';
 import type { PlayerColor } from '@/logic/types';
-import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import Animated, {
+  Easing,
+  cancelAnimation,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 const FLOAT_DURATION_MS = 2_500;
 
@@ -29,48 +38,50 @@ function FloatingEmojiReactionBubble({
   reaction: FloatingEmojiReactionItem;
   travelDistance: number;
 }) {
-  const progress = useRef(new Animated.Value(0)).current;
+  const progress = useSharedValue(0);
   const onCompleteRef = useRef(onComplete);
+  const completeReaction = useCallback((id: string) => {
+    onCompleteRef.current(id);
+  }, []);
 
   useEffect(() => {
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
   useEffect(() => {
-    const animation = Animated.timing(progress, {
-      toValue: 1,
-      duration: FLOAT_DURATION_MS,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    });
-
-    animation.start(({ finished }) => {
-      if (finished) {
-        onCompleteRef.current(reaction.id);
-      }
-    });
+    cancelAnimation(progress);
+    progress.value = 0;
+    progress.value = withTiming(
+      1,
+      {
+        duration: FLOAT_DURATION_MS,
+        easing: Easing.out(Easing.cubic),
+      },
+      (finished) => {
+        if (!finished) {
+          return;
+        }
+        runOnJS(completeReaction)(reaction.id);
+      },
+    );
 
     return () => {
-      animation.stop();
+      cancelAnimation(progress);
     };
-  }, [progress, reaction.id]);
+  }, [completeReaction, progress, reaction.id]);
 
-  const opacity = progress.interpolate({
-    inputRange: [0, 0.12, 0.78, 1],
-    outputRange: [0, 1, 1, 0],
-  });
-  const translateY = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -travelDistance],
-  });
-  const translateX = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, reaction.driftX],
-  });
-  const scale = progress.interpolate({
-    inputRange: [0, 0.18, 1],
-    outputRange: [0.76, 1, 1.06],
-  });
+  const bubbleStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(progress.value, [0, 0.12, 0.78, 1], [0, 1, 1, 0]);
+    const translateY = interpolate(progress.value, [0, 1], [0, -travelDistance]);
+    const translateX = interpolate(progress.value, [0, 1], [0, reaction.driftX]);
+    const scale = interpolate(progress.value, [0, 0.18, 1], [0.76, 1, 1.06]);
+
+    return {
+      opacity,
+      transform: [{ translateX }, { translateY }, { scale }],
+    };
+  }, [reaction.driftX, travelDistance]);
+
   const accent =
     reaction.senderColor === 'light'
       ? {
@@ -88,11 +99,10 @@ function FloatingEmojiReactionBubble({
       style={[
         styles.bubble,
         accent,
+        bubbleStyle,
         {
           left: reaction.left,
           bottom: reaction.bottom,
-          opacity,
-          transform: [{ translateX }, { translateY }, { scale }],
         },
       ]}
     >

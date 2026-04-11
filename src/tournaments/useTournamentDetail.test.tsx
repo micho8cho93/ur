@@ -254,4 +254,57 @@ describe('useTournamentDetail', () => {
     expect(mockGetPublicTournamentStatus).toHaveBeenCalledTimes(2);
     expect(result.current.tournament?.name).toBe('After Bracket Start');
   });
+
+  it('skips interval polling while socket notifications are attached', async () => {
+    mockGetPublicTournamentStatus.mockResolvedValue({
+      tournament: buildTournament(),
+      standings: [buildStanding()],
+    });
+
+    renderHook(() => useTournamentDetail('run-1'));
+
+    await act(async () => {
+      await flush();
+    });
+
+    const focusCallback = mockUseFocusEffect.mock.calls.at(-1)?.[0] as () => void | (() => void);
+    const setIntervalSpy = jest.spyOn(global, 'setInterval');
+
+    let cleanup: void | (() => void);
+    await act(async () => {
+      cleanup = focusCallback();
+      await flush();
+    });
+
+    expect(setIntervalSpy).not.toHaveBeenCalled();
+    cleanup?.();
+    setIntervalSpy.mockRestore();
+  });
+
+  it('keeps polling through intervals when socket notifications are unavailable', async () => {
+    mockConnectSocketWithRetry.mockRejectedValueOnce(new Error('Socket unavailable'));
+    mockGetPublicTournamentStatus.mockResolvedValue({
+      tournament: buildTournament(),
+      standings: [buildStanding()],
+    });
+
+    renderHook(() => useTournamentDetail('run-1'));
+
+    await act(async () => {
+      await flush();
+    });
+
+    const focusCallback = mockUseFocusEffect.mock.calls.at(-1)?.[0] as () => void | (() => void);
+    const setIntervalSpy = jest.spyOn(global, 'setInterval');
+
+    let cleanup: void | (() => void);
+    await act(async () => {
+      cleanup = focusCallback();
+      await flush();
+    });
+
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 4_000);
+    cleanup?.();
+    setIntervalSpy.mockRestore();
+  });
 });

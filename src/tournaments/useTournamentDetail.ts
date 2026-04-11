@@ -27,6 +27,7 @@ export const useTournamentDetail = (runId: string | null) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [joiningRunId, setJoiningRunId] = useState<string | null>(null);
+  const [isSocketNotificationAvailable, setIsSocketNotificationAvailable] = useState(false);
   const isMountedRef = useRef(true);
   const refreshSequenceRef = useRef(0);
   const revision = useTournamentUiStore((state) => state.revision);
@@ -85,15 +86,23 @@ export const useTournamentDetail = (runId: string | null) => {
 
   useEffect(() => {
     if (!runId) {
+      setIsSocketNotificationAvailable(false);
       return;
     }
+
+    setIsSocketNotificationAvailable(false);
 
     let isDisposed = false;
     let attachedSocket: Socket | null = null;
     let previousOnNotification: ((notification: Notification) => void) | null = null;
+    let previousOnDisconnect: ((event: Event) => void) | null = null;
 
     const handleTournamentNotification = (notification: Notification) => {
       previousOnNotification?.(notification);
+
+      if (isDisposed) {
+        return;
+      }
 
       const isTournamentBracketReadyNotification =
         notification.code === TOURNAMENT_BRACKET_READY_NOTIFICATION_CODE ||
@@ -114,6 +123,16 @@ export const useTournamentDetail = (runId: string | null) => {
       void refresh();
     };
 
+    const handleSocketDisconnect = (event: Event) => {
+      previousOnDisconnect?.(event);
+
+      if (isDisposed) {
+        return;
+      }
+
+      setIsSocketNotificationAvailable(false);
+    };
+
     const attachSocketNotificationListener = async () => {
       try {
         const socket = await nakamaService.connectSocketWithRetry({
@@ -128,8 +147,15 @@ export const useTournamentDetail = (runId: string | null) => {
 
         attachedSocket = socket;
         previousOnNotification = socket.onnotification ?? null;
+        previousOnDisconnect = socket.ondisconnect ?? null;
         socket.onnotification = handleTournamentNotification;
+        socket.ondisconnect = handleSocketDisconnect;
+        setIsSocketNotificationAvailable(true);
       } catch {
+        if (isDisposed) {
+          return;
+        }
+        setIsSocketNotificationAvailable(false);
         // Tournament detail should still function through polling when socket notifications are unavailable.
       }
     };
@@ -145,12 +171,20 @@ export const useTournamentDetail = (runId: string | null) => {
       if (attachedSocket.onnotification === handleTournamentNotification) {
         attachedSocket.onnotification = previousOnNotification ?? NOOP_NOTIFICATION_HANDLER;
       }
+
+      if (attachedSocket.ondisconnect === handleSocketDisconnect) {
+        attachedSocket.ondisconnect = previousOnDisconnect ?? null;
+      }
     };
   }, [refresh, runId]);
 
   useFocusEffect(
     useCallback(() => {
       void refresh();
+
+      if (isSocketNotificationAvailable) {
+        return undefined;
+      }
 
       const pollId = setInterval(() => {
         void refresh();
@@ -159,7 +193,7 @@ export const useTournamentDetail = (runId: string | null) => {
       return () => {
         clearInterval(pollId);
       };
-    }, [refresh]),
+    }, [isSocketNotificationAvailable, refresh]),
   );
 
   const joinTournament = useCallback(async () => {

@@ -11,7 +11,7 @@ import {
   XP_SOURCE_CONFIG,
   XpSource,
 } from "../../shared/progression";
-import { recordXpAwardAnalyticsEvent } from "./analytics/tracking";
+import { recordXpAwardAnalyticsEvent, type AnalyticsEventWriteBuffer } from "./analytics/tracking";
 
 type RuntimeContext = any;
 type RuntimeLogger = any;
@@ -402,7 +402,7 @@ export const getProgressionForUser = (
 export const awardXp = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
-  params: XpRewardGrant & { userId: string }
+  params: XpRewardGrant & { userId: string; analyticsWriteBuffer?: AnalyticsEventWriteBuffer }
 ): XpRewardResult => {
   const userId = params.userId?.trim();
   const ledgerKey = params.ledgerKey?.trim();
@@ -525,7 +525,7 @@ export const awardXp = (
         previousRank,
         newRank,
         rankChanged: previousRank !== newRank,
-      });
+      }, params.analyticsWriteBuffer);
 
       return response;
     } catch (error) {
@@ -583,6 +583,7 @@ export const awardXpForMatchWin = (
     matchId: string;
     source?: XpSource;
     awardedXp?: number;
+    analyticsWriteBuffer?: AnalyticsEventWriteBuffer;
   }
 ): ProgressionAwardResponse => {
   const source = params.source ?? "pvp_win";
@@ -598,6 +599,7 @@ export const awardXpForMatchWin = (
         typeof params.awardedXp === "number" && Number.isFinite(params.awardedXp)
           ? params.awardedXp
           : getXpAwardAmount(source),
+      analyticsWriteBuffer: params.analyticsWriteBuffer,
     }) as XpRewardResult & { source: XpSource }
   );
 };
@@ -609,6 +611,7 @@ export const awardXpForTournamentChampion = (
     userId: string;
     runId: string;
     awardedXp?: number;
+    analyticsWriteBuffer?: AnalyticsEventWriteBuffer;
   }
 ): XpRewardResult & { source: "tournament_champion" } => {
   const runId = params.runId?.trim();
@@ -626,6 +629,7 @@ export const awardXpForTournamentChampion = (
       typeof params.awardedXp === "number" && Number.isFinite(params.awardedXp)
         ? params.awardedXp
         : getXpAwardAmount("tournament_champion"),
+    analyticsWriteBuffer: params.analyticsWriteBuffer,
   }) as XpRewardResult & { source: "tournament_champion" };
 };
 

@@ -105,6 +105,7 @@ export interface AmbientBackgroundEffectsProps {
   leafEnabled?: boolean;
   maxVisibleBugs?: number;
   maxVisibleLeaves?: number;
+  paused?: boolean;
   style?: StyleProp<ViewStyle>;
   width: number;
 }
@@ -1208,6 +1209,7 @@ export const AmbientBackgroundEffects = ({
   leafEnabled = AMBIENT_BACKGROUND_DEFAULTS.leafEnabled,
   maxVisibleBugs = AMBIENT_BACKGROUND_DEFAULTS.maxVisibleBugs,
   maxVisibleLeaves = AMBIENT_BACKGROUND_DEFAULTS.maxVisibleLeaves,
+  paused = false,
   style,
   width,
 }: AmbientBackgroundEffectsProps) => {
@@ -1245,7 +1247,12 @@ export const AmbientBackgroundEffects = ({
     ],
   );
 
-  if (width <= 0 || height <= 0 || (!dustEnabled && visibleBugCount === 0 && visibleLeafCount === 0)) {
+  if (
+    paused ||
+    width <= 0 ||
+    height <= 0 ||
+    (!dustEnabled && visibleBugCount === 0 && visibleLeafCount === 0)
+  ) {
     return null;
   }
 

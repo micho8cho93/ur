@@ -157,6 +157,7 @@ import { useFonts } from 'expo-font';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   BackHandler,
   Image,
@@ -1349,6 +1350,7 @@ export function GameRoom() {
   const [floatingReactions, setFloatingReactions] = React.useState<QueuedFloatingReaction[]>([]);
   const [rollingVisual, setRollingVisual] = React.useState(false);
   const [rollButtonLatchPhase, setRollButtonLatchPhase] = React.useState<RollButtonLatchPhase>('idle');
+  const [hasActiveBoardMoveAnimation, setHasActiveBoardMoveAnimation] = React.useState(false);
   const [heldRollDisplay, setHeldRollDisplay] = React.useState<HeldRollDisplay | null>(null);
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
   const [musicEnabled, setMusicEnabled] = React.useState(true);
@@ -1512,6 +1514,9 @@ export function GameRoom() {
 
   const handleRollButtonMeasuredWidth = React.useCallback((nextWidth: number) => {
     setEmojiReactionTriggerWidth((current) => (current === nextWidth ? current : nextWidth));
+  }, []);
+  const handleBoardAnimatedMoveStateChange = React.useCallback((active: boolean) => {
+    setHasActiveBoardMoveAnimation((current) => (current === active ? current : active));
   }, []);
 
   const handleToggleEmojiReactionMenu = React.useCallback(() => {
@@ -3719,6 +3724,7 @@ export function GameRoom() {
     setBoardDropTargetFrame(null);
     setHasBoardArtLayout(false);
     setRollingVisual(false);
+    setHasActiveBoardMoveAnimation(false);
     setRollButtonLatchPhase('idle');
     setShowBoardDropIntro(false);
     setHasPlayedBoardDropIntro(false);
@@ -5554,6 +5560,7 @@ export function GameRoom() {
           authoritativeActiveTimedPlayerColor === gameState.currentTurn &&
           authoritativeActiveTimedPhase === gameState.phase);
   const showPersistentDiceVisual = introsComplete && diceAnimationEnabled;
+  const pauseAmbientEffects = rollingVisual || hasActiveBoardMoveAnimation;
   const showDestinationHighlights = introsComplete && !rollingVisual && gameState.rollValue !== null;
   const displayedValidMoves = useMemo(() => {
     if (tutorialForcedNoMove) {
@@ -5795,6 +5802,7 @@ export function GameRoom() {
           onInteraction={resumeAnnouncementCuesFromInteraction}
           allowInteraction={isOnlineInteractionReady}
           freezeMotion={shouldFreezeForfeitMotion}
+          onAnimatedMoveStateChange={handleBoardAnimatedMoveStateChange}
           boardScale={boardScale}
           orientation="vertical"
           onBoardImageLayout={handleLiveBoardImageLayout}
@@ -5920,6 +5928,27 @@ export function GameRoom() {
     );
   };
 
+  if (!SHOULD_BYPASS_CINEMATIC_INTROS && !arePresentationAssetsReady) {
+    return (
+      <View
+        style={[
+          styles.screen,
+          styles.assetLoadingScreen,
+          Platform.OS === 'web'
+            ? {
+              height: viewportHeight,
+              maxHeight: viewportHeight,
+              overflow: 'hidden',
+            }
+            : null,
+        ]}
+      >
+        <Stack.Screen options={{ headerShown: false }} />
+        <ActivityIndicator color={urTheme.colors.cedar} size="small" />
+      </View>
+    );
+  }
+
   return (
     <View
       style={[
@@ -5965,6 +5994,7 @@ export function GameRoom() {
             leafEnabled={MATCH_AMBIENT_EFFECTS.leafEnabled}
             maxVisibleBugs={MATCH_AMBIENT_EFFECTS.maxVisibleBugs}
             maxVisibleLeaves={MATCH_AMBIENT_EFFECTS.maxVisibleLeaves}
+            paused={pauseAmbientEffects}
             style={styles.ambientLayer}
           />
         ) : null}
@@ -7126,6 +7156,10 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#D9C39A',
+  },
+  assetLoadingScreen: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   rematchCard: {
     width: '100%',

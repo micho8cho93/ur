@@ -400,14 +400,23 @@ const syncEloLeaderboardRecords = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
   profiles: EloProfile[],
-): Record<string, number | null> =>
-  profiles.reduce(
-    (entries, profile) => {
+): Record<string, number | null> => {
+  const entries: Record<string, number | null> = {};
+  for (const profile of profiles) {
+    try {
       entries[profile.userId] = syncEloLeaderboardRecord(nk, logger, profile);
-      return entries;
-    },
-    {} as Record<string, number | null>,
-  );
+    } catch (error) {
+      logger.error(
+        "Unexpected Elo leaderboard sync failure for user %s: %s",
+        profile.userId,
+        getErrorMessage(error),
+      );
+      entries[profile.userId] = null;
+    }
+  }
+
+  return entries;
+};
 
 const readOwnerLeaderboardRecord = (nk: RuntimeNakama, userId: string): LeaderboardRecordLike | null => {
   const result = nk.leaderboardRecordsList(ELO_LEADERBOARD_ID, [userId], 1, "", 0) as Record<string, unknown>;
@@ -541,6 +550,55 @@ const readProcessedMatchResultObject = (nk: RuntimeNakama, matchId: string): Run
   return findStorageObject(objects, ELO_MATCH_RESULT_COLLECTION, matchId, SYSTEM_USER_ID);
 };
 
+const readRankedMatchStorageState = (
+  nk: RuntimeNakama,
+  matchId: string,
+  userIds: string[],
+): {
+  processedMatchObject: RuntimeStorageObject | null;
+  profileObjectsByUserId: Record<string, RuntimeStorageObject | null>;
+} => {
+  const objects = nk.storageRead([
+    {
+      collection: ELO_MATCH_RESULT_COLLECTION,
+      key: matchId,
+      userId: SYSTEM_USER_ID,
+    },
+    ...userIds.map((userId) => ({
+      collection: ELO_PROFILE_COLLECTION,
+      key: ELO_PROFILE_KEY,
+      userId,
+    })),
+  ]) as RuntimeStorageObject[];
+
+  const profileObjectsByUserId = userIds.reduce(
+    (entries, userId) => {
+      entries[userId] = findStorageObject(objects, ELO_PROFILE_COLLECTION, ELO_PROFILE_KEY, userId);
+      return entries;
+    },
+    {} as Record<string, RuntimeStorageObject | null>,
+  );
+
+  return {
+    processedMatchObject: findStorageObject(objects, ELO_MATCH_RESULT_COLLECTION, matchId, SYSTEM_USER_ID),
+    profileObjectsByUserId,
+  };
+};
+
+const buildEloProfileState = (
+  nk: RuntimeNakama,
+  userId: string,
+  profileObject: RuntimeStorageObject | null,
+): { object: RuntimeStorageObject | null; profile: EloProfile } => {
+  const usernameDisplay = getRequiredUsernameDisplay(nk, userId);
+  const profile = normalizeEloProfile(getStorageObjectValue(profileObject), userId, usernameDisplay);
+
+  return {
+    object: profileObject,
+    profile,
+  };
+};
+
 const getProcessedMatchPlayerResult = (
   result: StoredEloMatchResultRecord,
   userId: string,
@@ -654,7 +712,8 @@ export const processRankedMatchResult = (
   }
 
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
-    const existingProcessedObject = readProcessedMatchResultObject(nk, matchId);
+    const storageState = readRankedMatchStorageState(nk, matchId, [winnerUserId, loserUserId]);
+    const existingProcessedObject = storageState.processedMatchObject;
     const existingProcessed = normalizeStoredEloMatchResultRecord(getStorageObjectValue(existingProcessedObject));
     if (existingProcessed) {
       return {
@@ -667,8 +726,16 @@ export const processRankedMatchResult = (
       };
     }
 
-    const winnerProfileState = ensureEloProfileObject(nk, logger, winnerUserId);
-    const loserProfileState = ensureEloProfileObject(nk, logger, loserUserId);
+    const winnerProfileState = buildEloProfileState(
+      nk,
+      winnerUserId,
+      storageState.profileObjectsByUserId[winnerUserId] ?? null,
+    );
+    const loserProfileState = buildEloProfileState(
+      nk,
+      loserUserId,
+      storageState.profileObjectsByUserId[loserUserId] ?? null,
+    );
     const now = new Date().toISOString();
     const computation = computeEloRatingUpdate({
       playerARating: winnerProfileState.profile.eloRating,

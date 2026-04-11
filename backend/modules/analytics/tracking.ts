@@ -102,6 +102,20 @@ type StorageListResult = {
   cursor: string | null;
 };
 
+type AnalyticsStorageWrite = {
+  collection: string;
+  key: string;
+  userId: string;
+  value: AnalyticsEvent;
+  version: "*";
+  permissionRead: number;
+  permissionWrite: number;
+};
+
+export type AnalyticsEventWriteBuffer = {
+  writes: AnalyticsStorageWrite[];
+};
+
 const STORAGE_PERMISSION_NONE = 0;
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 const ONLINE_TTL_MS = 30_000;
@@ -376,19 +390,55 @@ const normalizeStorageListResult = (value: unknown): StorageListResult => {
   };
 };
 
-const writeEvent = (nk: RuntimeNakama, logger: RuntimeLogger, event: AnalyticsEvent): void => {
+const buildAnalyticsStorageWrite = (event: AnalyticsEvent): AnalyticsStorageWrite => ({
+  collection: ANALYTICS_EVENT_COLLECTION,
+  key: event.eventId,
+  userId: SYSTEM_USER_ID,
+  value: event,
+  version: "*",
+  permissionRead: STORAGE_PERMISSION_NONE,
+  permissionWrite: STORAGE_PERMISSION_NONE,
+});
+
+export const createAnalyticsEventWriteBuffer = (): AnalyticsEventWriteBuffer => ({
+  writes: [],
+});
+
+export const flushAnalyticsEventWriteBuffer = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  buffer: AnalyticsEventWriteBuffer,
+): number => {
+  if (buffer.writes.length === 0) {
+    return 0;
+  }
+
   try {
-    nk.storageWrite([
-      {
-        collection: ANALYTICS_EVENT_COLLECTION,
-        key: event.eventId,
-        userId: SYSTEM_USER_ID,
-        value: event,
-        version: "*",
-        permissionRead: STORAGE_PERMISSION_NONE,
-        permissionWrite: STORAGE_PERMISSION_NONE,
-      },
-    ]);
+    const pendingWrites = buffer.writes.slice();
+    nk.storageWrite(pendingWrites);
+    buffer.writes.length = 0;
+    return pendingWrites.length;
+  } catch (error) {
+    logger.warn("Unable to flush %d buffered analytics events: %s", buffer.writes.length, getErrorMessage(error));
+    return 0;
+  }
+};
+
+const writeEvent = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  event: AnalyticsEvent,
+  writeBuffer?: AnalyticsEventWriteBuffer,
+): void => {
+  const write = buildAnalyticsStorageWrite(event);
+
+  if (writeBuffer) {
+    writeBuffer.writes.push(write);
+    return;
+  }
+
+  try {
+    nk.storageWrite([write]);
   } catch (error) {
     logger.warn("Unable to write analytics event %s: %s", event.eventId, getErrorMessage(error));
   }
@@ -425,6 +475,7 @@ export const recordMatchStartAnalyticsEvent = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
   event: Omit<MatchStartAnalyticsEvent, "eventId" | "type" | "occurredAt">,
+  writeBuffer?: AnalyticsEventWriteBuffer,
 ): void => {
   const occurredAt = event.startedAt;
   const normalizedEvent: MatchStartAnalyticsEvent = {
@@ -444,13 +495,14 @@ export const recordMatchStartAnalyticsEvent = (
       .map((player) => player.username ?? player.userId)
       .filter((playerLabel) => playerLabel.length > 0),
   });
-  writeEvent(nk, logger, normalizedEvent);
+  writeEvent(nk, logger, normalizedEvent, writeBuffer);
 };
 
 export const recordMatchEndAnalyticsEvent = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
   event: Omit<MatchEndAnalyticsEvent, "eventId" | "type" | "occurredAt">,
+  writeBuffer?: AnalyticsEventWriteBuffer,
 ): void => {
   const occurredAt = event.endedAt;
   const normalizedEvent: MatchEndAnalyticsEvent = {
@@ -461,13 +513,14 @@ export const recordMatchEndAnalyticsEvent = (
   };
 
   activeMatchesById.delete(event.matchId);
-  writeEvent(nk, logger, normalizedEvent);
+  writeEvent(nk, logger, normalizedEvent, writeBuffer);
 };
 
 export const recordXpAwardAnalyticsEvent = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
   event: Omit<XpAwardAnalyticsEvent, "eventId" | "type" | "occurredAt"> & { occurredAt?: string },
+  writeBuffer?: AnalyticsEventWriteBuffer,
 ): void => {
   const occurredAt = event.occurredAt ?? new Date().toISOString();
   const normalizedEvent: XpAwardAnalyticsEvent = {
@@ -486,7 +539,7 @@ export const recordXpAwardAnalyticsEvent = (
     rankChanged: event.rankChanged,
   };
 
-  writeEvent(nk, logger, normalizedEvent);
+  writeEvent(nk, logger, normalizedEvent, writeBuffer);
 };
 
 export const unregisterActiveMatch = (matchId: string): void => {

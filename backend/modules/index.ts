@@ -14,7 +14,11 @@ import {
   createProgressionAwardNotification,
   findStorageObject,
   getProgressionForUser,
+  getStorageObjectValue,
   getStorageObjectVersion,
+  normalizeProgressionProfile,
+  PROGRESSION_COLLECTION,
+  PROGRESSION_PROFILE_KEY,
   rpcGetProgression,
   RPC_GET_PROGRESSION,
   rpcGetUserXpProgress,
@@ -45,6 +49,7 @@ import {
   RPC_SUBMIT_COMPLETED_BOT_MATCH,
   type ProcessCompletedMatchResult,
 } from "./challenges";
+import { normalizeChallengeProgressSnapshot } from "./challengeProgress";
 import {
   EmojiReactionBroadcastPayload,
   EmojiReactionRequestPayload,
@@ -82,7 +87,14 @@ import {
   isContestedLanding,
   isOneSuccessfulMoveFromVictory,
 } from "../../shared/challenges";
-import type { ProgressionAwardResponse, XpSource } from "../../shared/progression";
+import {
+  DEFAULT_ELO_RATING,
+  ELO_LEADERBOARD_ID,
+  PROVISIONAL_RATED_GAMES,
+  sanitizeEloRating,
+  sanitizeRatedGameCount,
+} from "../../shared/elo";
+import { buildProgressionSnapshot, type ProgressionAwardResponse, type XpSource } from "../../shared/progression";
 import {
   generatePrivateMatchCode,
   isPrivateMatchCode,
@@ -151,10 +163,13 @@ import {
   rpcAdminGetAnalyticsTournaments,
 } from "./analytics";
 import {
+  createAnalyticsEventWriteBuffer,
+  flushAnalyticsEventWriteBuffer,
   getOnlinePresenceSnapshot,
   recordMatchEndAnalyticsEvent,
   recordMatchStartAnalyticsEvent,
   trackPresenceHeartbeat,
+  type AnalyticsEventWriteBuffer,
   unregisterActiveMatch,
 } from "./analytics/tracking";
 import {
@@ -221,6 +236,11 @@ type MatchRatingProcessingResult = {
 };
 
 type MatchChallengeProcessingResults = Record<string, ProcessCompletedMatchResult>;
+
+type TournamentRewardSummaryReadModel = Pick<
+  TournamentMatchRewardSummaryPayload,
+  "progression" | "challengeProgress" | "eloProfile"
+>;
 
 type TournamentRewardOutcome = TournamentMatchRewardSummaryPayload["tournamentOutcome"];
 
@@ -364,6 +384,10 @@ const MATCH_HANDLER = "authoritative_match";
 const PRIVATE_MATCH_CODE_COLLECTION = "private_match_codes";
 const PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS = 12;
 const PRIVATE_MATCH_CODE_WRITE_ATTEMPTS = 4;
+const USER_CHALLENGE_PROGRESS_COLLECTION = "user_challenge_progress";
+const USER_CHALLENGE_PROGRESS_KEY = "progress";
+const ELO_PROFILE_COLLECTION = "elo_profiles";
+const ELO_PROFILE_KEY = "profile";
 const SECURE_RANDOM_UINT32_DIVISOR = 4_294_967_296;
 const SECURE_RANDOM_FALLBACK_HEX_LENGTH = 8;
 
@@ -1072,6 +1096,10 @@ const resolveAssignedPlayerTitle = (nk: nkruntime.Nakama, userId: string): strin
 };
 
 const cacheAssignedPlayerTitle = (state: MatchState, nk: nkruntime.Nakama, userId: string): void => {
+  if (Object.prototype.hasOwnProperty.call(state.playerTitles, userId)) {
+    return;
+  }
+
   state.playerTitles[userId] = resolveAssignedPlayerTitle(nk, userId);
 };
 
@@ -1098,6 +1126,10 @@ const cacheAssignedPlayerRankTitle = (
   logger: nkruntime.Logger,
   userId: string,
 ): void => {
+  if (Object.prototype.hasOwnProperty.call(state.playerRankTitles, userId)) {
+    return;
+  }
+
   state.playerRankTitles[userId] = resolveAssignedPlayerRankTitle(nk, logger, userId, {
     isBotUser: isConfiguredBotUser(state, userId),
   });
@@ -1621,70 +1653,76 @@ const finalizeCompletedMatch = (
     return state.resultRecorded;
   }
 
-  syncCompletedMatchEnd(state);
-  const ratingProcessingResult = processCompletedMatchRatings(logger, nk, dispatcher, state, matchId);
-  const winnerProgressionAward = awardWinnerProgression(logger, nk, dispatcher, state, matchId);
-  const tournamentProcessingResult = processCompletedTournamentMatch(logger, nk, state, matchId);
-  const challengeProcessingResults = processCompletedMatchSummaries(logger, nk, state, matchId);
+  const analyticsWriteBuffer = createAnalyticsEventWriteBuffer();
 
-  if (
-    state.tournamentContext &&
-    (!tournamentProcessingResult || tournamentProcessingResult.retryableFailure)
-  ) {
-    logger.warn("Deferring final result lock for match %s until tournament synchronization succeeds.", matchId);
-    state.resultRecorded = false;
-    return false;
-  }
+  try {
+    syncCompletedMatchEnd(state);
+    const ratingProcessingResult = processCompletedMatchRatings(logger, nk, dispatcher, state, matchId);
+    const winnerProgressionAward = awardWinnerProgression(logger, nk, dispatcher, state, matchId, analyticsWriteBuffer);
+    const tournamentProcessingResult = processCompletedTournamentMatch(logger, nk, state, matchId);
+    const challengeProcessingResults = processCompletedMatchSummaries(logger, nk, state, matchId);
 
-  broadcastTournamentMatchRewardSummaries(logger, nk, dispatcher, state, matchId, {
-    ratingProcessingResult,
-    winnerProgressionAward,
-    tournamentProcessingResult,
-    challengeProcessingResults,
-  });
+    if (
+      state.tournamentContext &&
+      (!tournamentProcessingResult || tournamentProcessingResult.retryableFailure)
+    ) {
+      logger.warn("Deferring final result lock for match %s until tournament synchronization succeeds.", matchId);
+      state.resultRecorded = false;
+      return false;
+    }
 
-  state.resultRecorded = true;
-
-  {
-    const endedAt = new Date().toISOString();
-    const durationSeconds =
-      state.matchStartedAtMs !== null ? Math.max(0, Math.round((Date.now() - state.matchStartedAtMs) / 1000)) : null;
-
-    recordMatchEndAnalyticsEvent(nk, logger, {
-      matchId,
-      startedAt: state.matchStartedAtMs !== null ? new Date(state.matchStartedAtMs).toISOString() : null,
-      endedAt,
-      durationSeconds,
-      modeId: state.modeId,
-      reason: state.matchEnd?.reason ?? "completed",
-      classification: {
-        ranked: state.classification.ranked,
-        casual: state.classification.casual,
-        private: state.classification.private,
-        bot: state.classification.bot,
-        experimental: state.classification.experimental,
-        tournament: Boolean(state.tournamentContext),
-      },
-      tournamentRunId: state.tournamentContext?.runId ?? null,
-      tournamentId: state.tournamentContext?.tournamentId ?? null,
-      winnerUserId: state.matchEnd?.winnerUserId ?? null,
-      loserUserId: state.matchEnd?.loserUserId ?? null,
-      totalMoves: state.telemetry.totalMoves,
-      totalTurns: state.telemetry.totalTurns,
-      players: buildAnalyticsMatchPlayers(state),
+    broadcastTournamentMatchRewardSummaries(logger, nk, dispatcher, state, matchId, {
+      ratingProcessingResult,
+      winnerProgressionAward,
+      tournamentProcessingResult,
+      challengeProcessingResults,
     });
-  }
 
-  if (
-    state.tournamentContext &&
-    tournamentProcessingResult &&
-    !tournamentProcessingResult.finalizationResult &&
-    Boolean(tournamentProcessingResult.updatedRun?.bracket?.finalizedAt)
-  ) {
-    maybeFinalizeRecordedTournamentRun(logger, nk, state, matchId, "result_recorded");
-  }
+    state.resultRecorded = true;
 
-  return true;
+    {
+      const endedAt = new Date().toISOString();
+      const durationSeconds =
+        state.matchStartedAtMs !== null ? Math.max(0, Math.round((Date.now() - state.matchStartedAtMs) / 1000)) : null;
+
+      recordMatchEndAnalyticsEvent(nk, logger, {
+        matchId,
+        startedAt: state.matchStartedAtMs !== null ? new Date(state.matchStartedAtMs).toISOString() : null,
+        endedAt,
+        durationSeconds,
+        modeId: state.modeId,
+        reason: state.matchEnd?.reason ?? "completed",
+        classification: {
+          ranked: state.classification.ranked,
+          casual: state.classification.casual,
+          private: state.classification.private,
+          bot: state.classification.bot,
+          experimental: state.classification.experimental,
+          tournament: Boolean(state.tournamentContext),
+        },
+        tournamentRunId: state.tournamentContext?.runId ?? null,
+        tournamentId: state.tournamentContext?.tournamentId ?? null,
+        winnerUserId: state.matchEnd?.winnerUserId ?? null,
+        loserUserId: state.matchEnd?.loserUserId ?? null,
+        totalMoves: state.telemetry.totalMoves,
+        totalTurns: state.telemetry.totalTurns,
+        players: buildAnalyticsMatchPlayers(state),
+      }, analyticsWriteBuffer);
+    }
+
+    if (
+      state.tournamentContext &&
+      tournamentProcessingResult &&
+      !tournamentProcessingResult.finalizationResult &&
+      Boolean(tournamentProcessingResult.updatedRun?.bracket?.finalizedAt)
+    ) {
+      maybeFinalizeRecordedTournamentRun(logger, nk, state, matchId, "result_recorded");
+    }
+
+    return true;
+  } finally {
+    flushAnalyticsEventWriteBuffer(nk, logger, analyticsWriteBuffer);
+  }
 };
 
 const maybeFinalizeRecordedTournamentRun = (
@@ -2383,8 +2421,6 @@ function matchJoinAttempt(
 
   upsertPresence(state, presence);
   ensureAssignment(state, userId);
-  cacheAssignedPlayerTitle(state, nk, userId);
-  cacheAssignedPlayerRankTitle(state, nk, logger, userId);
 
   return { state, accept: true };
 }
@@ -2586,8 +2622,6 @@ function matchLoop(
       }
 
       upsertPresence(state, message.sender);
-      cacheAssignedPlayerTitle(state, nk, senderUserId);
-      cacheAssignedPlayerRankTitle(state, nk, logger, senderUserId);
       const senderColor = state.assignments[senderUserId];
 
       if (!senderColor) {
@@ -3389,7 +3423,8 @@ function awardWinnerProgression(
   nk: nkruntime.Nakama,
   dispatcher: nkruntime.MatchDispatcher,
   state: MatchState,
-  matchId: string
+  matchId: string,
+  analyticsWriteBuffer?: AnalyticsEventWriteBuffer,
 ): ProgressionAwardResponse | null {
   const winnerColor = state.gameState.winner;
   if (!winnerColor) {
@@ -3420,6 +3455,7 @@ function awardWinnerProgression(
       matchId,
       source: state.winRewardSource,
       ...(configuredTournamentMatchWinXp !== null ? { awardedXp: configuredTournamentMatchWinXp } : {}),
+      analyticsWriteBuffer,
     });
 
     if (awardResponse.duplicate) {
@@ -3580,6 +3616,168 @@ const resolveTerminalTournamentRewardOutcome = (
   return null;
 };
 
+const readTournamentEloRanksByUserId = (
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  playerUserIds: string[],
+): Record<string, number | null> => {
+  if (playerUserIds.length === 0) {
+    return {};
+  }
+
+  try {
+    const result = nk.leaderboardRecordsList(
+      ELO_LEADERBOARD_ID,
+      playerUserIds,
+      Math.max(1, playerUserIds.length),
+      "",
+      0,
+    ) as RuntimeRecord;
+    const ownerRecords = Array.isArray(result.ownerRecords)
+      ? result.ownerRecords
+      : Array.isArray(result.owner_records)
+        ? result.owner_records
+        : [];
+
+    return ownerRecords.reduce(
+      (entries, record) => {
+        const ownerId = readStringField(record, ["ownerId", "owner_id"]);
+        if (!ownerId) {
+          return entries;
+        }
+
+        const rank = readNumberField(record, ["rank"]);
+        entries[ownerId] = typeof rank === "number" ? rank : null;
+        return entries;
+      },
+      {} as Record<string, number | null>,
+    );
+  } catch (error) {
+    logger.warn(
+      "Unable to read Elo leaderboard ranks in batch for tournament summary users %s: %s",
+      playerUserIds.join(","),
+      error instanceof Error ? error.message : String(error),
+    );
+    return {};
+  }
+};
+
+const buildEloProfileFromStorageObject = (
+  userId: string,
+  fallbackUsernameDisplay: string,
+  rawValue: unknown,
+  rank: number | null,
+): TournamentMatchRewardSummaryPayload["eloProfile"] => {
+  const normalizedFallbackName = fallbackUsernameDisplay.trim().length > 0 ? fallbackUsernameDisplay : userId;
+  const usernameDisplay = readStringField(rawValue, ["usernameDisplay", "username_display"]) ?? normalizedFallbackName;
+  const eloRating = sanitizeEloRating(readNumberField(rawValue, ["eloRating", "elo_rating"]) ?? DEFAULT_ELO_RATING);
+  const ratedGames = sanitizeRatedGameCount(readNumberField(rawValue, ["ratedGames", "rated_games"]) ?? 0);
+  const ratedWins = Math.min(
+    ratedGames,
+    sanitizeRatedGameCount(readNumberField(rawValue, ["ratedWins", "rated_wins"]) ?? 0),
+  );
+  const ratedLosses = Math.min(
+    Math.max(0, ratedGames - ratedWins),
+    sanitizeRatedGameCount(readNumberField(rawValue, ["ratedLosses", "rated_losses"]) ?? 0),
+  );
+
+  return {
+    leaderboardId: ELO_LEADERBOARD_ID,
+    userId,
+    usernameDisplay,
+    eloRating,
+    ratedGames,
+    ratedWins,
+    ratedLosses,
+    provisional: ratedGames < PROVISIONAL_RATED_GAMES,
+    rank,
+    lastRatedMatchId: readStringField(rawValue, ["lastRatedMatchId", "last_rated_match_id"]),
+    lastRatedAt: readStringField(rawValue, ["lastRatedAt", "last_rated_at"]),
+  };
+};
+
+const buildTournamentRewardSummaryReadModelsByUserId = (
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  state: MatchState,
+): Record<string, TournamentRewardSummaryReadModel> => {
+  const playerUserIds = Object.keys(state.assignments);
+  if (playerUserIds.length === 0) {
+    return {};
+  }
+
+  try {
+    const storageObjects = nk.storageRead(
+      playerUserIds.flatMap((userId) => [
+        {
+          collection: PROGRESSION_COLLECTION,
+          key: PROGRESSION_PROFILE_KEY,
+          userId,
+        },
+        {
+          collection: USER_CHALLENGE_PROGRESS_COLLECTION,
+          key: USER_CHALLENGE_PROGRESS_KEY,
+          userId,
+        },
+        {
+          collection: ELO_PROFILE_COLLECTION,
+          key: ELO_PROFILE_KEY,
+          userId,
+        },
+      ]),
+    ) as RuntimeStorageObject[];
+    const eloRanksByUserId = readTournamentEloRanksByUserId(logger, nk, playerUserIds);
+
+    return playerUserIds.reduce(
+      (entries, userId) => {
+        const progressionObject = findStorageObject(
+          storageObjects,
+          PROGRESSION_COLLECTION,
+          PROGRESSION_PROFILE_KEY,
+          userId,
+        );
+        const challengeProgressObject = findStorageObject(
+          storageObjects,
+          USER_CHALLENGE_PROGRESS_COLLECTION,
+          USER_CHALLENGE_PROGRESS_KEY,
+          userId,
+        );
+        const eloProfileObject = findStorageObject(storageObjects, ELO_PROFILE_COLLECTION, ELO_PROFILE_KEY, userId);
+        if (!progressionObject || !challengeProgressObject || !eloProfileObject) {
+          return entries;
+        }
+
+        const progressionProfile = normalizeProgressionProfile(getStorageObjectValue(progressionObject));
+        const progression = buildProgressionSnapshot(progressionProfile.totalXp);
+        const challengeProgress = normalizeChallengeProgressSnapshot(
+          getStorageObjectValue(challengeProgressObject),
+          progression.totalXp,
+        );
+
+        entries[userId] = {
+          progression,
+          challengeProgress,
+          eloProfile: buildEloProfileFromStorageObject(
+            userId,
+            state.playerTitles[userId] ?? userId,
+            getStorageObjectValue(eloProfileObject),
+            eloRanksByUserId[userId] ?? null,
+          ),
+        };
+        return entries;
+      },
+      {} as Record<string, TournamentRewardSummaryReadModel>,
+    );
+  } catch (error) {
+    logger.warn(
+      "Unable to batch load tournament reward summary state for match users %s: %s",
+      playerUserIds.join(","),
+      error instanceof Error ? error.message : String(error),
+    );
+    return {};
+  }
+};
+
 const buildTournamentRewardSummaryPayload = (
   logger: nkruntime.Logger,
   nk: nkruntime.Nakama,
@@ -3592,6 +3790,7 @@ const buildTournamentRewardSummaryPayload = (
     winnerProgressionAward: ProgressionAwardResponse | null;
     tournamentProcessingResult: ReturnType<typeof processCompletedAuthoritativeTournamentMatch>;
     challengeProcessingResults: MatchChallengeProcessingResults;
+    rewardSummaryReadModelsByUserId: Record<string, TournamentRewardSummaryReadModel>;
   },
 ): TournamentMatchRewardSummaryPayload | null => {
   if (!state.tournamentContext) {
@@ -3621,12 +3820,14 @@ const buildTournamentRewardSummaryPayload = (
     context.tournamentProcessingResult.finalizationResult?.championUserId === playerUserId
       ? context.tournamentProcessingResult.finalizationResult.championRewardResult?.awardedXp ?? 0
       : 0;
-  const progression = getProgressionForUser(nk, logger, playerUserId);
-  const challengeProgress = getUserChallengeProgress(nk, logger, playerUserId);
+  const rewardSummaryReadModel = context.rewardSummaryReadModelsByUserId[playerUserId] ?? null;
+  const progression = rewardSummaryReadModel?.progression ?? getProgressionForUser(nk, logger, playerUserId);
+  const challengeProgress =
+    rewardSummaryReadModel?.challengeProgress ?? getUserChallengeProgress(nk, logger, playerUserId);
   const totalXpDelta = winnerBaseXpDelta + championXpDelta + challengeXpDelta;
   const totalXpNew = progression.totalXp;
   const totalXpOld = Math.max(0, totalXpNew - totalXpDelta);
-  const eloProfile = getEloRatingProfileForUser(nk, logger, playerUserId);
+  const eloProfile = rewardSummaryReadModel?.eloProfile ?? getEloRatingProfileForUser(nk, logger, playerUserId);
 
   const ratingSummary =
     context.ratingProcessingResult?.byUserId[playerUserId] ??
@@ -3679,6 +3880,8 @@ function broadcastTournamentMatchRewardSummaries(
     return;
   }
 
+  const rewardSummaryReadModelsByUserId = buildTournamentRewardSummaryReadModelsByUserId(logger, nk, state);
+
   Object.entries(state.assignments).forEach(([playerUserId, playerColor]) => {
     const targets = getUserPresenceTargets(state, playerUserId);
     if (targets.length === 0) {
@@ -3698,6 +3901,7 @@ function broadcastTournamentMatchRewardSummaries(
           winnerProgressionAward: context.winnerProgressionAward,
           tournamentProcessingResult,
           challengeProcessingResults: context.challengeProcessingResults,
+          rewardSummaryReadModelsByUserId,
         },
       );
 

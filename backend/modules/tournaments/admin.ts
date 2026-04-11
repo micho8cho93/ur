@@ -414,6 +414,28 @@ const writeRunIndex = (nk: RuntimeNakama, index: TournamentRunIndexRecord, versi
   ]);
 };
 
+const isStorageVersionConflict = (error: unknown): boolean => {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("version check") ||
+    message.includes("version conflict") ||
+    message.includes("version mismatch") ||
+    message.includes("storage write rejected") ||
+    message.includes("already exists")
+  );
+};
+
+const getRunObjectVersionOrThrow = (runId: string, object: RuntimeStorageObject): string => {
+  const version = getStorageObjectVersion(object);
+  if (!version || version.trim().length === 0) {
+    throw new Error(
+      `Tournament run '${runId}' is missing a storage version and cannot be updated safely.`,
+    );
+  }
+
+  return version;
+};
+
 export const updateRunWithRetry = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
@@ -429,11 +451,16 @@ export const updateRunWithRetry = (
     }
 
     const next = updater(current);
+    const version = getRunObjectVersionOrThrow(runId, object);
 
     try {
-      writeRun(nk, next, getStorageObjectVersion(object) ?? "");
+      writeRun(nk, next, version);
       return next;
     } catch (error) {
+      if (!isStorageVersionConflict(error)) {
+        throw error;
+      }
+
       if (attempt === MAX_WRITE_ATTEMPTS) {
         throw error;
       }

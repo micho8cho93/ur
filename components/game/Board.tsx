@@ -55,6 +55,7 @@ interface BoardProps {
   highlightedPieceColor?: PlayerColor | null;
   onHighlightedPieceSettled?: (pieceId: string, color: PlayerColor) => void;
   onSelectedPieceChange?: (pieceId: string | null) => void;
+  onAnimatedMoveStateChange?: (active: boolean) => void;
 }
 
 interface Point {
@@ -349,6 +350,7 @@ export const Board: React.FC<BoardProps> = ({
   highlightedPieceColor = null,
   onHighlightedPieceSettled,
   onSelectedPieceChange,
+  onAnimatedMoveStateChange,
 }) => {
   const storeGameState = useGameStore((state) => state.gameState);
   const storeValidMoves = useGameStore((state) => state.validMoves);
@@ -1016,6 +1018,14 @@ export const Board: React.FC<BoardProps> = ({
     highlightedPieceIdRef.current = highlightedPieceId;
     highlightedPieceColorRef.current = highlightedPieceColor;
   }, [highlightedPieceColor, highlightedPieceId]);
+
+  useEffect(() => {
+    onAnimatedMoveStateChange?.(!freezeMotion && animatedMove !== null);
+  }, [animatedMove, freezeMotion, onAnimatedMoveStateChange]);
+
+  useEffect(() => () => {
+    onAnimatedMoveStateChange?.(false);
+  }, [onAnimatedMoveStateChange]);
 
   useEffect(() => {
     if (freezeMotion) {

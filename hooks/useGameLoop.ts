@@ -8,7 +8,10 @@ type UseGameLoopOptions = {
 };
 
 export const useGameLoop = ({ enabled = true, onBotSelectPiece }: UseGameLoopOptions = {}) => {
-    const gameState = useGameStore(state => state.gameState);
+    const phase = useGameStore(state => state.gameState.phase);
+    const currentTurn = useGameStore(state => state.gameState.currentTurn);
+    const winner = useGameStore(state => state.gameState.winner);
+    const rollValue = useGameStore(state => state.gameState.rollValue);
     const botDifficulty = useGameStore(state => state.botDifficulty);
     const roll = useGameStore(state => state.roll);
     const makeMove = useGameStore(state => state.makeMove);
@@ -18,8 +21,6 @@ export const useGameLoop = ({ enabled = true, onBotSelectPiece }: UseGameLoopOpt
             onBotSelectPiece?.(null);
             return;
         }
-
-        const { currentTurn, phase, winner, rollValue } = gameState;
 
         if (winner) {
             onBotSelectPiece?.(null);
@@ -37,6 +38,7 @@ export const useGameLoop = ({ enabled = true, onBotSelectPiece }: UseGameLoopOpt
             } else if (phase === 'moving') {
                 // Bot needs to move
                 // Delay for visual effect
+                const gameState = useGameStore.getState().gameState;
                 const move = getBotMove(gameState, rollValue!, botDifficulty);
                 onBotSelectPiece?.(move?.pieceId ?? null);
                 const timer = setTimeout(() => {
@@ -56,5 +58,5 @@ export const useGameLoop = ({ enabled = true, onBotSelectPiece }: UseGameLoopOpt
             }
         }
         onBotSelectPiece?.(null);
-    }, [botDifficulty, enabled, gameState, makeMove, onBotSelectPiece, roll]);
+    }, [botDifficulty, currentTurn, enabled, makeMove, onBotSelectPiece, phase, roll, rollValue, winner]);
 };
