@@ -426,6 +426,61 @@ describe('authoritative online timer runtime', () => {
     );
   });
 
+  it('clears AFK debt when a disconnected player rejoins', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const nowSpy = jest.spyOn(Date, 'now');
+    const { ctx, logger, nk, dispatcher, state } = initializeStartedMatch(runtime, nowSpy);
+
+    state.afk.dark.accumulatedMs = 20_000;
+    state.afk.dark.timeoutCount = 2;
+
+    nowSpy.mockReturnValue(11_500);
+    let nextState = runtime.matchLeave(ctx, logger, nk, dispatcher, 1, state, [
+      createPresence('dark-user', 'dark-session'),
+    ]).state;
+
+    nowSpy.mockReturnValue(12_000);
+    dispatcher.broadcastMessage.mockClear();
+    nextState = joinPresence({
+      runtime,
+      ctx,
+      logger,
+      nk,
+      dispatcher,
+      state: nextState,
+      presence: createPresence('dark-user', 'dark-session-2'),
+    });
+
+    expect(nextState.afk.dark.accumulatedMs).toBe(0);
+    expect(nextState.afk.dark.timeoutCount).toBe(0);
+    expect(nextState.afk.dark.lastMeaningfulActionAtMs).toBe(12_000);
+  });
+
+  it('does not clear AFK debt when a second concurrent session joins without a disconnect gap', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const nowSpy = jest.spyOn(Date, 'now');
+    const { ctx, logger, nk, dispatcher, state } = initializeStartedMatch(runtime, nowSpy);
+
+    state.afk.light.accumulatedMs = 10_000;
+    state.afk.light.timeoutCount = 1;
+
+    nowSpy.mockReturnValue(5_000);
+    dispatcher.broadcastMessage.mockClear();
+    const nextState = joinPresence({
+      runtime,
+      ctx,
+      logger,
+      nk,
+      dispatcher,
+      state,
+      presence: createPresence('light-user', 'light-session-2'),
+    });
+
+    expect(nextState.afk.light.accumulatedMs).toBe(10_000);
+    expect(nextState.afk.light.timeoutCount).toBe(1);
+    expect(nextState.afk.light.lastMeaningfulActionAtMs).toBeNull();
+  });
+
   it('moving-phase timeout auto-moves the first valid move', () => {
     const runtime = globalThis as RuntimeGlobals;
     const nowSpy = jest.spyOn(Date, 'now');

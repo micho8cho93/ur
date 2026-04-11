@@ -2273,11 +2273,26 @@ function matchJoin(
       logger.warn("Skipping join presence with missing user ID.");
       return;
     }
+    const hadPresenceBeforeJoin = getUserPresenceTargets(state, userId).length > 0;
     upsertPresence(state, presence);
     ensureAssignment(state, userId);
     cacheAssignedPlayerTitle(state, nk, userId);
     cacheAssignedPlayerRankTitle(state, nk, logger, userId);
-    clearedDisconnectGrace = clearDisconnectGraceForUser(state, userId) || clearedDisconnectGrace;
+    const didClearDisconnectGrace = clearDisconnectGraceForUser(state, userId);
+    clearedDisconnectGrace = didClearDisconnectGrace || clearedDisconnectGrace;
+    const playerColor = state.assignments[userId];
+    if (
+      state.started &&
+      !state.gameState.winner &&
+      state.gameState.phase !== "ended" &&
+      playerColor &&
+      !isConfiguredBotColor(state, playerColor) &&
+      (!hadPresenceBeforeJoin || didClearDisconnectGrace)
+    ) {
+      // Treat any successful session rejoin as renewed activity so stale AFK
+      // debt from a prior disconnected session cannot trigger a delayed forfeit.
+      resetAfkOnMeaningfulAction(state, playerColor, nowMs);
+    }
   });
 
   if (state.started && clearedDisconnectGrace && !hasActiveDisconnectGrace(state)) {

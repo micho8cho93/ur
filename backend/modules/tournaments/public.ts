@@ -46,6 +46,11 @@ import {
   normalizeTournamentBotPolicy,
 } from "../../../shared/tournamentBots";
 import {
+  TOURNAMENT_BRACKET_READY_NOTIFICATION_CODE,
+  TOURNAMENT_BRACKET_READY_NOTIFICATION_SUBJECT,
+  TOURNAMENT_BRACKET_READY_NOTIFICATION_TYPE,
+} from "../../../shared/tournamentNotifications";
+import {
   MAX_WRITE_ATTEMPTS,
   RuntimeStorageObject,
   STORAGE_PERMISSION_NONE,
@@ -58,6 +63,8 @@ import {
 const TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION = "tournament_run_memberships";
 const DEFAULT_PUBLIC_LIST_LIMIT = 50;
 const DEFAULT_PUBLIC_STANDINGS_LIMIT = 256;
+const SYSTEM_NOTIFICATION_SENDER_ID = "00000000-0000-0000-0000-000000000000";
+const BRACKET_START_NOTIFICATION_TOKEN_KEY = "publicBracketStartNotificationToken";
 
 export const RPC_LIST_PUBLIC_TOURNAMENTS = "list_public_tournaments";
 export const RPC_GET_PUBLIC_TOURNAMENT = "get_public_tournament";
@@ -763,6 +770,60 @@ const ensureRunRegistration = (
   };
 });
 
+const sendBracketReadyNotifications = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  run: TournamentRunRecord,
+): void => {
+  if (typeof nk.notificationSend !== "function") {
+    return;
+  }
+
+  const startedAt = run.bracket?.startedAt ?? run.updatedAt;
+  if (!startedAt) {
+    return;
+  }
+
+  const userIds = Array.from(
+    new Set(
+      run.registrations
+        .map((registration) => registration.userId)
+        .filter((userId) => userId.trim().length > 0 && !isTournamentBotUserId(userId)),
+    ),
+  );
+
+  if (userIds.length === 0) {
+    return;
+  }
+
+  const content = {
+    type: TOURNAMENT_BRACKET_READY_NOTIFICATION_TYPE,
+    runId: run.runId,
+    tournamentId: run.tournamentId,
+    startedAt,
+  };
+
+  userIds.forEach((userId) => {
+    try {
+      nk.notificationSend(
+        userId,
+        TOURNAMENT_BRACKET_READY_NOTIFICATION_SUBJECT,
+        content,
+        TOURNAMENT_BRACKET_READY_NOTIFICATION_CODE,
+        SYSTEM_NOTIFICATION_SENDER_ID,
+        false,
+      );
+    } catch (error) {
+      logger.warn(
+        "Unable to send bracket-ready notification for run %s to user %s: %s",
+        run.runId,
+        userId,
+        String(error),
+      );
+    }
+  });
+};
+
 const maybeStartBracketForRun = (
   nk: RuntimeNakama,
   logger: RuntimeLogger,
@@ -777,7 +838,11 @@ const maybeStartBracketForRun = (
     return run;
   }
 
-  return updateRunWithRetry(nk, logger, run.runId, (current) => {
+  const bracketStartNotificationToken = `bracket-start:${run.runId}:${Date.now()}:${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+
+  const nextRun = updateRunWithRetry(nk, logger, run.runId, (current) => {
     if (current.bracket) {
       return current;
     }
@@ -786,9 +851,23 @@ const maybeStartBracketForRun = (
     return {
       ...current,
       updatedAt: startedAt,
+      metadata: {
+        ...readMetadata(current),
+        [BRACKET_START_NOTIFICATION_TOKEN_KEY]: bracketStartNotificationToken,
+      },
       bracket: createSingleEliminationBracket(current.registrations, startedAt),
     };
   });
+
+  if (
+    nextRun.bracket &&
+    readStringField(readMetadata(nextRun), [BRACKET_START_NOTIFICATION_TOKEN_KEY]) ===
+      bracketStartNotificationToken
+  ) {
+    sendBracketReadyNotifications(nk, logger, nextRun);
+  }
+
+  return nextRun;
 };
 
 const buildTournamentLaunchResponse = (params: {
@@ -1188,40 +1267,7 @@ export const rpcLaunchTournamentMatch = (
   const modeId = readStringField(metadata, ["gameMode", "game_mode"]) ?? "standard";
   const rewardSettings = resolveTournamentXpRewardSettings(metadata);
   const botPolicy = normalizeTournamentBotPolicy(run.metadata);
-  const botUserId =
-    isTournamentBotUserId(entry.playerAUserId) && entry.playerAUserId !== userId
-      ? entry.playerAUserId
-      : isTournamentBotUserId(entry.playerBUserId) && entry.playerBUserId !== userId
-        ? entry.playerBUserId
-        : null;
-  const botDisplayName =
-    botUserId
-      ? buildTournamentBotDisplayNames([botUserId], botPolicy.difficulty)[botUserId] ?? botUserId
-      : null;
-  const matchId = nk.matchCreate("authoritative_match", {
-    playerIds: [entry.playerAUserId, entry.playerBUserId].filter((candidate): candidate is string => Boolean(candidate)),
-    modeId,
-    rankedMatch: true,
-    casualMatch: false,
-    botMatch: Boolean(botUserId),
-    privateMatch: false,
-    winRewardSource: "pvp_win",
-    allowsChallengeRewards: true,
-    tournamentRunId: run.runId,
-    tournamentId: run.tournamentId,
-    tournamentRound: entry.round,
-    tournamentEntryId: entry.entryId,
-    tournamentMatchWinXp: rewardSettings.xpPerMatchWin,
-    tournamentChampionXp: rewardSettings.xpForTournamentChampion,
-    tournamentEliminationRisk: true,
-    ...(botUserId
-      ? {
-          botDifficulty: botPolicy.difficulty ?? DEFAULT_BOT_DIFFICULTY,
-          botUserId,
-          botDisplayName,
-        }
-      : {}),
-  });
+  let createdMatchId: string | null = null;
   const launchedAt = new Date().toISOString();
 
   run = updateRunWithRetry(nk, logger, run.runId, (current) => {
@@ -1234,10 +1280,55 @@ export const rpcLaunchTournamentMatch = (
       return current;
     }
 
+    if (!createdMatchId) {
+      const currentEntryBotUserId =
+        isTournamentBotUserId(currentEntry.playerAUserId) && currentEntry.playerAUserId !== userId
+          ? currentEntry.playerAUserId
+          : isTournamentBotUserId(currentEntry.playerBUserId) && currentEntry.playerBUserId !== userId
+            ? currentEntry.playerBUserId
+            : null;
+      const currentEntryBotDisplayName =
+        currentEntryBotUserId
+          ? buildTournamentBotDisplayNames([currentEntryBotUserId], botPolicy.difficulty)[currentEntryBotUserId] ??
+            currentEntryBotUserId
+          : null;
+
+      createdMatchId = nk.matchCreate("authoritative_match", {
+        playerIds: [currentEntry.playerAUserId, currentEntry.playerBUserId].filter(
+          (candidate): candidate is string => Boolean(candidate),
+        ),
+        modeId,
+        rankedMatch: true,
+        casualMatch: false,
+        botMatch: Boolean(currentEntryBotUserId),
+        privateMatch: false,
+        winRewardSource: "pvp_win",
+        allowsChallengeRewards: true,
+        tournamentRunId: current.runId,
+        tournamentId: current.tournamentId,
+        tournamentRound: currentEntry.round,
+        tournamentEntryId: currentEntry.entryId,
+        tournamentMatchWinXp: rewardSettings.xpPerMatchWin,
+        tournamentChampionXp: rewardSettings.xpForTournamentChampion,
+        tournamentEliminationRisk: true,
+        ...(currentEntryBotUserId
+          ? {
+              botDifficulty: botPolicy.difficulty ?? DEFAULT_BOT_DIFFICULTY,
+              botUserId: currentEntryBotUserId,
+              botDisplayName: currentEntryBotDisplayName,
+            }
+          : {}),
+      });
+    }
+
+    if (!createdMatchId) {
+      throw new Error("Unable to allocate tournament match.");
+    }
+
     return {
       ...current,
       updatedAt: launchedAt,
-      bracket: startTournamentBracketMatch(current.bracket, userId, matchId, launchedAt),
+      bracket: startTournamentBracketMatch(current.bracket, userId, createdMatchId, launchedAt),
     };
   });
 
@@ -1245,7 +1336,11 @@ export const rpcLaunchTournamentMatch = (
   const activeEntry = activeParticipant?.currentEntryId && run.bracket
     ? getTournamentBracketEntry(run.bracket, activeParticipant.currentEntryId)
     : null;
-  const resolvedMatchId = activeParticipant?.activeMatchId ?? activeEntry?.matchId ?? matchId;
+  const resolvedMatchId = activeParticipant?.activeMatchId ?? activeEntry?.matchId ?? createdMatchId;
+
+  if (!resolvedMatchId) {
+    throw new Error("Unable to resolve tournament match assignment.");
+  }
 
   appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.match_launch.created", {
     matchId: resolvedMatchId,

@@ -5,8 +5,13 @@ import {
   rpcLaunchTournamentMatch,
   rpcListPublicTournaments,
 } from './public';
+import {
+  TOURNAMENT_BRACKET_READY_NOTIFICATION_CODE,
+  TOURNAMENT_BRACKET_READY_NOTIFICATION_SUBJECT,
+  TOURNAMENT_BRACKET_READY_NOTIFICATION_TYPE,
+} from '../../../shared/tournamentNotifications';
 import { TOURNAMENT_LOBBY_FILL_COUNTDOWN_MS } from '../../../shared/tournamentLobby';
-import { completeTournamentBracketMatch } from './bracket';
+import { completeTournamentBracketMatch, startTournamentBracketMatch } from './bracket';
 
 type StoredObject = {
   collection: string;
@@ -134,6 +139,7 @@ const createNakama = () => {
     tournamentJoin: jest.fn((tournamentId: string) => {
       entrantCounts.set(tournamentId, (entrantCounts.get(tournamentId) ?? 0) + 1);
     }),
+    notificationSend: jest.fn(),
     matchCreate: jest.fn(() => 'match-tournament-1'),
   };
 };
@@ -354,6 +360,31 @@ describe('public tournament rpc flow', () => {
         canLaunch: true,
       }),
     );
+    expect(nk.notificationSend).toHaveBeenCalledTimes(2);
+    expect(nk.notificationSend).toHaveBeenCalledWith(
+      'user-1',
+      TOURNAMENT_BRACKET_READY_NOTIFICATION_SUBJECT,
+      expect.objectContaining({
+        type: TOURNAMENT_BRACKET_READY_NOTIFICATION_TYPE,
+        runId: 'run-1',
+        tournamentId: 'tour-1',
+      }),
+      TOURNAMENT_BRACKET_READY_NOTIFICATION_CODE,
+      '00000000-0000-0000-0000-000000000000',
+      false,
+    );
+    expect(nk.notificationSend).toHaveBeenCalledWith(
+      'user-2',
+      TOURNAMENT_BRACKET_READY_NOTIFICATION_SUBJECT,
+      expect.objectContaining({
+        type: TOURNAMENT_BRACKET_READY_NOTIFICATION_TYPE,
+        runId: 'run-1',
+        tournamentId: 'tour-1',
+      }),
+      TOURNAMENT_BRACKET_READY_NOTIFICATION_CODE,
+      '00000000-0000-0000-0000-000000000000',
+      false,
+    );
 
     const hostLaunch = JSON.parse(
       rpcLaunchTournamentMatch(
@@ -430,6 +461,116 @@ describe('public tournament rpc flow', () => {
         tournamentChampionXp: 420,
       }),
     );
+  });
+
+  it('reuses an existing entry match when launch races with another writer', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedOpenRun(nk, {
+      entrants: 0,
+      maxSize: 2,
+      metadata: {
+        gameMode: 'standard',
+        region: 'Global',
+        buyIn: 'Free',
+      },
+    });
+
+    rpcJoinPublicTournament(
+      { userId: 'user-1', username: 'RoyalPlayer' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+    rpcJoinPublicTournament(
+      { userId: 'user-2', username: 'TempleGuest' },
+      logger,
+      nk,
+      JSON.stringify({ runId: 'run-1' }),
+    );
+
+    nk.matchCreate.mockReturnValue('match-created-locally');
+
+    const originalStorageWrite = nk.storageWrite.getMockImplementation();
+    if (!originalStorageWrite) {
+      throw new Error('Missing storageWrite mock implementation.');
+    }
+
+    let injectedConflict = false;
+    nk.storageWrite.mockImplementation((writes: StorageWriteRequest[]) => {
+      const runWrite = writes.find((write) => write.collection === 'tournament_runs' && write.key === 'run-1');
+      const nextRunValue = (runWrite?.value ?? null) as Record<string, unknown> | null;
+      const nextBracketEntries = Array.isArray((nextRunValue as any)?.bracket?.entries)
+        ? ((nextRunValue as any).bracket.entries as Array<Record<string, unknown>>)
+        : [];
+      const isLaunchingWrite = nextBracketEntries.some(
+        (entry) => typeof entry?.matchId === 'string' && entry.matchId.length > 0,
+      );
+
+      if (!injectedConflict && runWrite && isLaunchingWrite) {
+        injectedConflict = true;
+
+        const storedRunObject = nk.storage.get(buildStorageKey('tournament_runs', 'run-1'));
+        if (!storedRunObject) {
+          throw new Error('Missing stored run object.');
+        }
+
+        const currentRun = readStoredRunValue(nk);
+        const currentBracket = currentRun.bracket as Parameters<typeof startTournamentBracketMatch>[0];
+        if (!currentBracket) {
+          throw new Error('Expected bracket to be initialized.');
+        }
+
+        const racedBracket = startTournamentBracketMatch(
+          currentBracket,
+          'user-2',
+          'match-race-winner',
+          '2026-03-27T10:02:00.000Z',
+        );
+
+        originalStorageWrite([
+          {
+            collection: 'tournament_runs',
+            key: 'run-1',
+            value: {
+              ...currentRun,
+              updatedAt: '2026-03-27T10:02:00.000Z',
+              bracket: racedBracket,
+            },
+            version: storedRunObject.version,
+          },
+        ]);
+
+        throw new Error('Storage version mismatch for tournament_runs:run-1:');
+      }
+
+      originalStorageWrite(writes);
+    });
+
+    const launchResponse = JSON.parse(
+      rpcLaunchTournamentMatch(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      matchId: string;
+      queueStatus: string;
+      statusMessage: string;
+      playerState: string;
+      tournamentEntryId: string | null;
+    };
+
+    expect(launchResponse).toEqual(
+      expect.objectContaining({
+        matchId: 'match-race-winner',
+        queueStatus: 'active_match',
+        playerState: 'in_match',
+        tournamentEntryId: 'round-1-match-1',
+      }),
+    );
+    expect(nk.matchCreate).toHaveBeenCalledTimes(1);
   });
 
   it('ignores stale memberships from an older run instance and allows joining the recreated run', () => {
