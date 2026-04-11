@@ -12045,8 +12045,12 @@ var parseRpcPayload = (payload) => {
   if (!payload) {
     return {};
   }
-  const data = JSON.parse(payload);
-  return (_a = asRecord7(data)) != null ? _a : {};
+  try {
+    const data = JSON.parse(payload);
+    return (_a = asRecord7(data)) != null ? _a : {};
+  } catch (_error) {
+    return {};
+  }
 };
 var normalizePrivateMatchCodeRecord = (value) => {
   var _a;
@@ -12061,12 +12065,12 @@ var normalizePrivateMatchCodeRecord = (value) => {
   const joinedUserId = readStringField12(record, ["joinedUserId", "joined_user_id"]);
   const createdAt = readStringField12(record, ["createdAt", "created_at"]);
   const updatedAt = readStringField12(record, ["updatedAt", "updated_at"]);
-  if (!isPrivateMatchCode(code) || !matchId || !isMatchModeId(modeId) || !creatorUserId || !createdAt || !updatedAt) {
+  if (!isPrivateMatchCode(code) || !isMatchModeId(modeId) || !creatorUserId || !createdAt || !updatedAt) {
     return null;
   }
   return {
     code,
-    matchId,
+    matchId: matchId != null ? matchId : null,
     modeId,
     creatorUserId,
     joinedUserId: joinedUserId != null ? joinedUserId : null,
@@ -12101,56 +12105,69 @@ var readPrivateMatchCodeObject = (nk, code) => {
   };
 };
 var writePrivateMatchCodeRecord = (nk, record, version) => {
+  const write = {
+    collection: PRIVATE_MATCH_CODE_COLLECTION,
+    key: record.code,
+    userId: SYSTEM_USER_ID5,
+    value: record,
+    permissionRead: STORAGE_PERMISSION_NONE2,
+    permissionWrite: STORAGE_PERMISSION_NONE2
+  };
+  if (typeof version === "string") {
+    write.version = version;
+  }
   nk.storageWrite([
-    {
-      collection: PRIVATE_MATCH_CODE_COLLECTION,
-      key: record.code,
-      userId: SYSTEM_USER_ID5,
-      value: record,
-      version,
-      permissionRead: STORAGE_PERMISSION_NONE2,
-      permissionWrite: STORAGE_PERMISSION_NONE2
-    }
+    write
   ]);
 };
-var createAvailablePrivateMatchCode = (nk) => {
+var getErrorMessage4 = (error) => error instanceof Error ? error.message : String(error);
+var isPrivateMatchCodeReservationConflict = (error) => {
+  const message = getErrorMessage4(error).toLowerCase();
+  return message.includes("version check") || message.includes("version conflict") || message.includes("storage write rejected") || message.includes("already exists");
+};
+var reservePrivateMatchCodeRecord = (nk, modeId, creatorUserId) => {
   for (let attempt = 0; attempt < PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS; attempt += 1) {
-    const code = generatePrivateMatchCode();
-    const existing = readPrivateMatchCodeObject(nk, code);
-    if (existing.record) {
-      continue;
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const record = {
+      code: generatePrivateMatchCode(),
+      matchId: null,
+      modeId,
+      creatorUserId,
+      joinedUserId: null,
+      createdAt: now,
+      updatedAt: now
+    };
+    try {
+      writePrivateMatchCodeRecord(nk, record, "*");
+      return record;
+    } catch (error) {
+      if (isPrivateMatchCodeReservationConflict(error)) {
+        continue;
+      }
+      throw new Error("Unable to reserve a private game code right now.");
     }
-    return code;
   }
   throw new Error("Unable to create a private game code right now.");
 };
-var createPrivateMatchCodeRecord = (nk, modeId, matchId, creatorUserId, code) => {
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  const record = {
-    code,
-    matchId,
-    modeId,
-    creatorUserId,
-    joinedUserId: null,
-    createdAt: now,
-    updatedAt: now
-  };
-  writePrivateMatchCodeRecord(nk, record, "*");
-  return record;
+var createPrivateMatchCodeRecord = (nk, reservation, matchId) => {
+  const record = __spreadProps(__spreadValues({}, reservation), { matchId, updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+  for (let attempt = 0; attempt < PRIVATE_MATCH_CODE_WRITE_ATTEMPTS; attempt += 1) {
+    try {
+      writePrivateMatchCodeRecord(nk, record);
+      return record;
+    } catch (e) {
+    }
+  }
+  throw new Error("Unable to publish private game code right now.");
 };
-var createReservedPrivateMatchCodeRecord = (nk, modeId, matchId, creatorUserId, joinedUserId, code) => {
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  const record = {
-    code,
-    matchId,
-    modeId,
-    creatorUserId,
-    joinedUserId,
-    createdAt: now,
-    updatedAt: now
-  };
-  writePrivateMatchCodeRecord(nk, record, "*");
-  return record;
+var deletePrivateMatchCodeRecord = (nk, code) => {
+  nk.storageDelete([
+    {
+      collection: PRIVATE_MATCH_CODE_COLLECTION,
+      key: code,
+      userId: SYSTEM_USER_ID5
+    }
+  ]);
 };
 var claimPrivateMatchCode = (nk, code, userId) => {
   var _a;
@@ -12162,6 +12179,9 @@ var claimPrivateMatchCode = (nk, code, userId) => {
     const { object, record } = readPrivateMatchCodeObject(nk, normalizedCode);
     if (!record) {
       throw new Error("Private game code not found.");
+    }
+    if (!record.matchId) {
+      throw new Error("Private game is still starting. Try this code again in a moment.");
     }
     if (record.creatorUserId === userId || record.joinedUserId === userId) {
       return record;
@@ -12570,37 +12590,71 @@ var buildRematchMatchParams = (state, privateCode) => {
   }
   return params;
 };
-var maybeCreateRematchMatch = (logger, nk, state, currentMatchId) => {
+var maybeCreateRematchMatch = (logger, nk, dispatcher, state, currentMatchId) => {
   if (state.rematch.status !== "pending" || state.rematch.nextMatchId !== null || !haveAllRematchPlayersAccepted(state)) {
     return false;
   }
+  let privateCodeReservation = null;
   let nextPrivateCode = null;
   if (state.privateMatch) {
     syncPrivateMatchReservation(nk, state);
-    nextPrivateCode = createAvailablePrivateMatchCode(nk);
+    if (!state.privateCreatorUserId) {
+      throw new Error("Private rematch requires a preserved creator.");
+    }
+    privateCodeReservation = reservePrivateMatchCodeRecord(nk, state.modeId, state.privateCreatorUserId);
+    nextPrivateCode = privateCodeReservation.code;
   }
-  const nextMatchId = nk.matchCreate(MATCH_HANDLER, buildRematchMatchParams(state, nextPrivateCode));
+  let nextMatchId;
+  try {
+    nextMatchId = nk.matchCreate(MATCH_HANDLER, buildRematchMatchParams(state, nextPrivateCode));
+  } catch (error) {
+    if (privateCodeReservation) {
+      try {
+        deletePrivateMatchCodeRecord(nk, privateCodeReservation.code);
+      } catch (deleteError) {
+        logger.warn(
+          "Private rematch code %s cleanup failed after matchCreate error on match %s: %s",
+          privateCodeReservation.code,
+          currentMatchId,
+          getErrorMessage4(deleteError)
+        );
+      }
+    }
+    throw error;
+  }
   state.rematch.status = "matched";
   state.rematch.nextMatchId = nextMatchId;
   state.rematch.nextPrivateCode = nextPrivateCode;
   state.revision += 1;
-  if (state.privateMatch && nextPrivateCode && state.privateCreatorUserId && state.privateGuestUserId) {
+  if (privateCodeReservation && state.privateGuestUserId) {
     try {
-      createReservedPrivateMatchCodeRecord(
+      createPrivateMatchCodeRecord(
         nk,
-        state.modeId,
-        nextMatchId,
-        state.privateCreatorUserId,
-        state.privateGuestUserId,
-        nextPrivateCode
+        __spreadProps(__spreadValues({}, privateCodeReservation), {
+          joinedUserId: state.privateGuestUserId
+        }),
+        nextMatchId
       );
     } catch (error) {
       logger.warn(
-        "Created private rematch %s from match %s but failed to persist private code reservation: %s",
+        "Created private rematch %s from match %s but failed to publish private code %s: %s",
         nextMatchId,
         currentMatchId,
-        error instanceof Error ? error.message : String(error)
+        privateCodeReservation.code,
+        getErrorMessage4(error)
       );
+      const rematchPlayerIds = getOrderedRematchHumanUserIds(state);
+      if (rematchPlayerIds) {
+        rematchPlayerIds.forEach((userId) => {
+          sendError(
+            dispatcher,
+            state,
+            userId,
+            "MATCH_NOT_READY",
+            "Rematch started but private code sync failed. If either player cannot rejoin, start a new private table."
+          );
+        });
+      }
     }
   }
   logger.info("Created authoritative rematch %s from completed match %s.", nextMatchId, currentMatchId);
@@ -12612,7 +12666,7 @@ var syncRematchState = (logger, nk, dispatcher, state, matchId, nowMs) => {
   if (state.rematch.status === "pending" && state.rematch.deadlineMs !== null && nowMs >= state.rematch.deadlineMs) {
     didChange = expireRematchWindow(state) || didChange;
   } else if (state.rematch.status === "pending") {
-    didChange = maybeCreateRematchMatch(logger, nk, state, matchId) || didChange;
+    didChange = maybeCreateRematchMatch(logger, nk, dispatcher, state, matchId) || didChange;
   }
   if (didChange) {
     broadcastSnapshot(dispatcher, state, matchId);
@@ -12941,7 +12995,7 @@ function rpcAuthLinkCustom(ctx, logger, nk, payload) {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
-  const data = payload ? JSON.parse(payload) : {};
+  const data = parseRpcPayload(payload);
   const customId = data.customId;
   const username = data.username;
   if (!customId) {
@@ -12959,7 +13013,7 @@ function rpcMatchmakerAdd(ctx, _logger, nk, payload) {
     throw new Error("Authentication required.");
   }
   requireCompletedUsernameOnboarding(nk, ctx.userId);
-  const data = payload ? JSON.parse(payload) : {};
+  const data = parseRpcPayload(payload);
   const minCount = Number.isInteger(data.minCount) ? data.minCount : 2;
   const maxCount = Number.isInteger(data.maxCount) ? data.maxCount : 2;
   const query = typeof data.query === "string" ? data.query : "*";
@@ -12976,7 +13030,7 @@ function rpcMatchmakerAdd(ctx, _logger, nk, payload) {
   );
   return JSON.stringify({ ticket });
 }
-function rpcCreatePrivateMatch(ctx, _logger, nk, payload) {
+function rpcCreatePrivateMatch(ctx, logger, nk, payload) {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
@@ -12984,20 +13038,46 @@ function rpcCreatePrivateMatch(ctx, _logger, nk, payload) {
   const data = parseRpcPayload(payload);
   const modeId = resolveMatchModeId(data.modeId);
   const matchConfig = getMatchConfig(modeId);
-  const privateCode = createAvailablePrivateMatchCode(nk);
-  const matchId = nk.matchCreate(MATCH_HANDLER, {
-    playerIds: [ctx.userId],
-    modeId,
-    rankedMatch: matchConfig.allowsRankedStats,
-    casualMatch: false,
-    botMatch: false,
-    privateMatch: true,
-    privateCode,
-    privateCreatorUserId: ctx.userId,
-    winRewardSource: "private_pvp_win",
-    allowsChallengeRewards: true
-  });
-  createPrivateMatchCodeRecord(nk, modeId, matchId, ctx.userId, privateCode);
+  const reservation = reservePrivateMatchCodeRecord(nk, modeId, ctx.userId);
+  const privateCode = reservation.code;
+  let matchId;
+  try {
+    matchId = nk.matchCreate(MATCH_HANDLER, {
+      playerIds: [ctx.userId],
+      modeId,
+      rankedMatch: matchConfig.allowsRankedStats,
+      casualMatch: false,
+      botMatch: false,
+      privateMatch: true,
+      privateCode,
+      privateCreatorUserId: ctx.userId,
+      winRewardSource: "private_pvp_win",
+      allowsChallengeRewards: true
+    });
+  } catch (error) {
+    try {
+      deletePrivateMatchCodeRecord(nk, privateCode);
+    } catch (deleteError) {
+      logger.warn(
+        "Private code %s reservation cleanup failed after matchCreate error: %s",
+        privateCode,
+        getErrorMessage4(deleteError)
+      );
+    }
+    throw error;
+  }
+  try {
+    createPrivateMatchCodeRecord(nk, reservation, matchId);
+  } catch (error) {
+    logger.warn(
+      "Private match %s was created for %s but could not publish code %s: %s",
+      matchId,
+      ctx.userId,
+      privateCode,
+      getErrorMessage4(error)
+    );
+    throw new Error("Private table was created but could not be published. Please create a new private table.");
+  }
   return buildPrivateMatchRpcResponse(matchId, modeId, privateCode);
 }
 function rpcJoinPrivateMatch(ctx, _logger, nk, payload) {
@@ -13008,6 +13088,9 @@ function rpcJoinPrivateMatch(ctx, _logger, nk, payload) {
   const data = parseRpcPayload(payload);
   const requestedCode = typeof data.code === "string" ? data.code : "";
   const reservation = claimPrivateMatchCode(nk, requestedCode, ctx.userId);
+  if (!reservation.matchId) {
+    throw new Error("Private game is still starting. Try this code again in a moment.");
+  }
   return buildPrivateMatchRpcResponse(reservation.matchId, reservation.modeId, reservation.code);
 }
 function rpcGetPrivateMatchStatus(ctx, _logger, nk, payload) {
@@ -13024,6 +13107,9 @@ function rpcGetPrivateMatchStatus(ctx, _logger, nk, payload) {
   const { record } = readPrivateMatchCodeObject(nk, normalizedCode);
   if (!record) {
     throw new Error("Private game code not found.");
+  }
+  if (!record.matchId) {
+    throw new Error("Private game is still starting. Try this code again in a moment.");
   }
   if (record.creatorUserId !== ctx.userId && record.joinedUserId !== ctx.userId) {
     throw new Error("You do not have access to this private game.");

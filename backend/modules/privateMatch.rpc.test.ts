@@ -241,12 +241,12 @@ describe('private match RPC payloads', () => {
         key: created.code,
       },
     ]);
-    expect(nk.storageWrite).toHaveBeenCalledWith([
+    expect(nk.storageWrite).toHaveBeenNthCalledWith(3, [
       expect.objectContaining({
         collection: 'private_match_codes',
         key: created.code,
         userId: '00000000-0000-0000-0000-000000000000',
-        version: 'version-1',
+        version: 'version-2',
         value: expect.objectContaining({
           code: created.code,
           creatorUserId: 'creator-1',
@@ -257,5 +257,70 @@ describe('private match RPC payloads', () => {
       }),
     ]);
     expect(JSON.parse(response)).toEqual(expect.objectContaining(created));
+  });
+
+  it('retries reservation collisions before creating the private match', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = {
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+    const nk = {
+      storageRead: jest.fn(() => []),
+      storageWrite: jest
+        .fn()
+        .mockImplementationOnce(() => {
+          throw new Error('Storage write rejected - version check failed.');
+        })
+        .mockImplementation(() => undefined),
+      matchCreate: jest.fn(() => 'match-1'),
+    };
+
+    const response = runtime.rpcCreatePrivateMatch(
+      { userId: 'user-1' },
+      logger,
+      nk,
+      JSON.stringify({ modeId: 'standard' }),
+    );
+
+    expect(JSON.parse(response)).toEqual(
+      expect.objectContaining({
+        matchId: 'match-1',
+        modeId: 'standard',
+      }),
+    );
+    expect(nk.storageWrite).toHaveBeenCalledTimes(3);
+    expect(nk.matchCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a clear error when publishing the reserved code fails after match creation', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = {
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+    const nk = {
+      storageRead: jest.fn(() => []),
+      storageWrite: jest
+        .fn()
+        .mockImplementationOnce(() => undefined)
+        .mockImplementation(() => {
+          throw new Error('temporary storage outage');
+        }),
+      matchCreate: jest.fn(() => 'match-1'),
+    };
+
+    expect(() =>
+      runtime.rpcCreatePrivateMatch(
+        { userId: 'user-1' },
+        logger,
+        nk,
+        JSON.stringify({ modeId: 'standard' }),
+      ),
+    ).toThrow('Private table was created but could not be published. Please create a new private table.');
+    expect(nk.matchCreate).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 });
