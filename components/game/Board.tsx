@@ -416,8 +416,11 @@ export const Board: React.FC<BoardProps> = ({
   const pathLength = pathDefinition.pathLength;
   const previousGameStateRef = React.useRef<GameState | null>(null);
   const previousHistoryCountRef = React.useRef<number>(historyEntryCount);
+  const lastAnimatedMoveSignatureRef = React.useRef<string | null>(null);
   const autoCommitMoveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const animatedExternalHighlightRef = React.useRef<{ pieceId: string; color: PlayerColor } | null>(null);
+  const highlightedPieceIdRef = React.useRef<string | null>(highlightedPieceId);
+  const highlightedPieceColorRef = React.useRef<PlayerColor | null>(highlightedPieceColor);
   const getPathForColor = React.useCallback(
     (color: 'light' | 'dark') => (color === 'light' ? pathDefinition.light : pathDefinition.dark),
     [pathDefinition.dark, pathDefinition.light],
@@ -986,6 +989,11 @@ export const Board: React.FC<BoardProps> = ({
   }, [clearAutoCommitMoveTimer, gameState.currentTurn, gameState.phase, gameState.rollValue]);
 
   useEffect(() => {
+    highlightedPieceIdRef.current = highlightedPieceId;
+    highlightedPieceColorRef.current = highlightedPieceColor;
+  }, [highlightedPieceColor, highlightedPieceId]);
+
+  useEffect(() => {
     if (freezeMotion) {
       clearAutoCommitMoveTimer();
       setSelectedMove(null);
@@ -994,6 +1002,7 @@ export const Board: React.FC<BoardProps> = ({
       clearAnimatedMove();
       previousGameStateRef.current = gameState;
       previousHistoryCountRef.current = historyEntryCount;
+      lastAnimatedMoveSignatureRef.current = null;
       return;
     }
 
@@ -1054,7 +1063,19 @@ export const Board: React.FC<BoardProps> = ({
         );
 
         if (nextAnimatedMove) {
-          setAnimatedMove(nextAnimatedMove);
+          const animationSignature = [
+            historyEntryCount,
+            movingColor,
+            movedPiece.id,
+            previousPiece.position,
+            movedPiece.position,
+            capturedPiece?.id ?? 'none',
+          ].join(':');
+
+          if (lastAnimatedMoveSignatureRef.current !== animationSignature) {
+            lastAnimatedMoveSignatureRef.current = animationSignature;
+            setAnimatedMove(nextAnimatedMove);
+          }
         }
       }
     }
@@ -1087,12 +1108,12 @@ export const Board: React.FC<BoardProps> = ({
     movingPieceLanding.value = 0;
     capturedPieceCrush.value = 0;
     animatedExternalHighlightRef.current =
-      highlightedPieceId &&
-      highlightedPieceColor === animatedMove.color &&
-      highlightedPieceId === animatedMove.pieceId
+      highlightedPieceIdRef.current &&
+      highlightedPieceColorRef.current === animatedMove.color &&
+      highlightedPieceIdRef.current === animatedMove.pieceId
         ? {
-            pieceId: highlightedPieceId,
-            color: highlightedPieceColor,
+            pieceId: highlightedPieceIdRef.current,
+            color: highlightedPieceColorRef.current,
           }
         : null;
     movingPieceLift.value = withSequence(
@@ -1176,8 +1197,6 @@ export const Board: React.FC<BoardProps> = ({
     movingPieceLanding,
     movingPieceLift,
     movingPieceProgress,
-    highlightedPieceColor,
-    highlightedPieceId,
   ]);
 
   useEffect(() => () => {
@@ -1193,7 +1212,6 @@ export const Board: React.FC<BoardProps> = ({
       turn: gameState.currentTurn,
       playerColor: assignedPlayerColor,
     });
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
     clearAutoCommitMoveTimer();
     setBlockedPreview(null);
     makeMove(move);
