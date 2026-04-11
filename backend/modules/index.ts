@@ -54,6 +54,7 @@ import {
   MoveRequestPayload,
   PieceSelectionBroadcastPayload,
   PieceSelectionRequestPayload,
+  RematchDecision,
   RematchResponsePayload,
   RollRequestPayload,
   ServerErrorCode,
@@ -327,7 +328,7 @@ type MatchBotState = {
 type MatchRematchState = {
   status: StateSnapshotRematch["status"];
   deadlineMs: number | null;
-  acceptedByUserId: Record<string, boolean>;
+  decisionsByUserId: Record<string, RematchDecision>;
   nextMatchId: string | null;
   nextPrivateCode: string | null;
 };
@@ -341,7 +342,7 @@ const ONLINE_TURN_DURATION_MS = 10_000;
 const ONLINE_AFK_FORFEIT_MS = 30_000;
 const ONLINE_DISCONNECT_GRACE_MS = 15_000;
 const ONLINE_RECONNECT_RESUME_MS = 5_000;
-const REMATCH_WINDOW_MS = 10_000;
+const REMATCH_WINDOW_MS = 15_000;
 const BOT_TURN_DELAY_MS = 850;
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -898,19 +899,20 @@ const syncPrivateMatchReservation = (nk: nkruntime.Nakama, state: MatchState): v
 const createMatchRematchState = (): MatchRematchState => ({
   status: "idle",
   deadlineMs: null,
-  acceptedByUserId: {},
+  decisionsByUserId: {},
   nextMatchId: null,
   nextPrivateCode: null,
 });
 
 const getRematchAcceptedUserIds = (state: MatchState): string[] =>
-  Object.entries(state.rematch.acceptedByUserId)
-    .filter(([, accepted]) => accepted === true)
+  Object.entries(state.rematch.decisionsByUserId)
+    .filter(([, decision]) => decision === "accepted")
     .map(([userId]) => userId);
 
 const buildSnapshotRematch = (state: MatchState): StateSnapshotRematch => ({
   status: state.rematch.status,
   deadlineMs: state.rematch.deadlineMs,
+  decisionsByUserId: { ...state.rematch.decisionsByUserId },
   acceptedUserIds: getRematchAcceptedUserIds(state),
   nextMatchId: state.rematch.nextMatchId,
   nextPrivateCode: state.rematch.nextPrivateCode,
@@ -1119,12 +1121,12 @@ const openRematchWindow = (state: MatchState, nowMs: number): boolean => {
   state.rematch = {
     status: "pending",
     deadlineMs: nowMs + REMATCH_WINDOW_MS,
-    acceptedByUserId: rematchPlayerIds.reduce(
+    decisionsByUserId: rematchPlayerIds.reduce(
       (entries, userId) => {
-        entries[userId] = false;
+        entries[userId] = "pending";
         return entries;
       },
-      {} as Record<string, boolean>,
+      {} as Record<string, RematchDecision>,
     ),
     nextMatchId: null,
     nextPrivateCode: null,
@@ -1147,7 +1149,7 @@ const haveAllRematchPlayersAccepted = (state: MatchState): boolean => {
   const rematchPlayerIds = getOrderedRematchHumanUserIds(state);
   return Boolean(
     rematchPlayerIds &&
-    rematchPlayerIds.every((userId) => state.rematch.acceptedByUserId[userId] === true),
+    rematchPlayerIds.every((userId) => state.rematch.decisionsByUserId[userId] === "accepted"),
   );
 };
 
@@ -3135,7 +3137,7 @@ function applyRematchResponse(
     return;
   }
 
-  if (!(userId in state.rematch.acceptedByUserId)) {
+  if (!(userId in state.rematch.decisionsByUserId)) {
     return;
   }
 
@@ -3146,11 +3148,13 @@ function applyRematchResponse(
     return;
   }
 
-  if (state.rematch.acceptedByUserId[userId] === payload.accepted) {
+  const nextDecision: RematchDecision = payload.accepted ? "accepted" : "declined";
+
+  if (state.rematch.decisionsByUserId[userId] === nextDecision) {
     return;
   }
 
-  state.rematch.acceptedByUserId[userId] = payload.accepted;
+  state.rematch.decisionsByUserId[userId] = nextDecision;
   state.revision += 1;
   broadcastSnapshot(dispatcher, state, matchId);
 }

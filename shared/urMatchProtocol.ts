@@ -99,10 +99,12 @@ export type StateSnapshotPlayer = {
 export type StateSnapshotPlayers = Record<PlayerColor, StateSnapshotPlayer>;
 
 export type RematchStatus = "idle" | "pending" | "matched" | "expired";
+export type RematchDecision = "pending" | "accepted" | "declined";
 
 export type StateSnapshotRematch = {
   status: RematchStatus;
   deadlineMs: number | null;
+  decisionsByUserId: Record<string, RematchDecision>;
   acceptedUserIds: string[];
   nextMatchId: string | null;
   nextPrivateCode: string | null;
@@ -254,6 +256,12 @@ const isStateSnapshotPlayers = (value: unknown): value is StateSnapshotPlayers =
 const isRematchStatus = (value: unknown): value is RematchStatus =>
   value === "idle" || value === "pending" || value === "matched" || value === "expired";
 
+const isRematchDecision = (value: unknown): value is RematchDecision =>
+  value === "pending" || value === "accepted" || value === "declined";
+
+const isRematchDecisionsByUserId = (value: unknown): value is Record<string, RematchDecision> =>
+  isRecord(value) && Object.values(value).every((decision) => isRematchDecision(decision));
+
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === "string");
 
@@ -261,6 +269,7 @@ const isStateSnapshotRematch = (value: unknown): value is StateSnapshotRematch =
   isRecord(value) &&
   isRematchStatus(value.status) &&
   isNullableFiniteNumber(value.deadlineMs) &&
+  isRematchDecisionsByUserId(value.decisionsByUserId) &&
   isStringArray(value.acceptedUserIds) &&
   isNullableString(value.nextMatchId) &&
   isNullableString(value.nextPrivateCode);

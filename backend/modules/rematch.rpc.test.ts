@@ -221,10 +221,10 @@ describe('authoritative rematch runtime', () => {
 
     expect(state.resultRecorded).toBe(true);
     expect(state.rematch.status).toBe('pending');
-    expect(state.rematch.deadlineMs).toBe(15_000);
-    expect(state.rematch.acceptedByUserId).toEqual({
-      'light-user': false,
-      'dark-user': false,
+    expect(state.rematch.deadlineMs).toBe(20_000);
+    expect(state.rematch.decisionsByUserId).toEqual({
+      'light-user': 'pending',
+      'dark-user': 'pending',
     });
   });
 
@@ -342,8 +342,8 @@ describe('authoritative rematch runtime', () => {
       },
     ]).state;
 
-    expect(state.rematch.acceptedByUserId['light-user']).toBe(true);
-    expect(state.rematch.acceptedByUserId['dark-user']).toBe(true);
+    expect(state.rematch.decisionsByUserId['light-user']).toBe('accepted');
+    expect(state.rematch.decisionsByUserId['dark-user']).toBe('accepted');
     expect(state.rematch.status).toBe('matched');
     expect(state.rematch.nextMatchId).toBe('rematch-1');
     expect(nk.matchCreate).toHaveBeenCalledTimes(1);
@@ -369,7 +369,7 @@ describe('authoritative rematch runtime', () => {
     expect(nk.matchCreate).toHaveBeenCalledTimes(1);
   });
 
-  it('expires the rematch window after ten seconds without creating a rematch', () => {
+  it('expires the rematch window after fifteen seconds without creating a rematch', () => {
     const runtime = globalThis as RuntimeGlobals;
     const ctx = { matchId: 'match-1' };
     const logger = createLogger();
@@ -410,7 +410,7 @@ describe('authoritative rematch runtime', () => {
     });
 
     const nowSpy = jest.spyOn(Date, 'now');
-    nowSpy.mockReturnValue(15_001);
+    nowSpy.mockReturnValue(20_001);
     state = runtime.matchLoop(ctx, logger, nk, dispatcher, 2, state, []).state;
 
     expect(state.rematch.status).toBe('expired');

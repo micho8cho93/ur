@@ -42,6 +42,7 @@ const makeSnapshot = (
   rematch: {
     status: 'idle',
     deadlineMs: null,
+    decisionsByUserId: {},
     acceptedUserIds: [],
     nextMatchId: null,
     nextPrivateCode: null,
@@ -149,6 +150,10 @@ describe('useGameStore', () => {
       authoritativeRematch: {
         status: 'pending',
         deadlineMs: 14_000,
+        decisionsByUserId: {
+          'light-user': 'accepted',
+          'dark-user': 'pending',
+        },
         acceptedUserIds: ['light-user'],
         nextMatchId: null,
         nextPrivateCode: null,
@@ -291,6 +296,10 @@ describe('useGameStore', () => {
         rematch: {
           status: 'pending',
           deadlineMs: 14_000,
+          decisionsByUserId: {
+            'light-user': 'accepted',
+            'dark-user': 'pending',
+          },
           acceptedUserIds: ['light-user'],
           nextMatchId: 'match-2',
           nextPrivateCode: 'ABCD1234',
@@ -335,6 +344,10 @@ describe('useGameStore', () => {
     expect(state.authoritativeRematch).toEqual({
       status: 'pending',
       deadlineMs: 14_000,
+      decisionsByUserId: {
+        'light-user': 'accepted',
+        'dark-user': 'pending',
+      },
       acceptedUserIds: ['light-user'],
       nextMatchId: 'match-2',
       nextPrivateCode: 'ABCD1234',
@@ -603,6 +616,10 @@ describe('useGameStore', () => {
       authoritativeRematch: {
         status: 'matched',
         deadlineMs: 14_000,
+        decisionsByUserId: {
+          'light-user': 'accepted',
+          'dark-user': 'accepted',
+        },
         acceptedUserIds: ['light-user', 'dark-user'],
         nextMatchId: 'next-match',
         nextPrivateCode: null,

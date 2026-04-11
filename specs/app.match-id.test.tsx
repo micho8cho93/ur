@@ -4285,6 +4285,10 @@ describe('GameRoom match dice stage', () => {
     mockStoreState.authoritativeRematch = {
       status: 'pending',
       deadlineMs: 5_000,
+      decisionsByUserId: {
+        'self-user': 'pending',
+        'opponent-user': 'pending',
+      },
       acceptedUserIds: [],
       nextMatchId: null,
       nextPrivateCode: null,
@@ -4351,6 +4355,10 @@ describe('GameRoom match dice stage', () => {
     mockStoreState.authoritativeRematch = {
       status: 'pending',
       deadlineMs: 5_000,
+      decisionsByUserId: {
+        'self-user': 'accepted',
+        'opponent-user': 'pending',
+      },
       acceptedUserIds: ['self-user'],
       nextMatchId: null,
       nextPrivateCode: null,
@@ -4368,6 +4376,10 @@ describe('GameRoom match dice stage', () => {
       mockStoreState.authoritativeRematch = {
         status: 'matched',
         deadlineMs: 5_000,
+        decisionsByUserId: {
+          'self-user': 'accepted',
+          'opponent-user': 'accepted',
+        },
         acceptedUserIds: ['self-user', 'opponent-user'],
         nextMatchId: 'online-rematch-private-2',
         nextPrivateCode: 'NEWCODE1',

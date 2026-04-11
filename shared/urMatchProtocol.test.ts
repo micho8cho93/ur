@@ -61,6 +61,10 @@ describe('urMatchProtocol', () => {
         rematch: {
           status: 'pending',
           deadlineMs: 11_000,
+          decisionsByUserId: {
+            'light-user': 'accepted',
+            'dark-user': 'pending',
+          },
           acceptedUserIds: ['light-user'],
           nextMatchId: null,
           nextPrivateCode: null,

@@ -137,6 +137,7 @@ import {
   MAX_EMOJI_REACTIONS_PER_MATCH,
   MoveRequestPayload,
   PieceSelectionRequestPayload,
+  RematchDecision,
   RematchResponsePayload,
   RollRequestPayload,
   TournamentMatchRewardSummaryPayload,
@@ -699,6 +700,16 @@ type QueuedFloatingReaction = FloatingEmojiReactionItem;
 const isMoveMatch = (left: MoveAction, right: MoveAction) =>
   left.pieceId === right.pieceId && left.fromIndex === right.fromIndex && left.toIndex === right.toIndex;
 
+const getRematchDecisionLabel = (decision: RematchDecision): 'Yes' | 'No' | 'Not answered' => {
+  if (decision === 'accepted') {
+    return 'Yes';
+  }
+  if (decision === 'declined') {
+    return 'No';
+  }
+  return 'Not answered';
+};
+
 export function GameRoom() {
   const {
     id,
@@ -1124,8 +1135,49 @@ export function GameRoom() {
     isOnlineHumanMatch &&
     !isTournamentMatch &&
     authoritativeMatchEnd !== null;
-  const rematchAcceptedUserIds = authoritativeRematch?.acceptedUserIds ?? [];
-  const didAcceptRematch = authenticatedUserId ? rematchAcceptedUserIds.includes(authenticatedUserId) : false;
+  const opponentUserId = useMemo(() => {
+    if (!authoritativePlayers || !authenticatedUserId) {
+      return null;
+    }
+
+    if (authoritativePlayers.light.userId && authoritativePlayers.light.userId !== authenticatedUserId) {
+      return authoritativePlayers.light.userId;
+    }
+
+    if (authoritativePlayers.dark.userId && authoritativePlayers.dark.userId !== authenticatedUserId) {
+      return authoritativePlayers.dark.userId;
+    }
+
+    return null;
+  }, [authoritativePlayers, authenticatedUserId]);
+  const myRematchDecision = useMemo<RematchDecision>(() => {
+    if (!authoritativeRematch || !authenticatedUserId) {
+      return 'pending';
+    }
+
+    const decisionsByUserId = authoritativeRematch.decisionsByUserId ?? {};
+    const decision = decisionsByUserId[authenticatedUserId];
+    if (decision) {
+      return decision;
+    }
+
+    return authoritativeRematch.acceptedUserIds.includes(authenticatedUserId) ? 'accepted' : 'pending';
+  }, [authoritativeRematch, authenticatedUserId]);
+  const opponentRematchDecision = useMemo<RematchDecision>(() => {
+    if (!authoritativeRematch || !opponentUserId) {
+      return 'pending';
+    }
+
+    const decisionsByUserId = authoritativeRematch.decisionsByUserId ?? {};
+    const decision = decisionsByUserId[opponentUserId];
+    if (decision) {
+      return decision;
+    }
+
+    return authoritativeRematch.acceptedUserIds.includes(opponentUserId) ? 'accepted' : 'pending';
+  }, [authoritativeRematch, opponentUserId]);
+  const myRematchDecisionLabel = getRematchDecisionLabel(myRematchDecision);
+  const opponentRematchDecisionLabel = getRematchDecisionLabel(opponentRematchDecision);
   const hasReconnectGraceActive = !isOffline && authoritativeReconnectingPlayerColor !== null;
   const hasPrivateReconnectFallback =
     isPrivateMatch &&
@@ -1363,6 +1415,7 @@ export function GameRoom() {
   });
   const previousRenderedMatchIdRef = useRef<string | null>(matchId ?? null);
   const processedRematchMatchIdRef = useRef<string | null>(null);
+  const processedRematchExpiryExitKeyRef = useRef<string | null>(null);
   const tutorialHydratingStateRef = useRef(false);
   const previousTurnTimerStateRef = useRef<{
     matchId: string | null;
@@ -1704,7 +1757,11 @@ export function GameRoom() {
         tournamentRewardFallbackActive &&
         (tournamentAdvanceFlow.phase === 'eliminated' || tournamentAdvanceFlow.phase === 'finalized')));
   const shouldAutoExitTournamentResultModal = isTournamentResultModal;
-  const shouldAutoExitOnlineForfeitModal = showWinModal && isOnlineForfeit && !isTournamentMatch;
+  const shouldAutoExitOnlineForfeitModal =
+    showWinModal &&
+    isOnlineForfeit &&
+    !isTournamentMatch &&
+    !isEligibleForRematch;
   const postResultAutoAction = useMemo<'enter_waiting_room' | 'return_home' | null>(() => {
     if (shouldPromptTournamentWaitingRoomAfterForfeit) {
       return 'enter_waiting_room';
@@ -3016,6 +3073,30 @@ export function GameRoom() {
     [didPlayerWin, finalizeExitMatchToHome, runScreenTransition],
   );
 
+  const handleOfflineBotPlayAgain = React.useCallback(() => {
+    if (!isOfflineBotMatch) {
+      return;
+    }
+
+    const nextLocalMatchId = `local-${Date.now()}`;
+    processedRematchMatchIdRef.current = null;
+    processedRematchExpiryExitKeyRef.current = null;
+    setShowTopMenu(false);
+    setShowMatchStatusInfo(false);
+    setPostMatchPresentationStage('hidden');
+    setXpRewardPresentation(null);
+    setDidPlayXpRewardReveal(false);
+    reset();
+    router.replace(
+      buildMatchRoutePath({
+        id: nextLocalMatchId,
+        offline: true,
+        modeId: effectiveMatchConfig.modeId,
+        botDifficulty: resolvedBotDifficulty,
+      }) as never,
+    );
+  }, [effectiveMatchConfig.modeId, isOfflineBotMatch, reset, resolvedBotDifficulty, router]);
+
   const handleEnterTournamentWaitingRoom = React.useCallback(async () => {
     if (enteringTournamentWaitingRoomRef.current || hasEnteredTournamentWaitingRoom) {
       return;
@@ -3245,6 +3326,35 @@ export function GameRoom() {
     isTournamentMatch,
     isTournamentResultModal,
     shouldPromptTournamentWaitingRoomAfterForfeit,
+    showWinModal,
+  ]);
+
+  useEffect(() => {
+    if (!showWinModal || !isEligibleForRematch || authoritativeRematch?.status !== 'expired') {
+      if (authoritativeRematch?.status !== 'expired') {
+        processedRematchExpiryExitKeyRef.current = null;
+      }
+      return;
+    }
+
+    const expiryKey = `${matchId ?? 'unknown'}:${authoritativeRematch.deadlineMs ?? 'none'}`;
+    if (processedRematchExpiryExitKeyRef.current === expiryKey) {
+      return;
+    }
+
+    processedRematchExpiryExitKeyRef.current = expiryKey;
+    void exitMatchToHome({
+      withTransition: true,
+      title: 'Rematch Window Closed',
+      message: 'Both players did not agree to a rematch in time.',
+      variant: 'warning',
+    });
+  }, [
+    authoritativeRematch?.deadlineMs,
+    authoritativeRematch?.status,
+    exitMatchToHome,
+    isEligibleForRematch,
+    matchId,
     showWinModal,
   ]);
 
@@ -4691,34 +4801,78 @@ export function GameRoom() {
         tournamentRewardSummary={isTournamentRewardSummaryPrimary ? tournamentRewardSummary : null}
         resultCountdownLabel={resultCountdownLabel}
       />
+      {showWinModal && isOfflineBotMatch ? (
+        <View style={styles.rematchCard}>
+          <Text style={styles.rematchEyebrow}>Play Again</Text>
+          <Text style={styles.rematchBodyText}>Start a fresh bot match with the same mode and difficulty.</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={handleOfflineBotPlayAgain}
+            style={({ pressed }) => [styles.rematchButton, pressed && styles.rematchButtonPressed]}
+          >
+            <Text style={styles.rematchButtonText}>Play Again</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {showWinModal && isEligibleForRematch && authoritativeRematch && authoritativeRematch.status !== 'idle' ? (
         <View style={styles.rematchCard}>
           <Text style={styles.rematchEyebrow}>Rematch Window</Text>
-          {authoritativeRematch.status === 'pending' && !didAcceptRematch ? (
+          {authoritativeRematch.status === 'pending' ? (
             <>
               <Text style={styles.rematchBodyText}>Both players can accept a rematch before the window closes.</Text>
               {rematchCountdownLabel ? <Text style={styles.rematchCountdownText}>{rematchCountdownLabel}</Text> : null}
+            </>
+          ) : null}
+          <View style={styles.rematchStatusList}>
+            <View style={styles.rematchStatusRow}>
+              <Text style={styles.rematchBodyText}>Your response:</Text>
+              <Text style={styles.rematchBodyText}>{myRematchDecisionLabel}</Text>
+            </View>
+            <View style={styles.rematchStatusRow}>
+              <Text style={styles.rematchBodyText}>Opponent response:</Text>
+              <Text style={styles.rematchBodyText}>{opponentRematchDecisionLabel}</Text>
+            </View>
+          </View>
+          {authoritativeRematch.status === 'pending' ? (
+            <View style={styles.rematchButtonRow}>
               <Pressable
                 accessibilityRole="button"
-                disabled={!isOnlineInteractionReady}
+                disabled={
+                  !isOnlineInteractionReady ||
+                  authoritativeRematch.status !== 'pending' ||
+                  myRematchDecision === 'accepted'
+                }
                 onPress={() => {
                   void sendRematchResponse(true);
                 }}
                 style={({ pressed }) => [
                   styles.rematchButton,
-                  !isOnlineInteractionReady && styles.rematchButtonDisabled,
-                  pressed && isOnlineInteractionReady && styles.rematchButtonPressed,
+                  (!isOnlineInteractionReady || myRematchDecision === 'accepted') && styles.rematchButtonDisabled,
+                  pressed && isOnlineInteractionReady && myRematchDecision !== 'accepted' && styles.rematchButtonPressed,
                 ]}
               >
                 <Text style={styles.rematchButtonText}>Rematch</Text>
               </Pressable>
-            </>
-          ) : null}
-          {authoritativeRematch.status === 'pending' && didAcceptRematch ? (
-            <>
-              <Text style={styles.rematchBodyText}>Waiting for opponent...</Text>
-              {rematchCountdownLabel ? <Text style={styles.rematchCountdownText}>{rematchCountdownLabel}</Text> : null}
-            </>
+              <Pressable
+                accessibilityRole="button"
+                disabled={
+                  !isOnlineInteractionReady ||
+                  authoritativeRematch.status !== 'pending' ||
+                  myRematchDecision === 'declined'
+                }
+                onPress={() => {
+                  void sendRematchResponse(false);
+                }}
+                style={({ pressed }) => [
+                  styles.rematchButton,
+                  styles.rematchSecondaryButton,
+                  (!isOnlineInteractionReady || myRematchDecision === 'declined') && styles.rematchButtonDisabled,
+                  pressed && isOnlineInteractionReady && myRematchDecision !== 'declined' && styles.rematchButtonPressed,
+                ]}
+              >
+                <Text style={styles.rematchSecondaryButtonText}>No Thanks</Text>
+              </Pressable>
+            </View>
           ) : null}
           {authoritativeRematch.status === 'expired' ? (
             <Text style={styles.rematchBodyText}>Rematch expired.</Text>
@@ -6946,6 +7100,22 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginTop: 6,
   },
+  rematchStatusList: {
+    marginTop: urTheme.spacing.sm,
+    gap: urTheme.spacing.xs,
+  },
+  rematchStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: urTheme.spacing.sm,
+  },
+  rematchButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: urTheme.spacing.sm,
+  },
   rematchButton: {
     alignSelf: 'flex-start',
     marginTop: urTheme.spacing.sm,
@@ -6963,6 +7133,16 @@ const styles = StyleSheet.create({
   rematchButtonText: {
     ...urTypography.label,
     color: '#1A1207',
+    fontSize: 12,
+  },
+  rematchSecondaryButton: {
+    backgroundColor: 'rgba(7, 13, 20, 0.56)',
+    borderWidth: 1,
+    borderColor: 'rgba(216, 232, 251, 0.36)',
+  },
+  rematchSecondaryButtonText: {
+    ...urTypography.label,
+    color: 'rgba(232, 243, 255, 0.96)',
     fontSize: 12,
   },
   matchRewardsXpDisplay: {

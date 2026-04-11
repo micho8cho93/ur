@@ -8792,10 +8792,17 @@ var rpcJoinTournament = (ctx, logger, nk, payload) => {
   return JSON.stringify(response);
 };
 
+// shared/tournamentNotifications.ts
+var TOURNAMENT_BRACKET_READY_NOTIFICATION_CODE = 41001;
+var TOURNAMENT_BRACKET_READY_NOTIFICATION_SUBJECT = "tournament_bracket_ready";
+var TOURNAMENT_BRACKET_READY_NOTIFICATION_TYPE = "tournament_bracket_ready";
+
 // backend/modules/tournaments/public.ts
 var TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION2 = "tournament_run_memberships";
 var DEFAULT_PUBLIC_LIST_LIMIT = 50;
 var DEFAULT_PUBLIC_STANDINGS_LIMIT = 256;
+var SYSTEM_NOTIFICATION_SENDER_ID = "00000000-0000-0000-0000-000000000000";
+var BRACKET_START_NOTIFICATION_TOKEN_KEY = "publicBracketStartNotificationToken";
 var RPC_LIST_PUBLIC_TOURNAMENTS = "list_public_tournaments";
 var RPC_GET_PUBLIC_TOURNAMENT = "get_public_tournament";
 var RPC_GET_PUBLIC_TOURNAMENT_STANDINGS = "get_public_tournament_standings";
@@ -9251,6 +9258,49 @@ var ensureRunRegistration = (nk, logger, run, membership) => updateRunWithRetry(
     registrations: result.registrations
   });
 });
+var sendBracketReadyNotifications = (nk, logger, run) => {
+  var _a, _b;
+  if (typeof nk.notificationSend !== "function") {
+    return;
+  }
+  const startedAt = (_b = (_a = run.bracket) == null ? void 0 : _a.startedAt) != null ? _b : run.updatedAt;
+  if (!startedAt) {
+    return;
+  }
+  const userIds = Array.from(
+    new Set(
+      run.registrations.map((registration) => registration.userId).filter((userId) => userId.trim().length > 0 && !isTournamentBotUserId(userId))
+    )
+  );
+  if (userIds.length === 0) {
+    return;
+  }
+  const content = {
+    type: TOURNAMENT_BRACKET_READY_NOTIFICATION_TYPE,
+    runId: run.runId,
+    tournamentId: run.tournamentId,
+    startedAt
+  };
+  userIds.forEach((userId) => {
+    try {
+      nk.notificationSend(
+        userId,
+        TOURNAMENT_BRACKET_READY_NOTIFICATION_SUBJECT,
+        content,
+        TOURNAMENT_BRACKET_READY_NOTIFICATION_CODE,
+        SYSTEM_NOTIFICATION_SENDER_ID,
+        false
+      );
+    } catch (error) {
+      logger.warn(
+        "Unable to send bracket-ready notification for run %s to user %s: %s",
+        run.runId,
+        userId,
+        String(error)
+      );
+    }
+  });
+};
 var maybeStartBracketForRun = (nk, logger, run) => {
   if (run.bracket || run.lifecycle !== "open") {
     return run;
@@ -9259,16 +9309,24 @@ var maybeStartBracketForRun = (nk, logger, run) => {
   if (!isPublicRunFull(run, nakamaTournament)) {
     return run;
   }
-  return updateRunWithRetry(nk, logger, run.runId, (current) => {
+  const bracketStartNotificationToken = `bracket-start:${run.runId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+  const nextRun = updateRunWithRetry(nk, logger, run.runId, (current) => {
     if (current.bracket) {
       return current;
     }
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
     return __spreadProps(__spreadValues({}, current), {
       updatedAt: startedAt,
+      metadata: __spreadProps(__spreadValues({}, readMetadata(current)), {
+        [BRACKET_START_NOTIFICATION_TOKEN_KEY]: bracketStartNotificationToken
+      }),
       bracket: createSingleEliminationBracket(current.registrations, startedAt)
     });
   });
+  if (nextRun.bracket && readStringField7(readMetadata(nextRun), [BRACKET_START_NOTIFICATION_TOKEN_KEY]) === bracketStartNotificationToken) {
+    sendBracketReadyNotifications(nk, logger, nextRun);
+  }
+  return nextRun;
 };
 var buildTournamentLaunchResponse = (params) => JSON.stringify({
   ok: true,
@@ -9466,7 +9524,7 @@ var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
   });
 };
 var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
   const parsed = parseJsonPayload(payload);
@@ -9588,31 +9646,10 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
   const modeId = (_g = readStringField7(metadata, ["gameMode", "game_mode"])) != null ? _g : "standard";
   const rewardSettings = resolveTournamentXpRewardSettings(metadata);
   const botPolicy = normalizeTournamentBotPolicy(run.metadata);
-  const botUserId = isTournamentBotUserId(entry.playerAUserId) && entry.playerAUserId !== userId ? entry.playerAUserId : isTournamentBotUserId(entry.playerBUserId) && entry.playerBUserId !== userId ? entry.playerBUserId : null;
-  const botDisplayName = botUserId ? (_h = buildTournamentBotDisplayNames([botUserId], botPolicy.difficulty)[botUserId]) != null ? _h : botUserId : null;
-  const matchId = nk.matchCreate("authoritative_match", __spreadValues({
-    playerIds: [entry.playerAUserId, entry.playerBUserId].filter((candidate) => Boolean(candidate)),
-    modeId,
-    rankedMatch: true,
-    casualMatch: false,
-    botMatch: Boolean(botUserId),
-    privateMatch: false,
-    winRewardSource: "pvp_win",
-    allowsChallengeRewards: true,
-    tournamentRunId: run.runId,
-    tournamentId: run.tournamentId,
-    tournamentRound: entry.round,
-    tournamentEntryId: entry.entryId,
-    tournamentMatchWinXp: rewardSettings.xpPerMatchWin,
-    tournamentChampionXp: rewardSettings.xpForTournamentChampion,
-    tournamentEliminationRisk: true
-  }, botUserId ? {
-    botDifficulty: (_i = botPolicy.difficulty) != null ? _i : DEFAULT_BOT_DIFFICULTY,
-    botUserId,
-    botDisplayName
-  } : {}));
+  let createdMatchId = null;
   const launchedAt = (/* @__PURE__ */ new Date()).toISOString();
   run = updateRunWithRetry(nk, logger, run.runId, (current) => {
+    var _a2, _b2;
     if (!current.bracket) {
       return current;
     }
@@ -9620,14 +9657,47 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
     if (!currentEntry || currentEntry.matchId) {
       return current;
     }
+    if (!createdMatchId) {
+      const currentEntryBotUserId = isTournamentBotUserId(currentEntry.playerAUserId) && currentEntry.playerAUserId !== userId ? currentEntry.playerAUserId : isTournamentBotUserId(currentEntry.playerBUserId) && currentEntry.playerBUserId !== userId ? currentEntry.playerBUserId : null;
+      const currentEntryBotDisplayName = currentEntryBotUserId ? (_a2 = buildTournamentBotDisplayNames([currentEntryBotUserId], botPolicy.difficulty)[currentEntryBotUserId]) != null ? _a2 : currentEntryBotUserId : null;
+      createdMatchId = nk.matchCreate("authoritative_match", __spreadValues({
+        playerIds: [currentEntry.playerAUserId, currentEntry.playerBUserId].filter(
+          (candidate) => Boolean(candidate)
+        ),
+        modeId,
+        rankedMatch: true,
+        casualMatch: false,
+        botMatch: Boolean(currentEntryBotUserId),
+        privateMatch: false,
+        winRewardSource: "pvp_win",
+        allowsChallengeRewards: true,
+        tournamentRunId: current.runId,
+        tournamentId: current.tournamentId,
+        tournamentRound: currentEntry.round,
+        tournamentEntryId: currentEntry.entryId,
+        tournamentMatchWinXp: rewardSettings.xpPerMatchWin,
+        tournamentChampionXp: rewardSettings.xpForTournamentChampion,
+        tournamentEliminationRisk: true
+      }, currentEntryBotUserId ? {
+        botDifficulty: (_b2 = botPolicy.difficulty) != null ? _b2 : DEFAULT_BOT_DIFFICULTY,
+        botUserId: currentEntryBotUserId,
+        botDisplayName: currentEntryBotDisplayName
+      } : {}));
+    }
+    if (!createdMatchId) {
+      throw new Error("Unable to allocate tournament match.");
+    }
     return __spreadProps(__spreadValues({}, current), {
       updatedAt: launchedAt,
-      bracket: startTournamentBracketMatch(current.bracket, userId, matchId, launchedAt)
+      bracket: startTournamentBracketMatch(current.bracket, userId, createdMatchId, launchedAt)
     });
   });
   const activeParticipant = run.bracket ? getTournamentBracketParticipant(run.bracket, userId) : null;
   const activeEntry = (activeParticipant == null ? void 0 : activeParticipant.currentEntryId) && run.bracket ? getTournamentBracketEntry(run.bracket, activeParticipant.currentEntryId) : null;
-  const resolvedMatchId = (_k = (_j = activeParticipant == null ? void 0 : activeParticipant.activeMatchId) != null ? _j : activeEntry == null ? void 0 : activeEntry.matchId) != null ? _k : matchId;
+  const resolvedMatchId = (_i = (_h = activeParticipant == null ? void 0 : activeParticipant.activeMatchId) != null ? _h : activeEntry == null ? void 0 : activeEntry.matchId) != null ? _i : createdMatchId;
+  if (!resolvedMatchId) {
+    throw new Error("Unable to resolve tournament match assignment.");
+  }
   appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.match_launch.created", {
     matchId: resolvedMatchId,
     entryId: entry.entryId,
@@ -9637,8 +9707,8 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
   return buildTournamentLaunchResponse({
     run,
     matchId: resolvedMatchId,
-    tournamentRound: (_l = activeEntry == null ? void 0 : activeEntry.round) != null ? _l : entry.round,
-    tournamentEntryId: (_m = activeEntry == null ? void 0 : activeEntry.entryId) != null ? _m : entry.entryId,
+    tournamentRound: (_j = activeEntry == null ? void 0 : activeEntry.round) != null ? _j : entry.round,
+    tournamentEntryId: (_k = activeEntry == null ? void 0 : activeEntry.entryId) != null ? _k : entry.entryId,
     playerState: "in_match",
     nextRoundReady: true,
     queueStatus: "active_match",
@@ -11691,7 +11761,7 @@ var ONLINE_TURN_DURATION_MS = 1e4;
 var ONLINE_AFK_FORFEIT_MS = 3e4;
 var ONLINE_DISCONNECT_GRACE_MS = 15e3;
 var ONLINE_RECONNECT_RESUME_MS = 5e3;
-var REMATCH_WINDOW_MS = 1e4;
+var REMATCH_WINDOW_MS = 15e3;
 var BOT_TURN_DELAY_MS = 850;
 var SYSTEM_USER_ID5 = "00000000-0000-0000-0000-000000000000";
 var RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
@@ -12125,14 +12195,15 @@ var syncPrivateMatchReservation = (nk, state) => {
 var createMatchRematchState = () => ({
   status: "idle",
   deadlineMs: null,
-  acceptedByUserId: {},
+  decisionsByUserId: {},
   nextMatchId: null,
   nextPrivateCode: null
 });
-var getRematchAcceptedUserIds = (state) => Object.entries(state.rematch.acceptedByUserId).filter(([, accepted]) => accepted === true).map(([userId]) => userId);
+var getRematchAcceptedUserIds = (state) => Object.entries(state.rematch.decisionsByUserId).filter(([, decision]) => decision === "accepted").map(([userId]) => userId);
 var buildSnapshotRematch = (state) => ({
   status: state.rematch.status,
   deadlineMs: state.rematch.deadlineMs,
+  decisionsByUserId: __spreadValues({}, state.rematch.decisionsByUserId),
   acceptedUserIds: getRematchAcceptedUserIds(state),
   nextMatchId: state.rematch.nextMatchId,
   nextPrivateCode: state.rematch.nextPrivateCode
@@ -12275,9 +12346,9 @@ var openRematchWindow = (state, nowMs) => {
   state.rematch = {
     status: "pending",
     deadlineMs: nowMs + REMATCH_WINDOW_MS,
-    acceptedByUserId: rematchPlayerIds.reduce(
+    decisionsByUserId: rematchPlayerIds.reduce(
       (entries, userId) => {
-        entries[userId] = false;
+        entries[userId] = "pending";
         return entries;
       },
       {}
@@ -12299,7 +12370,7 @@ var expireRematchWindow = (state) => {
 var haveAllRematchPlayersAccepted = (state) => {
   const rematchPlayerIds = getOrderedRematchHumanUserIds(state);
   return Boolean(
-    rematchPlayerIds && rematchPlayerIds.every((userId) => state.rematch.acceptedByUserId[userId] === true)
+    rematchPlayerIds && rematchPlayerIds.every((userId) => state.rematch.decisionsByUserId[userId] === "accepted")
   );
 };
 var getDisconnectedAssignedColors = (state) => ["light", "dark"].filter((color) => {
@@ -13105,11 +13176,17 @@ function matchJoin(ctx, logger, nk, dispatcher, _tick, state, presences) {
       logger.warn("Skipping join presence with missing user ID.");
       return;
     }
+    const hadPresenceBeforeJoin = getUserPresenceTargets(state, userId).length > 0;
     upsertPresence(state, presence);
     ensureAssignment(state, userId);
     cacheAssignedPlayerTitle(state, nk, userId);
     cacheAssignedPlayerRankTitle(state, nk, logger, userId);
-    clearedDisconnectGrace = clearDisconnectGraceForUser(state, userId) || clearedDisconnectGrace;
+    const didClearDisconnectGrace = clearDisconnectGraceForUser(state, userId);
+    clearedDisconnectGrace = didClearDisconnectGrace || clearedDisconnectGrace;
+    const playerColor = state.assignments[userId];
+    if (state.started && !state.gameState.winner && state.gameState.phase !== "ended" && playerColor && !isConfiguredBotColor(state, playerColor) && (!hadPresenceBeforeJoin || didClearDisconnectGrace)) {
+      resetAfkOnMeaningfulAction(state, playerColor, nowMs);
+    }
   });
   if (state.started && clearedDisconnectGrace && !hasActiveDisconnectGrace(state)) {
     resumeTurnTimerAfterReconnect(state, nowMs);
@@ -13741,7 +13818,7 @@ function applyRematchResponse(dispatcher, state, userId, payload, matchId) {
   if (state.rematch.status !== "pending") {
     return;
   }
-  if (!(userId in state.rematch.acceptedByUserId)) {
+  if (!(userId in state.rematch.decisionsByUserId)) {
     return;
   }
   if (state.rematch.deadlineMs !== null && Date.now() >= state.rematch.deadlineMs) {
@@ -13750,10 +13827,11 @@ function applyRematchResponse(dispatcher, state, userId, payload, matchId) {
     }
     return;
   }
-  if (state.rematch.acceptedByUserId[userId] === payload.accepted) {
+  const nextDecision = payload.accepted ? "accepted" : "declined";
+  if (state.rematch.decisionsByUserId[userId] === nextDecision) {
     return;
   }
-  state.rematch.acceptedByUserId[userId] = payload.accepted;
+  state.rematch.decisionsByUserId[userId] = nextDecision;
   state.revision += 1;
   broadcastSnapshot(dispatcher, state, matchId);
 }
