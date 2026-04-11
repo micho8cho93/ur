@@ -129,6 +129,7 @@ export function HomeLightButton({
 }: HomeLightButtonProps) {
   const isDisabled = disabled || loading;
   const labelFontFamily = resolveHomeButtonFontFamily(fontLoaded);
+  const buttonCornerRadius = size === 'small' ? 14 : size === 'compact' ? 16 : 18;
 
   return (
     <Pressable
@@ -141,6 +142,7 @@ export function HomeLightButton({
         styles.pressable,
         HOME_LIGHT_BUTTON_WEB_STYLE,
         getInteractionStyle(state),
+        { borderRadius: buttonCornerRadius },
         isDisabled ? styles.pressableDisabled : null,
         style,
       ]}
@@ -150,9 +152,17 @@ export function HomeLightButton({
           pointerEvents="none"
           source={lightButtonArt}
           resizeMode="stretch"
-          style={styles.image}
+          style={[
+            styles.image,
+            {
+              borderRadius: buttonCornerRadius,
+            },
+          ]}
           imageStyle={[
             styles.imageStyle,
+            {
+              borderRadius: buttonCornerRadius,
+            },
             HOME_LIGHT_BUTTON_IMAGE_SHADOW_STYLE,
             pressed ? HOME_LIGHT_BUTTON_IMAGE_SHADOW_PRESSED_STYLE : null,
             pressed ? styles.imageStylePressed : null,

@@ -63,6 +63,8 @@ function LoginActionButton({
   variant,
 }: LoginActionButtonProps) {
   const labelColor = variant === 'light' ? urTextColors.buttonOnStone : urTheme.colors.ivory;
+  const actionButtonHeight = mobileWeb ? 45 : compact ? 56 : 66;
+  const actionButtonCornerRadius = Math.max(12, Math.round(actionButtonHeight * 0.34));
   const textStyle = [
     styles.actionLabel,
     compact ? styles.actionLabelCompact : styles.actionLabelRegular,
@@ -85,7 +87,10 @@ function LoginActionButton({
         styles.actionButton,
         compact ? styles.actionButtonCompact : styles.actionButtonRegular,
         mobileWeb && styles.actionButtonMobileWeb,
-        { width },
+        {
+          width,
+          borderRadius: actionButtonCornerRadius,
+        },
         pressed && !disabled && styles.actionButtonPressed,
         disabled && styles.actionButtonDisabled,
       ]}
@@ -97,10 +102,17 @@ function LoginActionButton({
           style={[
             styles.actionButtonFrame,
             variant === 'light' ? styles.actionButtonFrameLight : styles.actionButtonFrameCta,
+            {
+              borderRadius: actionButtonCornerRadius,
+              overflow: 'hidden',
+            },
           ]}
           imageStyle={[
             styles.actionButtonImage,
             variant === 'cta' ? styles.actionButtonImageCta : null,
+            {
+              borderRadius: actionButtonCornerRadius,
+            },
             pressed ? styles.actionButtonImagePressed : null,
             disabled ? styles.actionButtonImageDisabled : null,
           ]}

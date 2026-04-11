@@ -113,6 +113,8 @@ export function HomeActionButton({
   const isDisabled = disabled || loading;
   const labelFontFamily = resolveHomeButtonFontFamily(fontLoaded);
   const labelColor = isDisabled ? 'rgba(255, 243, 196, 0.72)' : urTheme.colors.ivory;
+  const actionButtonHeight = size === 'small' ? (compact ? 44 : 50) : compact ? 56 : 62;
+  const actionButtonCornerRadius = Math.max(12, Math.round(actionButtonHeight * 0.34));
 
   return (
     <Pressable
@@ -131,6 +133,7 @@ export function HomeActionButton({
           : compact
             ? styles.compactHeight
             : styles.regularHeight,
+        { borderRadius: actionButtonCornerRadius },
         !isDisabled && getPressableInteractionStyle(state),
         isDisabled && styles.disabled,
         style,
@@ -147,9 +150,16 @@ export function HomeActionButton({
               : compact
                 ? styles.imageFrameCompact
                 : styles.imageFrameRegular,
+            {
+              borderRadius: actionButtonCornerRadius,
+              overflow: 'hidden',
+            },
           ]}
           imageStyle={[
             styles.imageStyle,
+            {
+              borderRadius: actionButtonCornerRadius,
+            },
             ACTION_BUTTON_IMAGE_SHADOW_STYLE,
             pressed ? ACTION_BUTTON_IMAGE_SHADOW_PRESSED_STYLE : null,
             pressed ? styles.imageStylePressed : null,

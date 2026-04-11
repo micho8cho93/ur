@@ -83,6 +83,8 @@ export function SketchButton({
   const compactLabelLineHeight = Math.round(19 * resolvedSizeScale);
   const wideLabelFontSize = Math.round(18 * resolvedSizeScale);
   const wideLabelLineHeight = Math.round(20 * resolvedSizeScale);
+  const buttonSurfaceHeight = iconOnly ? iconOnlySize : contentMinHeight;
+  const buttonCornerRadius = Math.max(10, Math.round(buttonSurfaceHeight * (iconOnly ? 0.24 : 0.34)));
 
   return (
     <Pressable
@@ -105,6 +107,9 @@ export function SketchButton({
             : {
                 minWidth: compactMinWidth,
               },
+        {
+          borderRadius: buttonCornerRadius,
+        },
         style,
         hovered && !disabled ? styles.pressableHovered : null,
         pressed && !disabled ? styles.pressablePressed : null,
@@ -141,9 +146,16 @@ export function SketchButton({
                   paddingHorizontal: contentHorizontalPadding,
                   paddingVertical: contentVerticalPadding,
                 },
+            {
+              borderRadius: buttonCornerRadius,
+              overflow: 'hidden',
+            },
           ]}
           imageStyle={[
             iconOnly ? styles.surfaceImageIconOnly : styles.surfaceImage,
+            {
+              borderRadius: buttonCornerRadius,
+            },
             SKETCH_BUTTON_IMAGE_SHADOW_STYLE,
             pressed && !disabled ? SKETCH_BUTTON_IMAGE_SHADOW_PRESSED_STYLE : null,
             pressed && !disabled ? styles.surfaceImagePressed : null,
