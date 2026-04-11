@@ -52,7 +52,7 @@ const normalizeAdminRole = (value: unknown): AdminRole | null => {
     return null;
   }
 
-  const role = readStringField(record, ["role"]);
+  const role = readStringField(record, ["role"])?.toLowerCase();
   if (role === "viewer" || role === "operator" || role === "admin") {
     return role;
   }

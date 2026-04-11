@@ -236,7 +236,7 @@ const isNullableFiniteNumber = (value: unknown): value is number | null =>
   value === null || isFiniteNumber(value);
 
 const isNullableRollDisplayValue = (value: unknown): value is number | null =>
-  value === null || isNonNegativeInteger(value) && value <= 4;
+  value === null || (isNonNegativeInteger(value) && value <= 4);
 
 const isOptional = <T>(value: unknown, guard: (candidate: unknown) => candidate is T): value is T | undefined =>
   typeof value === "undefined" || guard(value);
@@ -410,7 +410,7 @@ export const isTournamentMatchRewardSummaryPayload = (
   typeof value.matchId === "string" &&
   typeof value.tournamentRunId === "string" &&
   typeof value.tournamentId === "string" &&
-  (typeof value.round === "number" || value.round === null) &&
+  (isNonNegativeInteger(value.round) || value.round === null) &&
   typeof value.playerUserId === "string" &&
   typeof value.didWin === "boolean" &&
   isTournamentMatchRewardSummaryOutcome(value.tournamentOutcome) &&
@@ -421,7 +421,7 @@ export const isTournamentMatchRewardSummaryPayload = (
   isFiniteNumber(value.totalXpOld) &&
   isFiniteNumber(value.totalXpNew) &&
   isFiniteNumber(value.totalXpDelta) &&
-  isFiniteNumber(value.challengeCompletionCount) &&
+  isNonNegativeInteger(value.challengeCompletionCount) &&
   isFiniteNumber(value.challengeXpDelta) &&
   typeof value.shouldEnterWaitingRoom === "boolean" &&
   isProgressionSnapshot(value.progression) &&

@@ -136,15 +136,36 @@ export async function restoreStoredNakamaSession(): Promise<Session | null> {
 
   try {
     const restored = Session.restore(storedSession.token, storedSession.refreshToken)
+    const currentTimeSeconds = Date.now() / 1000
 
-    if (restored.isexpired(Date.now() / 1000) && restored.refresh_token) {
+    if (!restored.refresh_token || restored.isrefreshexpired(currentTimeSeconds)) {
+      clearStoredAdminSession()
+      return null
+    }
+
+    if (restored.isexpired(currentTimeSeconds)) {
       const refreshed = await getClient().sessionRefresh(restored)
       persistSession(refreshed)
       return refreshed
     }
 
-    persistSession(restored)
-    return restored
+    try {
+      // Eager refresh validates refresh-token revocation at restore-time
+      // instead of surfacing it only when access token expiry forces refresh.
+      const refreshed = await getClient().sessionRefresh(restored)
+      persistSession(refreshed)
+      return refreshed
+    } catch (error) {
+      if (isResponseLike(error) && (error.status === 401 || error.status === 403)) {
+        clearStoredAdminSession()
+        return null
+      }
+
+      // Keep the still-valid access token session when refresh validation fails
+      // due to non-auth reasons (for example a transient network outage).
+      persistSession(restored)
+      return restored
+    }
   } catch {
     clearStoredAdminSession()
     return null

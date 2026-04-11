@@ -75,7 +75,7 @@ export const CinematicXpRewardModal: React.FC<CinematicXpRewardModalProps> = ({
     return () => {
       xpValue.removeListener(listenerId);
     };
-  }, [xpValue]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- xpValue is a stable ref-backed Animated.Value
 
   React.useEffect(() => {
     return () => {

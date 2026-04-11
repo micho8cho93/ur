@@ -283,7 +283,7 @@ const appendNumericSuffix = (base: string, suffix: string): string => {
     return base.slice(0, USERNAME_MAX_LENGTH);
   }
 
-  const trimmedBase = base.slice(0, Math.max(USERNAME_MIN_LENGTH, USERNAME_MAX_LENGTH - suffixValue.length));
+  const trimmedBase = base.slice(0, Math.max(0, USERNAME_MAX_LENGTH - suffixValue.length));
   return `${trimmedBase}${suffixValue}`.slice(0, USERNAME_MAX_LENGTH);
 };
 
