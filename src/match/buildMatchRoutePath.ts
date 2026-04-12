@@ -11,6 +11,7 @@ type MatchRoutePathOptions = {
   tournamentId?: string | null;
   tournamentName?: string | null;
   tournamentRound?: string | number | null;
+  spectator?: boolean;
 };
 
 const appendQueryParam = (entries: string[], key: string, value: string | number | null | undefined) => {
@@ -34,6 +35,7 @@ export const buildMatchRoutePath = ({
   tournamentId,
   tournamentName,
   tournamentRound,
+  spectator,
 }: MatchRoutePathOptions): string => {
   const queryEntries: string[] = [];
 
@@ -55,6 +57,9 @@ export const buildMatchRoutePath = ({
   appendQueryParam(queryEntries, 'tournamentId', tournamentId);
   appendQueryParam(queryEntries, 'tournamentName', tournamentName);
   appendQueryParam(queryEntries, 'tournamentRound', tournamentRound);
+  if (spectator) {
+    appendQueryParam(queryEntries, 'spectator', '1');
+  }
 
   const matchPath = `/match/${encodeURIComponent(id)}`;
   return queryEntries.length > 0 ? `${matchPath}?${queryEntries.join('&')}` : matchPath;

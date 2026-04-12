@@ -86,6 +86,7 @@ export type ActiveTrackedMatch = {
   matchId: string;
   startedAt: string;
   modeId: string;
+  classification: AnalyticsMatchClassification;
   tournamentRunId: string | null;
   tournamentId: string | null;
   playerLabels: string[];
@@ -489,6 +490,7 @@ export const recordMatchStartAnalyticsEvent = (
     matchId: event.matchId,
     startedAt: event.startedAt,
     modeId: event.modeId,
+    classification: event.classification,
     tournamentRunId: event.tournamentRunId,
     tournamentId: event.tournamentId,
     playerLabels: event.players

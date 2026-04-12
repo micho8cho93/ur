@@ -728,6 +728,7 @@ export function GameRoom() {
     tournamentId,
     tournamentName,
     tournamentRound,
+    spectator,
   } = useLocalSearchParams<{
     id?: string | string[];
     offline?: string | string[];
@@ -741,6 +742,7 @@ export function GameRoom() {
     tournamentId?: string | string[];
     tournamentName?: string | string[];
     tournamentRound?: string | string[];
+    spectator?: string | string[];
   }>();
   const router = useRouter();
   const runScreenTransition = useScreenTransition();
@@ -791,6 +793,10 @@ export function GameRoom() {
   const tournamentRoundParam = useMemo(
     () => (Array.isArray(tournamentRound) ? tournamentRound[0] : tournamentRound),
     [tournamentRound],
+  );
+  const spectatorParam = useMemo(
+    () => (Array.isArray(spectator) ? spectator[0] : spectator),
+    [spectator],
   );
   const resolvedBotDifficulty = useMemo(
     () => (isBotDifficulty(botDifficultyParam) ? botDifficultyParam : DEFAULT_BOT_DIFFICULTY),
@@ -1008,6 +1014,7 @@ export function GameRoom() {
   const isPrivateMatchHost = privateHostParam === '1';
   const privateMatchCode = privateCodeParam ?? null;
   const isTournamentMatch = Boolean(tournamentRunIdParam && tournamentIdParam);
+  const isSpectatorMode = !isOffline && spectatorParam === '1';
   const tournamentDisplayName = tournamentNameParam ?? 'Tournament Match';
   const pieceCountPerSide = effectiveMatchConfig.pieceCountPerSide;
   const isPracticeModeMatch = effectiveMatchConfig.isPracticeMode;
@@ -1071,12 +1078,13 @@ export function GameRoom() {
   const canSyncOfflineBotRewards =
     isOfflineBotMatch && effectiveMatchConfig.allowsXp && isNakamaEnabled() && hasNakamaConfig() && Boolean(user);
   const shouldShowAccountRewards =
-    (!isOffline && (effectiveMatchConfig.allowsXp || isPrivateMatch)) || canSyncOfflineBotRewards;
+    !isSpectatorMode && ((!isOffline && (effectiveMatchConfig.allowsXp || isPrivateMatch)) || canSyncOfflineBotRewards);
   const shouldShowChallengeRewards =
     shouldShowAccountRewards &&
     effectiveMatchConfig.allowsChallenges &&
     !isPlaythroughTutorialMatch;
   const isRankedHumanMatch =
+    !isSpectatorMode &&
     !isOffline &&
     (effectiveMatchConfig.allowsRankedStats || isTournamentMatch) &&
     !isPlaythroughTutorialMatch;
@@ -1189,6 +1197,7 @@ export function GameRoom() {
     (joinedPlayerCount >= 2 || gameState.winner !== null || authoritativeMatchEnd !== null || hasTournamentBotOpponent);
   const isOnlineHumanMatch = !isOffline && !hasTournamentBotOpponent;
   const isEligibleForRematch =
+    !isSpectatorMode &&
     isOnlineHumanMatch &&
     !isTournamentMatch &&
     authoritativeMatchEnd !== null;
@@ -1248,11 +1257,12 @@ export function GameRoom() {
       hasAssignedColor &&
       authoritativeReconnectingPlayerColor !== resolvedPlayerColor) ||
     hasPrivateReconnectFallback;
-  const shouldShowEmojiControls = isOnlineHumanMatch && hasOpponentJoined;
+  const shouldShowEmojiControls = !isSpectatorMode && isOnlineHumanMatch && hasOpponentJoined;
   const requiresOpponentPresence = isPrivateMatch || (isTournamentMatch && !hasTournamentBotOpponent);
   const isOpponentReadyToPlay = !hasReconnectGraceActive && (!requiresOpponentPresence || hasOpponentJoined);
   const isOnlineInteractionReady = isOffline || socketState === 'connected';
-  const canRoll = isMyTurn && gameState.phase === 'rolling' && isOpponentReadyToPlay && isOnlineInteractionReady;
+  const canRoll =
+    !isSpectatorMode && isMyTurn && gameState.phase === 'rolling' && isOpponentReadyToPlay && isOnlineInteractionReady;
   const isMatchFinished = gameState.winner !== null || gameState.phase === 'ended' || authoritativeMatchEnd !== null;
   const shouldFreezeForfeitMotion = !isOffline && isOnlineForfeit && isMatchFinished;
   const onlineMatchStatusPillText = useMemo(() => {
@@ -1269,6 +1279,10 @@ export function GameRoom() {
         return `${tournamentDisplayName} - ${reconnectStatus}`;
       }
       return `Online Match - ${reconnectStatus}`;
+    }
+
+    if (isSpectatorMode) {
+      return 'Spectator Mode - Watching Live';
     }
 
     if (isPrivateMatch) {
@@ -1293,6 +1307,7 @@ export function GameRoom() {
     isOpponentReconnecting,
     isOffline,
     isPrivateMatch,
+    isSpectatorMode,
     isTournamentMatch,
     privateMatchCode,
     tournamentBotOpponentTitle,
@@ -4351,9 +4366,10 @@ export function GameRoom() {
           createStatus: true,
         });
         attachSocketHandlers(socket);
+        const joinMetadata = isSpectatorMode ? { role: 'spectator' } : undefined;
         const match = effectiveMatchToken
-          ? await socket.joinMatch(matchId, effectiveMatchToken)
-          : await socket.joinMatch(matchId);
+          ? await socket.joinMatch(matchId, effectiveMatchToken, joinMetadata)
+          : await socket.joinMatch(matchId, undefined, joinMetadata);
         if (!isMounted) return;
         const joinedPresenceUserIds = Array.isArray(match.presences)
           ? match.presences
@@ -4404,6 +4420,7 @@ export function GameRoom() {
     appendFloatingReaction,
     challengeDefinitions,
     isOffline,
+    isSpectatorMode,
     matchId,
     effectiveMatchToken,
     setMatchId,
@@ -4429,7 +4446,7 @@ export function GameRoom() {
   ]);
   useEffect(() => {
     if (!matchId) return;
-    if (isOffline) {
+    if (isOffline || isSpectatorMode) {
       setRollCommandSender(null);
       setMoveCommandSender(null);
       return;
@@ -4495,6 +4512,7 @@ export function GameRoom() {
   }, [
     isOffline,
     isOfflineLocalPvPMatch,
+    isSpectatorMode,
     matchId,
     serverRevision,
     setMoveCommandSender,
@@ -4707,6 +4725,10 @@ export function GameRoom() {
         return;
       }
 
+      if (isSpectatorMode) {
+        return;
+      }
+
       if (!isOpponentReadyToPlay) {
         return;
       }
@@ -4727,6 +4749,7 @@ export function GameRoom() {
       isOnlineHumanMatch,
       isOnlineInteractionReady,
       isOpponentReadyToPlay,
+      isSpectatorMode,
       isScriptedTutorialPhase,
       makeMove,
       resumeAnnouncementCuesFromInteraction,
@@ -5564,6 +5587,10 @@ export function GameRoom() {
   const pauseAmbientEffects = rollingVisual || hasActiveBoardMoveAnimation;
   const showDestinationHighlights = introsComplete && !rollingVisual && gameState.rollValue !== null;
   const displayedValidMoves = useMemo(() => {
+    if (isSpectatorMode) {
+      return [];
+    }
+
     if (tutorialForcedNoMove) {
       return [];
     }
@@ -5589,6 +5616,7 @@ export function GameRoom() {
   }, [
     isOpponentReadyToPlay,
     isScriptedTutorialPhase,
+    isSpectatorMode,
     showDestinationHighlights,
     tutorialCoachPhase,
     tutorialForcedNoMove,
@@ -5802,7 +5830,7 @@ export function GameRoom() {
           onHighlightedPieceSettled={settleHighlightedOpponentPiece}
           onSelectedPieceChange={handleSelectedPieceChange}
           onInteraction={resumeAnnouncementCuesFromInteraction}
-          allowInteraction={isOnlineInteractionReady}
+          allowInteraction={!isSpectatorMode && isOnlineInteractionReady}
           freezeMotion={shouldFreezeForfeitMotion}
           onAnimatedMoveStateChange={handleBoardAnimatedMoveStateChange}
           boardScale={boardScale}

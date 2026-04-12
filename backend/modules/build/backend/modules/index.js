@@ -1191,6 +1191,7 @@ var recordMatchStartAnalyticsEvent = (nk, logger, event, writeBuffer) => {
     matchId: event.matchId,
     startedAt: event.startedAt,
     modeId: event.modeId,
+    classification: event.classification,
     tournamentRunId: event.tournamentRunId,
     tournamentId: event.tournamentId,
     playerLabels: event.players.map((player) => {
@@ -6007,8 +6008,21 @@ var writeRunIndex = (nk, index, version) => {
     }, version)
   ]);
 };
+var isStorageVersionConflict = (error) => {
+  const message = getErrorMessage2(error).toLowerCase();
+  return message.includes("version check") || message.includes("version conflict") || message.includes("version mismatch") || message.includes("storage write rejected") || message.includes("already exists");
+};
+var getRunObjectVersionOrThrow = (runId, object) => {
+  const version = getStorageObjectVersion(object);
+  if (!version || version.trim().length === 0) {
+    throw new Error(
+      `Tournament run '${runId}' is missing a storage version and cannot be updated safely.`
+    );
+  }
+  return version;
+};
 var updateRunWithRetry = (nk, logger, runId, updater) => {
-  var _a, _b;
+  var _a;
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
     const object = readRunObject(nk, runId);
     const current = normalizeRunRecord((_a = object == null ? void 0 : object.value) != null ? _a : null, runId);
@@ -6016,10 +6030,14 @@ var updateRunWithRetry = (nk, logger, runId, updater) => {
       throw new Error(`Tournament run '${runId}' was not found.`);
     }
     const next = updater(current);
+    const version = getRunObjectVersionOrThrow(runId, object);
     try {
-      writeRun(nk, next, (_b = getStorageObjectVersion(object)) != null ? _b : "");
+      writeRun(nk, next, version);
       return next;
     } catch (error) {
+      if (!isStorageVersionConflict(error)) {
+        throw error;
+      }
       if (attempt === MAX_WRITE_ATTEMPTS) {
         throw error;
       }
@@ -11849,6 +11867,7 @@ var RPC_MATCHMAKER_ADD = "matchmaker_add";
 var RPC_CREATE_PRIVATE_MATCH = "create_private_match";
 var RPC_JOIN_PRIVATE_MATCH = "join_private_match";
 var RPC_GET_PRIVATE_MATCH_STATUS = "get_private_match_status";
+var RPC_LIST_SPECTATABLE_MATCHES = "list_spectatable_matches";
 var RPC_PRESENCE_HEARTBEAT = "presence_heartbeat";
 var RPC_PRESENCE_COUNT = "presence_count";
 var RPC_GET_USERNAME_ONBOARDING_STATUS_NAME = RPC_GET_USERNAME_ONBOARDING_STATUS;
@@ -11955,6 +11974,16 @@ var getPresenceKey = (presence) => {
   }
   const userId = getPresenceUserId(presence);
   return userId ? `user:${userId}` : null;
+};
+var getPresenceMetadata = (presence) => {
+  var _a;
+  const metadata = (_a = asRecord7(presence)) == null ? void 0 : _a.metadata;
+  return asRecord7(metadata);
+};
+var isSpectatorPresenceRequest = (presence) => {
+  const record = asRecord7(presence);
+  const metadata = getPresenceMetadata(presence);
+  return (record == null ? void 0 : record.role) === "spectator" || (metadata == null ? void 0 : metadata.role) === "spectator";
 };
 var getMatchId = (ctx) => {
   var _a;
@@ -12347,6 +12376,12 @@ var getPrimaryUserPresence = (state, userId) => {
 };
 var getAssignedPlayerTargets = (state) => Object.keys(state.assignments).flatMap((userId) => getUserPresenceTargets(state, userId));
 var getActiveUserCount = (state) => Object.keys(state.presences).length;
+var isSpectatorPresence = (state, presence) => {
+  var _a;
+  const userId = getPresenceUserId(presence);
+  const presenceKey = getPresenceKey(presence);
+  return Boolean(userId && presenceKey && ((_a = state.spectatorPresences[userId]) == null ? void 0 : _a[presenceKey]));
+};
 var upsertPresence = (state, presence) => {
   var _a;
   const userId = getPresenceUserId(presence);
@@ -12355,6 +12390,17 @@ var upsertPresence = (state, presence) => {
     return;
   }
   state.presences[userId] = __spreadProps(__spreadValues({}, (_a = state.presences[userId]) != null ? _a : {}), {
+    [presenceKey]: presence
+  });
+};
+var upsertSpectatorPresence = (state, presence) => {
+  var _a;
+  const userId = getPresenceUserId(presence);
+  const presenceKey = getPresenceKey(presence);
+  if (!userId || !presenceKey) {
+    return;
+  }
+  state.spectatorPresences[userId] = __spreadProps(__spreadValues({}, (_a = state.spectatorPresences[userId]) != null ? _a : {}), {
     [presenceKey]: presence
   });
 };
@@ -12373,6 +12419,23 @@ var removePresence = (state, presence) => {
     delete state.presences[userId];
   }
 };
+var removeSpectatorPresence = (state, presence) => {
+  const userId = getPresenceUserId(presence);
+  const presenceKey = getPresenceKey(presence);
+  if (!userId || !presenceKey) {
+    return false;
+  }
+  const userPresences = state.spectatorPresences[userId];
+  if (!userPresences) {
+    return false;
+  }
+  delete userPresences[presenceKey];
+  if (Object.keys(userPresences).length === 0) {
+    delete state.spectatorPresences[userId];
+  }
+  return true;
+};
+var isSpectatableMatchState = (state) => state.started && !state.gameState.winner && state.gameState.phase !== "ended" && state.opponentType === "human" && !state.classification.private && !state.classification.bot && !state.tournamentContext;
 var getUserIdForColor = (state, color) => {
   var _a, _b;
   return (_b = (_a = Object.entries(state.assignments).find(([, assignedColor]) => assignedColor === color)) == null ? void 0 : _a[0]) != null ? _b : null;
@@ -13031,6 +13094,7 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_CREATE_PRIVATE_MATCH, rpcCreatePrivateMatch);
   initializer.registerRpc(RPC_JOIN_PRIVATE_MATCH, rpcJoinPrivateMatch);
   initializer.registerRpc(RPC_GET_PRIVATE_MATCH_STATUS, rpcGetPrivateMatchStatus);
+  initializer.registerRpc(RPC_LIST_SPECTATABLE_MATCHES, rpcListSpectatableMatches);
   initializer.registerRpc(RPC_PRESENCE_HEARTBEAT, rpcPresenceHeartbeat);
   initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
   initializer.registerRpc(RPC_GET_USERNAME_ONBOARDING_STATUS_NAME, rpcGetUsernameOnboardingStatus);
@@ -13232,6 +13296,21 @@ function rpcGetPrivateMatchStatus(ctx, _logger, nk, payload) {
     Boolean(record.joinedUserId)
   );
 }
+function rpcListSpectatableMatches(ctx, _logger, nk, _payload) {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  requireCompletedUsernameOnboarding(nk, ctx.userId);
+  const matches = listActiveTrackedMatches().filter(
+    (match) => !match.classification.private && !match.classification.bot && !match.classification.tournament && match.playerLabels.length >= MAX_PLAYERS
+  ).map((match) => ({
+    matchId: match.matchId,
+    modeId: match.modeId,
+    startedAt: match.startedAt,
+    playerLabels: match.playerLabels.slice(0, MAX_PLAYERS)
+  }));
+  return JSON.stringify({ matches });
+}
 function matchmakerMatched(_ctx, logger, nk, matched) {
   const users = Array.isArray(matched.users) ? matched.users : [];
   const playerIds = users.map((user) => getPresenceUserId(user == null ? void 0 : user.presence)).filter((userId) => Boolean(userId)).slice(0, MAX_PLAYERS);
@@ -13295,6 +13374,7 @@ function matchInit(_ctx, logger, nk, params) {
   }
   const state = {
     presences: {},
+    spectatorPresences: {},
     assignments,
     playerTitles,
     playerRankTitles,
@@ -13353,6 +13433,13 @@ function matchJoinAttempt(_ctx, logger, nk, _dispatcher, _tick, state, presence)
       return { state, accept: false, rejectMessage: "Enter the private game code before joining this table." };
     }
   }
+  if (isSpectatorPresenceRequest(presence)) {
+    if (!isSpectatableMatchState(state)) {
+      return { state, accept: false, rejectMessage: "This match is not available for spectating." };
+    }
+    upsertSpectatorPresence(state, presence);
+    return { state, accept: true };
+  }
   const hasExistingAssignment = Boolean(state.assignments[userId]);
   if (Object.keys(state.assignments).length >= MAX_PLAYERS && !hasExistingAssignment) {
     return { state, accept: false, rejectMessage: "Match is full." };
@@ -13369,6 +13456,10 @@ function matchJoin(ctx, logger, nk, dispatcher, _tick, state, presences) {
     const userId = getPresenceUserId(presence);
     if (!userId) {
       logger.warn("Skipping join presence with missing user ID.");
+      return;
+    }
+    if (isSpectatorPresenceRequest(presence) || isSpectatorPresence(state, presence)) {
+      upsertSpectatorPresence(state, presence);
       return;
     }
     const hadPresenceBeforeJoin = getUserPresenceTargets(state, userId).length > 0;
@@ -13416,6 +13507,10 @@ function matchLeave(ctx, logger, nk, dispatcher, _tick, state, presences) {
     const userId = getPresenceUserId(presence);
     if (!userId) {
       logger.warn("Skipping leave presence with missing user ID.");
+      return;
+    }
+    if (removeSpectatorPresence(state, presence)) {
+      shouldBroadcastSnapshot = true;
       return;
     }
     removePresence(state, presence);
@@ -13501,6 +13596,17 @@ function matchLoop(ctx, logger, nk, dispatcher, _tick, state, messages) {
       const senderUserId = getSenderUserId(message.sender);
       if (!senderUserId) {
         logger.warn("Ignoring message with missing sender user ID.");
+        return;
+      }
+      if (isSpectatorPresence(state, message.sender) || isSpectatorPresenceRequest(message.sender)) {
+        upsertSpectatorPresence(state, message.sender);
+        sendPresenceError(
+          dispatcher,
+          state,
+          message.sender,
+          "READ_ONLY",
+          "Spectators cannot send match commands."
+        );
         return;
       }
       upsertPresence(state, message.sender);
@@ -14495,6 +14601,18 @@ function sendError(dispatcher, state, userId, code, message) {
     targets
   );
 }
+function sendPresenceError(dispatcher, state, presence, code, message) {
+  dispatcher.broadcastMessage(
+    MatchOpCode.SERVER_ERROR,
+    encodePayload({
+      type: "server_error",
+      code,
+      message,
+      revision: state.revision
+    }),
+    [presence]
+  );
+}
 function broadcastSnapshot(dispatcher, state, matchId) {
   var _a, _b, _c, _d;
   const nowMs = Date.now();
@@ -14551,6 +14669,7 @@ var runtimeGlobals = {
   rpcCreatePrivateMatch,
   rpcJoinPrivateMatch,
   rpcGetPrivateMatchStatus,
+  rpcListSpectatableMatches,
   rpcPresenceHeartbeat,
   rpcPresenceCount,
   matchmakerMatched,

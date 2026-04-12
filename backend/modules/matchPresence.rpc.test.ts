@@ -67,6 +67,15 @@ const createPresence = (userId: string, sessionId: string) => ({
   node: 'node-1',
 });
 
+const createSpectatorPresence = (userId: string, sessionId: string) => ({
+  userId,
+  sessionId,
+  node: 'node-1',
+  metadata: {
+    role: 'spectator',
+  },
+});
+
 describe('authoritative match presence handling', () => {
   afterEach(() => {
     jest.restoreAllMocks();
@@ -123,5 +132,129 @@ describe('authoritative match presence handling', () => {
       expect.stringContaining('"UNAUTHORIZED_PLAYER"'),
       expect.anything()
     );
+  });
+
+  it('accepts a spectator after a public human match has started without assigning a third player', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = createLogger();
+    const nk = createNakama();
+    const dispatcher = createDispatcher();
+    const ctx = { matchId: 'match-spectator-1' };
+
+    const initialized = runtime.matchInit(ctx, logger, nk, {
+      playerIds: ['light-user', 'dark-user'],
+      modeId: 'standard',
+      rankedMatch: true,
+      privateMatch: false,
+      botMatch: false,
+    });
+
+    const lightPresence = createPresence('light-user', 'light-session-1');
+    const darkPresence = createPresence('dark-user', 'dark-session-1');
+    const spectatorPresence = createSpectatorPresence('spectator-user', 'spectator-session-1');
+
+    let state = initialized.state;
+    state = runtime.matchJoinAttempt(ctx, logger, nk, dispatcher, 0, state, lightPresence).state;
+    state = runtime.matchJoin(ctx, logger, nk, dispatcher, 0, state, [lightPresence]).state;
+    state = runtime.matchJoinAttempt(ctx, logger, nk, dispatcher, 0, state, darkPresence).state;
+    state = runtime.matchJoin(ctx, logger, nk, dispatcher, 0, state, [darkPresence]).state;
+
+    const spectatorAttempt = runtime.matchJoinAttempt(ctx, logger, nk, dispatcher, 0, state, spectatorPresence);
+    expect(spectatorAttempt.accept).toBe(true);
+    state = runtime.matchJoin(ctx, logger, nk, dispatcher, 0, spectatorAttempt.state, [spectatorPresence]).state;
+
+    expect((state as any).started).toBe(true);
+    expect((state as any).assignments).toEqual({
+      'light-user': 'light',
+      'dark-user': 'dark',
+    });
+    expect(Object.keys((state as any).spectatorPresences)).toEqual(['spectator-user']);
+  });
+
+  it('rejects spectator commands as read-only even when the user also has a player assignment', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = createLogger();
+    const nk = createNakama();
+    const dispatcher = createDispatcher();
+    const ctx = { matchId: 'match-spectator-2' };
+
+    const initialized = runtime.matchInit(ctx, logger, nk, {
+      playerIds: ['light-user', 'dark-user'],
+      modeId: 'standard',
+      rankedMatch: true,
+    });
+
+    const lightPresence = createPresence('light-user', 'light-session-1');
+    const darkPresence = createPresence('dark-user', 'dark-session-1');
+    const spectatorPresence = createSpectatorPresence('light-user', 'light-spectator-session');
+
+    let state = initialized.state;
+    state = runtime.matchJoinAttempt(ctx, logger, nk, dispatcher, 0, state, lightPresence).state;
+    state = runtime.matchJoin(ctx, logger, nk, dispatcher, 0, state, [lightPresence]).state;
+    state = runtime.matchJoinAttempt(ctx, logger, nk, dispatcher, 0, state, darkPresence).state;
+    state = runtime.matchJoin(ctx, logger, nk, dispatcher, 0, state, [darkPresence]).state;
+    state = runtime.matchJoinAttempt(ctx, logger, nk, dispatcher, 0, state, spectatorPresence).state;
+    state = runtime.matchJoin(ctx, logger, nk, dispatcher, 0, state, [spectatorPresence]).state;
+
+    dispatcher.broadcastMessage.mockClear();
+    const result = runtime.matchLoop(ctx, logger, nk, dispatcher, 1, state, [
+      {
+        sender: spectatorPresence,
+        opCode: 1,
+        data: JSON.stringify({ type: 'roll_request' }),
+      },
+    ]);
+
+    expect(result.state.revision).toBe(0);
+    expect(dispatcher.broadcastMessage).toHaveBeenCalledWith(
+      101,
+      expect.stringContaining('"READ_ONLY"'),
+      [spectatorPresence],
+    );
+  });
+
+  it('rejects spectator joins for private, unstarted, and finished matches', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = createLogger();
+    const nk = createNakama();
+    const dispatcher = createDispatcher();
+    const spectatorPresence = createSpectatorPresence('spectator-user', 'spectator-session-1');
+
+    const unstarted = runtime.matchInit({ matchId: 'unstarted-match' }, logger, nk, {
+      playerIds: ['light-user', 'dark-user'],
+      modeId: 'standard',
+      privateMatch: false,
+      botMatch: false,
+    });
+    expect(
+      runtime.matchJoinAttempt({ matchId: 'unstarted-match' }, logger, nk, dispatcher, 0, unstarted.state, spectatorPresence)
+        .accept,
+    ).toBe(false);
+
+    const privateMatch = runtime.matchInit({ matchId: 'private-match' }, logger, nk, {
+      playerIds: ['light-user', 'dark-user'],
+      modeId: 'standard',
+      privateMatch: true,
+      privateCode: 'ABCDEFGH',
+      privateCreatorUserId: 'light-user',
+    });
+    (privateMatch.state as any).started = true;
+    expect(
+      runtime.matchJoinAttempt({ matchId: 'private-match' }, logger, nk, dispatcher, 0, privateMatch.state, spectatorPresence)
+        .accept,
+    ).toBe(false);
+
+    const finished = runtime.matchInit({ matchId: 'finished-match' }, logger, nk, {
+      playerIds: ['light-user', 'dark-user'],
+      modeId: 'standard',
+      privateMatch: false,
+      botMatch: false,
+    });
+    (finished.state as any).started = true;
+    (finished.state as any).gameState.winner = 'light';
+    expect(
+      runtime.matchJoinAttempt({ matchId: 'finished-match' }, logger, nk, dispatcher, 0, finished.state, spectatorPresence)
+        .accept,
+    ).toBe(false);
   });
 });

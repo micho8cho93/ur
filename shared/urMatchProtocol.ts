@@ -145,6 +145,7 @@ export type ServerErrorCode =
   | "INVALID_PHASE"
   | "INVALID_MOVE"
   | "MATCH_NOT_READY"
+  | "READ_ONLY"
   | "UNKNOWN_OP";
 
 export type ServerErrorPayload = {

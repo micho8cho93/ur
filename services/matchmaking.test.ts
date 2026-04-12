@@ -1,4 +1,10 @@
-import { createPrivateMatch, findMatch, getPrivateMatchStatus, joinPrivateMatch } from './matchmaking';
+import {
+  createPrivateMatch,
+  findMatch,
+  getPrivateMatchStatus,
+  joinPrivateMatch,
+  listSpectatableMatches,
+} from './matchmaking';
 
 const mockRpc = jest.fn();
 const mockEnsureAuthenticatedDevice = jest.fn();
@@ -171,5 +177,63 @@ describe('matchmaking private RPC parsing', () => {
     await expect(createPrivateMatch('gameMode_capture')).rejects.toThrow(
       'Authoritative match handler failed to start.',
     );
+  });
+
+  it('parses spectatable match payloads and filters invalid entries', async () => {
+    mockRpc.mockResolvedValue({
+      payload: JSON.stringify({
+        matches: [
+          {
+            matchId: 'match-live-1',
+            modeId: 'standard',
+            startedAt: '2026-04-12T10:00:00.000Z',
+            playerLabels: ['Light Player', 'Dark Player'],
+          },
+          {
+            match_id: 'match-live-2',
+            mode_id: 'gameMode_3_pieces',
+            started_at: '2026-04-12T10:01:00.000Z',
+            player_labels: ['A', 'B', 'ignored'],
+          },
+          {
+            matchId: 'broken-mode',
+            modeId: 'not-a-mode',
+            playerLabels: ['A', 'B'],
+          },
+          {
+            modeId: 'standard',
+            playerLabels: ['missing match id'],
+          },
+        ],
+      }),
+    });
+
+    await expect(listSpectatableMatches()).resolves.toEqual([
+      {
+        matchId: 'match-live-1',
+        modeId: 'standard',
+        startedAt: '2026-04-12T10:00:00.000Z',
+        playerLabels: ['Light Player', 'Dark Player'],
+      },
+      {
+        matchId: 'match-live-2',
+        modeId: 'gameMode_3_pieces',
+        startedAt: '2026-04-12T10:01:00.000Z',
+        playerLabels: ['A', 'B'],
+      },
+    ]);
+    expect(mockRpc).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 'user-1' }),
+      'list_spectatable_matches',
+      {},
+    );
+  });
+
+  it('rejects invalid spectatable match payload containers', async () => {
+    mockRpc.mockResolvedValue({
+      payload: JSON.stringify({ liveMatches: [] }),
+    });
+
+    await expect(listSpectatableMatches()).rejects.toThrow('Live matches returned an invalid payload.');
   });
 });

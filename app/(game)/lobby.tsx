@@ -167,6 +167,7 @@ export default function Lobby() {
   const isCompactLayout = width < 820;
   const isDesktopViewport = Platform.OS === 'web' && width >= 920;
   const useThreeColumnLayout = Platform.OS === 'web' && width >= 1180;
+  const useFourColumnActionLayout = Platform.OS === 'web' && width >= 1180;
   const horizontalPadding = isDesktopViewport ? urTheme.spacing.lg : urTheme.spacing.md;
   const topPadding = insets.top + (isDesktopViewport ? 12 : 8);
   const bottomPadding = insets.bottom + (isCompactLayout ? urTheme.spacing.xl : urTheme.spacing.lg);
@@ -178,7 +179,7 @@ export default function Lobby() {
         ? Math.min(width - horizontalPadding * 2, 430)
         : Math.min(width - horizontalPadding * 2, 820);
   const actionsStageWidth = useThreeColumnLayout
-    ? Math.min(stageWidth, 960)
+    ? Math.min(stageWidth, useFourColumnActionLayout ? 1180 : 960)
     : isDesktopViewport
       ? Math.min(stageWidth, 720)
       : isCompactLayout
@@ -456,12 +457,21 @@ export default function Lobby() {
               <Text style={[styles.actionsTitle, { fontFamily: titleFontFamily }]}>
                 Choose how you want to enter the court
               </Text>
-              <View style={[styles.actionGrid, useThreeColumnLayout && styles.actionGridThreeColumn]}>
+              <View
+                style={[
+                  styles.actionGrid,
+                  useFourColumnActionLayout
+                    ? styles.actionGridFourColumn
+                    : useThreeColumnLayout && styles.actionGridThreeColumn,
+                ]}
+              >
                 <View
                   style={[
                     styles.actionCell,
                     isCompactLayout && styles.actionCellCompact,
-                    useThreeColumnLayout && styles.actionCellThreeColumn,
+                    useFourColumnActionLayout
+                      ? styles.actionCellFourColumn
+                      : useThreeColumnLayout && styles.actionCellThreeColumn,
                   ]}
                 >
                   <OnlineActionPanel
@@ -497,7 +507,9 @@ export default function Lobby() {
                   style={[
                     styles.actionCell,
                     isCompactLayout && styles.actionCellCompact,
-                    useThreeColumnLayout && styles.actionCellThreeColumn,
+                    useFourColumnActionLayout
+                      ? styles.actionCellFourColumn
+                      : useThreeColumnLayout && styles.actionCellThreeColumn,
                   ]}
                 >
                   <OnlineActionPanel
@@ -594,7 +606,9 @@ export default function Lobby() {
                   style={[
                     styles.actionCell,
                     isCompactLayout && styles.actionCellCompact,
-                    useThreeColumnLayout && styles.actionCellThreeColumn,
+                    useFourColumnActionLayout
+                      ? styles.actionCellFourColumn
+                      : useThreeColumnLayout && styles.actionCellThreeColumn,
                   ]}
                 >
                   <OnlineActionPanel
@@ -639,6 +653,37 @@ export default function Lobby() {
                       disabled={!canJoinPrivateGame}
                       style={styles.primaryActionButton}
                       onPress={() => void handleJoinPrivateGame()}
+                    />
+                  </OnlineActionPanel>
+                </View>
+
+                <View
+                  style={[
+                    styles.actionCell,
+                    isCompactLayout && styles.actionCellCompact,
+                    useFourColumnActionLayout
+                      ? styles.actionCellFourColumn
+                      : useThreeColumnLayout && styles.actionCellThreeColumn,
+                  ]}
+                >
+                  <OnlineActionPanel
+                    title="Spectate Live Match"
+                    subtitle="Watch active public matches without taking a player seat."
+                    titleFontFamily={titleFontFamily}
+                    bodyFontFamily={bodyFontFamily}
+                    compact={isCompactLayout}
+                  >
+                    <Text style={[styles.statusText, { fontFamily: bodyFontFamily }]}>
+                      Public matches only · Read-only
+                    </Text>
+
+                    <HomeLightButton
+                      label="Browse Live Matches"
+                      fontLoaded={fontsLoaded}
+                      size={isCompactLayout ? 'compact' : 'regular'}
+                      disabled={isBusy}
+                      style={styles.primaryActionButton}
+                      onPress={() => router.push('/(game)/spectate' as never)}
                     />
                   </OnlineActionPanel>
                 </View>
@@ -809,6 +854,9 @@ const styles = StyleSheet.create({
   actionGridThreeColumn: {
     justifyContent: 'center',
   },
+  actionGridFourColumn: {
+    justifyContent: 'center',
+  },
   actionCell: {
     width: '48.8%',
   },
@@ -817,6 +865,9 @@ const styles = StyleSheet.create({
   },
   actionCellThreeColumn: {
     width: '31.7%',
+  },
+  actionCellFourColumn: {
+    width: '23.8%',
   },
   modePanel: {
     width: '100%',

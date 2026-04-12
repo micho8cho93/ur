@@ -8,6 +8,7 @@ import { nakamaService } from "./nakama";
 const RPC_CREATE_PRIVATE_MATCH = "create_private_match";
 const RPC_JOIN_PRIVATE_MATCH = "join_private_match";
 const RPC_GET_PRIVATE_MATCH_STATUS = "get_private_match_status";
+const RPC_LIST_SPECTATABLE_MATCHES = "list_spectatable_matches";
 const CONNECT_TIMEOUT_MS = 10_000;
 const START_MATCHMAKING_TIMEOUT_MS = 10_000;
 const WAIT_FOR_MATCH_TIMEOUT_MS = 20_000;
@@ -179,6 +180,13 @@ export type PrivateMatchStatusResult = {
   hasGuestJoined: boolean;
 };
 
+export type SpectatableMatch = {
+  matchId: string;
+  modeId: MatchModeId;
+  startedAt: string | null;
+  playerLabels: string[];
+};
+
 export type MatchmakingHandlers = {
   onSearching?: () => void;
 };
@@ -193,6 +201,17 @@ type CreatePrivateMatchRpcPayload = {
   private_code?: unknown;
   hasGuestJoined?: unknown;
   has_guest_joined?: unknown;
+};
+
+type SpectatableMatchRpcPayload = {
+  matchId?: unknown;
+  match_id?: unknown;
+  modeId?: unknown;
+  mode_id?: unknown;
+  startedAt?: unknown;
+  started_at?: unknown;
+  playerLabels?: unknown;
+  player_labels?: unknown;
 };
 
 const normalizeRpcPayload = (payload: unknown): unknown => {
@@ -249,6 +268,60 @@ const parsePrivateMatchPayload = (
     code,
     hasGuestJoined,
   };
+};
+
+const parseSpectatableMatchEntry = (entry: unknown): SpectatableMatch | null => {
+  const rpcPayload = entry as SpectatableMatchRpcPayload | undefined;
+  const matchId =
+    typeof rpcPayload?.matchId === "string"
+      ? rpcPayload.matchId
+      : typeof rpcPayload?.match_id === "string"
+        ? rpcPayload.match_id
+        : null;
+  const modeId = rpcPayload?.modeId ?? rpcPayload?.mode_id;
+  const startedAt =
+    typeof rpcPayload?.startedAt === "string"
+      ? rpcPayload.startedAt
+      : typeof rpcPayload?.started_at === "string"
+        ? rpcPayload.started_at
+        : null;
+  const rawPlayerLabels = Array.isArray(rpcPayload?.playerLabels)
+    ? rpcPayload.playerLabels
+    : Array.isArray(rpcPayload?.player_labels)
+      ? rpcPayload.player_labels
+      : [];
+  const playerLabels = rawPlayerLabels
+    .filter((label): label is string => typeof label === "string" && label.trim().length > 0)
+    .map((label) => label.trim())
+    .slice(0, 2);
+
+  if (!matchId || !isMatchModeId(modeId)) {
+    return null;
+  }
+
+  return {
+    matchId,
+    modeId,
+    startedAt,
+    playerLabels,
+  };
+};
+
+const parseSpectatableMatchesPayload = (payload: unknown): SpectatableMatch[] => {
+  const rpcPayload = normalizeRpcPayload(payload);
+  const matches = Array.isArray(rpcPayload)
+    ? rpcPayload
+    : typeof rpcPayload === "object" && rpcPayload !== null && Array.isArray((rpcPayload as { matches?: unknown }).matches)
+      ? (rpcPayload as { matches: unknown[] }).matches
+      : null;
+
+  if (!matches) {
+    throw new Error("Live matches returned an invalid payload.");
+  }
+
+  return matches
+    .map((entry) => parseSpectatableMatchEntry(entry))
+    .filter((entry): entry is SpectatableMatch => Boolean(entry));
 };
 
 export const cancelMatchmaking = async (): Promise<void> => {
@@ -386,6 +459,18 @@ export const getPrivateMatchStatus = async (code: string): Promise<PrivateMatchS
       code: payload.code,
       hasGuestJoined: Boolean(payload.hasGuestJoined),
     };
+  } catch (error) {
+    throw await normalizeMatchmakingError(error);
+  }
+};
+
+export const listSpectatableMatches = async (): Promise<SpectatableMatch[]> => {
+  const session = await ensureAuthenticated();
+  const client = nakamaService.getClient();
+
+  try {
+    const response = await client.rpc(session, RPC_LIST_SPECTATABLE_MATCHES, {});
+    return parseSpectatableMatchesPayload(response.payload);
   } catch (error) {
     throw await normalizeMatchmakingError(error);
   }
