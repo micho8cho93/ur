@@ -5,8 +5,8 @@ import {
   MOBILE_DICE_STAGE_WIDTH_SCALE,
   STAGE_MARGIN,
   VERTICAL_BOARD_ART_INSETS,
+  VERTICAL_BOARD_DISPLAY_ROW_HEIGHT_RATIOS,
   VERTICAL_BOARD_GAP_GRID_COLS,
-  VERTICAL_BOARD_GAP_GRID_ROWS,
   VERTICAL_BOARD_GAP_ROW_SPAN,
   VERTICAL_BOARD_GAP_ROW_START,
   computeBoardGapControlLayout,
@@ -96,13 +96,27 @@ describe('matchDiceStageLayout', () => {
     const renderedGridHeight =
       boardFrame.height * (1 - VERTICAL_BOARD_ART_INSETS.top - VERTICAL_BOARD_ART_INSETS.bottom);
     const expectedLaneWidth = Math.round(renderedGridWidth / VERTICAL_BOARD_GAP_GRID_COLS);
+    const rowRatioTotal = VERTICAL_BOARD_DISPLAY_ROW_HEIGHT_RATIOS.reduce(
+      (total, ratio) => total + ratio,
+      0,
+    );
+    const rowTopRatio =
+      VERTICAL_BOARD_DISPLAY_ROW_HEIGHT_RATIOS.slice(0, VERTICAL_BOARD_GAP_ROW_START).reduce(
+        (total, ratio) => total + ratio,
+        0,
+      ) / rowRatioTotal;
+    const rowSpanRatio =
+      VERTICAL_BOARD_DISPLAY_ROW_HEIGHT_RATIOS.slice(
+        VERTICAL_BOARD_GAP_ROW_START,
+        VERTICAL_BOARD_GAP_ROW_START + VERTICAL_BOARD_GAP_ROW_SPAN,
+      ).reduce((total, ratio) => total + ratio, 0) / rowRatioTotal;
     const expectedLaneHeight = Math.round(
-      (renderedGridHeight * VERTICAL_BOARD_GAP_ROW_SPAN) / VERTICAL_BOARD_GAP_GRID_ROWS,
+      renderedGridHeight * rowSpanRatio,
     );
     const expectedGapTop = Math.round(
       boardFrame.y +
         boardFrame.height * VERTICAL_BOARD_ART_INSETS.top +
-        (renderedGridHeight / VERTICAL_BOARD_GAP_GRID_ROWS) * VERTICAL_BOARD_GAP_ROW_START,
+        renderedGridHeight * rowTopRatio,
     );
 
     expect(boardGapLayout.diceFrame.width).toBe(expectedLaneWidth);
@@ -194,7 +208,10 @@ describe('matchDiceStageLayout', () => {
 
     expect(controlMetrics.diceOrientation).toBe('vertical');
     expect(controlMetrics.diceOffsetX).toBe(9);
-    expect(controlMetrics.diceTranslateY).toBe(-25);
+    expect(controlMetrics.diceTranslateY).toBe(
+      Math.round((trayColumnLayout.diceFrame.height - controlMetrics.diceViewportHeight) / 2),
+    );
+    expect(controlMetrics.diceTranslateY).toBeLessThan(0);
     expect(controlMetrics.rollArtSize).toBe(57);
     expect(controlMetrics.rollTranslateY).toBeGreaterThan(0);
   });

@@ -59,10 +59,11 @@ const PIECE_ART_SOURCES: Record<PieceVariant, ImageSourcePropType> = {
 
 // The visible token body occupies about 62.5% of the exported PNG frame.
 export const PIECE_ART_VISIBLE_COVERAGE = 0.625;
-// Per-asset center-of-mass correction so the rendered disk sits on the gameplay center point.
+// Match the current dark token center so every token lands on the same gameplay point.
+export const PIECE_ART_VISUAL_CENTER_OFFSET_Y_RATIO = -0.031;
 const PIECE_ART_VISUAL_CENTER_OFFSET_Y_RATIOS = {
-  light: 0.01,
-  dark: -0.031,
+  light: PIECE_ART_VISUAL_CENTER_OFFSET_Y_RATIO,
+  dark: PIECE_ART_VISUAL_CENTER_OFFSET_Y_RATIO,
 } as const;
 
 const PieceComponent: React.FC<PieceProps> = ({

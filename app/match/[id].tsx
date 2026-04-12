@@ -2,7 +2,9 @@ import {
   Board,
   BoardImageLayoutFrame,
   BOARD_IMAGE_SOURCE,
+  VERTICAL_BOARD_ART_INSETS,
   getBoardPiecePixelSize,
+  getVerticalBoardDisplayRowCenterRatio,
 } from '@/components/game/Board';
 import { AudioSettingsModal } from '@/components/game/AudioSettingsModal';
 import { AmbientBackgroundEffects } from '@/components/game/AmbientBackgroundEffects';
@@ -5060,9 +5062,8 @@ export function GameRoom() {
   const boardFramePadding = urTheme.spacing.sm;
   const boardInnerPadding = urTheme.spacing.xs;
   const boardGridGap = 0;
-  // Keep these ratios in sync with the vertical board art fit in Board.tsx.
-  const boardArtInsetTop = 0.024;
-  const boardArtInsetBottom = 0.018;
+  const boardArtInsetTop = VERTICAL_BOARD_ART_INSETS.top;
+  const boardArtInsetBottom = VERTICAL_BOARD_ART_INSETS.bottom;
   const boardOuterPadding = boardFramePadding * 2 + boardInnerPadding * 2;
   const verticalBoardRows = BOARD_COLS;
   const verticalBoardCols = BOARD_ROWS;
@@ -5665,7 +5666,8 @@ export function GameRoom() {
     const gridTop = boardTargetFrame.y + boardTargetFrame.height * boardArtInsetTop;
     const gridHeight = boardTargetFrame.height * (1 - boardArtInsetTop - boardArtInsetBottom);
     const middleColumnSixthTileIndex = 5;
-    const tileCenterY = gridTop + ((middleColumnSixthTileIndex + 0.5) * gridHeight) / verticalBoardRows;
+    const tileCenterY =
+      gridTop + (getVerticalBoardDisplayRowCenterRatio(middleColumnSixthTileIndex) * gridHeight) / verticalBoardRows;
     const left = Math.max(
       urTheme.spacing.xs,
       Math.min(

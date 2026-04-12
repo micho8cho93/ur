@@ -22,10 +22,10 @@ jest.mock('./Tile', () => {
       col: number;
       piece?: { id: string; color: PlayerColor };
       pieceInvalidSelectionToken?: number;
-      onPress?: () => void;
+      onPress?: (row: number, col: number) => void;
       isInteractive?: boolean;
     }) => (
-      <Pressable testID={`tile-${row}-${col}`} onPress={onPress} disabled={!isInteractive}>
+      <Pressable testID={`tile-${row}-${col}`} onPress={() => onPress?.(row, col)} disabled={!isInteractive}>
         <Text>{`${row}-${col}`}</Text>
         {piece ? (
           <Text testID={`tile-piece-feedback-${piece.id}`}>{String(pieceInvalidSelectionToken ?? 0)}</Text>

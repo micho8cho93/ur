@@ -96,6 +96,7 @@ interface AnimatedBoardMove {
 
 interface BoardTileLandingOffsetOptions {
   cellSize: number;
+  cellHeight?: number;
   col: number;
   orientation?: BoardOrientation;
   row: number;
@@ -118,6 +119,8 @@ interface BoardRenderLayout {
   frameHeight: number;
   innerGridLeft: number;
   innerGridTop: number;
+  rowHeights: readonly number[];
+  rowTops: readonly number[];
 }
 
 interface BoardArtImageLayout {
@@ -135,14 +138,18 @@ export interface BoardImageLayoutFrame {
   height: number;
 }
 
+export interface BoardArtInsetConfig {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 interface BoardArtAlignmentConfig {
   offsetX: number;
   offsetY: number;
   scale: number;
-  insetTop: number;
-  insetRight: number;
-  insetBottom: number;
-  insetLeft: number;
+  insets: BoardArtInsetConfig;
 }
 
 export type BoardOrientation = 'horizontal' | 'vertical';
@@ -163,36 +170,143 @@ const MOVE_SLIDE_STEP_DURATION_MS = 110;
 const MOVE_SLIDE_MAX_DURATION_MS = 640;
 const AUTO_COMMIT_SELECTED_MOVE_MS = 180;
 const SHOW_BOARD_ALIGNMENT_DEBUG = false;
-// Display-row/display-column visual centers for the current vertical board art.
-// These are tuned to where the tile reads as centered on-screen, not just the
-// geometric center of the gameplay cell or the legacy board shell.
-const VERTICAL_BOARD_TILE_FOCUS_CENTER_RATIOS = [
-  [{ x: 0.516, y: 0.55 }, { x: 0.502, y: 0.554 }, { x: 0.508, y: 0.55 }],
-  [{ x: 0.514, y: 0.536 }, { x: 0.502, y: 0.54 }, { x: 0.508, y: 0.536 }],
-  [{ x: 0.512, y: 0.526 }, { x: 0.5, y: 0.528 }, { x: 0.51, y: 0.526 }],
-  [{ x: 0.51, y: 0.516 }, { x: 0.5, y: 0.518 }, { x: 0.51, y: 0.516 }],
-  [{ x: 0.51, y: 0.504 }, { x: 0.5, y: 0.506 }, { x: 0.51, y: 0.504 }],
-  [{ x: 0.508, y: 0.466 }, { x: 0.5, y: 0.47 }, { x: 0.512, y: 0.466 }],
-  [{ x: 0.51, y: 0.43 }, { x: 0.5, y: 0.434 }, { x: 0.51, y: 0.43 }],
-  [{ x: 0.512, y: 0.392 }, { x: 0.5, y: 0.396 }, { x: 0.508, y: 0.392 }],
+const VERTICAL_BOARD_ART_SOURCE_HEIGHT = 1024;
+const VERTICAL_BOARD_ART_GRID_TOP_PX = 47;
+const VERTICAL_BOARD_ART_GRID_BOTTOM_PX = 996;
+export const VERTICAL_BOARD_ART_INSETS: BoardArtInsetConfig = {
+  top: VERTICAL_BOARD_ART_GRID_TOP_PX / VERTICAL_BOARD_ART_SOURCE_HEIGHT,
+  right: 0.385,
+  bottom: (VERTICAL_BOARD_ART_SOURCE_HEIGHT - VERTICAL_BOARD_ART_GRID_BOTTOM_PX) / VERTICAL_BOARD_ART_SOURCE_HEIGHT,
+  left: 0.36,
+};
+interface BoardTileFocusFrameRatio {
+  centerX: number;
+  centerY: number;
+  height: number;
+  width: number;
+}
+
+// Display-row/display-column focus frames for the current vertical board art.
+// These are tuned to the visible wood tile faces in the PNG, excluding the
+// thick dividers/rivets so pieces land on the point that reads as centered.
+// Anchors stay lane-aligned from the right column baseline.
+const VERTICAL_BOARD_TILE_FOCUS_FRAME_RATIOS: readonly (readonly BoardTileFocusFrameRatio[])[] = [
+  [
+    { centerX: 0.5, centerY: 0.48, width: 0.86, height: 0.78 },
+    { centerX: 0.5, centerY: 0.48, width: 0.84, height: 0.78 },
+    { centerX: 0.5, centerY: 0.48, width: 0.86, height: 0.78 },
+  ],
+  [
+    { centerX: 0.51, centerY: 0.48, width: 0.86, height: 0.82 },
+    { centerX: 0.51, centerY: 0.48, width: 0.84, height: 0.82 },
+    { centerX: 0.51, centerY: 0.48, width: 0.86, height: 0.82 },
+  ],
+  [
+    { centerX: 0.51, centerY: 0.49, width: 0.86, height: 0.84 },
+    { centerX: 0.51, centerY: 0.49, width: 0.84, height: 0.84 },
+    { centerX: 0.51, centerY: 0.49, width: 0.86, height: 0.84 },
+  ],
+  [
+    { centerX: 0.51, centerY: 0.49, width: 0.86, height: 0.84 },
+    { centerX: 0.51, centerY: 0.49, width: 0.84, height: 0.84 },
+    { centerX: 0.51, centerY: 0.49, width: 0.86, height: 0.84 },
+  ],
+  [
+    { centerX: 0.5, centerY: 0.5, width: 0.86, height: 0.84 },
+    { centerX: 0.5, centerY: 0.5, width: 0.84, height: 0.84 },
+    { centerX: 0.5, centerY: 0.5, width: 0.86, height: 0.84 },
+  ],
+  [
+    { centerX: 0.5, centerY: 0.5, width: 0.86, height: 0.84 },
+    { centerX: 0.5, centerY: 0.5, width: 0.84, height: 0.84 },
+    { centerX: 0.5, centerY: 0.5, width: 0.86, height: 0.84 },
+  ],
+  [
+    { centerX: 0.5, centerY: 0.5, width: 0.86, height: 0.84 },
+    { centerX: 0.5, centerY: 0.5, width: 0.84, height: 0.84 },
+    { centerX: 0.5, centerY: 0.5, width: 0.86, height: 0.84 },
+  ],
+  [
+    { centerX: 0.51, centerY: 0.42, width: 0.86, height: 0.82 },
+    { centerX: 0.51, centerY: 0.42, width: 0.84, height: 0.82 },
+    { centerX: 0.51, centerY: 0.42, width: 0.86, height: 0.82 },
+  ],
 ] as const;
-const VERTICAL_BOARD_ROW_FOCUS_HEIGHT_RATIOS = [
-  0.7,
-  0.72,
-  0.73,
-  0.75,
-  0.76,
-  0.75,
-  0.72,
-  0.7,
+const DEFAULT_VERTICAL_BOARD_TILE_FOCUS_FRAME_RATIO: BoardTileFocusFrameRatio = {
+  centerX: 0.5,
+  centerY: 0.5,
+  height: 0.84,
+  width: 0.84,
+};
+const VERTICAL_BOARD_ART_ROW_BOUNDARIES_PX = [
+  47,
+  170,
+  294,
+  413,
+  533,
+  644,
+  759,
+  862,
+  996,
 ] as const;
-const VERTICAL_BOARD_COLUMN_FOCUS_WIDTH_RATIOS = [
-  0.72,
-  0.7,
-  0.72,
-] as const;
+const VERTICAL_BOARD_ART_GRID_HEIGHT_PX =
+  VERTICAL_BOARD_ART_ROW_BOUNDARIES_PX[VERTICAL_BOARD_ART_ROW_BOUNDARIES_PX.length - 1] -
+  VERTICAL_BOARD_ART_ROW_BOUNDARIES_PX[0];
+// The vertical PNG has slightly non-uniform row bands. These ratios sum to
+// BOARD_COLS, so the board keeps the same total height while hitboxes follow
+// the visual row centers in the art.
+export const VERTICAL_BOARD_DISPLAY_ROW_HEIGHT_RATIOS: readonly number[] =
+  VERTICAL_BOARD_ART_ROW_BOUNDARIES_PX.slice(0, -1).map((rowTop, index) => {
+    const rowBottom = VERTICAL_BOARD_ART_ROW_BOUNDARIES_PX[index + 1];
+
+    return ((rowBottom - rowTop) / VERTICAL_BOARD_ART_GRID_HEIGHT_PX) * BOARD_COLS;
+  });
 
 const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+const sum = (values: readonly number[]): number => values.reduce((total, value) => total + value, 0);
+
+export const getVerticalBoardDisplayRowTopRatio = (displayRow: number): number => {
+  if (displayRow <= 0) {
+    return 0;
+  }
+
+  return sum(VERTICAL_BOARD_DISPLAY_ROW_HEIGHT_RATIOS.slice(0, displayRow));
+};
+
+export const getVerticalBoardDisplayRowCenterRatio = (displayRow: number): number => {
+  const rowHeightRatio = VERTICAL_BOARD_DISPLAY_ROW_HEIGHT_RATIOS[displayRow] ?? 1;
+
+  return getVerticalBoardDisplayRowTopRatio(displayRow) + rowHeightRatio / 2;
+};
+
+const buildRowMetrics = (
+  displayRows: number,
+  cellSize: number,
+  orientation: BoardOrientation,
+): { rowHeights: readonly number[]; rowTops: readonly number[]; gridHeight: number } => {
+  const rowHeightRatios =
+    orientation === 'vertical'
+      ? VERTICAL_BOARD_DISPLAY_ROW_HEIGHT_RATIOS
+      : Array.from({ length: displayRows }, () => 1);
+  const rowHeights = Array.from({ length: displayRows }, (_, rowIndex) => {
+    const ratio = rowHeightRatios[rowIndex] ?? 1;
+
+    return cellSize * ratio;
+  });
+  const rowTops: number[] = [];
+  let nextTop = 0;
+
+  rowHeights.forEach((rowHeight, rowIndex) => {
+    rowTops[rowIndex] = nextTop;
+    nextTop += rowHeight + (rowIndex < displayRows - 1 ? GRID_GAP : 0);
+  });
+
+  return {
+    gridHeight: nextTop,
+    rowHeights,
+    rowTops,
+  };
+};
 
 interface BoardPiecePixelSizeOptions {
   viewportWidth: number;
@@ -229,16 +343,19 @@ export const getBoardPiecePixelSize = (options: BoardPiecePixelSizeOptions): num
   getBoardPieceRenderMetrics(options).pixelSize;
 
 export const getBoardTileFocusFrame = ({
+  cellHeight,
   cellSize,
   col,
   orientation = 'horizontal',
   row,
 }: BoardTileLandingOffsetOptions): BoardTileFocusFrame => {
+  const resolvedCellHeight = cellHeight ?? cellSize;
+
   if (orientation !== 'vertical') {
     return {
       centerX: cellSize / 2,
-      centerY: cellSize / 2,
-      height: cellSize,
+      centerY: resolvedCellHeight / 2,
+      height: resolvedCellHeight,
       left: 0,
       top: 0,
       width: cellSize,
@@ -247,17 +364,15 @@ export const getBoardTileFocusFrame = ({
 
   const displayRow = col;
   const displayCol = BOARD_ROWS - 1 - row;
-  const widthRatio = VERTICAL_BOARD_COLUMN_FOCUS_WIDTH_RATIOS[displayCol] ?? 0.7;
-  const heightRatio = VERTICAL_BOARD_ROW_FOCUS_HEIGHT_RATIOS[displayRow] ?? 0.74;
-  const centerRatio = VERTICAL_BOARD_TILE_FOCUS_CENTER_RATIOS[displayRow]?.[displayCol];
-  const centerXRatio = centerRatio?.x ?? 0.5;
-  const centerYRatio = centerRatio?.y ?? 0.5;
-  const width = Math.round(cellSize * widthRatio * 100) / 100;
-  const height = Math.round(cellSize * heightRatio * 100) / 100;
-  const rawLeft = cellSize * centerXRatio - width / 2;
-  const rawTop = cellSize * centerYRatio - height / 2;
+  const frameRatio =
+    VERTICAL_BOARD_TILE_FOCUS_FRAME_RATIOS[displayRow]?.[displayCol] ??
+    DEFAULT_VERTICAL_BOARD_TILE_FOCUS_FRAME_RATIO;
+  const width = Math.round(cellSize * frameRatio.width * 100) / 100;
+  const height = Math.round(resolvedCellHeight * frameRatio.height * 100) / 100;
+  const rawLeft = cellSize * frameRatio.centerX - width / 2;
+  const rawTop = resolvedCellHeight * frameRatio.centerY - height / 2;
   const left = Math.round(clamp(rawLeft, 0, Math.max(0, cellSize - width)) * 100) / 100;
-  const top = Math.round(clamp(rawTop, 0, Math.max(0, cellSize - height)) * 100) / 100;
+  const top = Math.round(clamp(rawTop, 0, Math.max(0, resolvedCellHeight - height)) * 100) / 100;
 
   return {
     centerX: Math.round((left + width / 2) * 100) / 100,
@@ -270,12 +385,14 @@ export const getBoardTileFocusFrame = ({
 };
 
 export const getBoardTileLandingOffset = ({
+  cellHeight,
   cellSize,
   col,
   orientation = 'horizontal',
   row,
 }: BoardTileLandingOffsetOptions): Point => {
   const focusFrame = getBoardTileFocusFrame({
+    cellHeight,
     cellSize,
     col,
     orientation,
@@ -284,7 +401,7 @@ export const getBoardTileLandingOffset = ({
 
   return {
     x: Math.round((focusFrame.centerX - cellSize / 2) * 100) / 100,
-    y: Math.round((focusFrame.centerY - cellSize / 2) * 100) / 100,
+    y: Math.round((focusFrame.centerY - (cellHeight ?? cellSize) / 2) * 100) / 100,
   };
 };
 
@@ -315,11 +432,7 @@ const BOARD_ART_ALIGNMENT: BoardArtAlignmentConfig = {
   offsetX: 0,
   offsetY: 0,
   scale: 1,
-  insetTop: 0.024,
-  insetRight: 0.385,
-  // Extend artwork down a touch so last-row side tiles align with gameplay hitboxes/glow.
-  insetBottom: 0.018,
-  insetLeft: 0.36,
+  insets: VERTICAL_BOARD_ART_INSETS,
 };
 
 const areMovesEqual = (
@@ -442,7 +555,7 @@ export const Board: React.FC<BoardProps> = ({
     const innerGridTop = FRAME_PADDING + INNER_PADDING;
     const gridWidth = frameWidth - FRAME_PADDING * 2 - INNER_PADDING * 2;
     const cellSize = gridWidth / displayCols;
-    const gridHeight = cellSize * displayRows + GRID_GAP * Math.max(0, displayRows - 1);
+    const { gridHeight, rowHeights, rowTops } = buildRowMetrics(displayRows, cellSize, orientation);
     const frameHeight = FRAME_PADDING * 2 + INNER_PADDING * 2 + gridHeight;
 
     return {
@@ -453,8 +566,10 @@ export const Board: React.FC<BoardProps> = ({
       frameHeight,
       innerGridLeft,
       innerGridTop,
+      rowHeights,
+      rowTops,
     };
-  }, [boardWidth, displayCols, displayRows]);
+  }, [boardWidth, displayCols, displayRows, orientation]);
 
   const tileShellPadding = useMemo(
     () => Math.max(MIN_TILE_SHELL_PADDING, Math.round(boardLayout.cellSize * 0.04)),
@@ -463,6 +578,14 @@ export const Board: React.FC<BoardProps> = ({
   const renderedTileSize = useMemo(
     () => Math.max(18, Math.round(boardLayout.cellSize - tileShellPadding * 2)),
     [boardLayout.cellSize, tileShellPadding],
+  );
+  const getRenderedTileHeight = React.useCallback(
+    (displayRow: number) =>
+      Math.max(
+        18,
+        Math.round((boardLayout.rowHeights[displayRow] ?? boardLayout.cellSize) - tileShellPadding * 2),
+      ),
+    [boardLayout.cellSize, boardLayout.rowHeights, tileShellPadding],
   );
   const boardPieceRenderMetrics = useMemo(
     () => getBoardPieceRenderMetrics({ viewportWidth: width, boardScale, orientation }),
@@ -516,7 +639,10 @@ export const Board: React.FC<BoardProps> = ({
 
   const getCellCenter = React.useCallback((r: number, c: number): Point => {
     const displayCoord = mapLogicalToDisplayCoord(r, c);
+    const rowHeight = boardLayout.rowHeights[displayCoord.row] ?? boardLayout.cellSize;
+    const rowTop = boardLayout.rowTops[displayCoord.row] ?? displayCoord.row * (boardLayout.cellSize + GRID_GAP);
     const landingOffset = getBoardTileLandingOffset({
+      cellHeight: getRenderedTileHeight(displayCoord.row),
       cellSize: renderedTileSize,
       col: c,
       orientation,
@@ -531,14 +657,17 @@ export const Board: React.FC<BoardProps> = ({
         landingOffset.x,
       y:
         boardLayout.innerGridTop +
-        displayCoord.row * (boardLayout.cellSize + GRID_GAP) +
-        boardLayout.cellSize / 2 +
+        rowTop +
+        rowHeight / 2 +
         landingOffset.y,
     };
   }, [
     boardLayout.cellSize,
     boardLayout.innerGridLeft,
     boardLayout.innerGridTop,
+    boardLayout.rowHeights,
+    boardLayout.rowTops,
+    getRenderedTileHeight,
     mapLogicalToDisplayCoord,
     orientation,
     renderedTileSize,
@@ -828,14 +957,15 @@ export const Board: React.FC<BoardProps> = ({
   const previewDestinationPoint = previewPoints[previewPoints.length - 1] ?? null;
   const boardArtLayout = useMemo<BoardArtImageLayout>(() => {
     // Fit artwork from gameplay grid measurements so visuals follow interaction geometry.
-    const cropWidthRatio = Math.max(0.01, 1 - BOARD_ART_ALIGNMENT.insetLeft - BOARD_ART_ALIGNMENT.insetRight);
-    const cropHeightRatio = Math.max(0.01, 1 - BOARD_ART_ALIGNMENT.insetTop - BOARD_ART_ALIGNMENT.insetBottom);
+    const boardArtInsets = BOARD_ART_ALIGNMENT.insets;
+    const cropWidthRatio = Math.max(0.01, 1 - boardArtInsets.left - boardArtInsets.right);
+    const cropHeightRatio = Math.max(0.01, 1 - boardArtInsets.top - boardArtInsets.bottom);
     const baseWidth = boardLayout.gridWidth / cropWidthRatio;
     const baseHeight = boardLayout.gridHeight / cropHeightRatio;
     const scaledWidth = baseWidth * BOARD_ART_ALIGNMENT.scale;
     const scaledHeight = baseHeight * BOARD_ART_ALIGNMENT.scale;
-    const baseLeft = boardLayout.innerGridLeft - BOARD_ART_ALIGNMENT.insetLeft * baseWidth;
-    const baseTop = boardLayout.innerGridTop - BOARD_ART_ALIGNMENT.insetTop * baseHeight;
+    const baseLeft = boardLayout.innerGridLeft - boardArtInsets.left * baseWidth;
+    const baseTop = boardLayout.innerGridTop - boardArtInsets.top * baseHeight;
     const centeredLeft = baseLeft - (scaledWidth - baseWidth) / 2 + BOARD_ART_ALIGNMENT.offsetX;
     const centeredTop = baseTop - (scaledHeight - baseHeight) / 2 + BOARD_ART_ALIGNMENT.offsetY;
 
@@ -869,7 +999,7 @@ export const Board: React.FC<BoardProps> = ({
   }, [boardLayout, isVertical]);
 
   const debugPlayableCells = (() => {
-    const cells: { key: string; left: number; top: number; centerX: number; centerY: number }[] = [];
+    const cells: { key: string; left: number; top: number; centerX: number; centerY: number; height: number }[] = [];
 
     for (let displayRow = 0; displayRow < displayRows; displayRow += 1) {
       for (let displayCol = 0; displayCol < displayCols; displayCol += 1) {
@@ -878,15 +1008,18 @@ export const Board: React.FC<BoardProps> = ({
           continue;
         }
 
+        const rowHeight = boardLayout.rowHeights[displayRow] ?? boardLayout.cellSize;
+        const rowTop = boardLayout.rowTops[displayRow] ?? displayRow * (boardLayout.cellSize + GRID_GAP);
         const left = boardLayout.innerGridLeft + displayCol * (boardLayout.cellSize + GRID_GAP);
-        const top = boardLayout.innerGridTop + displayRow * (boardLayout.cellSize + GRID_GAP);
+        const top = boardLayout.innerGridTop + rowTop;
 
         cells.push({
           key: `${displayRow}-${displayCol}`,
           left,
           top,
           centerX: left + boardLayout.cellSize / 2,
-          centerY: top + boardLayout.cellSize / 2,
+          centerY: top + rowHeight / 2,
+          height: rowHeight,
         });
       }
     }
@@ -1610,6 +1743,8 @@ export const Board: React.FC<BoardProps> = ({
 
     for (let displayRow = 0; displayRow < displayRows; displayRow += 1) {
       const rowCells = [];
+      const rowHeight = boardLayout.rowHeights[displayRow] ?? boardLayout.cellSize;
+      const renderedTileHeight = getRenderedTileHeight(displayRow);
 
       for (let displayCol = 0; displayCol < displayCols; displayCol += 1) {
         const { row: r, col: c } = mapDisplayToLogicalCoord(displayRow, displayCol);
@@ -1622,7 +1757,7 @@ export const Board: React.FC<BoardProps> = ({
                 styles.gapCell,
                 {
                   width: boardLayout.cellSize,
-                  height: boardLayout.cellSize,
+                  height: rowHeight,
                   padding: tileShellPadding,
                 },
               ]}
@@ -1662,6 +1797,7 @@ export const Board: React.FC<BoardProps> = ({
         const isValidTarget = previewTone === 'valid' && isPreviewDestination;
         const isInteractable = isInteractiveTurn && (isDestination || !!moveFromTile || isFocusedPiece || isOwnTurnPiece);
         const pieceLandingOffset = getBoardTileLandingOffset({
+          cellHeight: renderedTileHeight,
           cellSize: renderedTileSize,
           col: c,
           orientation,
@@ -1675,7 +1811,7 @@ export const Board: React.FC<BoardProps> = ({
               styles.cellShell,
               {
                 width: boardLayout.cellSize,
-                height: boardLayout.cellSize,
+                height: rowHeight,
                 padding: tileShellPadding,
               },
             ]}
@@ -1684,6 +1820,7 @@ export const Board: React.FC<BoardProps> = ({
               row={r}
               col={c}
               cellSize={renderedTileSize}
+              cellHeight={renderedTileHeight}
               piecePixelSize={boardPiecePixelSize}
               pieceOffsetX={pieceLandingOffset.x}
               pieceOffsetY={pieceLandingOffset.y}
@@ -1711,7 +1848,7 @@ export const Board: React.FC<BoardProps> = ({
       }
 
       rows.push(
-        <View key={`row-${displayRow}`} style={styles.row}>
+        <View key={`row-${displayRow}`} style={[styles.row, { height: rowHeight }]}>
           {rowCells}
         </View>,
       );
@@ -1785,7 +1922,7 @@ export const Board: React.FC<BoardProps> = ({
                     left: cell.left,
                     top: cell.top,
                     width: boardLayout.cellSize,
-                    height: boardLayout.cellSize,
+                    height: cell.height,
                   },
                 ]}
               />
@@ -2095,11 +2232,9 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   cellShell: {
-    aspectRatio: 1,
     padding: 0,
   },
   gapCell: {
-    aspectRatio: 1,
     padding: 0,
     backgroundColor: 'transparent',
     borderRadius: 0,

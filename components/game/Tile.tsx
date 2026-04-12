@@ -20,6 +20,7 @@ interface TileProps {
   row: number;
   col: number;
   cellSize?: number;
+  cellHeight?: number;
   piecePixelSize?: number;
   pieceOffsetX?: number;
   pieceOffsetY?: number;
@@ -59,6 +60,7 @@ const areTilePropsEqual = (prev: TileProps, next: TileProps): boolean =>
   prev.row === next.row &&
   prev.col === next.col &&
   prev.cellSize === next.cellSize &&
+  prev.cellHeight === next.cellHeight &&
   prev.piecePixelSize === next.piecePixelSize &&
   prev.pieceOffsetX === next.pieceOffsetX &&
   prev.pieceOffsetY === next.pieceOffsetY &&
@@ -177,6 +179,7 @@ const TileComponent: React.FC<TileProps> = ({
   row,
   col,
   cellSize = 44,
+  cellHeight,
   piecePixelSize,
   pieceOffsetX = 0,
   pieceOffsetY = 0,
@@ -206,7 +209,9 @@ const TileComponent: React.FC<TileProps> = ({
 
   const tileSeed = useMemo(() => (row * 13 + col * 7) % 5, [col, row]);
   const toneOffset = tileSeed * 4;
-  const cellRenderedSize = cellSize;
+  const cellRenderedWidth = cellSize;
+  const cellRenderedHeight = cellHeight ?? cellSize;
+  const cellRenderedSize = Math.min(cellRenderedWidth, cellRenderedHeight);
   const tileRadius = Math.max(3, Math.round(cellRenderedSize * 0.06));
   const innerInsetMargin = Math.max(1.5, Math.round(cellRenderedSize * 0.03));
   const destinationGlowSize = useMemo(() => {
@@ -219,22 +224,25 @@ const TileComponent: React.FC<TileProps> = ({
   }, [cellRenderedSize, piecePixelSize]);
 
   const tileStyle = ({ pressed }: { pressed: boolean }) => [
-    styles.tile,
+    styles.tileBase,
     skin === 'transparent'
-      ? {
-        backgroundColor: 'transparent',
-        borderColor: 'transparent',
-        borderWidth: 0,
-        borderRadius: tileRadius,
-      }
-      : {
-        backgroundColor: baseBackground,
-        borderColor,
-        borderWidth: rosette ? 1.8 : 1.1,
-        borderRadius: tileRadius,
-      },
-    isValidTarget && styles.validTile,
-    isSelectedPiece && styles.selectedTile,
+      ? [
+          styles.transparentTile,
+          {
+            borderRadius: tileRadius,
+          },
+        ]
+      : [
+          styles.tileSurface,
+          {
+            backgroundColor: baseBackground,
+            borderColor,
+            borderWidth: rosette ? 1.8 : 1.1,
+            borderRadius: tileRadius,
+          },
+        ],
+    skin !== 'transparent' && isValidTarget && styles.validTile,
+    skin !== 'transparent' && isSelectedPiece && styles.selectedTile,
     isInteractive && pressed && styles.tilePressed,
   ];
 
@@ -343,6 +351,7 @@ const TileComponent: React.FC<TileProps> = ({
 
   return (
     <Pressable
+      testID={`tile-touchable-${row}-${col}`}
       onPress={handlePress}
       onHoverIn={handleHoverIn}
       onHoverOut={handleHoverOut}
@@ -384,7 +393,9 @@ const TileComponent: React.FC<TileProps> = ({
         </>
       )}
 
-      {isSelectedPiece && <Animated.View style={[styles.selectedRing, selectedPulseStyle]} />}
+      {skin !== 'transparent' && isSelectedPiece && (
+        <Animated.View style={[styles.selectedRing, selectedPulseStyle]} />
+      )}
       {isValidTarget && (
         <Animated.View
           style={[
@@ -394,14 +405,14 @@ const TileComponent: React.FC<TileProps> = ({
               width: destinationGlowSize,
               height: destinationGlowSize,
               borderRadius: destinationGlowSize / 2,
-              left: (cellRenderedSize - destinationGlowSize) / 2,
-              top: (cellRenderedSize - destinationGlowSize) / 2,
+              left: (cellRenderedWidth - destinationGlowSize) / 2,
+              top: (cellRenderedHeight - destinationGlowSize) / 2,
             },
           ]}
         />
       )}
-      {rosette && <Animated.View style={[styles.rosetteGlow, rosetteGlowStyle]} />}
-      {rosette && <Animated.View style={[styles.rosetteBurst, rosetteBurstStyle]} />}
+      {skin !== 'transparent' && rosette && <Animated.View style={[styles.rosetteGlow, rosetteGlowStyle]} />}
+      {skin !== 'transparent' && rosette && <Animated.View style={[styles.rosetteBurst, rosetteBurstStyle]} />}
 
       {piece && (
         <View
@@ -436,11 +447,13 @@ export const Tile = React.memo(TileComponent, areTilePropsEqual);
 Tile.displayName = 'Tile';
 
 const styles = StyleSheet.create({
-  tile: {
+  tileBase: {
     flex: 1,
     borderRadius: urTheme.radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  tileSurface: {
     overflow: 'hidden',
     ...boxShadow({
       color: '#140B06',
@@ -449,6 +462,12 @@ const styles = StyleSheet.create({
       blurRadius: 2,
       elevation: 2,
     }),
+  },
+  transparentTile: {
+    overflow: 'visible',
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    borderWidth: 0,
   },
   tilePressed: {
     opacity: 0.92,

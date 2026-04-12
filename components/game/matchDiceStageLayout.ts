@@ -46,14 +46,38 @@ export const VERTICAL_BOARD_GAP_ROW_START = 4;
 export const VERTICAL_BOARD_GAP_ROW_SPAN = 2;
 export const VERTICAL_BOARD_GAP_GRID_ROWS = 8;
 export const VERTICAL_BOARD_GAP_GRID_COLS = 3;
+const VERTICAL_BOARD_ART_SOURCE_HEIGHT = 1024;
+const VERTICAL_BOARD_ART_GRID_TOP_PX = 47;
+const VERTICAL_BOARD_ART_GRID_BOTTOM_PX = 996;
 export const VERTICAL_BOARD_ART_INSETS = {
-  top: 0.024,
+  top: VERTICAL_BOARD_ART_GRID_TOP_PX / VERTICAL_BOARD_ART_SOURCE_HEIGHT,
   right: 0.385,
-  bottom: 0.018,
+  bottom: (VERTICAL_BOARD_ART_SOURCE_HEIGHT - VERTICAL_BOARD_ART_GRID_BOTTOM_PX) / VERTICAL_BOARD_ART_SOURCE_HEIGHT,
   left: 0.36,
 } as const;
+const VERTICAL_BOARD_ART_ROW_BOUNDARIES_PX = [
+  47,
+  170,
+  294,
+  413,
+  533,
+  644,
+  759,
+  862,
+  996,
+] as const;
+const VERTICAL_BOARD_ART_GRID_HEIGHT_PX =
+  VERTICAL_BOARD_ART_ROW_BOUNDARIES_PX[VERTICAL_BOARD_ART_ROW_BOUNDARIES_PX.length - 1] -
+  VERTICAL_BOARD_ART_ROW_BOUNDARIES_PX[0];
+export const VERTICAL_BOARD_DISPLAY_ROW_HEIGHT_RATIOS: readonly number[] =
+  VERTICAL_BOARD_ART_ROW_BOUNDARIES_PX.slice(0, -1).map((rowTop, index) => {
+    const rowBottom = VERTICAL_BOARD_ART_ROW_BOUNDARIES_PX[index + 1];
+
+    return ((rowBottom - rowTop) / VERTICAL_BOARD_ART_GRID_HEIGHT_PX) * VERTICAL_BOARD_GAP_GRID_ROWS;
+  });
 
 const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+const sum = (values: readonly number[]): number => values.reduce((total, value) => total + value, 0);
 
 export const computeLandingZone = ({
   boardFrame,
@@ -121,9 +145,15 @@ export const computeBoardGapControlLayout = ({
   const gridTop = boardFrame.y + boardFrame.height * insets.top;
   const gridHeight = boardFrame.height * (1 - insets.top - insets.bottom);
   const laneWidth = gridWidth / gridCols;
-  const rowHeight = gridHeight / gridRows;
-  const laneHeight = rowHeight * gapRowSpan;
-  const laneTop = gridTop + rowHeight * gapRowStart;
+  const rowHeightRatios =
+    gridRows === VERTICAL_BOARD_DISPLAY_ROW_HEIGHT_RATIOS.length
+      ? VERTICAL_BOARD_DISPLAY_ROW_HEIGHT_RATIOS
+      : Array.from({ length: gridRows }, () => 1);
+  const rowHeightRatioTotal = sum(rowHeightRatios);
+  const laneTopRatio = sum(rowHeightRatios.slice(0, gapRowStart)) / rowHeightRatioTotal;
+  const laneHeightRatio = sum(rowHeightRatios.slice(gapRowStart, gapRowStart + gapRowSpan)) / rowHeightRatioTotal;
+  const laneHeight = gridHeight * laneHeightRatio;
+  const laneTop = gridTop + gridHeight * laneTopRatio;
 
   return {
     diceFrame: {
