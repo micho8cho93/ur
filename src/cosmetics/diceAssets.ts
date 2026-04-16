@@ -22,12 +22,18 @@ const UNMARKED_DIE_IMAGE_SOURCES: Record<string, ImageSourcePropType> = {
 
 export const getDiceImageSources = (assetKeys?: {
   markedDieAssetKey?: string | null;
+  markedDieImageUri?: string | null;
   unmarkedDieAssetKey?: string | null;
+  unmarkedDieImageUri?: string | null;
 }): DiceImageSources => ({
-  marked: assetKeys?.markedDieAssetKey
+  marked: assetKeys?.markedDieImageUri
+    ? { uri: assetKeys.markedDieImageUri }
+    : assetKeys?.markedDieAssetKey
     ? MARKED_DIE_IMAGE_SOURCES[assetKeys.markedDieAssetKey] ?? DEFAULT_MARKED_DIE_IMAGE_SOURCE
     : DEFAULT_MARKED_DIE_IMAGE_SOURCE,
-  unmarked: assetKeys?.unmarkedDieAssetKey
+  unmarked: assetKeys?.unmarkedDieImageUri
+    ? { uri: assetKeys.unmarkedDieImageUri }
+    : assetKeys?.unmarkedDieAssetKey
     ? UNMARKED_DIE_IMAGE_SOURCES[assetKeys.unmarkedDieAssetKey] ?? DEFAULT_UNMARKED_DIE_IMAGE_SOURCE
     : DEFAULT_UNMARKED_DIE_IMAGE_SOURCE,
 });

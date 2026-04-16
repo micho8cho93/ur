@@ -1,4 +1,10 @@
-import { analyticsSectionNavItems, appRoutes, primaryNavItems } from './routes'
+import {
+  analyticsSectionNavItems,
+  appRoutes,
+  primaryNavItems,
+  sectionEntryItems,
+  sectionNavItems,
+} from './routes'
 
 describe('console routes', () => {
   it('keeps existing primary paths stable while adding settings and analytics sections', () => {
@@ -8,6 +14,7 @@ describe('console routes', () => {
     expect(appRoutes.tournaments.create).toBe('/tournaments/runs/new')
     expect(appRoutes.analytics.home).toBe('/analytics')
     expect(appRoutes.analytics.section('players')).toBe('/analytics/players')
+    expect(appRoutes.store.home).toBe('/store')
     expect(appRoutes.store.catalog).toBe('/store/catalog')
     expect(appRoutes.store.rotation).toBe('/store/rotation')
     expect(appRoutes.store.stats).toBe('/store/stats')
@@ -20,20 +27,39 @@ describe('console routes', () => {
     expect(appRoutes.legacy.tournaments.detail('spring-open')).toBe('/tournaments/spring-open')
   })
 
-  it('defines a compact admin primary navigation', () => {
-    expect(primaryNavItems.map((item) => item.label)).toEqual([
-      'Overview',
+  it('defines top-level internals section entries', () => {
+    expect(sectionEntryItems.map((item) => item.label)).toEqual([
       'Tournaments',
+      'Analytics',
+      'Store',
+      'Settings',
+    ])
+  })
+
+  it('keeps sidebar navigation scoped to the selected section', () => {
+    expect(sectionNavItems.tournaments.map((item) => item.label)).toEqual([
+      'Overview',
+      'Create',
       'Runs',
+      'Audit Log',
+    ])
+    expect(sectionNavItems.analytics.map((item) => item.label)).toEqual([
+      'Overview',
       'Matches',
       'Players',
-      'Analytics',
+      'Tournaments',
+      'Progression',
+      'Realtime',
+    ])
+    expect(sectionNavItems.store.map((item) => item.label)).toEqual([
       'Catalog',
       'Rotation',
       'Store Stats',
-      'Audit Log',
-      'Settings',
     ])
+    expect(sectionNavItems.settings.map((item) => item.label)).toEqual([
+      'Console Settings',
+    ])
+    expect(primaryNavItems).toHaveLength(14)
   })
 
   it('splits analytics into focused subviews', () => {

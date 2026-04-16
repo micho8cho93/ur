@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { createPreviewGameState } from '@/logic/previewState';
 import { cosmeticDefinitionToTheme } from '@/shared/cosmeticTheme';
 import type { CosmeticDefinition, CosmeticTier } from '@/shared/cosmetics';
+import type { AudioAssetSource } from '@/src/cosmetics/audioAssets';
 import { CosmeticThemeProvider, useCosmeticTheme } from '@/src/store/CosmeticThemeContext';
 import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -77,7 +78,7 @@ const AudioPreviewPanel = ({ type }: { type: 'music' | 'sound_effect' }) => {
   );
 
   const playSource = React.useCallback(
-    (source: number, label: string, options?: { loop?: boolean }) => {
+    (source: AudioAssetSource, label: string, options?: { loop?: boolean }) => {
       stopActivePlayers();
       const player = createAudioPlayer(source, { downloadFirst: true, updateInterval: 120 });
       player.loop = Boolean(options?.loop);

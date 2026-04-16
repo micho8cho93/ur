@@ -26,6 +26,19 @@ describe("cosmetic shared validators", () => {
     expect(isCosmeticDefinition({ ...cosmetic, id: "music_ancient_001", type: "music", assetKey: "music_ancient_001" })).toBe(true);
     expect(isCosmeticDefinition({ ...cosmetic, id: "sfx_stone_001", type: "sound_effect", assetKey: "sfx_stone_001" })).toBe(true);
     expect(
+      isCosmeticDefinition({
+        ...cosmetic,
+        uploadedAsset: {
+          fileName: "board.png",
+          mimeType: "image/png",
+          sizeBytes: 1200,
+          mediaType: "image",
+          dataUrl: "data:image/png;base64,AAAA",
+          uploadedAt: "2026-04-16T00:00:00.000Z",
+        },
+      }),
+    ).toBe(true);
+    expect(
       isStorefrontResponse({
         dailyRotation: [cosmetic],
         featured: [],

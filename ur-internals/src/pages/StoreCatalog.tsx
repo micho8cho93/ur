@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
+  deleteCosmetic,
   disableCosmetic,
   enableCosmetic,
   getAdminFullCatalog,
@@ -11,12 +12,21 @@ import { EmptyState } from '../components/EmptyState'
 import { FilterBar } from '../components/FilterBar'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
-import type { CosmeticDefinition, CosmeticTier, CosmeticType, CurrencyType, RotationPool } from '../types/store'
+import type {
+  CosmeticAssetMediaType,
+  CosmeticDefinition,
+  CosmeticTier,
+  CosmeticType,
+  CurrencyType,
+  RotationPool,
+  UploadedCosmeticAsset,
+} from '../types/store'
 
 const cosmeticTypes: CosmeticType[] = ['board', 'pieces', 'dice_animation', 'emote', 'music', 'sound_effect']
 const cosmeticTiers: CosmeticTier[] = ['common', 'rare', 'epic', 'legendary']
 const currencies: CurrencyType[] = ['soft', 'premium']
 const rotationPools: RotationPool[] = ['daily', 'featured', 'limited']
+const maxUploadBytes = 8 * 1024 * 1024
 
 type CatalogForm = {
   id: string
@@ -29,6 +39,7 @@ type CatalogForm = {
   rarityWeight: string
   releasedDate: string
   assetKey: string
+  uploadedAsset: UploadedCosmeticAsset | null
   disabled: boolean
 }
 
@@ -43,6 +54,7 @@ const emptyForm: CatalogForm = {
   rarityWeight: '0.5',
   releasedDate: new Date().toISOString(),
   assetKey: '',
+  uploadedAsset: null,
   disabled: false,
 }
 
@@ -58,11 +70,14 @@ function formFromCosmetic(item: CosmeticDefinition): CatalogForm {
     rarityWeight: String(item.rarityWeight),
     releasedDate: item.releasedDate,
     assetKey: item.assetKey,
+    uploadedAsset: item.uploadedAsset ?? null,
     disabled: item.disabled === true,
   }
 }
 
-function buildCosmeticPatch(form: CatalogForm): CosmeticDefinition {
+function buildCosmeticPatch(
+  form: CatalogForm,
+): Omit<CosmeticDefinition, 'uploadedAsset'> & { uploadedAsset: UploadedCosmeticAsset | null } {
   return {
     id: form.id.trim(),
     name: form.name.trim(),
@@ -76,8 +91,153 @@ function buildCosmeticPatch(form: CatalogForm): CosmeticDefinition {
     rarityWeight: Number(form.rarityWeight),
     releasedDate: form.releasedDate.trim(),
     assetKey: form.assetKey.trim() || form.id.trim(),
+    uploadedAsset: form.uploadedAsset,
     disabled: form.disabled,
   }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function fileBaseName(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, '').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toLowerCase()
+}
+
+function acceptForCosmeticType(type: CosmeticType): string {
+  if (type === 'music' || type === 'sound_effect') {
+    return 'audio/*'
+  }
+
+  if (type === 'dice_animation' || type === 'emote') {
+    return 'image/*,video/*'
+  }
+
+  return 'image/*'
+}
+
+function inferMediaType(file: File, type: CosmeticType): CosmeticAssetMediaType {
+  if (file.type.startsWith('audio/')) {
+    return 'audio'
+  }
+
+  if (file.type.startsWith('video/')) {
+    return 'video'
+  }
+
+  if (file.type === 'image/gif' || type === 'dice_animation' || type === 'emote') {
+    return 'animation'
+  }
+
+  if (file.type.startsWith('image/')) {
+    return 'image'
+  }
+
+  throw new Error('Unsupported asset file type.')
+}
+
+function validateFileForType(file: File, type: CosmeticType) {
+  const isAudio = file.type.startsWith('audio/')
+  const isImage = file.type.startsWith('image/')
+  const isVideo = file.type.startsWith('video/')
+
+  if ((type === 'music' || type === 'sound_effect') && !isAudio) {
+    throw new Error('Music and sound effect assets must be audio files.')
+  }
+
+  if ((type === 'board' || type === 'pieces') && !isImage) {
+    throw new Error('Board and piece assets must be image files.')
+  }
+
+  if ((type === 'dice_animation' || type === 'emote') && !isImage && !isVideo) {
+    throw new Error('Animation and emote assets must be images, GIFs, or short videos.')
+  }
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error('Unable to read asset file.'))
+    }
+    reader.onerror = () => reject(new Error('Unable to read asset file.'))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function uploadedAssetFromFile(file: File, type: CosmeticType): Promise<UploadedCosmeticAsset> {
+  if (file.size > maxUploadBytes) {
+    throw new Error(`Asset uploads must be ${formatBytes(maxUploadBytes)} or smaller.`)
+  }
+
+  validateFileForType(file, type)
+
+  return {
+    fileName: file.name,
+    mimeType: file.type || 'application/octet-stream',
+    sizeBytes: file.size,
+    mediaType: inferMediaType(file, type),
+    dataUrl: await readFileAsDataUrl(file),
+    uploadedAt: new Date().toISOString(),
+  }
+}
+
+function AssetPreview({
+  asset,
+  item,
+  onOpen,
+}: {
+  asset?: UploadedCosmeticAsset | null
+  item: Pick<CosmeticDefinition, 'name' | 'assetKey'>
+  onOpen?: () => void
+}) {
+  if (!asset) {
+    return (
+      <div className="asset-preview asset-preview--empty">
+        <span className="muted">Bundled asset</span>
+        <span className="mono">{item.assetKey}</span>
+      </div>
+    )
+  }
+
+  const label = `${asset.fileName} (${formatBytes(asset.sizeBytes)})`
+
+  if (asset.mediaType === 'audio') {
+    return (
+      <div className="asset-preview">
+        <audio className="asset-preview__audio" controls preload="metadata" src={asset.dataUrl} />
+        <span className="muted">{label}</span>
+      </div>
+    )
+  }
+
+  if (asset.mediaType === 'video') {
+    return (
+      <div className="asset-preview">
+        <video className="asset-preview__video" controls muted loop preload="metadata" src={asset.dataUrl} />
+        <span className="muted">{label}</span>
+      </div>
+    )
+  }
+
+  return (
+    <button className="asset-preview asset-preview__button" type="button" onClick={onOpen}>
+      <img className="asset-preview__image" src={asset.dataUrl} alt={item.name} />
+      <span className="muted">{label}</span>
+    </button>
+  )
 }
 
 export function StoreCatalogPage() {
@@ -88,6 +248,8 @@ export function StoreCatalogPage() {
   const [typeFilter, setTypeFilter] = useState<'all' | CosmeticType>('all')
   const [form, setForm] = useState<CatalogForm>(emptyForm)
   const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [previewItem, setPreviewItem] = useState<CosmeticDefinition | null>(null)
 
   const visibleCatalog = useMemo(
     () =>
@@ -109,6 +271,19 @@ export function StoreCatalogPage() {
           <strong>{item.name}</strong>
           <span className="muted mono">{item.id}</span>
         </div>
+      ),
+    },
+    {
+      key: 'asset',
+      header: 'Asset',
+      render: (item) => (
+        <AssetPreview
+          asset={item.uploadedAsset}
+          item={item}
+          onOpen={() => {
+            setPreviewItem(item)
+          }}
+        />
       ),
     },
     {
@@ -150,6 +325,16 @@ export function StoreCatalogPage() {
           >
             {item.disabled ? 'Enable' : 'Disable'}
           </button>
+          <button
+            className="button button--danger"
+            type="button"
+            disabled={deletingId === item.id}
+            onClick={() => {
+              void handleDelete(item)
+            }}
+          >
+            {deletingId === item.id ? 'Deleting...' : 'Delete'}
+          </button>
         </div>
       ),
     },
@@ -182,6 +367,26 @@ export function StoreCatalogPage() {
     }
   }
 
+  async function handleDelete(item: CosmeticDefinition) {
+    if (typeof window !== 'undefined' && !window.confirm(`Delete "${item.name}" from the store catalog?`)) {
+      return
+    }
+
+    setDeletingId(item.id)
+    setError(null)
+    try {
+      await deleteCosmetic(item.id)
+      setCatalog((current) => current.filter((entry) => entry.id !== item.id))
+      if (form.id === item.id) {
+        setForm(emptyForm)
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Unable to delete catalog item.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSaving(true)
@@ -205,6 +410,24 @@ export function StoreCatalogPage() {
 
   function updateForm(patch: Partial<CatalogForm>) {
     setForm((current) => ({ ...current, ...patch }))
+  }
+
+  async function handleAssetUpload(file: File | undefined) {
+    if (!file) {
+      return
+    }
+
+    setError(null)
+    try {
+      const uploadedAsset = await uploadedAssetFromFile(file, form.type)
+      const fallbackAssetKey = form.assetKey.trim() || `${form.id.trim() || fileBaseName(file.name)}_upload`
+      updateForm({
+        uploadedAsset,
+        assetKey: fallbackAssetKey,
+      })
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'Unable to upload asset.')
+    }
   }
 
   return (
@@ -305,6 +528,42 @@ export function StoreCatalogPage() {
               <span className="field__label">Asset key</span>
               <input value={form.assetKey} onChange={(event) => updateForm({ assetKey: event.target.value })} />
             </label>
+            <label className="field field--full">
+              <span className="field__label">Upload asset</span>
+              <input
+                type="file"
+                accept={acceptForCosmeticType(form.type)}
+                onChange={(event) => {
+                  void handleAssetUpload(event.target.files?.[0])
+                  event.target.value = ''
+                }}
+              />
+              <span className="field__hint">
+                Uploads are saved with the catalog item and can be previewed immediately. Max {formatBytes(maxUploadBytes)}.
+              </span>
+            </label>
+            {form.uploadedAsset ? (
+              <div className="field field--full">
+                <span className="field__label">Uploaded preview</span>
+                <div className="asset-edit-preview">
+                  <AssetPreview
+                    asset={form.uploadedAsset}
+                    item={{
+                      name: form.name || form.uploadedAsset.fileName,
+                      assetKey: form.assetKey || form.id || 'uploaded',
+                    }}
+                    onOpen={() => {
+                      if (form.uploadedAsset) {
+                        setPreviewItem({ ...buildCosmeticPatch(form), uploadedAsset: form.uploadedAsset })
+                      }
+                    }}
+                  />
+                  <button className="button button--danger" type="button" onClick={() => updateForm({ uploadedAsset: null })}>
+                    Remove uploaded asset
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <label className="field">
               <span className="field__label">Released date</span>
               <input value={form.releasedDate} onChange={(event) => updateForm({ releasedDate: event.target.value })} />
@@ -354,6 +613,31 @@ export function StoreCatalogPage() {
           emptyState={<EmptyState title="No catalog items" description="Adjust the filters or add a new cosmetic." />}
         />
       </SectionPanel>
+
+      {previewItem?.uploadedAsset ? (
+        <div className="asset-modal" role="presentation" onClick={() => setPreviewItem(null)}>
+          <div className="asset-modal__panel" role="dialog" aria-modal="true" aria-label={`${previewItem.name} preview`} onClick={(event) => event.stopPropagation()}>
+            <div className="asset-modal__header">
+              <div className="stack stack--compact">
+                <strong>{previewItem.name || previewItem.uploadedAsset.fileName}</strong>
+                <span className="muted">
+                  {previewItem.uploadedAsset.fileName} - {formatBytes(previewItem.uploadedAsset.sizeBytes)}
+                </span>
+              </div>
+              <button className="button button--secondary" type="button" onClick={() => setPreviewItem(null)}>
+                Close
+              </button>
+            </div>
+            {previewItem.uploadedAsset.mediaType === 'video' ? (
+              <video className="asset-modal__video" controls autoPlay loop src={previewItem.uploadedAsset.dataUrl} />
+            ) : previewItem.uploadedAsset.mediaType === 'audio' ? (
+              <audio className="asset-modal__audio" controls autoPlay src={previewItem.uploadedAsset.dataUrl} />
+            ) : (
+              <img className="asset-modal__image" src={previewItem.uploadedAsset.dataUrl} alt={previewItem.name} />
+            )}
+          </div>
+        </div>
+      ) : null}
     </>
   )
 }

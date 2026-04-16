@@ -10,5 +10,12 @@ const BOARD_IMAGE_SOURCES: Record<string, ImageSourcePropType> = {
   board_gold_001: DEFAULT_BOARD_IMAGE_SOURCE,
 };
 
-export const getBoardImageSource = (assetKey?: string | null): ImageSourcePropType =>
-  assetKey ? BOARD_IMAGE_SOURCES[assetKey] ?? DEFAULT_BOARD_IMAGE_SOURCE : DEFAULT_BOARD_IMAGE_SOURCE;
+export const getBoardImageSource = (
+  assetKey?: string | null,
+  imageUri?: string | null,
+): ImageSourcePropType =>
+  imageUri
+    ? { uri: imageUri }
+    : assetKey
+      ? BOARD_IMAGE_SOURCES[assetKey] ?? DEFAULT_BOARD_IMAGE_SOURCE
+      : DEFAULT_BOARD_IMAGE_SOURCE;

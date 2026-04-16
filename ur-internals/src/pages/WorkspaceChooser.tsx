@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
-import { appRoutes } from '../routes'
+import { sectionEntryItems } from '../routes'
 import { getAdminLabel, getMonogram, getTargetLabel } from '../layout/workspaceMeta'
 
 export function WorkspaceChooserPage() {
@@ -12,9 +12,9 @@ export function WorkspaceChooserPage() {
       <section className="chooser-hero">
         <div className="chooser-hero__copy">
           <p className="meta-label">Ur Game Internals</p>
-          <h1>Open the console</h1>
+          <h1>Choose an internals section</h1>
           <p className="chooser-hero__description">
-            UR Internals now runs as one compact admin console with focused sections for operations, analytics, governance, and system controls.
+            Pick the area you want to work in. Each section keeps its own pages and sidebar so tournament, analytics, store, and settings work stay separated.
           </p>
         </div>
 
@@ -33,55 +33,32 @@ export function WorkspaceChooserPage() {
           <div className="chooser-session-card chooser-session-card--compact">
             <p className="meta-label">API target</p>
             <strong>{getTargetLabel()}</strong>
-            <span>Same-origin admin RPC and live analytics transport.</span>
+            <span>Same-origin admin RPC, live analytics, store, and settings transport.</span>
           </div>
         </div>
       </section>
 
       <section className="chooser-grid" aria-label="Workspace choices">
-        <Link className="chooser-card chooser-card--tournaments" to={appRoutes.tournaments.home}>
-          <span className="chooser-card__eyebrow">Section 01</span>
-          <strong>Overview</strong>
-          <p>
-            Live tournament pressure, queue health, finalize readiness, and the most urgent operational surfaces above the fold.
-          </p>
-          <span className="chooser-card__cta">Open operations overview</span>
-        </Link>
-
-        <Link className="chooser-card chooser-card--analytics" to={appRoutes.tournaments.runs}>
-          <span className="chooser-card__eyebrow">Section 02</span>
-          <strong>Runs</strong>
-          <p>
-            Compact run queue, lifecycle status, entrant pressure, and control-room access for currently managed tournaments.
-          </p>
-          <span className="chooser-card__cta">Open run queue</span>
-        </Link>
-
-        <Link className="chooser-card chooser-card--analytics" to={appRoutes.analytics.section('overview')}>
-          <span className="chooser-card__eyebrow">Section 03</span>
-          <strong>Analytics</strong>
-          <p>
-            Executive summary, player growth, match health, tournament performance, progression, and realtime operations in focused tab views.
-          </p>
-          <span className="chooser-card__cta">Open analytics</span>
-        </Link>
-
-        <Link className="chooser-card chooser-card--tournaments" to={appRoutes.settings}>
-          <span className="chooser-card__eyebrow">Section 04</span>
-          <strong>Settings</strong>
-          <p>
-            Session, environment, and operator context for the live admin console.
-          </p>
-          <span className="chooser-card__cta">Open settings</span>
-        </Link>
+        {sectionEntryItems.map((section, index) => (
+          <Link
+            key={section.id}
+            className={`chooser-card chooser-card--${section.id}`}
+            to={section.to}
+          >
+            <span className="chooser-card__eyebrow">Section {String(index + 1).padStart(2, '0')}</span>
+            <strong>{section.label}</strong>
+            <p>{section.description}</p>
+            <span className="chooser-card__cta">Open {section.label.toLowerCase()}</span>
+          </Link>
+        ))}
       </section>
 
       <section className="chooser-footer">
         <div className="chooser-footer__note">
           <p className="meta-label">Why this split</p>
-          <strong>Sharper operational scanning</strong>
+          <strong>Clearer ownership boundaries</strong>
           <span>
-            Each section stays narrow, dense, and easier to scan, while still sharing the same compact admin shell.
+            Section entry keeps operators in one work context at a time while preserving a quick return to this chooser.
           </span>
         </div>
 

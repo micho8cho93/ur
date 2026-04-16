@@ -4,11 +4,13 @@ const selectSfxSource = (oggSource: () => number, iosSource: () => number) =>
   Platform.OS === 'ios' ? iosSource() : oggSource();
 
 export type SoundEffectPreviewSources = {
-  roll: readonly number[];
-  move: number;
-  score: number;
-  capture: number;
+  roll: readonly AudioAssetSource[];
+  move: AudioAssetSource;
+  score: AudioAssetSource;
+  capture: AudioAssetSource;
 };
+
+export type AudioAssetSource = number | string;
 
 export const DEFAULT_MUSIC_TRACK_SOURCE = require('../../assets/audio/bgm/ancient-ambience.mp3') as number;
 export const DEFAULT_ROLL_SEQUENCE_SOURCES = [
@@ -59,25 +61,37 @@ const CAPTURE_SOUND_SOURCES: Record<string, number> = {
   sfx_bronze_001: DEFAULT_CAPTURE_SOUND_SOURCE,
 };
 
-export const getMusicTrackSource = (assetKey?: string | null): number =>
-  assetKey ? MUSIC_TRACK_SOURCES[assetKey] ?? DEFAULT_MUSIC_TRACK_SOURCE : DEFAULT_MUSIC_TRACK_SOURCE;
+export const getMusicTrackSource = (assetKey?: string | null, trackUri?: string | null): AudioAssetSource =>
+  trackUri ? trackUri : assetKey ? MUSIC_TRACK_SOURCES[assetKey] ?? DEFAULT_MUSIC_TRACK_SOURCE : DEFAULT_MUSIC_TRACK_SOURCE;
 
 export const getSoundEffectPreviewSources = (assetKeys?: {
   rollSequenceAssetKey?: string | null;
+  rollSequenceUris?: string[] | null;
   moveAssetKey?: string | null;
+  moveUri?: string | null;
   scoreAssetKey?: string | null;
+  scoreUri?: string | null;
   captureAssetKey?: string | null;
+  captureUri?: string | null;
 }): SoundEffectPreviewSources => ({
-  roll: assetKeys?.rollSequenceAssetKey
+  roll: assetKeys?.rollSequenceUris?.length
+    ? assetKeys.rollSequenceUris
+    : assetKeys?.rollSequenceAssetKey
     ? ROLL_SEQUENCE_SOURCES[assetKeys.rollSequenceAssetKey] ?? DEFAULT_ROLL_SEQUENCE_SOURCES
     : DEFAULT_ROLL_SEQUENCE_SOURCES,
-  move: assetKeys?.moveAssetKey
+  move: assetKeys?.moveUri
+    ? assetKeys.moveUri
+    : assetKeys?.moveAssetKey
     ? MOVE_SOUND_SOURCES[assetKeys.moveAssetKey] ?? DEFAULT_MOVE_SOUND_SOURCE
     : DEFAULT_MOVE_SOUND_SOURCE,
-  score: assetKeys?.scoreAssetKey
+  score: assetKeys?.scoreUri
+    ? assetKeys.scoreUri
+    : assetKeys?.scoreAssetKey
     ? SCORE_SOUND_SOURCES[assetKeys.scoreAssetKey] ?? DEFAULT_SCORE_SOUND_SOURCE
     : DEFAULT_SCORE_SOUND_SOURCE,
-  capture: assetKeys?.captureAssetKey
+  capture: assetKeys?.captureUri
+    ? assetKeys.captureUri
+    : assetKeys?.captureAssetKey
     ? CAPTURE_SOUND_SOURCES[assetKeys.captureAssetKey] ?? DEFAULT_CAPTURE_SOUND_SOURCE
     : DEFAULT_CAPTURE_SOUND_SOURCE,
 });

@@ -5,6 +5,8 @@ import {
 } from "../../shared/wallet";
 import type {
   AdminCosmeticMutationResponse,
+  AdminDeleteCosmeticRequest,
+  AdminDeleteCosmeticResponse,
   AdminRemoveLimitedTimeEventRequest,
   AdminSetLimitedTimeEventRequest,
   AdminSetManualRotationRequest,
@@ -76,6 +78,7 @@ export const RPC_ADMIN_GET_FULL_CATALOG = "admin_get_full_catalog";
 export const RPC_ADMIN_UPSERT_COSMETIC = "admin_upsert_cosmetic";
 export const RPC_ADMIN_DISABLE_COSMETIC = "admin_disable_cosmetic";
 export const RPC_ADMIN_ENABLE_COSMETIC = "admin_enable_cosmetic";
+export const RPC_ADMIN_DELETE_COSMETIC = "admin_delete_cosmetic";
 export const RPC_ADMIN_GET_ROTATION_STATE = "admin_get_rotation_state";
 export const RPC_ADMIN_SET_MANUAL_ROTATION = "admin_set_manual_rotation";
 export const RPC_ADMIN_CLEAR_MANUAL_ROTATION = "admin_clear_manual_rotation";
@@ -567,11 +570,20 @@ const parseUpsertCosmeticRequest = (payload: string): AdminUpsertCosmeticRequest
   }
 
   return {
-    cosmetic: cosmetic as Partial<CosmeticDefinition> & { id: string },
+    cosmetic: cosmetic as AdminUpsertCosmeticRequest["cosmetic"],
   };
 };
 
 const parseToggleCosmeticRequest = (payload: string): AdminToggleCosmeticRequest => {
+  const record = parseJsonPayload(payload);
+  if (typeof record.cosmeticId !== "string" || record.cosmeticId.trim().length === 0) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+
+  return { cosmeticId: record.cosmeticId };
+};
+
+const parseDeleteCosmeticRequest = (payload: string): AdminDeleteCosmeticRequest => {
   const record = parseJsonPayload(payload);
   if (typeof record.cosmeticId !== "string" || record.cosmeticId.trim().length === 0) {
     throw new Error("INVALID_PAYLOAD");
@@ -610,20 +622,51 @@ const parseRemoveLimitedTimeEventRequest = (payload: string): AdminRemoveLimited
   return { eventId: record.eventId };
 };
 
+const isUploadedAssetCompatible = (item: CosmeticDefinition): boolean => {
+  const mediaType = item.uploadedAsset?.mediaType;
+  if (!mediaType) {
+    return true;
+  }
+
+  if (item.type === "music" || item.type === "sound_effect") {
+    return mediaType === "audio";
+  }
+
+  if (item.type === "board" || item.type === "pieces") {
+    return mediaType === "image" || mediaType === "animation";
+  }
+
+  if (item.type === "dice_animation" || item.type === "emote") {
+    return mediaType === "image" || mediaType === "animation" || mediaType === "video";
+  }
+
+  return false;
+};
+
 const upsertCatalogItem = (
   nk: RuntimeNakama,
-  patch: Partial<CosmeticDefinition> & { id: string },
+  patch: AdminUpsertCosmeticRequest["cosmetic"],
 ): AdminCosmeticMutationResponse => {
   let updatedItem: CosmeticDefinition | null = null;
   writeRawCatalogWithRetry(nk, (items) => {
     const existingIndex = items.findIndex((item) => item.id === patch.id);
+    const patchWithoutAssetRemoval = { ...patch };
+    if (patch.uploadedAsset === null) {
+      delete patchWithoutAssetRemoval.uploadedAsset;
+    }
     const merged = {
       ...(existingIndex >= 0 ? items[existingIndex] : {}),
-      ...patch,
+      ...patchWithoutAssetRemoval,
     };
+    if (patch.uploadedAsset === null) {
+      delete merged.uploadedAsset;
+    }
 
     if (!isCosmeticDefinition(merged)) {
       throw new Error("INVALID_COSMETIC");
+    }
+    if (!isUploadedAssetCompatible(merged)) {
+      throw new Error("INVALID_COSMETIC_ASSET");
     }
 
     updatedItem = merged;
@@ -643,6 +686,42 @@ const upsertCatalogItem = (
   return {
     success: true,
     item: updatedItem,
+  };
+};
+
+const deleteCatalogItem = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  cosmeticId: string,
+): AdminDeleteCosmeticResponse => {
+  let deleted = false;
+  writeRawCatalogWithRetry(nk, (items) => {
+    deleted = items.some((item) => item.id === cosmeticId);
+    if (!deleted) {
+      throw new Error("ITEM_NOT_FOUND");
+    }
+
+    return items.filter((item) => item.id !== cosmeticId);
+  });
+
+  const catalog = loadCatalogFromStorage(nk, { bypassCache: true });
+  updateRotationRecordWithRetry(nk, logger, catalog, (current) => ({
+    ...current,
+    dailyRotationIds: current.dailyRotationIds.filter((id) => id !== cosmeticId),
+    featuredIds: current.featuredIds.filter((id) => id !== cosmeticId),
+    limitedTimeEvents: current.limitedTimeEvents
+      .map((event) => ({
+        ...event,
+        cosmeticIds: event.cosmeticIds.filter((id) => id !== cosmeticId),
+      }))
+      .filter((event) => event.cosmeticIds.length > 0),
+  }));
+  invalidateCatalogCache();
+  invalidateRotationCache();
+
+  return {
+    success: true,
+    cosmeticId,
   };
 };
 
@@ -822,6 +901,17 @@ export const rpcAdminEnableCosmetic = (
   requireAdminRole(ctx, nk, "operator");
   const request = parseToggleCosmeticRequest(payload);
   return JSON.stringify(toggleCatalogItem(nk, request.cosmeticId, false));
+};
+
+export const rpcAdminDeleteCosmetic = (
+  ctx: RuntimeContext,
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  payload: string,
+): string => {
+  requireAdminRole(ctx, nk, "operator");
+  const request = parseDeleteCosmeticRequest(payload);
+  return JSON.stringify(deleteCatalogItem(nk, logger, request.cosmeticId));
 };
 
 export const rpcAdminGetRotationState = (

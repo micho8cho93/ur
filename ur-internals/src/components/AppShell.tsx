@@ -3,14 +3,30 @@ import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import env from '../config/env'
 import { getTargetLabel } from '../layout/workspaceMeta'
-import { primaryNavItems } from '../routes'
+import { internalsSections, sectionNavItems, type InternalsSectionId } from '../routes'
 import { SidebarNav } from './SidebarNav'
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'ur-internals.console-sidebar-collapsed'
 
-export function AppShell() {
+interface AppShellProps {
+  section: InternalsSectionId
+}
+
+function getShellClassName(section: InternalsSectionId, collapsed: boolean) {
+  return [
+    'console-shell',
+    `console-shell--section-${section}`,
+    collapsed ? 'console-shell--collapsed' : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+export function AppShell({ section }: AppShellProps) {
   const location = useLocation()
   const { adminIdentity } = useSession()
+  const sectionMeta = internalsSections[section]
+  const items = sectionNavItems[section]
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') {
       return false
@@ -27,14 +43,14 @@ export function AppShell() {
     window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(collapsed))
   }, [collapsed])
 
-  const shellClassName = collapsed ? 'console-shell console-shell--collapsed' : 'console-shell'
+  const shellClassName = getShellClassName(section, collapsed)
   const locationLabel =
-    [...primaryNavItems]
+    [...items]
       .sort((left, right) => right.to.length - left.to.length)
       .find(
         (item) =>
           location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
-      )?.label ?? 'Console'
+      )?.label ?? sectionMeta.label
 
   return (
     <div className={shellClassName}>
@@ -43,7 +59,8 @@ export function AppShell() {
         onToggle={() => {
           setCollapsed((current) => !current)
         }}
-        items={primaryNavItems}
+        items={items}
+        section={sectionMeta}
       />
 
       <div className="console-main">
@@ -54,12 +71,13 @@ export function AppShell() {
             </span>
             <span className="console-chip">{getTargetLabel()}</span>
             <span className="console-chip">{adminIdentity?.role ?? 'Session required'}</span>
+            <span className="console-chip console-chip--muted">{sectionMeta.label}</span>
             <span className="console-chip console-chip--muted">{locationLabel}</span>
           </div>
 
           <div className="console-topbar__actions">
             <Link className="button button--secondary" to="/">
-              Switch section
+              Switch internals section
             </Link>
           </div>
         </header>

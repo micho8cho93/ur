@@ -2,6 +2,16 @@ export type CosmeticTier = 'common' | 'rare' | 'epic' | 'legendary'
 export type CosmeticType = 'board' | 'pieces' | 'dice_animation' | 'emote' | 'music' | 'sound_effect'
 export type CurrencyType = 'soft' | 'premium'
 export type RotationPool = 'daily' | 'featured' | 'limited'
+export type CosmeticAssetMediaType = 'image' | 'audio' | 'video' | 'animation'
+
+export interface UploadedCosmeticAsset {
+  fileName: string
+  mimeType: string
+  sizeBytes: number
+  mediaType: CosmeticAssetMediaType
+  dataUrl: string
+  uploadedAt: string
+}
 
 export interface CosmeticDefinition {
   id: string
@@ -20,6 +30,7 @@ export interface CosmeticDefinition {
   }
   releasedDate: string
   assetKey: string
+  uploadedAsset?: UploadedCosmeticAsset
   disabled?: boolean
 }
 
@@ -62,4 +73,9 @@ export interface StoreStatsResponse {
 export interface AdminCosmeticMutationResponse {
   success: true
   item: CosmeticDefinition
+}
+
+export interface AdminDeleteCosmeticResponse {
+  success: true
+  cosmeticId: string
 }

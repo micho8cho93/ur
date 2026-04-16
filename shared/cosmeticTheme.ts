@@ -3,31 +3,45 @@ import type { CosmeticDefinition } from './cosmetics';
 export type BoardTheme = {
   backgroundColor: string;
   imageAssetKey?: string;
+  imageUri?: string;
   normalTileAssetKey?: string;
+  normalTileImageUri?: string;
   rosetteTileAssetKey?: string;
+  rosetteTileImageUri?: string;
   warTileAssetKey?: string;
+  warTileImageUri?: string;
 };
 
 export type PiecesTheme = {
   lightPieceAssetKey?: string;
+  lightPieceImageUri?: string;
   darkPieceAssetKey?: string;
+  darkPieceImageUri?: string;
   reservePieceAssetKey?: string;
+  reservePieceImageUri?: string;
 };
 
 export type DiceTheme = {
   markedDieAssetKey?: string;
+  markedDieImageUri?: string;
   unmarkedDieAssetKey?: string;
+  unmarkedDieImageUri?: string;
 };
 
 export type MusicTheme = {
   trackAssetKey?: string;
+  trackUri?: string;
 };
 
 export type SoundEffectsTheme = {
   rollSequenceAssetKey?: string;
+  rollSequenceUris?: string[];
   moveAssetKey?: string;
+  moveUri?: string;
   scoreAssetKey?: string;
+  scoreUri?: string;
   captureAssetKey?: string;
+  captureUri?: string;
 };
 
 export type CosmeticTheme = {
@@ -203,5 +217,70 @@ export const COSMETIC_ASSET_MAP: Record<string, CosmeticTheme> = {
   emote_king_001: {},
 };
 
+const uploadedAssetToTheme = (cosmetic: CosmeticDefinition): CosmeticTheme => {
+  const dataUrl = cosmetic.uploadedAsset?.dataUrl;
+  if (!dataUrl) {
+    return {};
+  }
+
+  if (cosmetic.type === 'board') {
+    return {
+      board: {
+        imageUri: dataUrl,
+      },
+    };
+  }
+
+  if (cosmetic.type === 'pieces') {
+    return {
+      pieces: {
+        lightPieceImageUri: dataUrl,
+        darkPieceImageUri: dataUrl,
+        reservePieceImageUri: dataUrl,
+      },
+    };
+  }
+
+  if (cosmetic.type === 'dice_animation') {
+    return {
+      dice: {
+        markedDieImageUri: dataUrl,
+        unmarkedDieImageUri: dataUrl,
+      },
+    };
+  }
+
+  if (cosmetic.type === 'music') {
+    return {
+      music: {
+        trackUri: dataUrl,
+      },
+    };
+  }
+
+  if (cosmetic.type === 'sound_effect') {
+    return {
+      soundEffects: {
+        rollSequenceUris: [dataUrl],
+        moveUri: dataUrl,
+        scoreUri: dataUrl,
+        captureUri: dataUrl,
+      },
+    };
+  }
+
+  return {};
+};
+
+const mergeCosmeticThemes = (base: CosmeticTheme, override: CosmeticTheme): CosmeticTheme => ({
+  ...(base.board || override.board ? { board: { ...base.board, ...override.board } } : {}),
+  ...(base.pieces || override.pieces ? { pieces: { ...base.pieces, ...override.pieces } } : {}),
+  ...(base.dice || override.dice ? { dice: { ...base.dice, ...override.dice } } : {}),
+  ...(base.music || override.music ? { music: { ...base.music, ...override.music } } : {}),
+  ...(base.soundEffects || override.soundEffects
+    ? { soundEffects: { ...base.soundEffects, ...override.soundEffects } }
+    : {}),
+});
+
 export const cosmeticDefinitionToTheme = (cosmetic: CosmeticDefinition): CosmeticTheme =>
-  COSMETIC_ASSET_MAP[cosmetic.assetKey] ?? {};
+  mergeCosmeticThemes(COSMETIC_ASSET_MAP[cosmetic.assetKey] ?? {}, uploadedAssetToTheme(cosmetic));

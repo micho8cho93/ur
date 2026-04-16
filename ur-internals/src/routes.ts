@@ -1,5 +1,7 @@
 import type { AnalyticsSectionId } from './types/analytics'
 
+export type InternalsSectionId = 'tournaments' | 'analytics' | 'store' | 'settings'
+
 export interface SidebarNavItem {
   label: string
   to: string
@@ -13,6 +15,15 @@ export interface SidebarNavItem {
 export interface AnalyticsSectionNavItem {
   id: AnalyticsSectionId
   label: string
+  description: string
+  to: string
+}
+
+export interface InternalsSection {
+  id: InternalsSectionId
+  label: string
+  short: string
+  eyebrow: string
   description: string
   to: string
 }
@@ -33,6 +44,7 @@ export const appRoutes = {
     section: (sectionId: AnalyticsSectionId | string) => `/analytics/${sectionId}`,
   },
   store: {
+    home: '/store',
     catalog: '/store/catalog',
     rotation: '/store/rotation',
     stats: '/store/stats',
@@ -45,6 +57,48 @@ export const appRoutes = {
     },
   },
 } as const
+
+export const internalsSections: Record<InternalsSectionId, InternalsSection> = {
+  tournaments: {
+    id: 'tournaments',
+    label: 'Tournaments',
+    short: 'TN',
+    eyebrow: 'Tournament Internals',
+    description: 'Run creation, bracket operations, live tournament pressure, and audit review.',
+    to: appRoutes.tournaments.home,
+  },
+  analytics: {
+    id: 'analytics',
+    label: 'Analytics',
+    short: 'AN',
+    eyebrow: 'Analytics Internals',
+    description: 'Player, match, progression, tournament, and realtime telemetry views.',
+    to: appRoutes.analytics.home,
+  },
+  store: {
+    id: 'store',
+    label: 'Store',
+    short: 'ST',
+    eyebrow: 'Store Internals',
+    description: 'Catalog control, rotation management, events, and purchase reporting.',
+    to: appRoutes.store.home,
+  },
+  settings: {
+    id: 'settings',
+    label: 'Settings',
+    short: 'SE',
+    eyebrow: 'Settings Internals',
+    description: 'Session, environment, operator identity, and console access controls.',
+    to: appRoutes.settings,
+  },
+}
+
+export const sectionEntryItems = [
+  internalsSections.tournaments,
+  internalsSections.analytics,
+  internalsSections.store,
+  internalsSections.settings,
+]
 
 export const analyticsSectionNavItems: AnalyticsSectionNavItem[] = [
   {
@@ -85,50 +139,84 @@ export const analyticsSectionNavItems: AnalyticsSectionNavItem[] = [
   },
 ]
 
-export const primaryNavItems: SidebarNavItem[] = [
+export const tournamentNavItems: SidebarNavItem[] = [
   {
     label: 'Overview',
     to: appRoutes.tournaments.home,
     short: 'OV',
-    section: 'Operate',
+    section: 'Tournaments',
     end: true,
   },
   {
-    label: 'Tournaments',
+    label: 'Create',
     to: appRoutes.tournaments.create,
-    short: 'TN',
-    section: 'Operate',
+    short: 'CR',
+    section: 'Tournaments',
     end: true,
   },
   {
     label: 'Runs',
     to: appRoutes.tournaments.runs,
     short: 'RN',
-    section: 'Operate',
+    section: 'Tournaments',
     matchPrefixes: [appRoutes.tournaments.runs],
     excludePrefixes: [appRoutes.tournaments.create],
+  },
+  {
+    label: 'Audit Log',
+    to: appRoutes.tournaments.auditLog,
+    short: 'AL',
+    section: 'Governance',
+    end: true,
+  },
+]
+
+export const analyticsNavItems: SidebarNavItem[] = [
+  {
+    label: 'Overview',
+    to: appRoutes.analytics.section('overview'),
+    short: 'OV',
+    section: 'Analytics',
+    end: true,
   },
   {
     label: 'Matches',
     to: appRoutes.analytics.section('gameplay'),
     short: 'MT',
-    section: 'Monitor',
+    section: 'Analytics',
     end: true,
   },
   {
     label: 'Players',
     to: appRoutes.analytics.section('players'),
     short: 'PL',
-    section: 'Monitor',
+    section: 'Analytics',
     end: true,
   },
   {
-    label: 'Analytics',
-    to: appRoutes.analytics.section('overview'),
-    short: 'AN',
-    section: 'Monitor',
+    label: 'Tournaments',
+    to: appRoutes.analytics.section('tournaments'),
+    short: 'TN',
+    section: 'Analytics',
     end: true,
   },
+  {
+    label: 'Progression',
+    to: appRoutes.analytics.section('progression'),
+    short: 'XP',
+    section: 'Analytics',
+    end: true,
+  },
+  {
+    label: 'Realtime',
+    to: appRoutes.analytics.section('realtime'),
+    short: 'RT',
+    section: 'Analytics',
+    end: true,
+  },
+]
+
+export const storeNavItems: SidebarNavItem[] = [
   {
     label: 'Catalog',
     to: appRoutes.store.catalog,
@@ -150,18 +238,28 @@ export const primaryNavItems: SidebarNavItem[] = [
     section: 'Store',
     end: true,
   },
+]
+
+export const settingsNavItems: SidebarNavItem[] = [
   {
-    label: 'Audit Log',
-    to: appRoutes.tournaments.auditLog,
-    short: 'AL',
-    section: 'Governance',
-    end: true,
-  },
-  {
-    label: 'Settings',
+    label: 'Console Settings',
     to: appRoutes.settings,
     short: 'ST',
-    section: 'System',
+    section: 'Settings',
     end: true,
   },
+]
+
+export const sectionNavItems: Record<InternalsSectionId, SidebarNavItem[]> = {
+  tournaments: tournamentNavItems,
+  analytics: analyticsNavItems,
+  store: storeNavItems,
+  settings: settingsNavItems,
+}
+
+export const primaryNavItems: SidebarNavItem[] = [
+  ...tournamentNavItems,
+  ...analyticsNavItems,
+  ...storeNavItems,
+  ...settingsNavItems,
 ]

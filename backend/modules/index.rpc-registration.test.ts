@@ -55,6 +55,7 @@ describe("InitModule tournament RPC registration", () => {
         "admin_upsert_cosmetic",
         "admin_disable_cosmetic",
         "admin_enable_cosmetic",
+        "admin_delete_cosmetic",
         "admin_get_rotation_state",
         "admin_set_manual_rotation",
         "admin_clear_manual_rotation",
@@ -108,6 +109,9 @@ describe("InitModule tournament RPC registration", () => {
     );
     expect(entrypointSource).toContain(
       "initializer.registerRpc(RPC_GET_OWNED_COSMETICS, rpcGetOwnedCosmetics);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_DELETE_COSMETIC, rpcAdminDeleteCosmetic);",
     );
     expect(entrypointSource).toContain(
       "initializer.registerRpc(RPC_ADMIN_GET_STORE_STATS, rpcAdminGetStoreStats);",

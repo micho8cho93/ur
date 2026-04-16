@@ -2,6 +2,8 @@ import { callRpc } from './client'
 import { asRecord, readArrayField, readBooleanField, readNumberField, readStringField } from './runtime'
 import type {
   AdminCosmeticMutationResponse,
+  AdminDeleteCosmeticResponse,
+  CosmeticAssetMediaType,
   CosmeticDefinition,
   CosmeticTier,
   CosmeticType,
@@ -17,6 +19,7 @@ const RPC_ADMIN_GET_FULL_CATALOG = 'admin_get_full_catalog'
 const RPC_ADMIN_UPSERT_COSMETIC = 'admin_upsert_cosmetic'
 const RPC_ADMIN_DISABLE_COSMETIC = 'admin_disable_cosmetic'
 const RPC_ADMIN_ENABLE_COSMETIC = 'admin_enable_cosmetic'
+const RPC_ADMIN_DELETE_COSMETIC = 'admin_delete_cosmetic'
 const RPC_ADMIN_GET_ROTATION_STATE = 'admin_get_rotation_state'
 const RPC_ADMIN_SET_MANUAL_ROTATION = 'admin_set_manual_rotation'
 const RPC_ADMIN_CLEAR_MANUAL_ROTATION = 'admin_clear_manual_rotation'
@@ -28,6 +31,7 @@ const cosmeticTiers: CosmeticTier[] = ['common', 'rare', 'epic', 'legendary']
 const cosmeticTypes: CosmeticType[] = ['board', 'pieces', 'dice_animation', 'emote', 'music', 'sound_effect']
 const currencies: CurrencyType[] = ['soft', 'premium']
 const rotationPools: RotationPool[] = ['daily', 'featured', 'limited']
+const assetMediaTypes: CosmeticAssetMediaType[] = ['image', 'audio', 'video', 'animation']
 
 function readStringArray(value: unknown): string[] {
   return Array.isArray(value)
@@ -66,6 +70,19 @@ function normalizeCosmetic(value: unknown): CosmeticDefinition | null {
   const availabilityWindow = asRecord(record.availabilityWindow)
   const start = readStringField(availabilityWindow, ['start'])
   const end = readStringField(availabilityWindow, ['end'])
+  const uploadedAssetRecord = asRecord(record.uploadedAsset)
+  const assetMediaType = readStringField(uploadedAssetRecord, ['mediaType'])
+  const uploadedAsset =
+    uploadedAssetRecord && assetMediaTypes.includes(assetMediaType as CosmeticAssetMediaType)
+      ? {
+          fileName: readStringField(uploadedAssetRecord, ['fileName']) ?? '',
+          mimeType: readStringField(uploadedAssetRecord, ['mimeType']) ?? '',
+          sizeBytes: readNumberField(uploadedAssetRecord, ['sizeBytes']) ?? 0,
+          mediaType: assetMediaType as CosmeticAssetMediaType,
+          dataUrl: readStringField(uploadedAssetRecord, ['dataUrl']) ?? '',
+          uploadedAt: readStringField(uploadedAssetRecord, ['uploadedAt']) ?? '',
+        }
+      : null
 
   return {
     id,
@@ -83,6 +100,9 @@ function normalizeCosmetic(value: unknown): CosmeticDefinition | null {
     ...(start && end ? { availabilityWindow: { start, end } } : {}),
     releasedDate,
     assetKey,
+    ...(uploadedAsset?.fileName && uploadedAsset.mimeType && uploadedAsset.dataUrl && uploadedAsset.sizeBytes > 0
+      ? { uploadedAsset }
+      : {}),
     disabled: readBooleanField(record, ['disabled']) ?? false,
   }
 }
@@ -158,11 +178,29 @@ function normalizeMutation(value: unknown): AdminCosmeticMutationResponse {
   }
 }
 
+function normalizeDeleteMutation(value: unknown): AdminDeleteCosmeticResponse {
+  const record = asRecord(value)
+  const cosmeticId = readStringField(record, ['cosmeticId'])
+  if (!cosmeticId) {
+    throw new Error('Store catalog delete returned an invalid item ID.')
+  }
+
+  return {
+    success: true,
+    cosmeticId,
+  }
+}
+
 export async function getAdminFullCatalog(): Promise<FullCatalogResponse> {
   return normalizeCatalog(await callRpc<unknown>(RPC_ADMIN_GET_FULL_CATALOG))
 }
 
-export async function upsertCosmetic(cosmetic: Partial<CosmeticDefinition> & { id: string }) {
+export async function upsertCosmetic(
+  cosmetic: Partial<Omit<CosmeticDefinition, 'uploadedAsset'>> & {
+    id: string
+    uploadedAsset?: CosmeticDefinition['uploadedAsset'] | null
+  },
+) {
   return normalizeMutation(await callRpc<unknown>(RPC_ADMIN_UPSERT_COSMETIC, { cosmetic }))
 }
 
@@ -172,6 +210,10 @@ export async function disableCosmetic(cosmeticId: string) {
 
 export async function enableCosmetic(cosmeticId: string) {
   return normalizeMutation(await callRpc<unknown>(RPC_ADMIN_ENABLE_COSMETIC, { cosmeticId }))
+}
+
+export async function deleteCosmetic(cosmeticId: string) {
+  return normalizeDeleteMutation(await callRpc<unknown>(RPC_ADMIN_DELETE_COSMETIC, { cosmeticId }))
 }
 
 export async function getRotationState(): Promise<StoreRotationStateResponse> {

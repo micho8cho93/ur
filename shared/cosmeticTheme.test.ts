@@ -91,4 +91,24 @@ describe('cosmeticTheme', () => {
     expect(cosmeticDefinitionToTheme(createCosmetic('emote_scribe_001', 'emote'))).toEqual({});
     expect(cosmeticDefinitionToTheme(createCosmetic('missing_cosmetic', 'board'))).toEqual({});
   });
+
+  it('maps uploaded media data URLs into runtime theme overrides', () => {
+    expect(
+      cosmeticDefinitionToTheme({
+        ...createCosmetic('music_uploaded_001', 'music'),
+        uploadedAsset: {
+          fileName: 'theme.mp3',
+          mimeType: 'audio/mpeg',
+          sizeBytes: 1200,
+          mediaType: 'audio',
+          dataUrl: 'data:audio/mpeg;base64,AAAA',
+          uploadedAt: '2026-04-16T00:00:00.000Z',
+        },
+      }),
+    ).toEqual({
+      music: {
+        trackUri: 'data:audio/mpeg;base64,AAAA',
+      },
+    });
+  });
 });

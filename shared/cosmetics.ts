@@ -4,6 +4,16 @@ export type CosmeticTier = "common" | "rare" | "epic" | "legendary";
 export type CosmeticType = "board" | "pieces" | "dice_animation" | "emote" | "music" | "sound_effect";
 export type CurrencyType = "soft" | "premium";
 export type RotationPool = "daily" | "featured" | "limited";
+export type CosmeticAssetMediaType = "image" | "audio" | "video" | "animation";
+
+export type UploadedCosmeticAsset = {
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  mediaType: CosmeticAssetMediaType;
+  dataUrl: string;
+  uploadedAt: string;
+};
 
 export type CosmeticDefinition = {
   id: string;
@@ -22,6 +32,7 @@ export type CosmeticDefinition = {
   };
   releasedDate: string;
   assetKey: string;
+  uploadedAsset?: UploadedCosmeticAsset;
   disabled?: boolean;
 };
 
@@ -93,16 +104,28 @@ export type StoreRotationStateResponse = {
 };
 
 export type AdminUpsertCosmeticRequest = {
-  cosmetic: Partial<CosmeticDefinition> & { id: string };
+  cosmetic: Partial<Omit<CosmeticDefinition, "uploadedAsset">> & {
+    id: string;
+    uploadedAsset?: UploadedCosmeticAsset | null;
+  };
 };
 
 export type AdminToggleCosmeticRequest = {
   cosmeticId: string;
 };
 
+export type AdminDeleteCosmeticRequest = {
+  cosmeticId: string;
+};
+
 export type AdminCosmeticMutationResponse = {
   success: true;
   item: CosmeticDefinition;
+};
+
+export type AdminDeleteCosmeticResponse = {
+  success: true;
+  cosmeticId: string;
 };
 
 export type AdminSetManualRotationRequest = {
@@ -151,6 +174,23 @@ export const isCosmeticType = (value: unknown): value is CosmeticType =>
 
 export const isCurrencyType = (value: unknown): value is CurrencyType => value === "soft" || value === "premium";
 
+export const isCosmeticAssetMediaType = (value: unknown): value is CosmeticAssetMediaType =>
+  value === "image" || value === "audio" || value === "video" || value === "animation";
+
+export const isUploadedCosmeticAsset = (value: unknown): value is UploadedCosmeticAsset =>
+  isRecord(value) &&
+  typeof value.fileName === "string" &&
+  value.fileName.trim().length > 0 &&
+  typeof value.mimeType === "string" &&
+  value.mimeType.trim().length > 0 &&
+  typeof value.sizeBytes === "number" &&
+  Number.isFinite(value.sizeBytes) &&
+  value.sizeBytes > 0 &&
+  isCosmeticAssetMediaType(value.mediaType) &&
+  typeof value.dataUrl === "string" &&
+  value.dataUrl.startsWith("data:") &&
+  typeof value.uploadedAt === "string";
+
 export const isCosmeticDefinition = (value: unknown): value is CosmeticDefinition => {
   if (!isRecord(value) || !isRecord(value.price)) {
     return false;
@@ -181,6 +221,7 @@ export const isCosmeticDefinition = (value: unknown): value is CosmeticDefinitio
     hasValidAvailability &&
     typeof value.releasedDate === "string" &&
     typeof value.assetKey === "string" &&
+    (typeof value.uploadedAsset === "undefined" || isUploadedCosmeticAsset(value.uploadedAsset)) &&
     (typeof value.disabled === "undefined" || typeof value.disabled === "boolean")
   );
 };

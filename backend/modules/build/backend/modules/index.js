@@ -4688,13 +4688,15 @@ var isStringArray = (value) => Array.isArray(value) && value.every((entry) => ty
 var isCosmeticTier = (value) => value === "common" || value === "rare" || value === "epic" || value === "legendary";
 var isCosmeticType = (value) => value === "board" || value === "pieces" || value === "dice_animation" || value === "emote" || value === "music" || value === "sound_effect";
 var isCurrencyType = (value) => value === "soft" || value === "premium";
+var isCosmeticAssetMediaType = (value) => value === "image" || value === "audio" || value === "video" || value === "animation";
+var isUploadedCosmeticAsset = (value) => isRecord2(value) && typeof value.fileName === "string" && value.fileName.trim().length > 0 && typeof value.mimeType === "string" && value.mimeType.trim().length > 0 && typeof value.sizeBytes === "number" && Number.isFinite(value.sizeBytes) && value.sizeBytes > 0 && isCosmeticAssetMediaType(value.mediaType) && typeof value.dataUrl === "string" && value.dataUrl.startsWith("data:") && typeof value.uploadedAt === "string";
 var isCosmeticDefinition = (value) => {
   if (!isRecord2(value) || !isRecord2(value.price)) {
     return false;
   }
   const availabilityWindow = value.availabilityWindow;
   const hasValidAvailability = typeof availabilityWindow === "undefined" || isRecord2(availabilityWindow) && typeof availabilityWindow.start === "string" && typeof availabilityWindow.end === "string";
-  return typeof value.id === "string" && typeof value.name === "string" && isCosmeticTier(value.tier) && isCosmeticType(value.type) && isCurrencyType(value.price.currency) && typeof value.price.amount === "number" && Number.isFinite(value.price.amount) && value.price.amount >= 0 && isStringArray(value.rotationPools) && value.rotationPools.every((pool) => pool === "daily" || pool === "featured" || pool === "limited") && typeof value.rarityWeight === "number" && Number.isFinite(value.rarityWeight) && value.rarityWeight >= 0 && value.rarityWeight <= 1 && hasValidAvailability && typeof value.releasedDate === "string" && typeof value.assetKey === "string" && (typeof value.disabled === "undefined" || typeof value.disabled === "boolean");
+  return typeof value.id === "string" && typeof value.name === "string" && isCosmeticTier(value.tier) && isCosmeticType(value.type) && isCurrencyType(value.price.currency) && typeof value.price.amount === "number" && Number.isFinite(value.price.amount) && value.price.amount >= 0 && isStringArray(value.rotationPools) && value.rotationPools.every((pool) => pool === "daily" || pool === "featured" || pool === "limited") && typeof value.rarityWeight === "number" && Number.isFinite(value.rarityWeight) && value.rarityWeight >= 0 && value.rarityWeight <= 1 && hasValidAvailability && typeof value.releasedDate === "string" && typeof value.assetKey === "string" && (typeof value.uploadedAsset === "undefined" || isUploadedCosmeticAsset(value.uploadedAsset)) && (typeof value.disabled === "undefined" || typeof value.disabled === "boolean");
 };
 var isLimitedTimeEvent = (value) => isRecord2(value) && typeof value.id === "string" && typeof value.name === "string" && isStringArray(value.cosmeticIds) && typeof value.startsAt === "string" && typeof value.endsAt === "string" && (typeof value.disabled === "undefined" || typeof value.disabled === "boolean");
 
@@ -5915,6 +5917,7 @@ var RPC_ADMIN_GET_FULL_CATALOG = "admin_get_full_catalog";
 var RPC_ADMIN_UPSERT_COSMETIC = "admin_upsert_cosmetic";
 var RPC_ADMIN_DISABLE_COSMETIC = "admin_disable_cosmetic";
 var RPC_ADMIN_ENABLE_COSMETIC = "admin_enable_cosmetic";
+var RPC_ADMIN_DELETE_COSMETIC = "admin_delete_cosmetic";
 var RPC_ADMIN_GET_ROTATION_STATE = "admin_get_rotation_state";
 var RPC_ADMIN_SET_MANUAL_ROTATION = "admin_set_manual_rotation";
 var RPC_ADMIN_CLEAR_MANUAL_ROTATION = "admin_clear_manual_rotation";
@@ -6272,6 +6275,13 @@ var parseToggleCosmeticRequest = (payload) => {
   }
   return { cosmeticId: record.cosmeticId };
 };
+var parseDeleteCosmeticRequest = (payload) => {
+  const record = parseJsonPayload2(payload);
+  if (typeof record.cosmeticId !== "string" || record.cosmeticId.trim().length === 0) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  return { cosmeticId: record.cosmeticId };
+};
 var parseManualRotationRequest = (payload) => {
   const record = parseJsonPayload2(payload);
   const dailyRotationIds = normalizeStringArray(record.dailyRotationIds);
@@ -6295,13 +6305,40 @@ var parseRemoveLimitedTimeEventRequest = (payload) => {
   }
   return { eventId: record.eventId };
 };
+var isUploadedAssetCompatible = (item) => {
+  var _a;
+  const mediaType = (_a = item.uploadedAsset) == null ? void 0 : _a.mediaType;
+  if (!mediaType) {
+    return true;
+  }
+  if (item.type === "music" || item.type === "sound_effect") {
+    return mediaType === "audio";
+  }
+  if (item.type === "board" || item.type === "pieces") {
+    return mediaType === "image" || mediaType === "animation";
+  }
+  if (item.type === "dice_animation" || item.type === "emote") {
+    return mediaType === "image" || mediaType === "animation" || mediaType === "video";
+  }
+  return false;
+};
 var upsertCatalogItem = (nk, patch) => {
   let updatedItem = null;
   writeRawCatalogWithRetry(nk, (items) => {
     const existingIndex = items.findIndex((item) => item.id === patch.id);
-    const merged = __spreadValues(__spreadValues({}, existingIndex >= 0 ? items[existingIndex] : {}), patch);
+    const patchWithoutAssetRemoval = __spreadValues({}, patch);
+    if (patch.uploadedAsset === null) {
+      delete patchWithoutAssetRemoval.uploadedAsset;
+    }
+    const merged = __spreadValues(__spreadValues({}, existingIndex >= 0 ? items[existingIndex] : {}), patchWithoutAssetRemoval);
+    if (patch.uploadedAsset === null) {
+      delete merged.uploadedAsset;
+    }
     if (!isCosmeticDefinition(merged)) {
       throw new Error("INVALID_COSMETIC");
+    }
+    if (!isUploadedAssetCompatible(merged)) {
+      throw new Error("INVALID_COSMETIC_ASSET");
     }
     updatedItem = merged;
     if (existingIndex >= 0) {
@@ -6317,6 +6354,30 @@ var upsertCatalogItem = (nk, patch) => {
   return {
     success: true,
     item: updatedItem
+  };
+};
+var deleteCatalogItem = (nk, logger, cosmeticId) => {
+  let deleted = false;
+  writeRawCatalogWithRetry(nk, (items) => {
+    deleted = items.some((item) => item.id === cosmeticId);
+    if (!deleted) {
+      throw new Error("ITEM_NOT_FOUND");
+    }
+    return items.filter((item) => item.id !== cosmeticId);
+  });
+  const catalog = loadCatalogFromStorage(nk, { bypassCache: true });
+  updateRotationRecordWithRetry(nk, logger, catalog, (current) => __spreadProps(__spreadValues({}, current), {
+    dailyRotationIds: current.dailyRotationIds.filter((id) => id !== cosmeticId),
+    featuredIds: current.featuredIds.filter((id) => id !== cosmeticId),
+    limitedTimeEvents: current.limitedTimeEvents.map((event) => __spreadProps(__spreadValues({}, event), {
+      cosmeticIds: event.cosmeticIds.filter((id) => id !== cosmeticId)
+    })).filter((event) => event.cosmeticIds.length > 0)
+  }));
+  invalidateCatalogCache();
+  invalidateRotationCache();
+  return {
+    success: true,
+    cosmeticId
   };
 };
 var toggleCatalogItem = (nk, cosmeticId, disabled) => {
@@ -6431,6 +6492,11 @@ var rpcAdminEnableCosmetic = (ctx, _logger, nk, payload) => {
   requireAdminRole(ctx, nk, "operator");
   const request = parseToggleCosmeticRequest(payload);
   return JSON.stringify(toggleCatalogItem(nk, request.cosmeticId, false));
+};
+var rpcAdminDeleteCosmetic = (ctx, logger, nk, payload) => {
+  requireAdminRole(ctx, nk, "operator");
+  const request = parseDeleteCosmeticRequest(payload);
+  return JSON.stringify(deleteCatalogItem(nk, logger, request.cosmeticId));
 };
 var rpcAdminGetRotationState = (ctx, logger, nk, _payload) => {
   requireAdminRole(ctx, nk, "viewer");
@@ -14436,6 +14502,7 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_ADMIN_UPSERT_COSMETIC, rpcAdminUpsertCosmetic);
   initializer.registerRpc(RPC_ADMIN_DISABLE_COSMETIC, rpcAdminDisableCosmetic);
   initializer.registerRpc(RPC_ADMIN_ENABLE_COSMETIC, rpcAdminEnableCosmetic);
+  initializer.registerRpc(RPC_ADMIN_DELETE_COSMETIC, rpcAdminDeleteCosmetic);
   initializer.registerRpc(RPC_ADMIN_GET_ROTATION_STATE, rpcAdminGetRotationState);
   initializer.registerRpc(RPC_ADMIN_SET_MANUAL_ROTATION, rpcAdminSetManualRotation);
   initializer.registerRpc(RPC_ADMIN_CLEAR_MANUAL_ROTATION, rpcAdminClearManualRotation);

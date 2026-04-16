@@ -1,5 +1,5 @@
 import { getBoardImageSource } from '@/src/cosmetics/boardAssets';
-import { getMusicTrackSource, getSoundEffectPreviewSources, type SoundEffectPreviewSources } from '@/src/cosmetics/audioAssets';
+import { getMusicTrackSource, getSoundEffectPreviewSources, type AudioAssetSource, type SoundEffectPreviewSources } from '@/src/cosmetics/audioAssets';
 import { type DiceImageSources, getDiceImageSources } from '@/src/cosmetics/diceAssets';
 import { type PieceImageSources, getPieceImageSources } from '@/src/cosmetics/pieceAssets';
 import { type TileImageSources, getTileImageSources } from '@/src/cosmetics/tileAssets';
@@ -29,7 +29,7 @@ export type CosmeticThemeContextValue = {
   tileImageSources: TileImageSources;
   pieceImageSources: PieceImageSources;
   diceImageSources: DiceImageSources;
-  musicTrackSource: number;
+  musicTrackSource: AudioAssetSource;
   soundEffectPreviewSources: SoundEffectPreviewSources;
   hasBoardTileAssetOverride: boolean;
   hasPieceAssetOverride: boolean;
@@ -78,29 +78,45 @@ export const CosmeticThemeProvider = ({ theme, children }: CosmeticThemeProvider
       dice,
       music,
       soundEffects,
-      boardImageSource: getBoardImageSource(board.imageAssetKey),
+      boardImageSource: getBoardImageSource(board.imageAssetKey, board.imageUri),
       tileImageSources: getTileImageSources(board),
       pieceImageSources: getPieceImageSources(pieces),
       diceImageSources: getDiceImageSources(dice),
-      musicTrackSource: getMusicTrackSource(music.trackAssetKey),
+      musicTrackSource: getMusicTrackSource(music.trackAssetKey, music.trackUri),
       soundEffectPreviewSources: getSoundEffectPreviewSources(soundEffects),
       hasBoardTileAssetOverride: Boolean(
         theme.board?.normalTileAssetKey ||
+          theme.board?.normalTileImageUri ||
           theme.board?.rosetteTileAssetKey ||
-          theme.board?.warTileAssetKey,
+          theme.board?.rosetteTileImageUri ||
+          theme.board?.imageUri ||
+          theme.board?.warTileAssetKey ||
+          theme.board?.warTileImageUri,
       ),
       hasPieceAssetOverride: Boolean(
         theme.pieces?.lightPieceAssetKey ||
+          theme.pieces?.lightPieceImageUri ||
           theme.pieces?.darkPieceAssetKey ||
-          theme.pieces?.reservePieceAssetKey,
+          theme.pieces?.darkPieceImageUri ||
+          theme.pieces?.reservePieceAssetKey ||
+          theme.pieces?.reservePieceImageUri,
       ),
-      hasDiceAssetOverride: Boolean(theme.dice?.markedDieAssetKey || theme.dice?.unmarkedDieAssetKey),
-      hasMusicAssetOverride: Boolean(theme.music?.trackAssetKey),
+      hasDiceAssetOverride: Boolean(
+        theme.dice?.markedDieAssetKey ||
+          theme.dice?.markedDieImageUri ||
+          theme.dice?.unmarkedDieAssetKey ||
+          theme.dice?.unmarkedDieImageUri,
+      ),
+      hasMusicAssetOverride: Boolean(theme.music?.trackAssetKey || theme.music?.trackUri),
       hasSoundEffectAssetOverride: Boolean(
         theme.soundEffects?.rollSequenceAssetKey ||
+          theme.soundEffects?.rollSequenceUris?.length ||
           theme.soundEffects?.moveAssetKey ||
+          theme.soundEffects?.moveUri ||
           theme.soundEffects?.scoreAssetKey ||
-          theme.soundEffects?.captureAssetKey,
+          theme.soundEffects?.scoreUri ||
+          theme.soundEffects?.captureAssetKey ||
+          theme.soundEffects?.captureUri,
       ),
     };
   }, [theme]);

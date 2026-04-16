@@ -34,7 +34,7 @@ export const router = createBrowserRouter([
         element: <WorkspaceChooserPage />,
       },
       {
-        element: <AppShell />,
+        element: <AppShell section="tournaments" />,
         children: [
           {
             path: appRoutes.tournaments.home,
@@ -56,6 +56,11 @@ export const router = createBrowserRouter([
             path: appRoutes.tournaments.auditLog,
             element: <AuditLogPage />,
           },
+        ],
+      },
+      {
+        element: <AppShell section="analytics" />,
+        children: [
           {
             path: appRoutes.analytics.home,
             element: <Navigate to={appRoutes.analytics.section('overview')} replace />,
@@ -63,6 +68,15 @@ export const router = createBrowserRouter([
           {
             path: appRoutes.analytics.section(':sectionId'),
             element: <AnalyticsPage />,
+          },
+        ],
+      },
+      {
+        element: <AppShell section="store" />,
+        children: [
+          {
+            path: appRoutes.store.home,
+            element: <Navigate to={appRoutes.store.catalog} replace />,
           },
           {
             path: appRoutes.store.catalog,
@@ -76,6 +90,11 @@ export const router = createBrowserRouter([
             path: appRoutes.store.stats,
             element: <StoreStatsPage />,
           },
+        ],
+      },
+      {
+        element: <AppShell section="settings" />,
+        children: [
           {
             path: appRoutes.settings,
             element: <SettingsPage />,

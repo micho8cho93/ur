@@ -28,23 +28,36 @@ const DARK_PIECE_IMAGE_SOURCES: Record<string, ImageSourcePropType> = {
 
 export const getPieceImageSources = (assetKeys?: {
   lightPieceAssetKey?: string | null;
+  lightPieceImageUri?: string | null;
   darkPieceAssetKey?: string | null;
+  darkPieceImageUri?: string | null;
   reservePieceAssetKey?: string | null;
+  reservePieceImageUri?: string | null;
 }): PieceImageSources => {
   const reserveLightAssetKey = assetKeys?.reservePieceAssetKey ?? assetKeys?.lightPieceAssetKey;
   const reserveDarkAssetKey = assetKeys?.reservePieceAssetKey ?? assetKeys?.darkPieceAssetKey;
+  const reserveLightImageUri = assetKeys?.reservePieceImageUri ?? assetKeys?.lightPieceImageUri;
+  const reserveDarkImageUri = assetKeys?.reservePieceImageUri ?? assetKeys?.darkPieceImageUri;
 
   return {
-    light: assetKeys?.lightPieceAssetKey
+    light: assetKeys?.lightPieceImageUri
+      ? { uri: assetKeys.lightPieceImageUri }
+      : assetKeys?.lightPieceAssetKey
       ? LIGHT_PIECE_IMAGE_SOURCES[assetKeys.lightPieceAssetKey] ?? DEFAULT_LIGHT_PIECE_IMAGE_SOURCE
       : DEFAULT_LIGHT_PIECE_IMAGE_SOURCE,
-    dark: assetKeys?.darkPieceAssetKey
+    dark: assetKeys?.darkPieceImageUri
+      ? { uri: assetKeys.darkPieceImageUri }
+      : assetKeys?.darkPieceAssetKey
       ? DARK_PIECE_IMAGE_SOURCES[assetKeys.darkPieceAssetKey] ?? DEFAULT_DARK_PIECE_IMAGE_SOURCE
       : DEFAULT_DARK_PIECE_IMAGE_SOURCE,
-    reserveLight: reserveLightAssetKey
+    reserveLight: reserveLightImageUri
+      ? { uri: reserveLightImageUri }
+      : reserveLightAssetKey
       ? LIGHT_PIECE_IMAGE_SOURCES[reserveLightAssetKey] ?? DEFAULT_LIGHT_PIECE_IMAGE_SOURCE
       : DEFAULT_LIGHT_PIECE_IMAGE_SOURCE,
-    reserveDark: reserveDarkAssetKey
+    reserveDark: reserveDarkImageUri
+      ? { uri: reserveDarkImageUri }
+      : reserveDarkAssetKey
       ? DARK_PIECE_IMAGE_SOURCES[reserveDarkAssetKey] ?? DEFAULT_DARK_PIECE_IMAGE_SOURCE
       : DEFAULT_DARK_PIECE_IMAGE_SOURCE,
   };

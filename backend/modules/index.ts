@@ -60,6 +60,7 @@ import {
   RPC_PURCHASE_ITEM,
   RPC_ADMIN_CLEAR_MANUAL_ROTATION,
   RPC_ADMIN_DISABLE_COSMETIC,
+  RPC_ADMIN_DELETE_COSMETIC,
   RPC_ADMIN_ENABLE_COSMETIC,
   RPC_ADMIN_GET_FULL_CATALOG,
   RPC_ADMIN_GET_ROTATION_STATE,
@@ -70,6 +71,7 @@ import {
   RPC_ADMIN_UPSERT_COSMETIC,
   rpcAdminClearManualRotation,
   rpcAdminDisableCosmetic,
+  rpcAdminDeleteCosmetic,
   rpcAdminEnableCosmetic,
   rpcAdminGetFullCatalog,
   rpcAdminGetRotationState,
@@ -2117,6 +2119,7 @@ function InitModule(
   initializer.registerRpc(RPC_ADMIN_UPSERT_COSMETIC, rpcAdminUpsertCosmetic);
   initializer.registerRpc(RPC_ADMIN_DISABLE_COSMETIC, rpcAdminDisableCosmetic);
   initializer.registerRpc(RPC_ADMIN_ENABLE_COSMETIC, rpcAdminEnableCosmetic);
+  initializer.registerRpc(RPC_ADMIN_DELETE_COSMETIC, rpcAdminDeleteCosmetic);
   initializer.registerRpc(RPC_ADMIN_GET_ROTATION_STATE, rpcAdminGetRotationState);
   initializer.registerRpc(RPC_ADMIN_SET_MANUAL_ROTATION, rpcAdminSetManualRotation);
   initializer.registerRpc(RPC_ADMIN_CLEAR_MANUAL_ROTATION, rpcAdminClearManualRotation);

@@ -36,16 +36,25 @@ const WAR_TILE_IMAGE_SOURCES: Record<string, ImageSourcePropType> = {
 
 export const getTileImageSources = (assetKeys?: {
   normalTileAssetKey?: string | null;
+  normalTileImageUri?: string | null;
   rosetteTileAssetKey?: string | null;
+  rosetteTileImageUri?: string | null;
   warTileAssetKey?: string | null;
+  warTileImageUri?: string | null;
 }): TileImageSources => ({
-  normal: assetKeys?.normalTileAssetKey
+  normal: assetKeys?.normalTileImageUri
+    ? { uri: assetKeys.normalTileImageUri }
+    : assetKeys?.normalTileAssetKey
     ? NORMAL_TILE_IMAGE_SOURCES[assetKeys.normalTileAssetKey] ?? DEFAULT_NORMAL_TILE_IMAGE_SOURCE
     : DEFAULT_NORMAL_TILE_IMAGE_SOURCE,
-  rosette: assetKeys?.rosetteTileAssetKey
+  rosette: assetKeys?.rosetteTileImageUri
+    ? { uri: assetKeys.rosetteTileImageUri }
+    : assetKeys?.rosetteTileAssetKey
     ? ROSETTE_TILE_IMAGE_SOURCES[assetKeys.rosetteTileAssetKey] ?? DEFAULT_ROSETTE_TILE_IMAGE_SOURCE
     : DEFAULT_ROSETTE_TILE_IMAGE_SOURCE,
-  war: assetKeys?.warTileAssetKey
+  war: assetKeys?.warTileImageUri
+    ? { uri: assetKeys.warTileImageUri }
+    : assetKeys?.warTileAssetKey
     ? WAR_TILE_IMAGE_SOURCES[assetKeys.warTileAssetKey] ?? DEFAULT_WAR_TILE_IMAGE_SOURCE
     : DEFAULT_WAR_TILE_IMAGE_SOURCE,
 });

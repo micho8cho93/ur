@@ -1,8 +1,10 @@
 import { PREMIUM_CURRENCY_KEY, SOFT_CURRENCY_KEY } from "../../shared/wallet";
+import { ADMIN_COLLECTION, ADMIN_ROLE_KEY } from "./tournaments/auth";
 import { CATALOG_COLLECTION, CATALOG_ITEMS_KEY, getCatalog, invalidateCatalogCache } from "./cosmeticCatalog";
 import {
   COSMETICS_COLLECTION,
   COSMETICS_OWNED_KEY,
+  RPC_ADMIN_DELETE_COSMETIC,
   RPC_GET_OWNED_COSMETICS,
   RPC_GET_STOREFRONT,
   RPC_PURCHASE_ITEM,
@@ -10,6 +12,9 @@ import {
   STORE_STATE_COLLECTION,
   buildStorefrontResponse,
   getOwnedCosmeticsForUser,
+  rpcAdminDeleteCosmetic,
+  rpcAdminGetFullCatalog,
+  rpcAdminUpsertCosmetic,
   purchaseCosmeticItem,
   rpcGetOwnedCosmetics,
   rpcGetStorefront,
@@ -133,6 +138,16 @@ const seedRotation = (
       previousDays: [],
     },
     version: "rotation-v1",
+  });
+};
+
+const seedAdminRole = (nk: ReturnType<typeof createNakama>, userId = "admin-1") => {
+  nk.storage.set(storageKey(ADMIN_COLLECTION, ADMIN_ROLE_KEY, userId), {
+    collection: ADMIN_COLLECTION,
+    key: ADMIN_ROLE_KEY,
+    userId,
+    value: { role: "admin" },
+    version: "admin-v1",
   });
 };
 
@@ -270,11 +285,142 @@ describe("cosmetic store RPC helpers", () => {
     });
   });
 
+  it("stores uploaded catalog assets through the admin upsert RPC", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk);
+
+    const response = JSON.parse(
+      rpcAdminUpsertCosmetic(
+        { userId: "admin-1" },
+        logger,
+        nk,
+        JSON.stringify({
+          cosmetic: {
+            id: "board_uploaded_001",
+            name: "Uploaded Board",
+            tier: "rare",
+            type: "board",
+            price: { currency: "soft", amount: 500 },
+            rotationPools: ["daily"],
+            rarityWeight: 0.7,
+            releasedDate: "2026-04-15T00:00:00.000Z",
+            assetKey: "board_uploaded_001",
+            uploadedAsset: {
+              fileName: "board.png",
+              mimeType: "image/png",
+              sizeBytes: 42,
+              mediaType: "image",
+              dataUrl: "data:image/png;base64,AAAA",
+              uploadedAt: "2026-04-16T00:00:00.000Z",
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(response.item.uploadedAsset).toEqual(expect.objectContaining({ fileName: "board.png" }));
+    expect(JSON.parse(rpcAdminGetFullCatalog({ userId: "admin-1" }, logger, nk, "")).items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "board_uploaded_001",
+          uploadedAsset: expect.objectContaining({ dataUrl: "data:image/png;base64,AAAA" }),
+        }),
+      ]),
+    );
+  });
+
+  it("rejects uploaded assets that do not match the cosmetic type", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk);
+
+    expect(() =>
+      rpcAdminUpsertCosmetic(
+        { userId: "admin-1" },
+        logger,
+        nk,
+        JSON.stringify({
+          cosmetic: {
+            id: "board_bad_audio_001",
+            name: "Bad Board",
+            tier: "rare",
+            type: "board",
+            price: { currency: "soft", amount: 500 },
+            rotationPools: ["daily"],
+            rarityWeight: 0.7,
+            releasedDate: "2026-04-15T00:00:00.000Z",
+            assetKey: "board_bad_audio_001",
+            uploadedAsset: {
+              fileName: "theme.mp3",
+              mimeType: "audio/mpeg",
+              sizeBytes: 42,
+              mediaType: "audio",
+              dataUrl: "data:audio/mpeg;base64,AAAA",
+              uploadedAt: "2026-04-16T00:00:00.000Z",
+            },
+          },
+        }),
+      ),
+    ).toThrow("INVALID_COSMETIC_ASSET");
+  });
+
+  it("deletes catalog cosmetics and removes them from active store options", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk);
+    seedRotation(nk, "2026-04-15T00:00:00.000Z", ["board_cedar_001", "board_lapis_001"]);
+
+    nk.storage.set(storageKey(STORE_STATE_COLLECTION, STORE_ROTATION_KEY, GLOBAL_STORAGE_USER_ID), {
+      collection: STORE_STATE_COLLECTION,
+      key: STORE_ROTATION_KEY,
+      userId: GLOBAL_STORAGE_USER_ID,
+      value: {
+        dailyRotationIds: ["board_cedar_001", "board_lapis_001"],
+        featuredIds: ["board_gold_001"],
+        generatedAt: "2026-04-15T00:00:00.000Z",
+        previousDays: [],
+        manualOverride: true,
+        limitedTimeEvents: [
+          {
+            id: "event-1",
+            name: "Event",
+            cosmeticIds: ["board_cedar_001", "board_lapis_001"],
+            startsAt: "2026-04-15T00:00:00.000Z",
+            endsAt: "2026-04-20T00:00:00.000Z",
+          },
+        ],
+      },
+      version: "rotation-v2",
+    });
+
+    expect(
+      JSON.parse(
+        rpcAdminDeleteCosmetic(
+          { userId: "admin-1" },
+          logger,
+          nk,
+          JSON.stringify({ cosmeticId: "board_cedar_001" }),
+        ),
+      ),
+    ).toEqual({ success: true, cosmeticId: "board_cedar_001" });
+
+    const catalog = JSON.parse(rpcAdminGetFullCatalog({ userId: "admin-1" }, logger, nk, "")).items;
+    expect(catalog.some((item: { id: string }) => item.id === "board_cedar_001")).toBe(false);
+
+    const rotation = nk.storage.get(storageKey(STORE_STATE_COLLECTION, STORE_ROTATION_KEY, GLOBAL_STORAGE_USER_ID));
+    expect((rotation?.value as { dailyRotationIds: string[] }).dailyRotationIds).toEqual(["board_lapis_001"]);
+    expect((rotation?.value as { limitedTimeEvents: Array<{ cosmeticIds: string[] }> }).limitedTimeEvents[0].cosmeticIds).toEqual([
+      "board_lapis_001",
+    ]);
+  });
+
   it("exports the expected RPC names", () => {
-    expect([RPC_GET_STOREFRONT, RPC_PURCHASE_ITEM, RPC_GET_OWNED_COSMETICS]).toEqual([
+    expect([RPC_GET_STOREFRONT, RPC_PURCHASE_ITEM, RPC_GET_OWNED_COSMETICS, RPC_ADMIN_DELETE_COSMETIC]).toEqual([
       "get_storefront",
       "purchase_item",
       "get_owned_cosmetics",
+      "admin_delete_cosmetic",
     ]);
   });
 });

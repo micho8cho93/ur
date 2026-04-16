@@ -3,12 +3,13 @@ import { Link, useLocation } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import env from '../config/env'
 import { getAdminLabel, getMonogram, getTargetLabel } from '../layout/workspaceMeta'
-import { appRoutes, type SidebarNavItem } from '../routes'
+import { appRoutes, type InternalsSection, type SidebarNavItem } from '../routes'
 
 interface SidebarNavProps {
   collapsed: boolean
   onToggle: () => void
   items: SidebarNavItem[]
+  section: InternalsSection
 }
 
 function isPrefixMatch(pathname: string, prefix: string) {
@@ -28,7 +29,7 @@ function isItemActive(pathname: string, item: SidebarNavItem) {
   return prefixes.some((prefix) => isPrefixMatch(pathname, prefix))
 }
 
-export function SidebarNav({ collapsed, onToggle, items }: SidebarNavProps) {
+export function SidebarNav({ collapsed, onToggle, items, section }: SidebarNavProps) {
   const location = useLocation()
   const { adminIdentity, logout, isAuthenticating } = useSession()
   const adminLabel = getAdminLabel(adminIdentity)
@@ -49,8 +50,8 @@ export function SidebarNav({ collapsed, onToggle, items }: SidebarNavProps) {
       <div className="console-sidebar__brand">
         <div className="console-sidebar__brand-row">
           <div>
-            <p className="sidebar__eyebrow">UR Internals</p>
-            <h1 className="console-sidebar__title">{collapsed ? 'UR' : 'Admin Console'}</h1>
+            {!collapsed ? <p className="sidebar__eyebrow">{section.eyebrow}</p> : null}
+            <h1 className="console-sidebar__title">{collapsed ? section.short : section.label}</h1>
           </div>
           <button
             className="console-sidebar__toggle"
@@ -58,13 +59,21 @@ export function SidebarNav({ collapsed, onToggle, items }: SidebarNavProps) {
             onClick={onToggle}
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             aria-pressed={collapsed}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {collapsed ? '>' : '<'}
+            <span
+              className={
+                collapsed
+                  ? 'console-sidebar__toggle-icon console-sidebar__toggle-icon--expand'
+                  : 'console-sidebar__toggle-icon console-sidebar__toggle-icon--collapse'
+              }
+              aria-hidden="true"
+            />
           </button>
         </div>
         {!collapsed ? (
           <p className="console-sidebar__subtitle">
-            Compact tournament operations, analytics, and audit tooling for the live product.
+            {section.description}
           </p>
         ) : null}
       </div>
