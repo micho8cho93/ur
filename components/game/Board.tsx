@@ -3,6 +3,8 @@ import { urTheme } from '@/constants/urTheme';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import { getPathVariantDefinition } from '@/logic/pathVariants';
 import { Coordinates, GameState, MoveAction, PlayerColor } from '@/logic/types';
+import { DEFAULT_BOARD_IMAGE_SOURCE } from '@/src/cosmetics/boardAssets';
+import { useCosmeticTheme } from '@/src/store/CosmeticThemeContext';
 import { getAppendedHistoryEntries } from '@/shared/historyWindow';
 import { useGameStore } from '@/store/useGameStore';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -31,7 +33,11 @@ import Animated, {
 import { PIECE_ART_VISIBLE_COVERAGE, Piece } from './Piece';
 import { Tile } from './Tile';
 
-export const BOARD_IMAGE_SOURCE = require('../../assets/board/board_design.png');
+// Cosmetic preview regression checklist:
+// - Default board PNG source remains assets/board/board_design.png.
+// - Default frame background stays transparent with no border.
+// - Live matches do not add a provider; useCosmeticTheme() falls back to the same PNG.
+export const BOARD_IMAGE_SOURCE = DEFAULT_BOARD_IMAGE_SOURCE;
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -471,6 +477,7 @@ export const Board: React.FC<BoardProps> = ({
   const storeOnlineMode = useGameStore((state) => state.onlineMode);
   const storePlayerColor = useGameStore((state) => state.playerColor);
   const storeAuthoritativeHistoryCount = useGameStore((state) => state.authoritativeHistoryCount) ?? 0;
+  const { board, boardImageSource } = useCosmeticTheme();
   const { width } = useWindowDimensions();
   const [selectedMove, setSelectedMove] = useState<MoveAction | null>(null);
   const [hoveredMove, setHoveredMove] = useState<MoveAction | null>(null);
@@ -1874,11 +1881,18 @@ export const Board: React.FC<BoardProps> = ({
 
   return (
     <View
-      style={[styles.frame, { width: boardLayout.frameWidth, height: boardLayout.frameHeight }]}
+      style={[
+        styles.frame,
+        {
+          width: boardLayout.frameWidth,
+          height: boardLayout.frameHeight,
+          backgroundColor: board.backgroundColor,
+        },
+      ]}
     >
       <View pointerEvents="none" style={styles.boardArtLayer}>
         <Image
-          source={BOARD_IMAGE_SOURCE}
+          source={boardImageSource}
           onLayout={handleBoardImageLayout}
           resizeMode="stretch"
           style={[

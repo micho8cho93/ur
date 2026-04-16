@@ -1,8 +1,9 @@
 import { createInitialState } from "../logic/engine";
 import { CHALLENGE_IDS, calculateComebackCheckpoint } from "./challenges";
 import { evaluateChallengesForMatchSummary } from "../backend/modules/challenges";
+import type { CompletedMatchSummary } from "./challenges";
 
-const createMatchSummary = (overrides: Record<string, unknown> = {}) => ({
+const createMatchSummary = (overrides: Partial<CompletedMatchSummary> = {}): CompletedMatchSummary => ({
   matchId: "match-1",
   playerUserId: "user-1",
   opponentType: "human" as const,

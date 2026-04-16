@@ -87,6 +87,7 @@ export type MatchEndPayload = {
   winnerUserId: string | null;
   loserUserId: string | null;
   forfeitingUserId: string | null;
+  softCurrencyAwarded?: boolean;
   message?: string | null;
 };
 
@@ -284,6 +285,7 @@ export const isMatchEndPayload = (value: unknown): value is MatchEndPayload =>
   (typeof value.winnerUserId === "string" || value.winnerUserId === null) &&
   (typeof value.loserUserId === "string" || value.loserUserId === null) &&
   (typeof value.forfeitingUserId === "string" || value.forfeitingUserId === null) &&
+  (typeof value.softCurrencyAwarded === "undefined" || typeof value.softCurrencyAwarded === "boolean") &&
   (typeof value.message === "undefined" || typeof value.message === "string" || value.message === null);
 
 const isMoveAction = (value: unknown): value is MoveAction => {

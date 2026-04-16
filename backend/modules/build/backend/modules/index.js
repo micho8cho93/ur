@@ -692,7 +692,7 @@ var countThreatenedPieces = (state, defenderColor) => {
   const defender = state[defenderColor];
   return defender.pieces.reduce((count, piece) => {
     const coord = getPieceCoord(state, defenderColor, piece.position);
-    if (!isContestedWarTile(state.matchConfig, coord)) {
+    if (!coord || !isContestedWarTile(state.matchConfig, coord)) {
       return count;
     }
     return canReachCoordOnNextRoll(state, attackerColor, coord.row, coord.col) ? count + 1 : count;
@@ -703,7 +703,7 @@ var countCaptureThreats = (state, attackerColor) => {
   const defender = state[defenderColor];
   return defender.pieces.reduce((count, piece) => {
     const coord = getPieceCoord(state, defenderColor, piece.position);
-    if (!isContestedWarTile(state.matchConfig, coord)) {
+    if (!coord || !isContestedWarTile(state.matchConfig, coord)) {
       return count;
     }
     return canReachCoordOnNextRoll(state, attackerColor, coord.row, coord.col) ? count + 1 : count;
@@ -744,7 +744,7 @@ var doesMoveCapture = (state, move) => {
 };
 var isMoveUnsafe = (state, moverColor, move) => {
   const coord = getPieceCoord(state, moverColor, move.toIndex);
-  if (!isContestedWarTile(state.matchConfig, coord)) {
+  if (!coord || !isContestedWarTile(state.matchConfig, coord)) {
     return false;
   }
   return canReachCoordOnNextRoll(state, otherColor(moverColor), coord.row, coord.col);
@@ -1101,6 +1101,26 @@ var normalizeAnalyticsEvent = (value) => {
   if (type === "xp_awarded") {
     return normalizeXpAwardEvent(record);
   }
+  if (type === "cosmetic_purchase") {
+    const eventId = readStringField(record, ["eventId", "event_id"]);
+    const occurredAt = readStringField(record, ["occurredAt", "occurred_at"]);
+    const userId = readStringField(record, ["userId", "user_id"]);
+    const cosmeticId = readStringField(record, ["cosmeticId", "cosmetic_id"]);
+    const currency = readStringField(record, ["currency"]);
+    const amount = readNumberField(record, ["amount"]);
+    if (!eventId || !occurredAt || !userId || !cosmeticId || currency !== "soft" && currency !== "premium" || typeof amount !== "number") {
+      return null;
+    }
+    return {
+      eventId,
+      type: "cosmetic_purchase",
+      occurredAt,
+      userId,
+      cosmeticId,
+      currency,
+      amount
+    };
+  }
   return null;
 };
 var normalizeStorageListResult = (value) => {
@@ -1230,6 +1250,20 @@ var recordXpAwardAnalyticsEvent = (nk, logger, event, writeBuffer) => {
     rankChanged: event.rankChanged
   };
   writeEvent(nk, logger, normalizedEvent, writeBuffer);
+};
+var recordCosmeticPurchaseAnalyticsEvent = (nk, logger, event) => {
+  var _a;
+  const occurredAt = (_a = event.occurredAt) != null ? _a : (/* @__PURE__ */ new Date()).toISOString();
+  const normalizedEvent = {
+    eventId: buildEventId("cosmetic_purchase", occurredAt, `${event.userId}:${event.cosmeticId}`),
+    type: "cosmetic_purchase",
+    occurredAt,
+    userId: event.userId,
+    cosmeticId: event.cosmeticId,
+    currency: event.currency,
+    amount: event.amount
+  };
+  writeEvent(nk, logger, normalizedEvent);
 };
 var unregisterActiveMatch = (matchId) => {
   activeMatchesById.delete(matchId);
@@ -3602,6 +3636,62 @@ var calculateDoubleStrikeTurnSpan = (captureTurnNumbers, maxInclusiveTurnSpan = 
 };
 var hasReachedImmortalRank = (totalXp) => getRankForXp(totalXp).title === MAX_PROGRESSION_RANK.title;
 
+// shared/wallet.ts
+var SOFT_CURRENCY_KEY = "soft_currency";
+var PREMIUM_CURRENCY_KEY = "premium_currency";
+var COIN_REWARD_RATE = 0.1;
+var isRecord = (value) => typeof value === "object" && value !== null;
+var sanitizeSoftCurrencyAmount = (value) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value));
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.floor(parsed));
+    }
+  }
+  return 0;
+};
+var sanitizePremiumCurrencyAmount = (value) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value));
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.floor(parsed));
+    }
+  }
+  return 0;
+};
+var calculateChallengeSoftCurrencyReward = (rewardXp) => sanitizeSoftCurrencyAmount(rewardXp * COIN_REWARD_RATE);
+var buildWalletRpcResponse = (softCurrency, premiumCurrency = 0) => {
+  const sanitizedSoftCurrency = sanitizeSoftCurrencyAmount(softCurrency);
+  const sanitizedPremiumCurrency = sanitizePremiumCurrencyAmount(premiumCurrency);
+  return {
+    wallet: {
+      [SOFT_CURRENCY_KEY]: sanitizedSoftCurrency,
+      [PREMIUM_CURRENCY_KEY]: sanitizedPremiumCurrency
+    },
+    softCurrency: sanitizedSoftCurrency,
+    premiumCurrency: sanitizedPremiumCurrency
+  };
+};
+var parseWalletBalances = (value) => {
+  if (typeof value === "string" && value.trim().length > 0) {
+    try {
+      return parseWalletBalances(JSON.parse(value));
+    } catch (e) {
+      return buildWalletRpcResponse(0).wallet;
+    }
+  }
+  if (!isRecord(value)) {
+    return buildWalletRpcResponse(0).wallet;
+  }
+  return buildWalletRpcResponse(value[SOFT_CURRENCY_KEY], value[PREMIUM_CURRENCY_KEY]).wallet;
+};
+
 // backend/modules/challengeProgress.ts
 var asRecord3 = (value) => typeof value === "object" && value !== null ? value : null;
 var readStringField5 = (value, keys) => {
@@ -3950,6 +4040,159 @@ var createCompletedChallengeState = (challengeId, completedAt, completedMatchId)
   };
 };
 
+// backend/modules/wallet.ts
+var RPC_GET_WALLET = "get_wallet";
+var WALLET_LEDGER_PAGE_SIZE = 100;
+var CHALLENGE_COMPLETION_CURRENCY_SOURCE = "challenge_completion";
+var asRecord4 = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField6 = (value, keys) => {
+  const record = asRecord4(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "string" && field.length > 0) {
+      return field;
+    }
+  }
+  return null;
+};
+var readNumberField5 = (value, keys) => {
+  const record = asRecord4(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "number" && Number.isFinite(field)) {
+      return field;
+    }
+    if (typeof field === "string" && field.trim().length > 0) {
+      const parsed = Number(field);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+};
+var parseJsonRecord = (value) => {
+  if (typeof value === "string" && value.trim().length > 0) {
+    try {
+      return asRecord4(JSON.parse(value));
+    } catch (e) {
+      return null;
+    }
+  }
+  return asRecord4(value);
+};
+var getWalletForUser = (nk, userId) => {
+  const account = nk.accountGetId(userId);
+  return parseWalletBalances(account == null ? void 0 : account.wallet);
+};
+var getWalletResponseForUser = (nk, userId) => {
+  const wallet = getWalletForUser(nk, userId);
+  return buildWalletRpcResponse(wallet[SOFT_CURRENCY_KEY], wallet[PREMIUM_CURRENCY_KEY]);
+};
+var buildChallengeSoftCurrencyMetadata = (matchId, challengeId, amount) => ({
+  source: CHALLENGE_COMPLETION_CURRENCY_SOURCE,
+  currency: SOFT_CURRENCY_KEY,
+  matchId,
+  challengeId,
+  amount
+});
+var normalizeWalletLedgerResult = (result) => {
+  if (Array.isArray(result)) {
+    return {
+      items: result.filter((item) => asRecord4(item) !== null),
+      cursor: null
+    };
+  }
+  const record = asRecord4(result);
+  if (!record) {
+    return { items: [], cursor: null };
+  }
+  const rawItems = Array.isArray(record.items) ? record.items : Array.isArray(record.walletLedgerItems) ? record.walletLedgerItems : Array.isArray(record.runtimeItems) ? record.runtimeItems : [];
+  return {
+    items: rawItems.filter((item) => asRecord4(item) !== null),
+    cursor: readStringField6(record, ["cursor"])
+  };
+};
+var getLedgerItemMetadata = (item) => {
+  var _a;
+  return parseJsonRecord((_a = item.metadata) != null ? _a : item.Metadata);
+};
+var getLedgerItemChangeset = (item) => {
+  var _a;
+  return parseJsonRecord((_a = item.changeset) != null ? _a : item.Changeset);
+};
+var isMatchingChallengeSoftCurrencyLedgerItem = (item, metadata) => {
+  const ledgerMetadata = getLedgerItemMetadata(item);
+  if (!ledgerMetadata) {
+    return false;
+  }
+  const metadataAmount = readNumberField5(ledgerMetadata, ["amount"]);
+  if (readStringField6(ledgerMetadata, ["source"]) !== metadata.source || readStringField6(ledgerMetadata, ["currency"]) !== metadata.currency || readStringField6(ledgerMetadata, ["matchId", "match_id"]) !== metadata.matchId || readStringField6(ledgerMetadata, ["challengeId", "challenge_id"]) !== metadata.challengeId || metadataAmount !== metadata.amount) {
+    return false;
+  }
+  const changeset = getLedgerItemChangeset(item);
+  if (!changeset) {
+    return true;
+  }
+  return readNumberField5(changeset, [SOFT_CURRENCY_KEY]) === metadata.amount;
+};
+var hasChallengeSoftCurrencyLedgerEntry = (nk, userId, metadata) => {
+  let cursor = "";
+  while (true) {
+    const result = cursor ? nk.walletLedgerList(userId, WALLET_LEDGER_PAGE_SIZE, cursor) : nk.walletLedgerList(userId, WALLET_LEDGER_PAGE_SIZE);
+    const { items, cursor: nextCursor } = normalizeWalletLedgerResult(result);
+    if (items.some((item) => isMatchingChallengeSoftCurrencyLedgerItem(item, metadata))) {
+      return true;
+    }
+    if (!nextCursor || nextCursor === cursor) {
+      return false;
+    }
+    cursor = nextCursor;
+  }
+};
+var awardChallengeSoftCurrency = (nk, logger, params) => {
+  const awardedSoftCurrency = calculateChallengeSoftCurrencyReward(params.rewardXp);
+  if (awardedSoftCurrency <= 0) {
+    return { awardedSoftCurrency: 0, duplicate: false };
+  }
+  const metadata = buildChallengeSoftCurrencyMetadata(
+    params.matchId,
+    params.challengeId,
+    awardedSoftCurrency
+  );
+  if (hasChallengeSoftCurrencyLedgerEntry(nk, params.userId, metadata)) {
+    return { awardedSoftCurrency, duplicate: true };
+  }
+  nk.walletUpdate(
+    params.userId,
+    {
+      [SOFT_CURRENCY_KEY]: awardedSoftCurrency
+    },
+    metadata,
+    true
+  );
+  logger.info(
+    "Awarded %d Coins to user %s for challenge %s on match %s.",
+    awardedSoftCurrency,
+    params.userId,
+    params.challengeId,
+    params.matchId
+  );
+  return { awardedSoftCurrency, duplicate: false };
+};
+var rpcGetWallet = (ctx, _logger, nk, _payload) => {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  return JSON.stringify(getWalletResponseForUser(nk, ctx.userId));
+};
+
 // backend/modules/challenges.ts
 var CHALLENGE_DEFINITIONS_COLLECTION = "challenge_definitions";
 var USER_CHALLENGE_PROGRESS_COLLECTION = "user_challenge_progress";
@@ -3961,7 +4204,7 @@ var RPC_SUBMIT_COMPLETED_BOT_MATCH = "submit_completed_bot_match";
 var buildChallengeRewardLedgerKey = (challengeId) => `challenge:${challengeId}`;
 var buildProcessedMatchResultKey = (matchId) => matchId;
 var isBotOpponentType = (opponentType) => opponentType === "easy_bot" || opponentType === "medium_bot" || opponentType === "hard_bot" || opponentType === "perfect_bot";
-var readStringField6 = (value, keys) => {
+var readStringField7 = (value, keys) => {
   if (typeof value !== "object" || value === null) {
     return null;
   }
@@ -4102,12 +4345,13 @@ var normalizeProcessedMatchResult = (rawValue) => {
     return null;
   }
   const record = rawValue;
-  const matchId = readStringField6(record, ["matchId", "match_id"]);
-  const playerUserId = readStringField6(record, ["playerUserId", "player_user_id"]);
-  const processedAt = readStringField6(record, ["processedAt", "processed_at"]);
+  const matchId = readStringField7(record, ["matchId", "match_id"]);
+  const playerUserId = readStringField7(record, ["playerUserId", "player_user_id"]);
+  const processedAt = readStringField7(record, ["processedAt", "processed_at"]);
   const summary = record.summary;
   const completedChallengeIds = Array.isArray(record.completedChallengeIds) ? record.completedChallengeIds.filter((challengeId) => typeof challengeId === "string") : [];
   const awardedXp = typeof record.awardedXp === "number" ? record.awardedXp : 0;
+  const awardedSoftCurrency = typeof record.awardedSoftCurrency === "number" ? record.awardedSoftCurrency : 0;
   if (!matchId || !playerUserId || !processedAt || !isCompletedMatchSummary(summary)) {
     return null;
   }
@@ -4117,7 +4361,8 @@ var normalizeProcessedMatchResult = (rawValue) => {
     processedAt,
     summary,
     completedChallengeIds,
-    awardedXp
+    awardedXp,
+    awardedSoftCurrency
   };
 };
 var readMatchProcessingObjects = (nk, userId, matchId) => {
@@ -4202,6 +4447,7 @@ var processCompletedMatch = (nk, logger, summary) => {
         duplicate: true,
         completedChallengeIds: existingProcessedMatch.completedChallengeIds,
         awardedXp: existingProcessedMatch.awardedXp,
+        awardedSoftCurrency: existingProcessedMatch.awardedSoftCurrency,
         totalXp: currentProfile.totalXp,
         progressionRank: getRankForXp(currentProfile.totalXp).title
       };
@@ -4209,6 +4455,7 @@ var processCompletedMatch = (nk, logger, summary) => {
     const completedChallengeIds = [];
     const completionWrites = [];
     let totalAwardedXp = 0;
+    let totalAwardedSoftCurrency = 0;
     let projectedTotalXp = currentProfile.totalXp;
     const completedChallengeIdsSet = new Set(
       CHALLENGE_DEFINITIONS.filter((definition) => {
@@ -4245,11 +4492,14 @@ var processCompletedMatch = (nk, logger, summary) => {
         if (!rewardLedgerObjectsByChallengeId[challengeId]) {
           totalAwardedXp += definition.rewardXp;
           projectedTotalXp += definition.rewardXp;
+          const rewardSoftCurrency = calculateChallengeSoftCurrencyReward(definition.rewardXp);
+          totalAwardedSoftCurrency += rewardSoftCurrency;
           completionWrites.push({
             challengeId,
             completedAt: now,
             completedMatchId: matchId,
             rewardXp: definition.rewardXp,
+            rewardSoftCurrency,
             rewardLedgerKey: buildChallengeRewardLedgerKey(challengeId)
           });
         }
@@ -4270,7 +4520,8 @@ var processCompletedMatch = (nk, logger, summary) => {
       processedAt: now,
       summary,
       completedChallengeIds,
-      awardedXp: totalAwardedXp
+      awardedXp: totalAwardedXp,
+      awardedSoftCurrency: totalAwardedSoftCurrency
     };
     let ledgerRunningTotal = currentProfile.totalXp;
     const challengeRewardWrites = completionWrites.map((completion) => {
@@ -4330,18 +4581,31 @@ var processCompletedMatch = (nk, logger, summary) => {
       ...challengeRewardWrites
     ];
     try {
+      completionWrites.forEach((completion) => {
+        if (completion.rewardSoftCurrency <= 0) {
+          return;
+        }
+        awardChallengeSoftCurrency(nk, logger, {
+          userId,
+          matchId,
+          challengeId: completion.challengeId,
+          rewardXp: completion.rewardXp
+        });
+      });
       nk.storageWrite(writes);
       logger.info(
-        "Processed completed match %s for user %s: %d challenge completions, %d XP awarded.",
+        "Processed completed match %s for user %s: %d challenge completions, %d XP and %d Coins awarded.",
         matchId,
         userId,
         completedChallengeIds.length,
-        totalAwardedXp
+        totalAwardedXp,
+        totalAwardedSoftCurrency
       );
       return {
         duplicate: false,
         completedChallengeIds,
         awardedXp: totalAwardedXp,
+        awardedSoftCurrency: totalAwardedSoftCurrency,
         totalXp: nextTotalXp,
         progressionRank: nextProfile.currentRankTitle
       };
@@ -4354,6 +4618,7 @@ var processCompletedMatch = (nk, logger, summary) => {
           duplicate: true,
           completedChallengeIds: refreshedProcessed.completedChallengeIds,
           awardedXp: refreshedProcessed.awardedXp,
+          awardedSoftCurrency: refreshedProcessed.awardedSoftCurrency,
           totalXp: refreshedProfile.totalXp,
           progressionRank: getRankForXp(refreshedProfile.totalXp).title
         };
@@ -4417,71 +4682,448 @@ var rpcGetUserChallengeProgress = (ctx, logger, nk, _payload) => {
   return JSON.stringify(getUserChallengeProgress(nk, logger, ctx.userId));
 };
 
-// shared/urMatchProtocol.ts
-var MatchOpCode = {
-  ROLL_REQUEST: 1,
-  MOVE_REQUEST: 2,
-  EMOJI_REACTION: 3,
-  PIECE_SELECTION: 4,
-  REMATCH_RESPONSE: 5,
-  STATE_SNAPSHOT: 100,
-  SERVER_ERROR: 101,
-  PROGRESSION_AWARD: 102,
-  ELO_RATING_UPDATE: 103,
-  TOURNAMENT_REWARD_SUMMARY: 104,
-  REACTION_BROADCAST: 105,
-  PIECE_SELECTION_BROADCAST: 106
-};
-var EMOJI_REACTION_KEYS = [
-  "laughing",
-  "cool",
-  "fire",
-  "omg",
-  "skeleton",
-  "sad",
-  "hugging",
-  "angry",
-  "eyes",
-  "question"
-];
-var MAX_EMOJI_REACTIONS_PER_MATCH = 10;
-var isRecord = (value) => typeof value === "object" && value !== null;
-var isEmojiReactionKey = (value) => typeof value === "string" && EMOJI_REACTION_KEYS.includes(value);
-var isOptional = (value, guard) => typeof value === "undefined" || guard(value);
-var isMoveAction = (value) => {
-  if (!isRecord(value)) {
+// shared/cosmetics.ts
+var isRecord2 = (value) => typeof value === "object" && value !== null;
+var isStringArray = (value) => Array.isArray(value) && value.every((entry) => typeof entry === "string");
+var isCosmeticTier = (value) => value === "common" || value === "rare" || value === "epic" || value === "legendary";
+var isCosmeticType = (value) => value === "board" || value === "pieces" || value === "dice_animation" || value === "emote" || value === "music" || value === "sound_effect";
+var isCurrencyType = (value) => value === "soft" || value === "premium";
+var isCosmeticDefinition = (value) => {
+  if (!isRecord2(value) || !isRecord2(value.price)) {
     return false;
   }
-  return typeof value.pieceId === "string" && typeof value.fromIndex === "number" && Number.isInteger(value.fromIndex) && typeof value.toIndex === "number" && Number.isInteger(value.toIndex);
+  const availabilityWindow = value.availabilityWindow;
+  const hasValidAvailability = typeof availabilityWindow === "undefined" || isRecord2(availabilityWindow) && typeof availabilityWindow.start === "string" && typeof availabilityWindow.end === "string";
+  return typeof value.id === "string" && typeof value.name === "string" && isCosmeticTier(value.tier) && isCosmeticType(value.type) && isCurrencyType(value.price.currency) && typeof value.price.amount === "number" && Number.isFinite(value.price.amount) && value.price.amount >= 0 && isStringArray(value.rotationPools) && value.rotationPools.every((pool) => pool === "daily" || pool === "featured" || pool === "limited") && typeof value.rarityWeight === "number" && Number.isFinite(value.rarityWeight) && value.rarityWeight >= 0 && value.rarityWeight <= 1 && hasValidAvailability && typeof value.releasedDate === "string" && typeof value.assetKey === "string" && (typeof value.disabled === "undefined" || typeof value.disabled === "boolean");
 };
-var isRollRequestPayload = (value) => isRecord(value) && value.type === "roll_request" && isOptional(value.autoTriggered, (candidate) => typeof candidate === "boolean");
-var isMoveRequestPayload = (value) => isRecord(value) && value.type === "move_request" && isMoveAction(value.move);
-var isEmojiReactionRequestPayload = (value) => isRecord(value) && value.type === "emoji_reaction" && isEmojiReactionKey(value.emoji);
-var isPieceSelectionRequestPayload = (value) => isRecord(value) && value.type === "piece_selection" && (typeof value.pieceId === "string" || value.pieceId === null);
-var isRematchResponsePayload = (value) => isRecord(value) && value.type === "rematch_response" && typeof value.accepted === "boolean";
-var encodePayload = (payload) => JSON.stringify(payload);
-var decodePayload = (raw) => {
-  try {
-    return JSON.parse(raw);
-  } catch (e) {
+var isLimitedTimeEvent = (value) => isRecord2(value) && typeof value.id === "string" && typeof value.name === "string" && isStringArray(value.cosmeticIds) && typeof value.startsAt === "string" && typeof value.endsAt === "string" && (typeof value.disabled === "undefined" || typeof value.disabled === "boolean");
+
+// backend/modules/cosmeticCatalog.ts
+var CATALOG_COLLECTION = "cosmetics_catalog";
+var CATALOG_ITEMS_KEY = "items";
+var CATALOG_CACHE_TTL_MS = 6e4;
+var RELEASED_DATE = "2026-04-15T00:00:00.000Z";
+var cachedRawCatalog = null;
+var cachedRawCatalogExpiresAt = 0;
+var asRecord5 = (value) => typeof value === "object" && value !== null ? value : null;
+var getErrorMessage3 = (error) => error instanceof Error ? error.message : String(error);
+var isVersionConflict = (error) => {
+  const message = getErrorMessage3(error).toLowerCase();
+  return message.includes("version check") || message.includes("version conflict") || message.includes("version mismatch") || message.includes("storage write rejected");
+};
+var normalizeRawCatalog = (value) => {
+  const record = asRecord5(value);
+  const items = Array.isArray(record == null ? void 0 : record.items) ? record.items : Array.isArray(value) ? value : [];
+  if (!Array.isArray(items)) {
     return null;
   }
+  if (!items.every(isCosmeticDefinition)) {
+    return null;
+  }
+  return items.map((item) => __spreadValues({}, item));
+};
+var SEED_CATALOG = [
+  {
+    id: "board_cedar_001",
+    name: "Cedar Court Board",
+    tier: "common",
+    type: "board",
+    price: { currency: "soft", amount: 300 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.92,
+    releasedDate: RELEASED_DATE,
+    assetKey: "board_cedar_001"
+  },
+  {
+    id: "board_alabaster_001",
+    name: "Alabaster Board",
+    tier: "common",
+    type: "board",
+    price: { currency: "soft", amount: 450 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.86,
+    releasedDate: RELEASED_DATE,
+    assetKey: "board_alabaster_001"
+  },
+  {
+    id: "board_lapis_001",
+    name: "Lapis Board",
+    tier: "rare",
+    type: "board",
+    price: { currency: "soft", amount: 700 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.58,
+    releasedDate: RELEASED_DATE,
+    assetKey: "board_lapis_001"
+  },
+  {
+    id: "board_obsidian_001",
+    name: "Obsidian Board",
+    tier: "rare",
+    type: "board",
+    price: { currency: "premium", amount: 450 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.5,
+    releasedDate: RELEASED_DATE,
+    assetKey: "board_obsidian_001"
+  },
+  {
+    id: "board_gold_001",
+    name: "Gold Inlay Board",
+    tier: "epic",
+    type: "board",
+    price: { currency: "premium", amount: 1e3 },
+    rotationPools: ["daily", "featured"],
+    rarityWeight: 0.35,
+    releasedDate: RELEASED_DATE,
+    assetKey: "board_gold_001"
+  },
+  {
+    id: "pieces_ivory_001",
+    name: "Ivory Shell Pieces",
+    tier: "common",
+    type: "pieces",
+    price: { currency: "soft", amount: 300 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.9,
+    releasedDate: RELEASED_DATE,
+    assetKey: "pieces_ivory_001"
+  },
+  {
+    id: "pieces_bronze_001",
+    name: "Bronze Guard Pieces",
+    tier: "common",
+    type: "pieces",
+    price: { currency: "soft", amount: 500 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.82,
+    releasedDate: RELEASED_DATE,
+    assetKey: "pieces_bronze_001"
+  },
+  {
+    id: "pieces_carnelian_001",
+    name: "Carnelian Pieces",
+    tier: "rare",
+    type: "pieces",
+    price: { currency: "soft", amount: 750 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.55,
+    releasedDate: RELEASED_DATE,
+    assetKey: "pieces_carnelian_001"
+  },
+  {
+    id: "pieces_lapis_001",
+    name: "Lapis Priest Pieces",
+    tier: "rare",
+    type: "pieces",
+    price: { currency: "premium", amount: 500 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.48,
+    releasedDate: RELEASED_DATE,
+    assetKey: "pieces_lapis_001"
+  },
+  {
+    id: "pieces_gold_001",
+    name: "Gold Royal Pieces",
+    tier: "epic",
+    type: "pieces",
+    price: { currency: "premium", amount: 900 },
+    rotationPools: ["daily", "featured"],
+    rarityWeight: 0.4,
+    releasedDate: RELEASED_DATE,
+    assetKey: "pieces_gold_001"
+  },
+  {
+    id: "dice_clay_001",
+    name: "Clay Dice Sparks",
+    tier: "common",
+    type: "dice_animation",
+    price: { currency: "soft", amount: 400 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.76,
+    releasedDate: RELEASED_DATE,
+    assetKey: "dice_clay_001"
+  },
+  {
+    id: "dice_copper_001",
+    name: "Copper Star Toss",
+    tier: "rare",
+    type: "dice_animation",
+    price: { currency: "soft", amount: 600 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.52,
+    releasedDate: RELEASED_DATE,
+    assetKey: "dice_copper_001"
+  },
+  {
+    id: "dice_lapis_001",
+    name: "Lapis Comet Roll",
+    tier: "epic",
+    type: "dice_animation",
+    price: { currency: "premium", amount: 900 },
+    rotationPools: ["daily", "featured"],
+    rarityWeight: 0.38,
+    releasedDate: RELEASED_DATE,
+    assetKey: "dice_lapis_001"
+  },
+  {
+    id: "music_ancient_001",
+    name: "Ancient Ambience Theme",
+    tier: "common",
+    type: "music",
+    price: { currency: "soft", amount: 350 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.74,
+    releasedDate: RELEASED_DATE,
+    assetKey: "music_ancient_001"
+  },
+  {
+    id: "music_procession_001",
+    name: "Royal Procession Theme",
+    tier: "epic",
+    type: "music",
+    price: { currency: "premium", amount: 850 },
+    rotationPools: ["daily", "featured"],
+    rarityWeight: 0.36,
+    releasedDate: RELEASED_DATE,
+    assetKey: "music_procession_001"
+  },
+  {
+    id: "sfx_stone_001",
+    name: "Stone Table Sounds",
+    tier: "common",
+    type: "sound_effect",
+    price: { currency: "soft", amount: 350 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.72,
+    releasedDate: RELEASED_DATE,
+    assetKey: "sfx_stone_001"
+  },
+  {
+    id: "sfx_bronze_001",
+    name: "Bronze Court Sounds",
+    tier: "rare",
+    type: "sound_effect",
+    price: { currency: "soft", amount: 650 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.5,
+    releasedDate: RELEASED_DATE,
+    assetKey: "sfx_bronze_001"
+  },
+  {
+    id: "emote_scribe_001",
+    name: "Scribe's Nod",
+    tier: "common",
+    type: "emote",
+    price: { currency: "soft", amount: 200 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.88,
+    releasedDate: RELEASED_DATE,
+    assetKey: "emote_scribe_001"
+  },
+  {
+    id: "emote_lyre_001",
+    name: "Lyre Flourish",
+    tier: "common",
+    type: "emote",
+    price: { currency: "soft", amount: 200 },
+    rotationPools: ["daily"],
+    rarityWeight: 0.84,
+    releasedDate: RELEASED_DATE,
+    assetKey: "emote_lyre_001"
+  },
+  {
+    id: "emote_king_001",
+    name: "King's Decree",
+    tier: "legendary",
+    type: "emote",
+    price: { currency: "premium", amount: 1200 },
+    rotationPools: ["daily", "featured"],
+    rarityWeight: 0.3,
+    releasedDate: RELEASED_DATE,
+    assetKey: "emote_king_001"
+  }
+];
+var invalidateCatalogCache = () => {
+  cachedRawCatalog = null;
+  cachedRawCatalogExpiresAt = 0;
+};
+var readRawCatalogObject = (nk) => {
+  const objects = nk.storageRead([
+    {
+      collection: CATALOG_COLLECTION,
+      key: CATALOG_ITEMS_KEY,
+      userId: GLOBAL_STORAGE_USER_ID
+    }
+  ]);
+  const object = findStorageObject(objects, CATALOG_COLLECTION, CATALOG_ITEMS_KEY, GLOBAL_STORAGE_USER_ID);
+  return {
+    object,
+    items: normalizeRawCatalog(getStorageObjectValue(object))
+  };
+};
+var writeRawCatalog = (nk, items, version) => {
+  nk.storageWrite([
+    maybeSetStorageVersion({
+      collection: CATALOG_COLLECTION,
+      key: CATALOG_ITEMS_KEY,
+      userId: GLOBAL_STORAGE_USER_ID,
+      value: { items },
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
+    }, version)
+  ]);
+  invalidateCatalogCache();
+};
+var writeRawCatalogWithRetry = (nk, update) => {
+  var _a;
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const { object, items } = readRawCatalogObject(nk);
+    const currentItems = items != null ? items : SEED_CATALOG;
+    const nextItems = update(currentItems.map((item) => __spreadValues({}, item)));
+    if (!nextItems.every(isCosmeticDefinition)) {
+      throw new Error("INVALID_CATALOG");
+    }
+    try {
+      writeRawCatalog(nk, nextItems, object ? (_a = getStorageObjectVersion(object)) != null ? _a : "" : "*");
+      return nextItems;
+    } catch (error) {
+      if (!isVersionConflict(error) || attempt === MAX_WRITE_ATTEMPTS) {
+        throw error;
+      }
+    }
+  }
+  throw new Error("CATALOG_WRITE_FAILED");
+};
+var loadCatalogFromStorage = (nk, options = {}) => {
+  var _a;
+  const now = Date.now();
+  let rawItems = cachedRawCatalog;
+  if (options.bypassCache || !rawItems || now >= cachedRawCatalogExpiresAt) {
+    const { object, items } = readRawCatalogObject(nk);
+    rawItems = items != null ? items : SEED_CATALOG;
+    if (!object || !items) {
+      writeRawCatalog(nk, rawItems, object ? (_a = getStorageObjectVersion(object)) != null ? _a : "" : "*");
+    }
+    cachedRawCatalog = rawItems.map((item) => __spreadValues({}, item));
+    cachedRawCatalogExpiresAt = now + CATALOG_CACHE_TTL_MS;
+  }
+  const catalog = rawItems.map((item) => __spreadValues({}, item));
+  return options.includeDisabled ? catalog : catalog.filter((item) => !item.disabled);
 };
 
-// shared/privateMatchCode.ts
-var PRIVATE_MATCH_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-var PRIVATE_MATCH_CODE_LENGTH = 8;
-var PRIVATE_MATCH_CODE_CHARACTER_SET = new Set(PRIVATE_MATCH_CODE_ALPHABET.split(""));
-var normalizePrivateMatchCodeInput = (value) => value.toUpperCase().split("").filter((character) => PRIVATE_MATCH_CODE_CHARACTER_SET.has(character)).join("").slice(0, PRIVATE_MATCH_CODE_LENGTH);
-var isPrivateMatchCode = (value) => normalizePrivateMatchCodeInput(value) === value && value.length === PRIVATE_MATCH_CODE_LENGTH;
-var generatePrivateMatchCode = (random = Math.random) => {
-  var _a;
-  let code = "";
-  for (let index = 0; index < PRIVATE_MATCH_CODE_LENGTH; index += 1) {
-    const characterIndex = Math.floor(random() * PRIVATE_MATCH_CODE_ALPHABET.length);
-    code += (_a = PRIVATE_MATCH_CODE_ALPHABET[characterIndex]) != null ? _a : PRIVATE_MATCH_CODE_ALPHABET[0];
+// backend/modules/storeRotation.ts
+var DAILY_ROTATION_SIZE = 8;
+var invalidateRotationCache = () => {
+};
+var isActiveOn = (definition, today) => {
+  if (!definition.availabilityWindow) {
+    return true;
   }
-  return code;
+  const currentTime = Date.parse(today);
+  const startTime = Date.parse(definition.availabilityWindow.start);
+  const endTime = Date.parse(definition.availabilityWindow.end);
+  if (!Number.isFinite(currentTime) || !Number.isFinite(startTime) || !Number.isFinite(endTime)) {
+    return false;
+  }
+  return currentTime >= startTime && currentTime <= endTime;
+};
+var getEffectiveWeight = (definition, previousRotations) => {
+  var _a, _b;
+  const baseWeight = Math.max(0, definition.rarityWeight);
+  const olderRotationIds = /* @__PURE__ */ new Set([...(_a = previousRotations[1]) != null ? _a : [], ...(_b = previousRotations[2]) != null ? _b : []]);
+  return olderRotationIds.has(definition.id) ? baseWeight / 2 : baseWeight;
+};
+var weightedPick = (candidates, previousRotations) => {
+  var _a, _b;
+  if (candidates.length === 0) {
+    return null;
+  }
+  const totalWeight = candidates.reduce((total, definition) => total + getEffectiveWeight(definition, previousRotations), 0);
+  if (totalWeight <= 0) {
+    return (_a = candidates[Math.floor(Math.random() * candidates.length)]) != null ? _a : null;
+  }
+  let cursor = Math.random() * totalWeight;
+  for (const candidate of candidates) {
+    cursor -= getEffectiveWeight(candidate, previousRotations);
+    if (cursor <= 0) {
+      return candidate;
+    }
+  }
+  return (_b = candidates[candidates.length - 1]) != null ? _b : null;
+};
+var weightedSample = (candidates, count, previousRotations) => {
+  const remaining = [...candidates];
+  const selected = [];
+  while (remaining.length > 0 && selected.length < count) {
+    const picked = weightedPick(remaining, previousRotations);
+    if (!picked) {
+      break;
+    }
+    selected.push(picked);
+    remaining.splice(remaining.findIndex((candidate) => candidate.id === picked.id), 1);
+  }
+  return selected;
+};
+var hasPreviewMedia = (items) => items.some(
+  (item) => item.type === "dice_animation" || item.type === "emote" || item.type === "music" || item.type === "sound_effect"
+);
+var selectedWouldKeepRequiredGroups = (selected, candidate, replacement) => {
+  const remaining = selected.filter((item) => item.id !== candidate.id);
+  const next = [...remaining, replacement];
+  return next.some((item) => item.type === "board") && next.some((item) => item.type === "pieces") && hasPreviewMedia(next);
+};
+var repairTypeDiversity = (selected, eligible, previousRotations) => {
+  let repaired = [...selected];
+  const missingGroups = [];
+  if (!repaired.some((item) => item.type === "board")) {
+    missingGroups.push("board");
+  }
+  if (!repaired.some((item) => item.type === "pieces")) {
+    missingGroups.push("pieces");
+  }
+  if (!hasPreviewMedia(repaired)) {
+    missingGroups.push("animation_or_emote");
+  }
+  for (const missingGroup of missingGroups) {
+    const selectedIds = new Set(repaired.map((item) => item.id));
+    const candidates = eligible.filter((item) => {
+      if (selectedIds.has(item.id)) {
+        return false;
+      }
+      if (missingGroup === "animation_or_emote") {
+        return item.type === "dice_animation" || item.type === "emote" || item.type === "music" || item.type === "sound_effect";
+      }
+      return item.type === missingGroup;
+    });
+    const replacement = weightedPick(candidates, previousRotations);
+    if (!replacement) {
+      continue;
+    }
+    const replaceable = [...repaired].sort((a, b) => getEffectiveWeight(a, previousRotations) - getEffectiveWeight(b, previousRotations)).find((item) => selectedWouldKeepRequiredGroups(repaired, item, replacement));
+    if (!replaceable) {
+      continue;
+    }
+    repaired = repaired.map((item) => item.id === replaceable.id ? replacement : item);
+  }
+  return repaired;
+};
+var getDailyRotation = (catalog, today, previousRotations) => {
+  var _a;
+  const yesterdayIds = new Set((_a = previousRotations[0]) != null ? _a : []);
+  const activeDaily = catalog.filter(
+    (definition) => definition.rotationPools.includes("daily") && isActiveOn(definition, today)
+  );
+  const eligible = activeDaily.filter((definition) => !yesterdayIds.has(definition.id));
+  const samplingPool = eligible.length >= DAILY_ROTATION_SIZE ? eligible : activeDaily;
+  const selected = weightedSample(samplingPool, DAILY_ROTATION_SIZE, previousRotations);
+  return repairTypeDiversity(selected, samplingPool, previousRotations).slice(0, DAILY_ROTATION_SIZE);
+};
+var getFeaturedItems = (catalog) => {
+  const today = (/* @__PURE__ */ new Date()).toISOString();
+  return catalog.filter(
+    (definition) => definition.rotationPools.includes("featured") && (definition.tier === "epic" || definition.tier === "legendary") && isActiveOn(definition, today)
+  ).sort((a, b) => b.rarityWeight - a.rarityWeight).slice(0, 2);
 };
 
 // backend/modules/tournaments/definitions.ts
@@ -4511,7 +5153,7 @@ var TOURNAMENT_STATUSES = [
   "complete",
   "cancelled"
 ];
-var readStringField7 = (value, keys) => {
+var readStringField8 = (value, keys) => {
   const record = asRecord2(value);
   if (!record) {
     return null;
@@ -4524,7 +5166,7 @@ var readStringField7 = (value, keys) => {
   }
   return null;
 };
-var readNumberField5 = (value, keys) => {
+var readNumberField6 = (value, keys) => {
   const record = asRecord2(value);
   if (!record) {
     return null;
@@ -4596,7 +5238,7 @@ var parseJsonPayload = (payload) => {
   return record;
 };
 var requireAuthenticatedUserId = (ctx) => {
-  const userId = readStringField7(ctx, ["userId", "user_id"]);
+  const userId = readStringField8(ctx, ["userId", "user_id"]);
   if (!userId) {
     throw new Error("Authentication required.");
   }
@@ -4606,7 +5248,7 @@ var getActorLabel = (ctx) => {
   var _a, _b;
   const ctxRecord = asRecord2(ctx);
   const vars = asRecord2(ctxRecord == null ? void 0 : ctxRecord.vars);
-  return (_b = (_a = readStringField7(ctxRecord, ["username", "displayName", "display_name", "name"])) != null ? _a : readStringField7(vars, ["usernameDisplay", "username_display", "displayName", "display_name", "email"])) != null ? _b : requireAuthenticatedUserId(ctx);
+  return (_b = (_a = readStringField8(ctxRecord, ["username", "displayName", "display_name", "name"])) != null ? _a : readStringField8(vars, ["usernameDisplay", "username_display", "displayName", "display_name", "email"])) != null ? _b : requireAuthenticatedUserId(ctx);
 };
 var normalizeTournamentStatus = (value, fallback = "draft") => {
   if (typeof value !== "string") {
@@ -4649,7 +5291,7 @@ var normalizeRewardPoolAmount = (value) => {
 };
 var resolveTournamentXpRewardSettings = (value) => ({
   xpPerMatchWin: clampNonNegativeInteger2(
-    readNumberField5(value, [
+    readNumberField6(value, [
       "xpPerMatchWin",
       "xp_per_match_win",
       "matchWinXp",
@@ -4661,7 +5303,7 @@ var resolveTournamentXpRewardSettings = (value) => ({
     1e6
   ),
   xpForTournamentChampion: clampNonNegativeInteger2(
-    readNumberField5(value, [
+    readNumberField6(value, [
       "xpForTournamentChampion",
       "xp_for_tournament_champion",
       "championXp",
@@ -4679,14 +5321,14 @@ var normalizeParticipant = (value) => {
   if (!record) {
     return null;
   }
-  const userId = readStringField7(record, ["userId", "user_id"]);
-  const displayName = readStringField7(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField7(record, ["joinedAt", "joined_at"]);
+  const userId = readStringField8(record, ["userId", "user_id"]);
+  const displayName = readStringField8(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField8(record, ["joinedAt", "joined_at"]);
   if (!userId || !displayName || !joinedAt) {
     return null;
   }
-  const status = readStringField7(record, ["status"]);
-  const seed = readNumberField5(record, ["seed"]);
+  const status = readStringField8(record, ["status"]);
+  const seed = readNumberField6(record, ["seed"]);
   return {
     userId,
     displayName,
@@ -4701,14 +5343,14 @@ var normalizeResult = (value) => {
   if (!record) {
     return null;
   }
-  const matchId = readStringField7(record, ["matchId", "match_id"]);
-  const submittedByUserId = readStringField7(record, ["submittedByUserId", "submitted_by_user_id"]);
-  const submittedAt = readStringField7(record, ["submittedAt", "submitted_at"]);
-  const playerAUserId = readStringField7(record, ["playerAUserId", "player_a_user_id"]);
-  const playerBUserId = readStringField7(record, ["playerBUserId", "player_b_user_id"]);
-  const scoreA = readNumberField5(record, ["scoreA", "score_a"]);
-  const scoreB = readNumberField5(record, ["scoreB", "score_b"]);
-  const round = readNumberField5(record, ["round"]);
+  const matchId = readStringField8(record, ["matchId", "match_id"]);
+  const submittedByUserId = readStringField8(record, ["submittedByUserId", "submitted_by_user_id"]);
+  const submittedAt = readStringField8(record, ["submittedAt", "submitted_at"]);
+  const playerAUserId = readStringField8(record, ["playerAUserId", "player_a_user_id"]);
+  const playerBUserId = readStringField8(record, ["playerBUserId", "player_b_user_id"]);
+  const scoreA = readNumberField6(record, ["scoreA", "score_a"]);
+  const scoreB = readNumberField6(record, ["scoreB", "score_b"]);
+  const round = readNumberField6(record, ["round"]);
   if (!matchId || !submittedByUserId || !submittedAt || !playerAUserId || !playerBUserId || typeof scoreA !== "number" || typeof scoreB !== "number" || typeof round !== "number") {
     return null;
   }
@@ -4721,8 +5363,8 @@ var normalizeResult = (value) => {
     playerBUserId,
     scoreA,
     scoreB,
-    winnerUserId: readStringField7(record, ["winnerUserId", "winner_user_id"]),
-    notes: (_a = readStringField7(record, ["notes"])) != null ? _a : null
+    winnerUserId: readStringField8(record, ["winnerUserId", "winner_user_id"]),
+    notes: (_a = readStringField8(record, ["notes"])) != null ? _a : null
   };
 };
 var normalizeTournamentRecord = (value, fallbackId) => {
@@ -4731,13 +5373,13 @@ var normalizeTournamentRecord = (value, fallbackId) => {
   if (!record) {
     return null;
   }
-  const id = (_b = (_a = readStringField7(record, ["id"])) != null ? _a : fallbackId) != null ? _b : null;
-  const name = readStringField7(record, ["name"]);
-  const startsAt = readStringField7(record, ["startsAt", "starts_at"]);
-  const createdAt = readStringField7(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField7(record, ["updatedAt", "updated_at"]);
-  const createdByUserId = readStringField7(record, ["createdByUserId", "created_by_user_id"]);
-  const createdByLabel = readStringField7(record, ["createdByLabel", "created_by_label"]);
+  const id = (_b = (_a = readStringField8(record, ["id"])) != null ? _a : fallbackId) != null ? _b : null;
+  const name = readStringField8(record, ["name"]);
+  const startsAt = readStringField8(record, ["startsAt", "starts_at"]);
+  const createdAt = readStringField8(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField8(record, ["updatedAt", "updated_at"]);
+  const createdByUserId = readStringField8(record, ["createdByUserId", "created_by_user_id"]);
+  const createdByLabel = readStringField8(record, ["createdByLabel", "created_by_label"]);
   if (!id || !name || !startsAt || !createdAt || !updatedAt || !createdByUserId || !createdByLabel) {
     return null;
   }
@@ -4753,31 +5395,31 @@ var normalizeTournamentRecord = (value, fallbackId) => {
   });
   return {
     id,
-    slug: (_c = readStringField7(record, ["slug"])) != null ? _c : id,
+    slug: (_c = readStringField8(record, ["slug"])) != null ? _c : id,
     name,
-    description: (_d = readStringField7(record, ["description"])) != null ? _d : "",
+    description: (_d = readStringField8(record, ["description"])) != null ? _d : "",
     status: normalizeTournamentStatus(record.status, "draft"),
     startsAt,
     createdAt,
     updatedAt,
     createdByUserId,
     createdByLabel,
-    region: (_e = readStringField7(record, ["region"])) != null ? _e : "Global",
-    gameMode: (_f = readStringField7(record, ["gameMode", "game_mode"])) != null ? _f : "Standard",
-    entryFee: (_g = readStringField7(record, ["entryFee", "entry_fee"])) != null ? _g : "Free",
+    region: (_e = readStringField8(record, ["region"])) != null ? _e : "Global",
+    gameMode: (_f = readStringField8(record, ["gameMode", "game_mode"])) != null ? _f : "Standard",
+    entryFee: (_g = readStringField8(record, ["entryFee", "entry_fee"])) != null ? _g : "Free",
     maxParticipants: clampPositiveInteger(
-      readNumberField5(record, ["maxParticipants", "max_participants"]),
+      readNumberField6(record, ["maxParticipants", "max_participants"]),
       DEFAULT_MAX_PARTICIPANTS,
       MAX_TOURNAMENT_PARTICIPANTS
     ),
     rewardCurrency: normalizeCurrency(record.rewardCurrency),
     rewardPoolAmount: normalizeRewardPoolAmount(record.rewardPoolAmount),
-    rewardNotes: readStringField7(record, ["rewardNotes", "reward_notes"]),
+    rewardNotes: readStringField8(record, ["rewardNotes", "reward_notes"]),
     tags: readStringArrayField(record, ["tags"]),
     scoring: {
-      winPoints: (_h = readNumberField5(scoringRecord, ["winPoints", "win_points"])) != null ? _h : DEFAULT_TOURNAMENT_SCORING.winPoints,
-      drawPoints: (_i = readNumberField5(scoringRecord, ["drawPoints", "draw_points"])) != null ? _i : DEFAULT_TOURNAMENT_SCORING.drawPoints,
-      lossPoints: (_j = readNumberField5(scoringRecord, ["lossPoints", "loss_points"])) != null ? _j : DEFAULT_TOURNAMENT_SCORING.lossPoints,
+      winPoints: (_h = readNumberField6(scoringRecord, ["winPoints", "win_points"])) != null ? _h : DEFAULT_TOURNAMENT_SCORING.winPoints,
+      drawPoints: (_i = readNumberField6(scoringRecord, ["drawPoints", "draw_points"])) != null ? _i : DEFAULT_TOURNAMENT_SCORING.drawPoints,
+      lossPoints: (_j = readNumberField6(scoringRecord, ["lossPoints", "loss_points"])) != null ? _j : DEFAULT_TOURNAMENT_SCORING.lossPoints,
       allowDraws: (_k = readBooleanField4(scoringRecord, ["allowDraws", "allow_draws"])) != null ? _k : DEFAULT_TOURNAMENT_SCORING.allowDraws
     },
     participants,
@@ -4853,159 +5495,6 @@ var updateTournamentWithRetry = (nk, logger, tournamentId, updater) => {
   throw new Error(`Unable to update tournament '${tournamentId}'.`);
 };
 
-// backend/modules/tournaments/auth.ts
-var ADMIN_COLLECTION = "admins";
-var ADMIN_ROLE_KEY = "role";
-var RPC_ADMIN_WHOAMI = "rpc_admin_whoami";
-var TEST_ADMIN_USERNAME = "admin";
-var TEST_ADMIN_ROLE = "admin";
-var ADMIN_ROLE_RANK = {
-  viewer: 1,
-  operator: 2,
-  admin: 3
-};
-var readStringField8 = (value, keys) => {
-  const record = asRecord2(value);
-  if (!record) {
-    return null;
-  }
-  for (const key of keys) {
-    const field = record[key];
-    if (typeof field === "string" && field.trim().length > 0) {
-      return field.trim();
-    }
-  }
-  return null;
-};
-var getContextUserId = (ctx) => {
-  const userId = readStringField8(ctx, ["userId", "user_id"]);
-  if (!userId) {
-    throw new Error("Authentication required.");
-  }
-  return userId;
-};
-var normalizeAdminRole = (value) => {
-  var _a;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "viewer" || normalized === "operator" || normalized === "admin") {
-      return normalized;
-    }
-  }
-  const record = asRecord2(value);
-  if (!record) {
-    return null;
-  }
-  const role = (_a = readStringField8(record, ["role"])) == null ? void 0 : _a.toLowerCase();
-  if (role === "viewer" || role === "operator" || role === "admin") {
-    return role;
-  }
-  return null;
-};
-var fetchAdminRole = (nk, userId) => {
-  var _a;
-  const objects = nk.storageRead([
-    {
-      collection: ADMIN_COLLECTION,
-      key: ADMIN_ROLE_KEY,
-      userId
-    }
-  ]);
-  const object = findStorageObject(objects, ADMIN_COLLECTION, ADMIN_ROLE_KEY, userId);
-  return normalizeAdminRole((_a = object == null ? void 0 : object.value) != null ? _a : null);
-};
-var hasRequiredRole = (actualRole, requiredRole) => {
-  if (!actualRole) {
-    return false;
-  }
-  return ADMIN_ROLE_RANK[actualRole] >= ADMIN_ROLE_RANK[requiredRole];
-};
-var assertAdmin = (ctx, requiredRole, nk) => {
-  var _a;
-  const userId = getContextUserId(ctx);
-  const actualRole = (_a = fetchAdminRole(nk, userId)) != null ? _a : maybeBootstrapTestAdminRole(nk, userId);
-  if (!hasRequiredRole(actualRole, requiredRole)) {
-    throw new Error(`Unauthorized: ${requiredRole} role required.`);
-  }
-  return actualRole;
-};
-var normalizeUserRecord = (value) => {
-  const record = asRecord2(value);
-  if (!record) {
-    return null;
-  }
-  return record;
-};
-var resolveAdminProfile = (nk, userId) => {
-  var _a;
-  if (typeof nk.usersGetId !== "function") {
-    return {
-      username: null,
-      displayName: null,
-      email: null
-    };
-  }
-  try {
-    const rawUsers = nk.usersGetId([userId]);
-    const users = Array.isArray(rawUsers) ? rawUsers : [];
-    const profile = (_a = users.map((value) => normalizeUserRecord(value)).find((value) => Boolean(value))) != null ? _a : null;
-    return {
-      username: readStringField8(profile, ["username"]),
-      displayName: readStringField8(profile, ["displayName", "display_name"]),
-      email: readStringField8(profile, ["email"])
-    };
-  } catch (e) {
-    return {
-      username: null,
-      displayName: null,
-      email: null
-    };
-  }
-};
-var maybeBootstrapTestAdminRole = (nk, userId) => {
-  const profile = resolveAdminProfile(nk, userId);
-  if (profile.username !== TEST_ADMIN_USERNAME) {
-    return null;
-  }
-  nk.storageWrite([
-    {
-      collection: ADMIN_COLLECTION,
-      key: ADMIN_ROLE_KEY,
-      userId,
-      value: { role: TEST_ADMIN_ROLE },
-      permissionRead: STORAGE_PERMISSION_NONE2,
-      permissionWrite: STORAGE_PERMISSION_NONE2
-    }
-  ]);
-  return TEST_ADMIN_ROLE;
-};
-var rpcAdminWhoAmI = (ctx, logger, nk, payload) => {
-  return runAuditedAdminRpc(
-    (_ctx, _logger, _nk) => {
-      const role = assertAdmin(_ctx, "viewer", _nk);
-      const userId = getContextUserId(_ctx);
-      const profile = resolveAdminProfile(_nk, userId);
-      const response = {
-        ok: true,
-        userId,
-        role,
-        username: profile.username,
-        displayName: profile.displayName,
-        email: profile.email
-      };
-      return JSON.stringify(response);
-    },
-    {
-      action: RPC_ADMIN_WHOAMI,
-      targetName: "Current admin user"
-    },
-    ctx,
-    logger,
-    nk,
-    payload
-  );
-};
-
 // backend/modules/tournaments/audit.ts
 var normalizeAuditValue = (value, depth = 0) => {
   if (value === null) {
@@ -5063,17 +5552,17 @@ var normalizeAuditEntry = (value) => {
   if (!record) {
     return null;
   }
-  const id = readStringField7(record, ["id"]);
-  const action = readStringField7(record, ["action"]);
-  const userId = readStringField7(record, ["userId", "user_id", "actorUserId", "actor_user_id"]);
-  const targetId = readStringField7(record, ["targetId", "target_id", "tournamentId", "tournament_id"]);
-  const timestamp = readStringField7(record, ["timestamp", "createdAt", "created_at"]);
+  const id = readStringField8(record, ["id"]);
+  const action = readStringField8(record, ["action"]);
+  const userId = readStringField8(record, ["userId", "user_id", "actorUserId", "actor_user_id"]);
+  const targetId = readStringField8(record, ["targetId", "target_id", "tournamentId", "tournament_id"]);
+  const timestamp = readStringField8(record, ["timestamp", "createdAt", "created_at"]);
   if (!id || !action || !userId || !targetId || !timestamp) {
     return null;
   }
   const payloadSummary = (_c = (_b = (_a = asRecord2(record.payloadSummary)) != null ? _a : asRecord2(record.payload_summary)) != null ? _b : asRecord2(record.metadata)) != null ? _c : {};
-  const actorLabel = (_d = readStringField7(record, ["actorLabel", "actor_label"])) != null ? _d : userId;
-  const tournamentName = (_f = (_e = readStringField7(record, ["tournamentName", "tournament_name"])) != null ? _e : readStringField7(record, ["targetName", "target_name"])) != null ? _f : targetId;
+  const actorLabel = (_d = readStringField8(record, ["actorLabel", "actor_label"])) != null ? _d : userId;
+  const tournamentName = (_f = (_e = readStringField8(record, ["tournamentName", "tournament_name"])) != null ? _e : readStringField8(record, ["targetName", "target_name"])) != null ? _f : targetId;
   return {
     id,
     userId,
@@ -5095,7 +5584,7 @@ var normalizeAuditLogRecord = (value) => {
   const entries = Array.isArray(record == null ? void 0 : record.entries) ? record.entries.map((entry) => normalizeAuditEntry(entry)).filter((entry) => Boolean(entry)) : [];
   return {
     entries,
-    updatedAt: (_a = readStringField7(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
+    updatedAt: (_a = readStringField8(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
   };
 };
 var readAuditLogState = (nk) => {
@@ -5173,7 +5662,7 @@ var resolveDefaultTargetId = (ctx, payload, response) => {
   var _a, _b, _c, _d, _e;
   const responseRun = asRecord2(response == null ? void 0 : response.run);
   const responseTournament = asRecord2(response == null ? void 0 : response.tournament);
-  return (_e = (_d = (_c = (_b = (_a = readStringField7(payload, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id"])) != null ? _a : readStringField7(response, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id", "userId", "user_id"])) != null ? _b : readStringField7(responseRun, ["runId", "run_id", "tournamentId", "tournament_id"])) != null ? _c : readStringField7(responseTournament, ["id", "tournamentId", "tournament_id"])) != null ? _d : readStringField7(ctx, ["userId", "user_id"])) != null ? _e : "unknown-target";
+  return (_e = (_d = (_c = (_b = (_a = readStringField8(payload, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id"])) != null ? _a : readStringField8(response, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id", "userId", "user_id"])) != null ? _b : readStringField8(responseRun, ["runId", "run_id", "tournamentId", "tournament_id"])) != null ? _c : readStringField8(responseTournament, ["id", "tournamentId", "tournament_id"])) != null ? _d : readStringField8(ctx, ["userId", "user_id"])) != null ? _e : "unknown-target";
 };
 var resolveTargetId = (ctx, payload, response, resolver) => {
   var _a;
@@ -5195,7 +5684,7 @@ var resolveTargetName = (ctx, payload, response, targetId, resolver) => {
   }
   const responseRun = asRecord2(response == null ? void 0 : response.run);
   const responseTournament = asRecord2(response == null ? void 0 : response.tournament);
-  return (_d = (_c = (_b = readStringField7(responseRun, ["title", "name"])) != null ? _b : readStringField7(responseTournament, ["title", "name"])) != null ? _c : readStringField7(payload, ["title", "name"])) != null ? _d : targetId;
+  return (_d = (_c = (_b = readStringField8(responseRun, ["title", "name"])) != null ? _b : readStringField8(responseTournament, ["title", "name"])) != null ? _c : readStringField8(payload, ["title", "name"])) != null ? _d : targetId;
 };
 var safeParsePayload = (payload) => {
   try {
@@ -5257,6 +5746,814 @@ var listTournamentAuditEntries = (nk, request = {}) => {
   return filtered.slice(0, limit);
 };
 
+// backend/modules/tournaments/auth.ts
+var ADMIN_COLLECTION = "admins";
+var ADMIN_ROLE_KEY = "role";
+var RPC_ADMIN_WHOAMI = "rpc_admin_whoami";
+var TEST_ADMIN_USERNAME = "admin";
+var TEST_ADMIN_ROLE = "admin";
+var ADMIN_ROLE_RANK = {
+  viewer: 1,
+  operator: 2,
+  admin: 3
+};
+var readStringField9 = (value, keys) => {
+  const record = asRecord2(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "string" && field.trim().length > 0) {
+      return field.trim();
+    }
+  }
+  return null;
+};
+var getContextUserId = (ctx) => {
+  const userId = readStringField9(ctx, ["userId", "user_id"]);
+  if (!userId) {
+    throw new Error("Authentication required.");
+  }
+  return userId;
+};
+var normalizeAdminRole = (value) => {
+  var _a;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "viewer" || normalized === "operator" || normalized === "admin") {
+      return normalized;
+    }
+  }
+  const record = asRecord2(value);
+  if (!record) {
+    return null;
+  }
+  const role = (_a = readStringField9(record, ["role"])) == null ? void 0 : _a.toLowerCase();
+  if (role === "viewer" || role === "operator" || role === "admin") {
+    return role;
+  }
+  return null;
+};
+var fetchAdminRole = (nk, userId) => {
+  var _a;
+  const objects = nk.storageRead([
+    {
+      collection: ADMIN_COLLECTION,
+      key: ADMIN_ROLE_KEY,
+      userId
+    }
+  ]);
+  const object = findStorageObject(objects, ADMIN_COLLECTION, ADMIN_ROLE_KEY, userId);
+  return normalizeAdminRole((_a = object == null ? void 0 : object.value) != null ? _a : null);
+};
+var hasRequiredRole = (actualRole, requiredRole) => {
+  if (!actualRole) {
+    return false;
+  }
+  return ADMIN_ROLE_RANK[actualRole] >= ADMIN_ROLE_RANK[requiredRole];
+};
+var assertAdmin = (ctx, requiredRole, nk) => {
+  var _a;
+  const userId = getContextUserId(ctx);
+  const actualRole = (_a = fetchAdminRole(nk, userId)) != null ? _a : maybeBootstrapTestAdminRole(nk, userId);
+  if (!hasRequiredRole(actualRole, requiredRole)) {
+    throw new Error(`Unauthorized: ${requiredRole} role required.`);
+  }
+  if (!actualRole) {
+    throw new Error(`Unauthorized: ${requiredRole} role required.`);
+  }
+  return actualRole;
+};
+var normalizeUserRecord = (value) => {
+  const record = asRecord2(value);
+  if (!record) {
+    return null;
+  }
+  return record;
+};
+var resolveAdminProfile = (nk, userId) => {
+  var _a;
+  if (typeof nk.usersGetId !== "function") {
+    return {
+      username: null,
+      displayName: null,
+      email: null
+    };
+  }
+  try {
+    const rawUsers = nk.usersGetId([userId]);
+    const users = Array.isArray(rawUsers) ? rawUsers : [];
+    const profile = (_a = users.map((value) => normalizeUserRecord(value)).find((value) => Boolean(value))) != null ? _a : null;
+    return {
+      username: readStringField9(profile, ["username"]),
+      displayName: readStringField9(profile, ["displayName", "display_name"]),
+      email: readStringField9(profile, ["email"])
+    };
+  } catch (e) {
+    return {
+      username: null,
+      displayName: null,
+      email: null
+    };
+  }
+};
+var maybeBootstrapTestAdminRole = (nk, userId) => {
+  const profile = resolveAdminProfile(nk, userId);
+  if (profile.username !== TEST_ADMIN_USERNAME) {
+    return null;
+  }
+  nk.storageWrite([
+    {
+      collection: ADMIN_COLLECTION,
+      key: ADMIN_ROLE_KEY,
+      userId,
+      value: { role: TEST_ADMIN_ROLE },
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
+    }
+  ]);
+  return TEST_ADMIN_ROLE;
+};
+var rpcAdminWhoAmI = (ctx, logger, nk, payload) => {
+  return runAuditedAdminRpc(
+    (_ctx, _logger, _nk) => {
+      const role = assertAdmin(_ctx, "viewer", _nk);
+      const userId = getContextUserId(_ctx);
+      const profile = resolveAdminProfile(_nk, userId);
+      const response = {
+        ok: true,
+        userId,
+        role,
+        username: profile.username,
+        displayName: profile.displayName,
+        email: profile.email
+      };
+      return JSON.stringify(response);
+    },
+    {
+      action: RPC_ADMIN_WHOAMI,
+      targetName: "Current admin user"
+    },
+    ctx,
+    logger,
+    nk,
+    payload
+  );
+};
+
+// backend/modules/cosmeticStore.ts
+var COSMETICS_COLLECTION = "cosmetics";
+var COSMETICS_OWNED_KEY = "owned";
+var STORE_STATE_COLLECTION = "store_state";
+var STORE_ROTATION_KEY = "rotation";
+var RPC_GET_STOREFRONT = "get_storefront";
+var RPC_GET_FULL_CATALOG = "get_full_catalog";
+var RPC_PURCHASE_ITEM = "purchase_item";
+var RPC_GET_OWNED_COSMETICS = "get_owned_cosmetics";
+var RPC_ADMIN_GET_FULL_CATALOG = "admin_get_full_catalog";
+var RPC_ADMIN_UPSERT_COSMETIC = "admin_upsert_cosmetic";
+var RPC_ADMIN_DISABLE_COSMETIC = "admin_disable_cosmetic";
+var RPC_ADMIN_ENABLE_COSMETIC = "admin_enable_cosmetic";
+var RPC_ADMIN_GET_ROTATION_STATE = "admin_get_rotation_state";
+var RPC_ADMIN_SET_MANUAL_ROTATION = "admin_set_manual_rotation";
+var RPC_ADMIN_CLEAR_MANUAL_ROTATION = "admin_clear_manual_rotation";
+var RPC_ADMIN_SET_LIMITED_TIME_EVENT = "admin_set_limited_time_event";
+var RPC_ADMIN_REMOVE_LIMITED_TIME_EVENT = "admin_remove_limited_time_event";
+var RPC_ADMIN_GET_STORE_STATS = "admin_get_store_stats";
+var ROTATION_TTL_MS = 24 * 60 * 60 * 1e3;
+var asRecord6 = (value) => typeof value === "object" && value !== null ? value : null;
+var getErrorMessage4 = (error) => error instanceof Error ? error.message : String(error);
+var isVersionConflict2 = (error) => {
+  const message = getErrorMessage4(error).toLowerCase();
+  return message.includes("version check") || message.includes("version conflict") || message.includes("version mismatch") || message.includes("storage write rejected");
+};
+var isOwnedCosmeticSource = (value) => value === "purchase_soft" || value === "purchase_premium" || value === "tournament_reward" || value === "gift";
+var normalizeOwnedCosmetics = (value) => {
+  const record = asRecord6(value);
+  const rawItems = Array.isArray(record == null ? void 0 : record.items) ? record.items : [];
+  const items = rawItems.flatMap((item) => {
+    const itemRecord = asRecord6(item);
+    if (!itemRecord || typeof itemRecord.cosmeticId !== "string" || typeof itemRecord.acquiredAt !== "string" || !isOwnedCosmeticSource(itemRecord.source)) {
+      return [];
+    }
+    return [
+      {
+        cosmeticId: itemRecord.cosmeticId,
+        acquiredAt: itemRecord.acquiredAt,
+        source: itemRecord.source
+      }
+    ];
+  });
+  return { items };
+};
+var normalizeStringArray = (value) => Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
+var normalizePreviousDays = (value) => Array.isArray(value) ? value.map(normalizeStringArray).filter((entry) => entry.length > 0).slice(0, 3) : [];
+var normalizeLimitedTimeEvents = (value) => Array.isArray(value) ? value.filter(isLimitedTimeEvent) : [];
+var normalizeRotationRecord = (value) => {
+  const record = asRecord6(value);
+  if (!record || typeof record.generatedAt !== "string") {
+    return null;
+  }
+  const dailyRotationIds = normalizeStringArray(record.dailyRotationIds).length > 0 ? normalizeStringArray(record.dailyRotationIds) : normalizeStringArray(record.dailyRotation);
+  const featuredIds = normalizeStringArray(record.featuredIds);
+  if (dailyRotationIds.length === 0 && record.manualOverride !== true) {
+    return null;
+  }
+  return {
+    dailyRotationIds,
+    featuredIds,
+    generatedAt: record.generatedAt,
+    previousDays: normalizePreviousDays(record.previousDays),
+    manualOverride: record.manualOverride === true,
+    limitedTimeEvents: normalizeLimitedTimeEvents(record.limitedTimeEvents)
+  };
+};
+var parseJsonPayload2 = (payload) => {
+  let parsed;
+  try {
+    parsed = payload ? JSON.parse(payload) : {};
+  } catch (e) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  const record = asRecord6(parsed);
+  if (!record) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  return record;
+};
+var requireAdminRole = (ctx, nk, role = "viewer") => assertAdmin(ctx, role, nk);
+var readOwnedCosmeticsObject = (nk, userId) => {
+  const objects = nk.storageRead([
+    {
+      collection: COSMETICS_COLLECTION,
+      key: COSMETICS_OWNED_KEY,
+      userId
+    }
+  ]);
+  const object = findStorageObject(objects, COSMETICS_COLLECTION, COSMETICS_OWNED_KEY, userId);
+  return {
+    object,
+    owned: normalizeOwnedCosmetics(getStorageObjectValue(object))
+  };
+};
+var readRotationObject = (nk) => {
+  var _a;
+  const objects = nk.storageRead([
+    {
+      collection: STORE_STATE_COLLECTION,
+      key: STORE_ROTATION_KEY,
+      userId: GLOBAL_STORAGE_USER_ID
+    },
+    {
+      collection: STORE_STATE_COLLECTION,
+      key: STORE_ROTATION_KEY,
+      userId: "system"
+    }
+  ]);
+  const object = (_a = findStorageObject(objects, STORE_STATE_COLLECTION, STORE_ROTATION_KEY, GLOBAL_STORAGE_USER_ID)) != null ? _a : findStorageObject(objects, STORE_STATE_COLLECTION, STORE_ROTATION_KEY, "system");
+  return {
+    object,
+    rotation: normalizeRotationRecord(getStorageObjectValue(object))
+  };
+};
+var isRotationFresh = (rotation, nowMs) => {
+  const generatedAtMs = Date.parse(rotation.generatedAt);
+  return rotation.manualOverride || Number.isFinite(generatedAtMs) && nowMs - generatedAtMs < ROTATION_TTL_MS && rotation.dailyRotationIds.length === 8;
+};
+var writeRotationRecord = (nk, rotation, version) => {
+  nk.storageWrite([
+    maybeSetStorageVersion({
+      collection: STORE_STATE_COLLECTION,
+      key: STORE_ROTATION_KEY,
+      userId: GLOBAL_STORAGE_USER_ID,
+      value: rotation,
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
+    }, version)
+  ]);
+};
+var buildRotationRecord = (catalog, nowIso, previousRotation) => {
+  var _a;
+  const previousDays = previousRotation ? [previousRotation.dailyRotationIds, ...previousRotation.previousDays].slice(0, 3) : [];
+  const dailyRotationIds = getDailyRotation(catalog, nowIso, previousDays).map((item) => item.id);
+  const featuredIds = getFeaturedItems(catalog).map((item) => item.id);
+  return {
+    dailyRotationIds,
+    featuredIds,
+    generatedAt: nowIso,
+    previousDays,
+    manualOverride: false,
+    limitedTimeEvents: (_a = previousRotation == null ? void 0 : previousRotation.limitedTimeEvents) != null ? _a : []
+  };
+};
+var getOrCreateStoreRotation = (nk, logger, catalog, now = /* @__PURE__ */ new Date()) => {
+  var _a;
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const { object, rotation } = readRotationObject(nk);
+    if (rotation && isRotationFresh(rotation, now.getTime())) {
+      return rotation;
+    }
+    const nextRotation = buildRotationRecord(catalog, now.toISOString(), rotation);
+    const objectUserId = typeof (object == null ? void 0 : object.userId) === "string" ? object.userId : void 0;
+    const version = object && objectUserId === GLOBAL_STORAGE_USER_ID ? (_a = getStorageObjectVersion(object)) != null ? _a : "" : "*";
+    try {
+      writeRotationRecord(nk, nextRotation, version);
+      return nextRotation;
+    } catch (error) {
+      if (!isVersionConflict2(error) || attempt === MAX_WRITE_ATTEMPTS) {
+        logger.error("Failed to write store rotation: %s", getErrorMessage4(error));
+        throw error;
+      }
+    }
+  }
+  throw new Error("STORE_ROTATION_WRITE_FAILED");
+};
+var catalogItemsForIds = (catalog, ids) => {
+  const byId = new Map(catalog.map((item) => [item.id, item]));
+  return ids.flatMap((id) => {
+    const item = byId.get(id);
+    return item ? [item] : [];
+  });
+};
+var getRotationExpiresAt = (rotation) => new Date(Date.parse(rotation.generatedAt) + ROTATION_TTL_MS).toISOString();
+var isLimitedTimeEventActive = (event, now) => {
+  if (event.disabled) {
+    return false;
+  }
+  const nowMs = now.getTime();
+  const startMs = Date.parse(event.startsAt);
+  const endMs = Date.parse(event.endsAt);
+  return Number.isFinite(startMs) && Number.isFinite(endMs) && nowMs >= startMs && nowMs <= endMs;
+};
+var resolveLimitedTimeItems = (catalog, events, now) => {
+  const activeIds = new Set(
+    events.filter((event) => isLimitedTimeEventActive(event, now)).flatMap((event) => event.cosmeticIds)
+  );
+  return catalog.filter((item) => activeIds.has(item.id));
+};
+var buildStorefrontResponse = (nk, logger, userId, now = /* @__PURE__ */ new Date()) => {
+  const catalog = loadCatalogFromStorage(nk);
+  const rotation = getOrCreateStoreRotation(nk, logger, catalog, now);
+  const { owned } = readOwnedCosmeticsObject(nk, userId);
+  return {
+    dailyRotation: catalogItemsForIds(catalog, rotation.dailyRotationIds),
+    featured: catalogItemsForIds(catalog, rotation.featuredIds),
+    limitedTime: resolveLimitedTimeItems(catalog, rotation.limitedTimeEvents, now),
+    bundles: [],
+    ownedIds: owned.items.map((item) => item.cosmeticId),
+    rotationExpiresAt: getRotationExpiresAt(rotation)
+  };
+};
+var parsePurchaseItemRequest = (payload) => {
+  let parsed;
+  try {
+    parsed = payload ? JSON.parse(payload) : {};
+  } catch (e) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  const record = asRecord6(parsed);
+  if (!record || typeof record.itemId !== "string" || record.itemId.trim().length === 0) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  return { itemId: record.itemId };
+};
+var currencyKeyForCosmetic = (definition) => definition.price.currency === "premium" ? PREMIUM_CURRENCY_KEY : SOFT_CURRENCY_KEY;
+var purchaseSourceForCosmetic = (definition) => definition.price.currency === "premium" ? "purchase_premium" : "purchase_soft";
+var deductWalletForPurchase = (nk, userId, definition) => {
+  const currencyKey = currencyKeyForCosmetic(definition);
+  try {
+    nk.walletsUpdate([
+      {
+        userId,
+        changeset: {
+          [currencyKey]: -definition.price.amount
+        },
+        metadata: {
+          source: "cosmetic_purchase",
+          cosmeticId: definition.id,
+          currency: currencyKey,
+          amount: definition.price.amount
+        }
+      }
+    ]);
+  } catch (e) {
+    throw new Error("INSUFFICIENT_FUNDS");
+  }
+};
+var writeOwnedCosmeticAfterPurchase = (nk, userId, definition, acquiredAt) => {
+  var _a;
+  const purchasedItem = {
+    cosmeticId: definition.id,
+    acquiredAt,
+    source: purchaseSourceForCosmetic(definition)
+  };
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const { object, owned } = readOwnedCosmeticsObject(nk, userId);
+    if (owned.items.some((item) => item.cosmeticId === definition.id)) {
+      return owned.items;
+    }
+    const nextItems = [...owned.items, purchasedItem];
+    try {
+      nk.storageWrite([
+        maybeSetStorageVersion({
+          collection: COSMETICS_COLLECTION,
+          key: COSMETICS_OWNED_KEY,
+          userId,
+          value: { items: nextItems },
+          permissionRead: STORAGE_PERMISSION_NONE2,
+          permissionWrite: STORAGE_PERMISSION_NONE2
+        }, object ? (_a = getStorageObjectVersion(object)) != null ? _a : "" : "*")
+      ]);
+      return nextItems;
+    } catch (error) {
+      if (!isVersionConflict2(error) || attempt === MAX_WRITE_ATTEMPTS) {
+        throw error;
+      }
+    }
+  }
+  throw new Error("OWNED_COSMETICS_WRITE_FAILED");
+};
+var getUpdatedWallet = (nk, userId) => {
+  var _a;
+  const wallet = parseWalletBalances((_a = nk.accountGetId(userId)) == null ? void 0 : _a.wallet);
+  return {
+    [SOFT_CURRENCY_KEY]: wallet[SOFT_CURRENCY_KEY],
+    [PREMIUM_CURRENCY_KEY]: wallet[PREMIUM_CURRENCY_KEY]
+  };
+};
+var purchaseCosmeticItem = (nk, logger, userId, itemId) => {
+  const catalog = loadCatalogFromStorage(nk);
+  const definition = catalog.find((item) => item.id === itemId);
+  if (!definition || definition.disabled) {
+    throw new Error("ITEM_NOT_FOUND");
+  }
+  const { owned } = readOwnedCosmeticsObject(nk, userId);
+  if (owned.items.some((item) => item.cosmeticId === itemId)) {
+    throw new Error("ALREADY_OWNED");
+  }
+  deductWalletForPurchase(nk, userId, definition);
+  writeOwnedCosmeticAfterPurchase(nk, userId, definition, (/* @__PURE__ */ new Date()).toISOString());
+  recordCosmeticPurchaseAnalyticsEvent(nk, logger, {
+    userId,
+    cosmeticId: definition.id,
+    currency: definition.price.currency,
+    amount: definition.price.amount
+  });
+  return {
+    success: true,
+    cosmeticId: itemId,
+    updatedWallet: getUpdatedWallet(nk, userId)
+  };
+};
+var getOwnedCosmeticsForUser = (nk, userId) => {
+  const { owned } = readOwnedCosmeticsObject(nk, userId);
+  return {
+    items: owned.items,
+    cosmeticIds: owned.items.map((item) => item.cosmeticId)
+  };
+};
+var ensureCatalogItemIdsExist = (catalog, ids) => {
+  const byId = new Map(catalog.map((item) => [item.id, item]));
+  ids.forEach((id) => {
+    const item = byId.get(id);
+    if (!item || item.disabled) {
+      throw new Error("INVALID_COSMETIC_ID");
+    }
+  });
+};
+var getRotationStateForAdmin = (nk, logger, now = /* @__PURE__ */ new Date()) => {
+  const catalog = loadCatalogFromStorage(nk);
+  const rotation = getOrCreateStoreRotation(nk, logger, catalog, now);
+  return {
+    dailyRotationIds: rotation.dailyRotationIds,
+    featuredIds: rotation.featuredIds,
+    generatedAt: rotation.generatedAt,
+    previousDays: rotation.previousDays,
+    manualOverride: rotation.manualOverride,
+    limitedTimeEvents: rotation.limitedTimeEvents
+  };
+};
+var updateRotationRecordWithRetry = (nk, logger, catalog, update) => {
+  var _a;
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const { object, rotation } = readRotationObject(nk);
+    const current = rotation != null ? rotation : buildRotationRecord(catalog, (/* @__PURE__ */ new Date()).toISOString(), null);
+    const nextRotation = update(current);
+    const objectUserId = typeof (object == null ? void 0 : object.userId) === "string" ? object.userId : void 0;
+    const version = object && objectUserId === GLOBAL_STORAGE_USER_ID ? (_a = getStorageObjectVersion(object)) != null ? _a : "" : "*";
+    try {
+      writeRotationRecord(nk, nextRotation, version);
+      invalidateRotationCache();
+      return nextRotation;
+    } catch (error) {
+      if (!isVersionConflict2(error) || attempt === MAX_WRITE_ATTEMPTS) {
+        logger.error("Failed to write store rotation: %s", getErrorMessage4(error));
+        throw error;
+      }
+    }
+  }
+  throw new Error("STORE_ROTATION_WRITE_FAILED");
+};
+var parseUpsertCosmeticRequest = (payload) => {
+  const record = parseJsonPayload2(payload);
+  const cosmetic = asRecord6(record.cosmetic);
+  if (!cosmetic || typeof cosmetic.id !== "string" || cosmetic.id.trim().length === 0) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  return {
+    cosmetic
+  };
+};
+var parseToggleCosmeticRequest = (payload) => {
+  const record = parseJsonPayload2(payload);
+  if (typeof record.cosmeticId !== "string" || record.cosmeticId.trim().length === 0) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  return { cosmeticId: record.cosmeticId };
+};
+var parseManualRotationRequest = (payload) => {
+  const record = parseJsonPayload2(payload);
+  const dailyRotationIds = normalizeStringArray(record.dailyRotationIds);
+  const featuredIds = normalizeStringArray(record.featuredIds);
+  if (dailyRotationIds.length > 8 || featuredIds.length > 2) {
+    throw new Error("INVALID_ROTATION_SIZE");
+  }
+  return { dailyRotationIds, featuredIds };
+};
+var parseSetLimitedTimeEventRequest = (payload) => {
+  const record = parseJsonPayload2(payload);
+  if (!isLimitedTimeEvent(record.event)) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  return { event: record.event };
+};
+var parseRemoveLimitedTimeEventRequest = (payload) => {
+  const record = parseJsonPayload2(payload);
+  if (typeof record.eventId !== "string" || record.eventId.trim().length === 0) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  return { eventId: record.eventId };
+};
+var upsertCatalogItem = (nk, patch) => {
+  let updatedItem = null;
+  writeRawCatalogWithRetry(nk, (items) => {
+    const existingIndex = items.findIndex((item) => item.id === patch.id);
+    const merged = __spreadValues(__spreadValues({}, existingIndex >= 0 ? items[existingIndex] : {}), patch);
+    if (!isCosmeticDefinition(merged)) {
+      throw new Error("INVALID_COSMETIC");
+    }
+    updatedItem = merged;
+    if (existingIndex >= 0) {
+      return items.map((item, index) => index === existingIndex ? merged : item);
+    }
+    return [...items, merged];
+  });
+  invalidateCatalogCache();
+  invalidateRotationCache();
+  if (!updatedItem) {
+    throw new Error("CATALOG_WRITE_FAILED");
+  }
+  return {
+    success: true,
+    item: updatedItem
+  };
+};
+var toggleCatalogItem = (nk, cosmeticId, disabled) => {
+  let updatedItem = null;
+  writeRawCatalogWithRetry(nk, (items) => {
+    const existing = items.find((item) => item.id === cosmeticId);
+    if (!existing) {
+      throw new Error("ITEM_NOT_FOUND");
+    }
+    updatedItem = __spreadProps(__spreadValues({}, existing), { disabled });
+    return items.map((item) => item.id === cosmeticId ? updatedItem : item);
+  });
+  invalidateCatalogCache();
+  invalidateRotationCache();
+  if (!updatedItem) {
+    throw new Error("ITEM_NOT_FOUND");
+  }
+  return {
+    success: true,
+    item: updatedItem
+  };
+};
+var buildStoreStats = (nk, logger) => {
+  const result = listAnalyticsEvents(nk, logger);
+  if (!result.supported || result.events.length === 0) {
+    return {
+      totalPurchases: 0,
+      totalSoftCurrencySpent: 0,
+      totalPremiumCurrencySpent: 0,
+      items: []
+    };
+  }
+  const byCosmetic = /* @__PURE__ */ new Map();
+  let totalPurchases = 0;
+  let totalSoftCurrencySpent = 0;
+  let totalPremiumCurrencySpent = 0;
+  result.events.forEach((event) => {
+    var _a;
+    if (event.type !== "cosmetic_purchase") {
+      return;
+    }
+    totalPurchases += 1;
+    if (event.currency === "premium") {
+      totalPremiumCurrencySpent += event.amount;
+    } else {
+      totalSoftCurrencySpent += event.amount;
+    }
+    const current = (_a = byCosmetic.get(event.cosmeticId)) != null ? _a : {
+      cosmeticId: event.cosmeticId,
+      purchaseCount: 0,
+      softCurrencySpent: 0,
+      premiumCurrencySpent: 0
+    };
+    current.purchaseCount += 1;
+    if (event.currency === "premium") {
+      current.premiumCurrencySpent += event.amount;
+    } else {
+      current.softCurrencySpent += event.amount;
+    }
+    byCosmetic.set(event.cosmeticId, current);
+  });
+  return {
+    totalPurchases,
+    totalSoftCurrencySpent,
+    totalPremiumCurrencySpent,
+    items: Array.from(byCosmetic.values()).sort((left, right) => right.purchaseCount - left.purchaseCount)
+  };
+};
+var rpcGetStorefront = (ctx, logger, nk, _payload) => {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  return JSON.stringify(buildStorefrontResponse(nk, logger, ctx.userId));
+};
+var rpcGetFullCatalog = (ctx, _logger, nk, _payload) => {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  const response = {
+    items: loadCatalogFromStorage(nk)
+  };
+  return JSON.stringify(response);
+};
+var rpcPurchaseItem = (ctx, logger, nk, payload) => {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  const request = parsePurchaseItemRequest(payload);
+  return JSON.stringify(purchaseCosmeticItem(nk, logger, ctx.userId, request.itemId));
+};
+var rpcGetOwnedCosmetics = (ctx, _logger, nk, _payload) => {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  return JSON.stringify(getOwnedCosmeticsForUser(nk, ctx.userId));
+};
+var rpcAdminGetFullCatalog = (ctx, _logger, nk, _payload) => {
+  requireAdminRole(ctx, nk, "viewer");
+  return JSON.stringify({ items: loadCatalogFromStorage(nk, { includeDisabled: true }) });
+};
+var rpcAdminUpsertCosmetic = (ctx, _logger, nk, payload) => {
+  requireAdminRole(ctx, nk, "operator");
+  const request = parseUpsertCosmeticRequest(payload);
+  return JSON.stringify(upsertCatalogItem(nk, request.cosmetic));
+};
+var rpcAdminDisableCosmetic = (ctx, _logger, nk, payload) => {
+  requireAdminRole(ctx, nk, "operator");
+  const request = parseToggleCosmeticRequest(payload);
+  return JSON.stringify(toggleCatalogItem(nk, request.cosmeticId, true));
+};
+var rpcAdminEnableCosmetic = (ctx, _logger, nk, payload) => {
+  requireAdminRole(ctx, nk, "operator");
+  const request = parseToggleCosmeticRequest(payload);
+  return JSON.stringify(toggleCatalogItem(nk, request.cosmeticId, false));
+};
+var rpcAdminGetRotationState = (ctx, logger, nk, _payload) => {
+  requireAdminRole(ctx, nk, "viewer");
+  return JSON.stringify(getRotationStateForAdmin(nk, logger));
+};
+var rpcAdminSetManualRotation = (ctx, logger, nk, payload) => {
+  requireAdminRole(ctx, nk, "operator");
+  const request = parseManualRotationRequest(payload);
+  const catalog = loadCatalogFromStorage(nk);
+  ensureCatalogItemIdsExist(catalog, [...request.dailyRotationIds, ...request.featuredIds]);
+  const rotation = updateRotationRecordWithRetry(nk, logger, catalog, (current) => __spreadProps(__spreadValues({}, current), {
+    dailyRotationIds: request.dailyRotationIds,
+    featuredIds: request.featuredIds,
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    manualOverride: true
+  }));
+  return JSON.stringify(rotation);
+};
+var rpcAdminClearManualRotation = (ctx, logger, nk, _payload) => {
+  requireAdminRole(ctx, nk, "operator");
+  const catalog = loadCatalogFromStorage(nk);
+  const rotation = updateRotationRecordWithRetry(nk, logger, catalog, (current) => __spreadProps(__spreadValues({}, current), {
+    dailyRotationIds: [],
+    featuredIds: [],
+    generatedAt: (/* @__PURE__ */ new Date(0)).toISOString(),
+    manualOverride: false
+  }));
+  return JSON.stringify(rotation);
+};
+var rpcAdminSetLimitedTimeEvent = (ctx, logger, nk, payload) => {
+  requireAdminRole(ctx, nk, "operator");
+  const request = parseSetLimitedTimeEventRequest(payload);
+  const catalog = loadCatalogFromStorage(nk);
+  ensureCatalogItemIdsExist(catalog, request.event.cosmeticIds);
+  const rotation = updateRotationRecordWithRetry(nk, logger, catalog, (current) => __spreadProps(__spreadValues({}, current), {
+    limitedTimeEvents: [
+      ...current.limitedTimeEvents.filter((event) => event.id !== request.event.id),
+      request.event
+    ]
+  }));
+  return JSON.stringify(rotation);
+};
+var rpcAdminRemoveLimitedTimeEvent = (ctx, logger, nk, payload) => {
+  requireAdminRole(ctx, nk, "operator");
+  const request = parseRemoveLimitedTimeEventRequest(payload);
+  const catalog = loadCatalogFromStorage(nk);
+  const rotation = updateRotationRecordWithRetry(nk, logger, catalog, (current) => __spreadProps(__spreadValues({}, current), {
+    limitedTimeEvents: current.limitedTimeEvents.filter((event) => event.id !== request.eventId)
+  }));
+  return JSON.stringify(rotation);
+};
+var rpcAdminGetStoreStats = (ctx, logger, nk, _payload) => {
+  requireAdminRole(ctx, nk, "viewer");
+  return JSON.stringify(buildStoreStats(nk, logger));
+};
+
+// shared/urMatchProtocol.ts
+var MatchOpCode = {
+  ROLL_REQUEST: 1,
+  MOVE_REQUEST: 2,
+  EMOJI_REACTION: 3,
+  PIECE_SELECTION: 4,
+  REMATCH_RESPONSE: 5,
+  STATE_SNAPSHOT: 100,
+  SERVER_ERROR: 101,
+  PROGRESSION_AWARD: 102,
+  ELO_RATING_UPDATE: 103,
+  TOURNAMENT_REWARD_SUMMARY: 104,
+  REACTION_BROADCAST: 105,
+  PIECE_SELECTION_BROADCAST: 106
+};
+var EMOJI_REACTION_KEYS = [
+  "laughing",
+  "cool",
+  "fire",
+  "omg",
+  "skeleton",
+  "sad",
+  "hugging",
+  "angry",
+  "eyes",
+  "question"
+];
+var MAX_EMOJI_REACTIONS_PER_MATCH = 10;
+var isRecord3 = (value) => typeof value === "object" && value !== null;
+var isEmojiReactionKey = (value) => typeof value === "string" && EMOJI_REACTION_KEYS.includes(value);
+var isOptional = (value, guard) => typeof value === "undefined" || guard(value);
+var isMoveAction = (value) => {
+  if (!isRecord3(value)) {
+    return false;
+  }
+  return typeof value.pieceId === "string" && typeof value.fromIndex === "number" && Number.isInteger(value.fromIndex) && typeof value.toIndex === "number" && Number.isInteger(value.toIndex);
+};
+var isRollRequestPayload = (value) => isRecord3(value) && value.type === "roll_request" && isOptional(value.autoTriggered, (candidate) => typeof candidate === "boolean");
+var isMoveRequestPayload = (value) => isRecord3(value) && value.type === "move_request" && isMoveAction(value.move);
+var isEmojiReactionRequestPayload = (value) => isRecord3(value) && value.type === "emoji_reaction" && isEmojiReactionKey(value.emoji);
+var isPieceSelectionRequestPayload = (value) => isRecord3(value) && value.type === "piece_selection" && (typeof value.pieceId === "string" || value.pieceId === null);
+var isRematchResponsePayload = (value) => isRecord3(value) && value.type === "rematch_response" && typeof value.accepted === "boolean";
+var encodePayload = (payload) => JSON.stringify(payload);
+var decodePayload = (raw) => {
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+};
+
+// shared/privateMatchCode.ts
+var PRIVATE_MATCH_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+var PRIVATE_MATCH_CODE_LENGTH = 8;
+var PRIVATE_MATCH_CODE_CHARACTER_SET = new Set(PRIVATE_MATCH_CODE_ALPHABET.split(""));
+var normalizePrivateMatchCodeInput = (value) => value.toUpperCase().split("").filter((character) => PRIVATE_MATCH_CODE_CHARACTER_SET.has(character)).join("").slice(0, PRIVATE_MATCH_CODE_LENGTH);
+var isPrivateMatchCode = (value) => normalizePrivateMatchCodeInput(value) === value && value.length === PRIVATE_MATCH_CODE_LENGTH;
+var generatePrivateMatchCode = (random = Math.random) => {
+  var _a;
+  let code = "";
+  for (let index = 0; index < PRIVATE_MATCH_CODE_LENGTH; index += 1) {
+    const characterIndex = Math.floor(random() * PRIVATE_MATCH_CODE_ALPHABET.length);
+    code += (_a = PRIVATE_MATCH_CODE_ALPHABET[characterIndex]) != null ? _a : PRIVATE_MATCH_CODE_ALPHABET[0];
+  }
+  return code;
+};
+
 // backend/modules/tournaments/bracket.ts
 var normalizeParticipantState = (value) => {
   if (value === "lobby" || value === "in_match" || value === "waiting_next_round" || value === "eliminated" || value === "runner_up" || value === "champion") {
@@ -5285,10 +6582,10 @@ var normalizeTournamentRunRegistration = (value) => {
   if (!record) {
     return null;
   }
-  const userId = readStringField7(record, ["userId", "user_id"]);
-  const displayName = readStringField7(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField7(record, ["joinedAt", "joined_at"]);
-  const seed = readNumberField5(record, ["seed"]);
+  const userId = readStringField8(record, ["userId", "user_id"]);
+  const displayName = readStringField8(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField8(record, ["joinedAt", "joined_at"]);
+  const seed = readNumberField6(record, ["seed"]);
   if (!userId || !displayName || !joinedAt || typeof seed !== "number" || !Number.isFinite(seed)) {
     return null;
   }
@@ -5304,11 +6601,11 @@ var normalizeTournamentBracketParticipant = (value) => {
   if (!record) {
     return null;
   }
-  const userId = readStringField7(record, ["userId", "user_id"]);
-  const displayName = readStringField7(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField7(record, ["joinedAt", "joined_at"]);
-  const updatedAt = readStringField7(record, ["updatedAt", "updated_at"]);
-  const seed = readNumberField5(record, ["seed"]);
+  const userId = readStringField8(record, ["userId", "user_id"]);
+  const displayName = readStringField8(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField8(record, ["joinedAt", "joined_at"]);
+  const updatedAt = readStringField8(record, ["updatedAt", "updated_at"]);
+  const seed = readNumberField6(record, ["seed"]);
   if (!userId || !displayName || !joinedAt || !updatedAt || typeof seed !== "number" || !Number.isFinite(seed)) {
     return null;
   }
@@ -5317,19 +6614,19 @@ var normalizeTournamentBracketParticipant = (value) => {
     displayName,
     joinedAt,
     seed: Math.max(1, Math.floor(seed)),
-    state: normalizeParticipantState(readStringField7(record, ["state"])),
+    state: normalizeParticipantState(readStringField8(record, ["state"])),
     currentRound: (() => {
-      const round = readNumberField5(record, ["currentRound", "current_round"]);
+      const round = readNumberField6(record, ["currentRound", "current_round"]);
       return typeof round === "number" && Number.isFinite(round) ? Math.max(1, Math.floor(round)) : null;
     })(),
-    currentEntryId: readStringField7(record, ["currentEntryId", "current_entry_id"]),
-    activeMatchId: readStringField7(record, ["activeMatchId", "active_match_id"]),
+    currentEntryId: readStringField8(record, ["currentEntryId", "current_entry_id"]),
+    activeMatchId: readStringField8(record, ["activeMatchId", "active_match_id"]),
     finalPlacement: (() => {
-      const placement = readNumberField5(record, ["finalPlacement", "final_placement"]);
+      const placement = readNumberField6(record, ["finalPlacement", "final_placement"]);
       return typeof placement === "number" && Number.isFinite(placement) ? Math.max(1, Math.floor(placement)) : null;
     })(),
     lastResult: (() => {
-      const result = readStringField7(record, ["lastResult", "last_result"]);
+      const result = readStringField8(record, ["lastResult", "last_result"]);
       return result === "win" || result === "loss" ? result : null;
     })(),
     updatedAt
@@ -5340,11 +6637,11 @@ var normalizeTournamentBracketEntry = (value) => {
   if (!record) {
     return null;
   }
-  const entryId = readStringField7(record, ["entryId", "entry_id"]);
-  const round = readNumberField5(record, ["round"]);
-  const slot = readNumberField5(record, ["slot"]);
-  const createdAt = readStringField7(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField7(record, ["updatedAt", "updated_at"]);
+  const entryId = readStringField8(record, ["entryId", "entry_id"]);
+  const round = readNumberField6(record, ["round"]);
+  const slot = readNumberField6(record, ["slot"]);
+  const createdAt = readStringField8(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField8(record, ["updatedAt", "updated_at"]);
   const sourceEntryIds = Array.isArray(record.sourceEntryIds) ? record.sourceEntryIds.filter((entry) => typeof entry === "string" && entry.trim().length > 0) : [];
   if (!entryId || typeof round !== "number" || !Number.isFinite(round) || typeof slot !== "number" || !Number.isFinite(slot) || !createdAt || !updatedAt) {
     return null;
@@ -5354,17 +6651,17 @@ var normalizeTournamentBracketEntry = (value) => {
     round: Math.max(1, Math.floor(round)),
     slot: Math.max(1, Math.floor(slot)),
     sourceEntryIds,
-    playerAUserId: readStringField7(record, ["playerAUserId", "player_a_user_id"]),
-    playerBUserId: readStringField7(record, ["playerBUserId", "player_b_user_id"]),
-    matchId: readStringField7(record, ["matchId", "match_id"]),
-    status: normalizeEntryStatus(readStringField7(record, ["status"])),
-    winnerUserId: readStringField7(record, ["winnerUserId", "winner_user_id"]),
-    loserUserId: readStringField7(record, ["loserUserId", "loser_user_id"]),
+    playerAUserId: readStringField8(record, ["playerAUserId", "player_a_user_id"]),
+    playerBUserId: readStringField8(record, ["playerBUserId", "player_b_user_id"]),
+    matchId: readStringField8(record, ["matchId", "match_id"]),
+    status: normalizeEntryStatus(readStringField8(record, ["status"])),
+    winnerUserId: readStringField8(record, ["winnerUserId", "winner_user_id"]),
+    loserUserId: readStringField8(record, ["loserUserId", "loser_user_id"]),
     createdAt,
     updatedAt,
-    readyAt: readStringField7(record, ["readyAt", "ready_at"]),
-    startedAt: readStringField7(record, ["startedAt", "started_at"]),
-    completedAt: readStringField7(record, ["completedAt", "completed_at"])
+    readyAt: readStringField8(record, ["readyAt", "ready_at"]),
+    startedAt: readStringField8(record, ["startedAt", "started_at"]),
+    completedAt: readStringField8(record, ["completedAt", "completed_at"])
   };
 };
 var normalizeTournamentBracketState = (value) => {
@@ -5372,11 +6669,11 @@ var normalizeTournamentBracketState = (value) => {
   if (!record) {
     return null;
   }
-  const startedAt = readStringField7(record, ["startedAt", "started_at"]);
-  const lockedAt = readStringField7(record, ["lockedAt", "locked_at"]);
-  const size = readNumberField5(record, ["size"]);
-  const totalRounds = readNumberField5(record, ["totalRounds", "total_rounds"]);
-  if (readStringField7(record, ["format"]) !== "single_elimination" || !startedAt || !lockedAt || typeof size !== "number" || !Number.isFinite(size) || typeof totalRounds !== "number" || !Number.isFinite(totalRounds)) {
+  const startedAt = readStringField8(record, ["startedAt", "started_at"]);
+  const lockedAt = readStringField8(record, ["lockedAt", "locked_at"]);
+  const size = readNumberField6(record, ["size"]);
+  const totalRounds = readNumberField6(record, ["totalRounds", "total_rounds"]);
+  if (readStringField8(record, ["format"]) !== "single_elimination" || !startedAt || !lockedAt || typeof size !== "number" || !Number.isFinite(size) || typeof totalRounds !== "number" || !Number.isFinite(totalRounds)) {
     return null;
   }
   const participants = Array.isArray(record.participants) ? record.participants.map((entry) => normalizeTournamentBracketParticipant(entry)).filter((entry) => Boolean(entry)) : [];
@@ -5387,9 +6684,9 @@ var normalizeTournamentBracketState = (value) => {
     totalRounds: Math.max(1, Math.floor(totalRounds)),
     startedAt,
     lockedAt,
-    finalizedAt: readStringField7(record, ["finalizedAt", "finalized_at"]),
-    winnerUserId: readStringField7(record, ["winnerUserId", "winner_user_id"]),
-    runnerUpUserId: readStringField7(record, ["runnerUpUserId", "runner_up_user_id"]),
+    finalizedAt: readStringField8(record, ["finalizedAt", "finalized_at"]),
+    winnerUserId: readStringField8(record, ["winnerUserId", "winner_user_id"]),
+    runnerUpUserId: readStringField8(record, ["runnerUpUserId", "runner_up_user_id"]),
     participants,
     entries
   };
@@ -5649,9 +6946,9 @@ var hasTournamentBracketStarted = (bracket) => Boolean(bracket == null ? void 0 
 
 // shared/tournamentBots.ts
 var TOURNAMENT_BOT_USER_ID_PREFIX = "tournament-bot:";
-var asRecord4 = (value) => typeof value === "object" && value !== null ? value : null;
+var asRecord7 = (value) => typeof value === "object" && value !== null ? value : null;
 var readBooleanField5 = (value, keys) => {
-  const record = asRecord4(value);
+  const record = asRecord7(value);
   if (!record) {
     return null;
   }
@@ -5662,8 +6959,8 @@ var readBooleanField5 = (value, keys) => {
   }
   return null;
 };
-var readStringField9 = (value, keys) => {
-  const record = asRecord4(value);
+var readStringField10 = (value, keys) => {
+  const record = asRecord7(value);
   if (!record) {
     return null;
   }
@@ -5690,7 +6987,7 @@ var buildTournamentBotDisplayName = (difficulty, ordinal) => `${formatBotDifficu
 var normalizeTournamentBotPolicy = (metadata) => {
   var _a;
   const autoAdd = (_a = readBooleanField5(metadata, ["autoAddBots", "auto_add_bots"])) != null ? _a : false;
-  const requestedDifficulty = readStringField9(metadata, ["botDifficulty", "bot_difficulty"]);
+  const requestedDifficulty = readStringField10(metadata, ["botDifficulty", "bot_difficulty"]);
   const difficulty = requestedDifficulty && isBotDifficulty(requestedDifficulty) ? requestedDifficulty : null;
   if (!autoAdd) {
     return {
@@ -5861,18 +7158,18 @@ var normalizeStandingsSnapshot = (value) => {
   }
   const rawRecords = Array.isArray(record.records) ? record.records : [];
   return {
-    generatedAt: (_a = readStringField7(record, ["generatedAt", "generated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString(),
-    overrideExpiry: clampInteger(readNumberField5(record, ["overrideExpiry", "override_expiry"]), 0, 0, 2147483647),
+    generatedAt: (_a = readStringField8(record, ["generatedAt", "generated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString(),
+    overrideExpiry: clampInteger(readNumberField6(record, ["overrideExpiry", "override_expiry"]), 0, 0, 2147483647),
     rankCount: (() => {
-      const rankCount = readNumberField5(record, ["rankCount", "rank_count"]);
+      const rankCount = readNumberField6(record, ["rankCount", "rank_count"]);
       return typeof rankCount === "number" ? rankCount : null;
     })(),
     records: rawRecords.map((entry) => {
       var _a2;
       return (_a2 = asRecord2(entry)) != null ? _a2 : {};
     }),
-    prevCursor: readStringField7(record, ["prevCursor", "prev_cursor"]),
-    nextCursor: readStringField7(record, ["nextCursor", "next_cursor"])
+    prevCursor: readStringField8(record, ["prevCursor", "prev_cursor"]),
+    nextCursor: readStringField8(record, ["nextCursor", "next_cursor"])
   };
 };
 var normalizeRunRecord = (value, fallbackId) => {
@@ -5881,13 +7178,13 @@ var normalizeRunRecord = (value, fallbackId) => {
   if (!record) {
     return null;
   }
-  const runId = (_b = (_a = readStringField7(record, ["runId", "run_id"])) != null ? _a : fallbackId) != null ? _b : null;
-  const tournamentId = (_c = readStringField7(record, ["tournamentId", "tournament_id"])) != null ? _c : runId;
-  const title = readStringField7(record, ["title"]);
-  const createdAt = readStringField7(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField7(record, ["updatedAt", "updated_at"]);
-  const createdByUserId = readStringField7(record, ["createdByUserId", "created_by_user_id"]);
-  const createdByLabel = readStringField7(record, ["createdByLabel", "created_by_label"]);
+  const runId = (_b = (_a = readStringField8(record, ["runId", "run_id"])) != null ? _a : fallbackId) != null ? _b : null;
+  const tournamentId = (_c = readStringField8(record, ["tournamentId", "tournament_id"])) != null ? _c : runId;
+  const title = readStringField8(record, ["title"]);
+  const createdAt = readStringField8(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField8(record, ["updatedAt", "updated_at"]);
+  const createdByUserId = readStringField8(record, ["createdByUserId", "created_by_user_id"]);
+  const createdByLabel = readStringField8(record, ["createdByLabel", "created_by_label"]);
   if (!runId || !tournamentId || !title || !createdAt || !updatedAt || !createdByUserId || !createdByLabel) {
     return null;
   }
@@ -5895,33 +7192,33 @@ var normalizeRunRecord = (value, fallbackId) => {
     runId,
     tournamentId,
     title,
-    description: (_d = readStringField7(record, ["description"])) != null ? _d : "",
-    category: clampInteger(readNumberField5(record, ["category"]), DEFAULT_CATEGORY, 0, 127),
+    description: (_d = readStringField8(record, ["description"])) != null ? _d : "",
+    category: clampInteger(readNumberField6(record, ["category"]), DEFAULT_CATEGORY, 0, 127),
     authoritative: (_e = readBooleanField6(record, ["authoritative"])) != null ? _e : true,
-    sortOrder: normalizeSortOrder((_f = readStringField7(record, ["sortOrder", "sort_order"])) != null ? _f : DEFAULT_SORT_ORDER),
-    operator: normalizeOperator((_g = readStringField7(record, ["operator"])) != null ? _g : DEFAULT_OPERATOR),
-    resetSchedule: (_h = readStringField7(record, ["resetSchedule", "reset_schedule"])) != null ? _h : "",
+    sortOrder: normalizeSortOrder((_f = readStringField8(record, ["sortOrder", "sort_order"])) != null ? _f : DEFAULT_SORT_ORDER),
+    operator: normalizeOperator((_g = readStringField8(record, ["operator"])) != null ? _g : DEFAULT_OPERATOR),
+    resetSchedule: (_h = readStringField8(record, ["resetSchedule", "reset_schedule"])) != null ? _h : "",
     metadata: readMetadataField(record, ["metadata"]),
-    startTime: clampInteger(readNumberField5(record, ["startTime", "start_time"]), 0, 0, 2147483647),
-    endTime: clampInteger(readNumberField5(record, ["endTime", "end_time"]), 0, 0, 2147483647),
-    duration: clampInteger(readNumberField5(record, ["duration"]), DEFAULT_DURATION_SECONDS, 1, 2147483647),
-    maxSize: clampInteger(readNumberField5(record, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1e6),
+    startTime: clampInteger(readNumberField6(record, ["startTime", "start_time"]), 0, 0, 2147483647),
+    endTime: clampInteger(readNumberField6(record, ["endTime", "end_time"]), 0, 0, 2147483647),
+    duration: clampInteger(readNumberField6(record, ["duration"]), DEFAULT_DURATION_SECONDS, 1, 2147483647),
+    maxSize: clampInteger(readNumberField6(record, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1e6),
     maxNumScore: clampInteger(
-      readNumberField5(record, ["maxNumScore", "max_num_score"]),
+      readNumberField6(record, ["maxNumScore", "max_num_score"]),
       1,
       1,
       1e6
     ),
     joinRequired: (_i = readBooleanField6(record, ["joinRequired", "join_required"])) != null ? _i : true,
     enableRanks: (_j = readBooleanField6(record, ["enableRanks", "enable_ranks"])) != null ? _j : true,
-    lifecycle: normalizeRunLifecycle((_k = readStringField7(record, ["lifecycle"])) != null ? _k : "draft"),
+    lifecycle: normalizeRunLifecycle((_k = readStringField8(record, ["lifecycle"])) != null ? _k : "draft"),
     createdAt,
     updatedAt,
     createdByUserId,
     createdByLabel,
-    openedAt: readStringField7(record, ["openedAt", "opened_at"]),
-    closedAt: readStringField7(record, ["closedAt", "closed_at"]),
-    finalizedAt: readStringField7(record, ["finalizedAt", "finalized_at"]),
+    openedAt: readStringField8(record, ["openedAt", "opened_at"]),
+    closedAt: readStringField8(record, ["closedAt", "closed_at"]),
+    finalizedAt: readStringField8(record, ["finalizedAt", "finalized_at"]),
     finalSnapshot: normalizeStandingsSnapshot(record.finalSnapshot),
     registrations: Array.isArray(record.registrations) ? record.registrations.map((entry) => normalizeTournamentRunRegistration(entry)).filter((entry) => Boolean(entry)) : [],
     bracket: normalizeTournamentBracketState(record.bracket)
@@ -5935,7 +7232,7 @@ var normalizeRunIndex = (value) => {
     runIds: Array.from(
       new Set(runIds.filter((entry) => typeof entry === "string" && entry.trim().length > 0))
     ),
-    updatedAt: (_a = readStringField7(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
+    updatedAt: (_a = readStringField8(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
   };
 };
 var readRunIndexState = (nk) => {
@@ -6067,7 +7364,7 @@ var readTournamentArray = (value) => {
 var mapTournamentsById = (value) => {
   return readTournamentArray(value).reduce(
     (accumulator, tournament) => {
-      const tournamentId = readStringField7(tournament, ["id"]);
+      const tournamentId = readStringField8(tournament, ["id"]);
       if (tournamentId) {
         accumulator[tournamentId] = tournament;
       }
@@ -6084,12 +7381,12 @@ var getRunEntrantCount = (run, nakamaTournament) => {
   var _a;
   return Math.max(
     run.registrations.length,
-    Math.max(0, Math.floor((_a = readNumberField5(nakamaTournament, ["size"])) != null ? _a : 0))
+    Math.max(0, Math.floor((_a = readNumberField6(nakamaTournament, ["size"])) != null ? _a : 0))
   );
 };
 var getRunCapacity = (run, nakamaTournament) => {
   var _a;
-  return Math.max(0, Math.floor((_a = readNumberField5(nakamaTournament, ["maxSize", "max_size"])) != null ? _a : run.maxSize));
+  return Math.max(0, Math.floor((_a = readNumberField6(nakamaTournament, ["maxSize", "max_size"])) != null ? _a : run.maxSize));
 };
 var getRunBotUserIds = (run) => {
   var _a, _b;
@@ -6119,7 +7416,7 @@ var buildRunResponseMetadata = (value) => {
   var _a;
   const baseMetadata = readMetadataField(value, ["metadata"]);
   const explicitAutoAddBots = readBooleanField6(value, ["autoAddBots", "auto_add_bots"]);
-  const explicitBotDifficulty = readStringField7(value, ["botDifficulty", "bot_difficulty"]);
+  const explicitBotDifficulty = readStringField8(value, ["botDifficulty", "bot_difficulty"]);
   const normalizedPolicy = normalizeTournamentBotPolicy(__spreadValues(__spreadValues(__spreadValues({}, baseMetadata), explicitAutoAddBots !== null ? { autoAddBots: explicitAutoAddBots } : {}), explicitBotDifficulty !== null ? { botDifficulty: explicitBotDifficulty } : {}));
   return __spreadProps(__spreadValues({}, baseMetadata), {
     autoAddBots: normalizedPolicy.autoAdd,
@@ -6295,10 +7592,10 @@ var readTournamentRecordList = (value) => {
       var _a;
       return (_a = asRecord2(entry)) != null ? _a : {};
     }),
-    prevCursor: readStringField7(record, ["prev_cursor", "prevCursor"]),
-    nextCursor: readStringField7(record, ["next_cursor", "nextCursor"]),
+    prevCursor: readStringField8(record, ["prev_cursor", "prevCursor"]),
+    nextCursor: readStringField8(record, ["next_cursor", "nextCursor"]),
     rankCount: (() => {
-      const parsed = readNumberField5(record, ["rank_count", "rankCount"]);
+      const parsed = readNumberField6(record, ["rank_count", "rankCount"]);
       return typeof parsed === "number" ? parsed : null;
     })()
   };
@@ -6308,7 +7605,7 @@ var resolveOverrideExpiry = (overrideExpiry, tournament) => {
     return Math.floor(overrideExpiry);
   }
   if (tournament) {
-    const endTime = readNumberField5(tournament, ["end_time", "endTime"]);
+    const endTime = readNumberField6(tournament, ["end_time", "endTime"]);
     if (typeof endTime === "number" && endTime > 0) {
       return Math.floor(endTime);
     }
@@ -6336,26 +7633,26 @@ var normalizeStoredTournamentMatchSummary = (value, options) => {
     return null;
   }
   const summary = asRecord2(record.summary);
-  const matchId = readStringField7(record, ["matchId", "match_id"]);
-  const completedAt = (_a = readStringField7(summary, ["completedAt", "completed_at"])) != null ? _a : readStringField7(record, ["updatedAt", "updated_at", "createdAt", "created_at"]);
+  const matchId = readStringField8(record, ["matchId", "match_id"]);
+  const completedAt = (_a = readStringField8(summary, ["completedAt", "completed_at"])) != null ? _a : readStringField8(record, ["updatedAt", "updated_at", "createdAt", "created_at"]);
   if (!summary || !matchId || !completedAt) {
     return null;
   }
   const players = Array.isArray(summary.players) ? summary.players.map((entry) => {
     var _a2, _b;
     const player = asRecord2(entry);
-    const userId = readStringField7(player, ["userId", "user_id"]);
+    const userId = readStringField8(player, ["userId", "user_id"]);
     if (!player || !userId) {
       return null;
     }
     return {
       userId,
-      username: readStringField7(player, ["username"]),
+      username: readStringField8(player, ["username"]),
       didWin: readBooleanField6(player, ["didWin"]) === true,
-      score: Math.max(0, Math.floor((_a2 = readNumberField5(player, ["score"])) != null ? _a2 : 0)),
+      score: Math.max(0, Math.floor((_a2 = readNumberField6(player, ["score"])) != null ? _a2 : 0)),
       finishedCount: Math.max(
         0,
-        Math.floor((_b = readNumberField5(player, ["finishedCount", "finished_count"])) != null ? _b : 0)
+        Math.floor((_b = readNumberField6(player, ["finishedCount", "finished_count"])) != null ? _b : 0)
       )
     };
   }).filter((entry) => Boolean(entry)) : [];
@@ -6366,10 +7663,10 @@ var normalizeStoredTournamentMatchSummary = (value, options) => {
     matchId,
     completedAt,
     round: (() => {
-      const round = readNumberField5(summary, ["round"]);
+      const round = readNumberField6(summary, ["round"]);
       return typeof round === "number" && Number.isFinite(round) ? Math.max(1, Math.floor(round)) : null;
     })(),
-    entryId: readStringField7(summary, ["entryId", "entry_id"]),
+    entryId: readStringField8(summary, ["entryId", "entry_id"]),
     players
   };
 };
@@ -6674,21 +7971,21 @@ var resolveRunStandingsSnapshot = (nk, run, limit, overrideExpiry) => {
   return buildStandingsSnapshot(nk, run.tournamentId, limit, overrideExpiry);
 };
 var readStandingsRecordRank = (record) => {
-  const rank = readNumberField5(record, ["rank"]);
+  const rank = readNumberField6(record, ["rank"]);
   return typeof rank === "number" && Number.isFinite(rank) ? rank : null;
 };
-var readStandingsRecordOwnerId = (record) => readStringField7(record, ["ownerId", "owner_id"]);
+var readStandingsRecordOwnerId = (record) => readStringField8(record, ["ownerId", "owner_id"]);
 var readStandingsRecordScore = (record) => {
   var _a;
-  return Math.max(0, Math.floor((_a = readNumberField5(record, ["score"])) != null ? _a : 0));
+  return Math.max(0, Math.floor((_a = readNumberField6(record, ["score"])) != null ? _a : 0));
 };
 var readStandingsRecordSubscore = (record) => {
   var _a;
-  return Math.max(0, Math.floor((_a = readNumberField5(record, ["subscore"])) != null ? _a : 0));
+  return Math.max(0, Math.floor((_a = readNumberField6(record, ["subscore"])) != null ? _a : 0));
 };
 var readStandingsRecordAttemptCount = (record) => {
   var _a;
-  return Math.max(0, Math.floor((_a = readNumberField5(record, ["numScore", "num_score"])) != null ? _a : 0));
+  return Math.max(0, Math.floor((_a = readNumberField6(record, ["numScore", "num_score"])) != null ? _a : 0));
 };
 var resolveChampionUserId = (snapshot) => {
   var _a, _b, _c, _d;
@@ -7012,7 +8309,7 @@ var rpcAdminListTournaments = (ctx, logger, nk, payload) => {
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
       const limit = clampInteger(parsed.limit, 50, 1, MAX_RUN_LIST_LIMIT);
-      const lifecycleFilter = readStringField7(parsed, ["lifecycle"]);
+      const lifecycleFilter = readStringField8(parsed, ["lifecycle"]);
       const indexState = readRunIndexState(_nk);
       const runs = sortRuns(readRunsByIds(_nk, indexState.index.runIds).map(
         (run) => maybeAutoFinalizeAdminRun(_logger, _nk, run)
@@ -7052,7 +8349,7 @@ var rpcAdminGetTournamentRun = (ctx, logger, nk, payload) => {
       var _a, _b;
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -7087,7 +8384,7 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
       var _a, _b, _c, _d, _e;
       assertAdmin(_ctx, "operator", _nk);
       const parsed = parseJsonPayload(_payload);
-      const title = readStringField7(parsed, ["title"]);
+      const title = readStringField8(parsed, ["title"]);
       if (!title) {
         throw new Error("title is required.");
       }
@@ -7095,12 +8392,12 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
         const indexState = readRunIndexState(_nk);
         const createdAt = (/* @__PURE__ */ new Date()).toISOString();
         const runId = buildRunId(
-          readStringField7(parsed, ["runId", "run_id"]),
+          readStringField8(parsed, ["runId", "run_id"]),
           title,
           indexState.index.runIds
         );
-        const startTime = clampInteger(readNumberField5(parsed, ["startTime", "start_time"]), 0, 0, 2147483647);
-        const maxSize = clampInteger(readNumberField5(parsed, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1e6);
+        const startTime = clampInteger(readNumberField6(parsed, ["startTime", "start_time"]), 0, 0, 2147483647);
+        const maxSize = clampInteger(readNumberField6(parsed, ["maxSize", "max_size"]), DEFAULT_MAX_SIZE, 1, 1e6);
         assertPowerOfTwoTournamentSize(maxSize);
         const duration = AUTO_TOURNAMENT_DURATION_SECONDS;
         const maxNumScore = getSingleEliminationRoundCount(maxSize);
@@ -7109,12 +8406,12 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
           runId,
           tournamentId: runId,
           title,
-          description: (_a = readStringField7(parsed, ["description"])) != null ? _a : "",
-          category: clampInteger(readNumberField5(parsed, ["category"]), DEFAULT_CATEGORY, 0, 127),
+          description: (_a = readStringField8(parsed, ["description"])) != null ? _a : "",
+          category: clampInteger(readNumberField6(parsed, ["category"]), DEFAULT_CATEGORY, 0, 127),
           authoritative: (_b = readBooleanField6(parsed, ["authoritative"])) != null ? _b : true,
-          sortOrder: normalizeSortOrder(readStringField7(parsed, ["sortOrder", "sort_order"])),
-          operator: normalizeOperator(readStringField7(parsed, ["operator"])),
-          resetSchedule: (_c = readStringField7(parsed, ["resetSchedule", "reset_schedule"])) != null ? _c : "",
+          sortOrder: normalizeSortOrder(readStringField8(parsed, ["sortOrder", "sort_order"])),
+          operator: normalizeOperator(readStringField8(parsed, ["operator"])),
+          resetSchedule: (_c = readStringField8(parsed, ["resetSchedule", "reset_schedule"])) != null ? _c : "",
           metadata: buildRunResponseMetadata(parsed),
           startTime,
           endTime,
@@ -7180,7 +8477,7 @@ var rpcAdminOpenTournament = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "operator", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -7242,7 +8539,7 @@ var rpcAdminDeleteTournament = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "admin", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -7284,7 +8581,7 @@ var rpcAdminCloseTournament = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "operator", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -7319,13 +8616,13 @@ var rpcAdminFinalizeTournament = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "admin", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
       const finalized = finalizeTournamentRun(_logger, _nk, runId, {
-        limit: readNumberField5(parsed, ["limit"]),
-        overrideExpiry: readNumberField5(parsed, ["overrideExpiry", "override_expiry"])
+        limit: readNumberField6(parsed, ["limit"]),
+        overrideExpiry: readNumberField6(parsed, ["overrideExpiry", "override_expiry"])
       });
       return JSON.stringify({
         ok: true,
@@ -7349,7 +8646,7 @@ var rpcAdminGetTournamentStandings = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -7357,7 +8654,7 @@ var rpcAdminGetTournamentStandings = (ctx, logger, nk, payload) => {
       const nakamaTournament = getNakamaTournamentById(_nk, run.tournamentId);
       const limit = clampInteger(parsed.limit, DEFAULT_STANDINGS_LIMIT, 1, MAX_STANDINGS_LIMIT);
       const overrideExpiry = resolveOverrideExpiry(
-        readNumberField5(parsed, ["overrideExpiry", "override_expiry"]),
+        readNumberField6(parsed, ["overrideExpiry", "override_expiry"]),
         nakamaTournament
       );
       const standings = resolveRunStandingsSnapshot(_nk, run, limit, overrideExpiry);
@@ -7382,7 +8679,7 @@ var rpcAdminGetTournamentAuditLog = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -7461,10 +8758,10 @@ var normalizeTournamentMatchResultRecord = (value) => {
   if (!record) {
     return null;
   }
-  const resultId = readStringField7(record, ["resultId", "result_id"]);
-  const matchId = readStringField7(record, ["matchId", "match_id"]);
-  const runId = readStringField7(record, ["runId", "run_id"]);
-  const tournamentId = readStringField7(record, ["tournamentId", "tournament_id"]);
+  const resultId = readStringField8(record, ["resultId", "result_id"]);
+  const matchId = readStringField8(record, ["matchId", "match_id"]);
+  const runId = readStringField8(record, ["runId", "run_id"]);
+  const tournamentId = readStringField8(record, ["tournamentId", "tournament_id"]);
   if (!resultId || !matchId || !runId || !tournamentId) {
     return null;
   }
@@ -7557,8 +8854,8 @@ var resolveUsernames = (nk, logger, players, run) => {
     try {
       const users = normalizeUsersArray(nk.usersGetId(unresolvedUserIds));
       users.forEach((user) => {
-        const userId = readStringField7(user, ["userId", "user_id", "id"]);
-        const username = readStringField7(user, ["username", "displayName", "display_name"]);
+        const userId = readStringField8(user, ["userId", "user_id", "id"]);
+        const username = readStringField8(user, ["username", "displayName", "display_name"]);
         if (userId && username) {
           usernames[userId] = username;
         }
@@ -7676,7 +8973,7 @@ var updateTournamentRunMetadata = (nk, logger, runId, result) => {
       0,
       Math.max(
         currentCountedResultIds.length,
-        Math.floor((_a = readNumberField5(currentMetadata, ["countedMatchCount", "validMatchCount"])) != null ? _a : 0)
+        Math.floor((_a = readNumberField6(currentMetadata, ["countedMatchCount", "validMatchCount"])) != null ? _a : 0)
       )
     );
     if (result.counted) {
@@ -7720,11 +9017,11 @@ var updateTournamentRunMetadata = (nk, logger, runId, result) => {
   }
 };
 var readTournamentEntrantCount = (value) => {
-  const entrants = readNumberField5(value, ["size", "maxSize", "max_size"]);
+  const entrants = readNumberField6(value, ["size", "maxSize", "max_size"]);
   return typeof entrants === "number" && Number.isFinite(entrants) ? Math.max(0, Math.floor(entrants)) : 0;
 };
 var resolveTournamentRunModeId = (run) => {
-  const modeId = readStringField7(run.metadata, ["gameMode", "game_mode"]);
+  const modeId = readStringField8(run.metadata, ["gameMode", "game_mode"]);
   return isMatchModeId(modeId) ? modeId : "standard";
 };
 var buildBotOnlyTournamentCompletion = (run, entryId) => {
@@ -7872,7 +9169,7 @@ var maybeAutoFinalizeTournamentRunById = (nk, logger, runId) => {
   }
   const countedMatchCount = Math.max(
     0,
-    Math.floor((_c = readNumberField5(run.metadata, ["countedMatchCount", "validMatchCount"])) != null ? _c : 0)
+    Math.floor((_c = readNumberField6(run.metadata, ["countedMatchCount", "validMatchCount"])) != null ? _c : 0)
   );
   const entrantCount = readTournamentEntrantCount(getNakamaTournamentById(nk, run.tournamentId));
   if (entrantCount < 2 || countedMatchCount < entrantCount - 1) {
@@ -7963,8 +9260,8 @@ var buildParticipantResolutions = (run, players) => players.map((player) => {
 });
 var resolveTournamentMatchContextFromParams = (params) => {
   var _a, _b;
-  const runId = readStringField7(params, ["tournamentRunId", "tournament_run_id", "runId", "run_id"]);
-  const tournamentId = readStringField7(params, ["tournamentId", "tournament_id"]);
+  const runId = readStringField8(params, ["tournamentRunId", "tournament_run_id", "runId", "run_id"]);
+  const tournamentId = readStringField8(params, ["tournamentId", "tournament_id"]);
   if (!runId && !tournamentId) {
     return null;
   }
@@ -7972,12 +9269,12 @@ var resolveTournamentMatchContextFromParams = (params) => {
   if (!normalizedRunId) {
     return null;
   }
-  const round = readNumberField5(params, ["tournamentRound", "tournament_round", "round"]);
+  const round = readNumberField6(params, ["tournamentRound", "tournament_round", "round"]);
   return {
     runId: normalizedRunId,
     tournamentId: tournamentId != null ? tournamentId : normalizedRunId,
     round: typeof round === "number" && Number.isFinite(round) ? Math.max(1, Math.floor(round)) : null,
-    entryId: (_b = readStringField7(params, [
+    entryId: (_b = readStringField8(params, [
       "tournamentEntryId",
       "tournament_entry_id",
       "tournamentMatchId",
@@ -8139,8 +9436,8 @@ var readTournamentAuditEntries = (nk, runId) => {
     var _a2;
     return (_a2 = asRecord2(entry)) != null ? _a2 : null;
   }).filter((entry) => Boolean(entry)).filter((entry) => {
-    const targetId = readStringField7(entry, ["targetId", "target_id"]);
-    const tournamentId = readStringField7(entry, ["tournamentId", "tournament_id"]);
+    const targetId = readStringField8(entry, ["targetId", "target_id"]);
+    const tournamentId = readStringField8(entry, ["tournamentId", "tournament_id"]);
     return targetId === runId || tournamentId === runId;
   });
 };
@@ -8190,7 +9487,7 @@ var rpcAdminExportTournament = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
       const parsed = parseJsonPayload(_payload);
-      const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -8201,7 +9498,7 @@ var rpcAdminExportTournament = (ctx, logger, nk, payload) => {
         "countedResultIds",
         "counted_result_ids"
       ]);
-      const lastProcessedResultId = readStringField7(run.metadata, [
+      const lastProcessedResultId = readStringField8(run.metadata, [
         "lastProcessedResultId",
         "last_processed_result_id"
       ]);
@@ -8280,8 +9577,8 @@ var buildParticipantNameMap = (run) => {
   });
   (_b = run.finalSnapshot) == null ? void 0 : _b.records.forEach((record) => {
     const normalized = asRecord2(record);
-    const ownerId = readStringField7(normalized, ["ownerId", "owner_id"]);
-    const username = readStringField7(normalized, ["username"]);
+    const ownerId = readStringField8(normalized, ["ownerId", "owner_id"]);
+    const username = readStringField8(normalized, ["username"]);
     if (ownerId && username) {
       names.set(ownerId, username);
     }
@@ -8289,7 +9586,7 @@ var buildParticipantNameMap = (run) => {
   return names;
 };
 var getEntrantCount = (run, nakamaTournament) => {
-  const nakamaSize = readNumberField5(nakamaTournament, ["size", "size"]);
+  const nakamaSize = readNumberField6(nakamaTournament, ["size", "size"]);
   return Math.max(
     run.registrations.length,
     typeof nakamaSize === "number" && Number.isFinite(nakamaSize) ? Math.floor(nakamaSize) : 0
@@ -8484,7 +9781,7 @@ var buildTournamentLiveSummary = (run, nakamaTournament, auditEntries, nowMs) =>
   const staleEntryCount = entries.filter(
     (entry) => isReadyEntryStale(entry, nowMs) || isInMatchEntryStale(entry, nowMs)
   ).length;
-  const startAt = (_d = toIsoFromUnixSeconds((_c = readNumberField5(nakamaTournament, ["startTime", "start_time"])) != null ? _c : run.startTime)) != null ? _d : null;
+  const startAt = (_d = toIsoFromUnixSeconds((_c = readNumberField6(nakamaTournament, ["startTime", "start_time"])) != null ? _c : run.startTime)) != null ? _d : null;
   const currentRound = getTournamentBracketCurrentRound(run.bracket);
   const lastResultAt = entries.reduce(
     (latest, entry) => maxIso(latest, entry.completedAt),
@@ -8624,10 +9921,11 @@ var buildMatchDurationBuckets = (bracket) => {
   durations.forEach((duration) => {
     var _a2;
     const bucket = (_a2 = buckets.find((candidate) => {
+      const minSeconds = candidate.minSeconds;
       if (candidate.maxSeconds === null) {
-        return duration >= candidate.minSeconds;
+        return duration >= minSeconds;
       }
-      return duration >= candidate.minSeconds && duration < candidate.maxSeconds;
+      return duration >= minSeconds && duration < candidate.maxSeconds;
     })) != null ? _a2 : buckets[buckets.length - 1];
     bucket.count += 1;
   });
@@ -8775,7 +10073,7 @@ var buildDetailResponse = (nk, runId) => {
 var rpcAdminGetTournamentLiveStatus = (ctx, _logger, nk, payload) => {
   assertAdmin(ctx, "viewer", nk);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField7(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+  const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
   if (runId) {
     return JSON.stringify(buildDetailResponse(nk, runId));
   }
@@ -8789,12 +10087,12 @@ var resolveDisplayName = (ctx, requestDisplayName, userId) => {
     return requestDisplayName.trim();
   }
   if (typeof ctx === "object" && ctx !== null) {
-    const username = readStringField7(ctx, ["username", "displayName", "display_name", "name"]);
+    const username = readStringField8(ctx, ["username", "displayName", "display_name", "name"]);
     if (username) {
       return username;
     }
     const vars = typeof ctx.vars === "object" && ctx.vars !== null ? ctx.vars : null;
-    const fallbackName = readStringField7(vars, ["usernameDisplay", "displayName", "email"]);
+    const fallbackName = readStringField8(vars, ["usernameDisplay", "displayName", "email"]);
     if (fallbackName) {
       return fallbackName;
     }
@@ -8811,8 +10109,8 @@ var rpcJoinTournament = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
   const request = {
-    tournamentId: (_a = readStringField7(parsed, ["tournamentId", "tournament_id"])) != null ? _a : "",
-    displayName: (_b = readStringField7(parsed, ["displayName", "display_name"])) != null ? _b : void 0
+    tournamentId: (_a = readStringField8(parsed, ["tournamentId", "tournament_id"])) != null ? _a : "",
+    displayName: (_b = readStringField8(parsed, ["displayName", "display_name"])) != null ? _b : void 0
   };
   if (!request.tournamentId) {
     throw new Error("tournamentId is required.");
@@ -8907,12 +10205,12 @@ var normalizeMembershipRecord = (value, fallbackRunId, fallbackUserId) => {
   if (!record) {
     return null;
   }
-  const runId = (_a = readStringField7(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
-  const tournamentId = (_b = readStringField7(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
-  const userId = (_c = readStringField7(record, ["userId", "user_id"])) != null ? _c : fallbackUserId;
-  const displayName = readStringField7(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField7(record, ["joinedAt", "joined_at"]);
-  const updatedAt = (_d = readStringField7(record, ["updatedAt", "updated_at"])) != null ? _d : joinedAt;
+  const runId = (_a = readStringField8(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
+  const tournamentId = (_b = readStringField8(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
+  const userId = (_c = readStringField8(record, ["userId", "user_id"])) != null ? _c : fallbackUserId;
+  const displayName = readStringField8(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField8(record, ["joinedAt", "joined_at"]);
+  const updatedAt = (_d = readStringField8(record, ["updatedAt", "updated_at"])) != null ? _d : joinedAt;
   if (!runId || !tournamentId || !userId || !displayName || !joinedAt || !updatedAt) {
     return null;
   }
@@ -8960,11 +10258,11 @@ var getRunBotUserIds2 = (run) => {
 };
 var formatPrizeLabel = (metadata) => {
   var _a;
-  const explicitPrize = readStringField7(metadata, ["prizePool", "prize_pool", "prizeLabel", "prize_label"]);
+  const explicitPrize = readStringField8(metadata, ["prizePool", "prize_pool", "prizeLabel", "prize_label"]);
   if (explicitPrize) {
     return explicitPrize;
   }
-  const buyIn = (_a = readStringField7(metadata, ["buyIn", "buy_in"])) != null ? _a : "Free";
+  const buyIn = (_a = readStringField8(metadata, ["buyIn", "buy_in"])) != null ? _a : "Free";
   return buyIn === "Free" ? "No prize listed" : `${buyIn} buy-in`;
 };
 var buildMembershipState = (membership) => {
@@ -9004,10 +10302,10 @@ var buildFinalizedParticipationOverride = (run, participant) => {
   return null;
 };
 var readStandingsRecordRank2 = (record) => {
-  const rank = readNumberField5(record, ["rank"]);
+  const rank = readNumberField6(record, ["rank"]);
   return typeof rank === "number" && Number.isFinite(rank) ? Math.max(1, Math.floor(rank)) : null;
 };
-var readStandingsRecordOwnerId2 = (record) => readStringField7(record, ["ownerId", "owner_id"]);
+var readStandingsRecordOwnerId2 = (record) => readStringField8(record, ["ownerId", "owner_id"]);
 var readStandingsRecordMetadata = (record) => {
   var _a;
   return (_a = asRecord2(record == null ? void 0 : record.metadata)) != null ? _a : {};
@@ -9022,16 +10320,16 @@ var buildStoredFinalizedParticipationOverride = (run, userId, participant) => {
   }
   const finalPlacement = (_d = (_c = readStandingsRecordRank2(snapshotRecord)) != null ? _c : participant == null ? void 0 : participant.finalPlacement) != null ? _d : null;
   const metadata = readStandingsRecordMetadata(snapshotRecord);
-  const snapshotState = readStringField7(metadata, ["state"]);
+  const snapshotState = readStringField8(metadata, ["state"]);
   const state = snapshotState === "champion" || snapshotState === "runner_up" || snapshotState === "eliminated" ? snapshotState : finalPlacement === 1 ? "champion" : finalPlacement === 2 ? "runner_up" : typeof finalPlacement === "number" ? "eliminated" : null;
   if (!state) {
     return null;
   }
-  const snapshotLastResult = normalizeSnapshotResult(readStringField7(metadata, ["result"]));
+  const snapshotLastResult = normalizeSnapshotResult(readStringField8(metadata, ["result"]));
   return {
     state,
-    currentRound: (_e = participant == null ? void 0 : participant.currentRound) != null ? _e : readNumberField5(metadata, ["round"]),
-    currentEntryId: (_f = participant == null ? void 0 : participant.currentEntryId) != null ? _f : readStringField7(metadata, ["entryId", "entry_id"]),
+    currentRound: (_e = participant == null ? void 0 : participant.currentRound) != null ? _e : readNumberField6(metadata, ["round"]),
+    currentEntryId: (_f = participant == null ? void 0 : participant.currentEntryId) != null ? _f : readStringField8(metadata, ["entryId", "entry_id"]),
     activeMatchId: null,
     finalPlacement,
     lastResult: (_g = snapshotLastResult != null ? snapshotLastResult : participant == null ? void 0 : participant.lastResult) != null ? _g : state === "champion" ? "win" : state === "runner_up" ? "loss" : null,
@@ -9080,7 +10378,7 @@ var resolveMembershipForRun = (run, membership) => {
 };
 var getRunEndTimeMs = (run, nakamaTournament) => {
   var _a;
-  const endTimeSeconds = (_a = readNumberField5(nakamaTournament, ["endTime", "end_time"])) != null ? _a : run.endTime;
+  const endTimeSeconds = (_a = readNumberField6(nakamaTournament, ["endTime", "end_time"])) != null ? _a : run.endTime;
   if (typeof endTimeSeconds !== "number" || !Number.isFinite(endTimeSeconds) || endTimeSeconds <= 0) {
     return null;
   }
@@ -9090,14 +10388,14 @@ var getRunEntrants = (run, nakamaTournament) => {
   var _a;
   return Math.max(
     run.registrations.length,
-    Math.max(0, Math.floor((_a = readNumberField5(nakamaTournament, ["size"])) != null ? _a : 0))
+    Math.max(0, Math.floor((_a = readNumberField6(nakamaTournament, ["size"])) != null ? _a : 0))
   );
 };
 var getRunMaxEntrants = (run, nakamaTournament) => {
   var _a;
   return Math.max(
     0,
-    Math.floor((_a = readNumberField5(nakamaTournament, ["maxSize", "max_size"])) != null ? _a : run.maxSize)
+    Math.floor((_a = readNumberField6(nakamaTournament, ["maxSize", "max_size"])) != null ? _a : run.maxSize)
   );
 };
 var isPublicRunFull = (run, nakamaTournament) => {
@@ -9306,20 +10604,20 @@ var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
     description: run.description || "No description configured.",
     lifecycle: run.lifecycle,
     startAt: (_b = toIsoFromUnixSeconds2(
-      (_a = readNumberField5(nakamaTournament, ["startTime", "start_time"])) != null ? _a : run.startTime,
+      (_a = readNumberField6(nakamaTournament, ["startTime", "start_time"])) != null ? _a : run.startTime,
       createdAt
     )) != null ? _b : createdAt,
     endAt: toIsoFromUnixSeconds2(
-      (_c = readNumberField5(nakamaTournament, ["endTime", "end_time"])) != null ? _c : run.endTime,
+      (_c = readNumberField6(nakamaTournament, ["endTime", "end_time"])) != null ? _c : run.endTime,
       null
     ),
     updatedAt: run.updatedAt,
     lobbyDeadlineAt: getTournamentLobbyDeadlineAt(run.openedAt),
     entrants: getRunEntrants(run, nakamaTournament),
     maxEntrants: getRunMaxEntrants(run, nakamaTournament),
-    gameMode: (_d = readStringField7(metadata, ["gameMode", "game_mode"])) != null ? _d : "standard",
-    region: (_e = readStringField7(metadata, ["region"])) != null ? _e : "Global",
-    buyInLabel: (_f = readStringField7(metadata, ["buyIn", "buy_in"])) != null ? _f : "Free",
+    gameMode: (_d = readStringField8(metadata, ["gameMode", "game_mode"])) != null ? _d : "standard",
+    region: (_e = readStringField8(metadata, ["region"])) != null ? _e : "Global",
+    buyInLabel: (_f = readStringField8(metadata, ["buyIn", "buy_in"])) != null ? _f : "Free",
     prizeLabel: formatPrizeLabel(metadata),
     xpPerMatchWin: rewardSettings.xpPerMatchWin,
     xpForTournamentChampion: rewardSettings.xpForTournamentChampion,
@@ -9416,7 +10714,7 @@ var maybeStartBracketForRun = (nk, logger, run) => {
       bracket: createSingleEliminationBracket(current.registrations, startedAt)
     });
   });
-  if (nextRun.bracket && readStringField7(readMetadata(nextRun), [BRACKET_START_NOTIFICATION_TOKEN_KEY]) === bracketStartNotificationToken) {
+  if (nextRun.bracket && readStringField8(readMetadata(nextRun), [BRACKET_START_NOTIFICATION_TOKEN_KEY]) === bracketStartNotificationToken) {
     sendBracketReadyNotifications(nk, logger, nextRun);
   }
   return nextRun;
@@ -9497,7 +10795,7 @@ var rpcListPublicTournaments = (ctx, logger, nk, payload) => {
 var rpcGetPublicTournament = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField7(parsed, [
+  const runId = readStringField8(parsed, [
     "runId",
     "run_id",
     "tournamentRunId",
@@ -9527,7 +10825,7 @@ var rpcGetPublicTournamentStandings = (ctx, logger, nk, payload) => {
   var _a;
   const userId = requireAuthenticatedUserId(ctx);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField7(parsed, [
+  const runId = readStringField8(parsed, [
     "runId",
     "run_id",
     "tournamentRunId",
@@ -9562,7 +10860,7 @@ var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField7(parsed, [
+  const runId = readStringField8(parsed, [
     "runId",
     "run_id",
     "tournamentRunId",
@@ -9621,7 +10919,7 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
   const parsed = parseJsonPayload(payload);
-  const runId = readStringField7(parsed, [
+  const runId = readStringField8(parsed, [
     "runId",
     "run_id",
     "tournamentRunId",
@@ -9736,7 +11034,7 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
     });
   }
   const metadata = readMetadata(run);
-  const modeId = (_g = readStringField7(metadata, ["gameMode", "game_mode"])) != null ? _g : "standard";
+  const modeId = (_g = readStringField8(metadata, ["gameMode", "game_mode"])) != null ? _g : "standard";
   const rewardSettings = resolveTournamentXpRewardSettings(metadata);
   const botPolicy = normalizeTournamentBotPolicy(run.metadata);
   let createdMatchId = null;
@@ -9858,9 +11156,9 @@ var DEFAULT_LIMIT = 25;
 var MAX_LIMIT = 100;
 var DEFAULT_RANGE_DAYS = 30;
 var DAY_MS = 24 * 60 * 60 * 1e3;
-var asRecord5 = (value) => typeof value === "object" && value !== null ? value : null;
-var readStringField10 = (value, keys) => {
-  const record = asRecord5(value);
+var asRecord8 = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField11 = (value, keys) => {
+  const record = asRecord8(value);
   if (!record) {
     return null;
   }
@@ -9872,8 +11170,8 @@ var readStringField10 = (value, keys) => {
   }
   return null;
 };
-var readNumberField6 = (value, keys) => {
-  const record = asRecord5(value);
+var readNumberField7 = (value, keys) => {
+  const record = asRecord8(value);
   if (!record) {
     return null;
   }
@@ -9897,7 +11195,7 @@ var parsePayload = (payload) => {
     return {};
   }
   const parsed = JSON.parse(payload);
-  return (_a = asRecord5(parsed)) != null ? _a : {};
+  return (_a = asRecord8(parsed)) != null ? _a : {};
 };
 var clampLimit2 = (value) => {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
@@ -9924,18 +11222,18 @@ var parseAnalyticsFilters = (payload, now = Date.now()) => {
   const fallbackEndMs = now;
   const fallbackStartMs = fallbackEndMs - (DEFAULT_RANGE_DAYS - 1) * DAY_MS;
   const rawStartMs = parseDateMs(
-    readStringField10(parsed, ["startDate", "start_date"]),
+    readStringField11(parsed, ["startDate", "start_date"]),
     fallbackStartMs
   );
   const rawEndMs = parseDateMs(
-    readStringField10(parsed, ["endDate", "end_date"]),
+    readStringField11(parsed, ["endDate", "end_date"]),
     fallbackEndMs
   );
   const { startMs, endMs } = sanitizeRange(rawStartMs, rawEndMs);
-  const tournamentId = readStringField10(parsed, ["tournamentId", "tournament_id"]);
-  const gameMode = readStringField10(parsed, ["gameMode", "game_mode"]);
-  const eloMin = readNumberField6(parsed, ["eloMin", "elo_min"]);
-  const eloMax = readNumberField6(parsed, ["eloMax", "elo_max"]);
+  const tournamentId = readStringField11(parsed, ["tournamentId", "tournament_id"]);
+  const gameMode = readStringField11(parsed, ["gameMode", "game_mode"]);
+  const eloMin = readNumberField7(parsed, ["eloMin", "elo_min"]);
+  const eloMax = readNumberField7(parsed, ["eloMax", "elo_max"]);
   return {
     startDate: new Date(startMs).toISOString(),
     endDate: new Date(endMs).toISOString(),
@@ -9994,9 +11292,9 @@ var PARTICIPATION_BUCKETS = [
   { key: "9_16", label: "9-16 entrants", min: 9, max: 17 },
   { key: "17_plus", label: "17+ entrants", min: 17, max: null }
 ];
-var asRecord6 = (value) => typeof value === "object" && value !== null ? value : null;
-var readStringField11 = (value, keys) => {
-  const record = asRecord6(value);
+var asRecord9 = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField12 = (value, keys) => {
+  const record = asRecord9(value);
   if (!record) {
     return null;
   }
@@ -10008,8 +11306,8 @@ var readStringField11 = (value, keys) => {
   }
   return null;
 };
-var readNumberField7 = (value, keys) => {
-  const record = asRecord6(value);
+var readNumberField8 = (value, keys) => {
+  const record = asRecord9(value);
   if (!record) {
     return null;
   }
@@ -10028,7 +11326,7 @@ var readNumberField7 = (value, keys) => {
   return null;
 };
 var readBooleanField7 = (value, keys) => {
-  const record = asRecord6(value);
+  const record = asRecord9(value);
   if (!record) {
     return null;
   }
@@ -10041,7 +11339,7 @@ var readBooleanField7 = (value, keys) => {
   return null;
 };
 var readStringArrayField4 = (value, keys) => {
-  const record = asRecord6(value);
+  const record = asRecord9(value);
   if (!record) {
     return [];
   }
@@ -10053,7 +11351,7 @@ var readStringArrayField4 = (value, keys) => {
   }
   return [];
 };
-var getErrorMessage3 = (error) => error instanceof Error ? error.message : String(error);
+var getErrorMessage5 = (error) => error instanceof Error ? error.message : String(error);
 var batch = (values, size) => {
   const chunks = [];
   for (let index = 0; index < values.length; index += size) {
@@ -10117,7 +11415,7 @@ var createMetric = (value, availability, options) => {
 };
 var getRunGameMode = (run) => {
   var _a;
-  return (_a = readStringField11(run.metadata, ["gameMode", "game_mode"])) != null ? _a : "standard";
+  return (_a = readStringField12(run.metadata, ["gameMode", "game_mode"])) != null ? _a : "standard";
 };
 var runMatchesFilters = (run, filters) => {
   if (filters.tournamentId && filters.tournamentId !== run.runId && filters.tournamentId !== run.tournamentId) {
@@ -10139,34 +11437,34 @@ var matchesEloFilter = (eloRating, filters) => {
 };
 var isHumanUserId = (userId) => typeof userId === "string" && userId.trim().length > 0 && !isTournamentBotUserId(userId);
 var normalizeTournamentMatchResult = (value) => {
-  const record = asRecord6(value);
-  const resultId = readStringField11(record, ["resultId", "result_id"]);
-  const matchId = readStringField11(record, ["matchId", "match_id"]);
-  const runId = readStringField11(record, ["runId", "run_id"]);
-  const tournamentId = readStringField11(record, ["tournamentId", "tournament_id"]);
+  const record = asRecord9(value);
+  const resultId = readStringField12(record, ["resultId", "result_id"]);
+  const matchId = readStringField12(record, ["matchId", "match_id"]);
+  const runId = readStringField12(record, ["runId", "run_id"]);
+  const tournamentId = readStringField12(record, ["tournamentId", "tournament_id"]);
   if (!record || !resultId || !matchId || !runId || !tournamentId) {
     return null;
   }
   return record;
 };
 var normalizeEloHistoryRecord = (value) => {
-  const record = asRecord6(value);
-  const matchId = readStringField11(record, ["matchId", "match_id"]);
-  const processedAt = readStringField11(record, ["processedAt", "processed_at"]);
-  const winnerUserId = readStringField11(record, ["winnerUserId", "winner_user_id"]);
-  const loserUserId = readStringField11(record, ["loserUserId", "loser_user_id"]);
+  const record = asRecord9(value);
+  const matchId = readStringField12(record, ["matchId", "match_id"]);
+  const processedAt = readStringField12(record, ["processedAt", "processed_at"]);
+  const winnerUserId = readStringField12(record, ["winnerUserId", "winner_user_id"]);
+  const loserUserId = readStringField12(record, ["loserUserId", "loser_user_id"]);
   if (!record || !matchId || !processedAt || !winnerUserId || !loserUserId) {
     return null;
   }
   const rawPlayers = Array.isArray(record.playerResults) ? record.playerResults : Array.isArray(record.player_results) ? record.player_results : [];
   const playerResults = rawPlayers.map((player) => {
     var _a, _b, _c;
-    const normalized = asRecord6(player);
-    const userId = readStringField11(normalized, ["userId", "user_id"]);
-    const usernameDisplay = readStringField11(normalized, ["usernameDisplay", "username_display"]);
-    const oldRating = readNumberField7(normalized, ["oldRating", "old_rating"]);
-    const newRating = readNumberField7(normalized, ["newRating", "new_rating"]);
-    const delta = readNumberField7(normalized, ["delta"]);
+    const normalized = asRecord9(player);
+    const userId = readStringField12(normalized, ["userId", "user_id"]);
+    const usernameDisplay = readStringField12(normalized, ["usernameDisplay", "username_display"]);
+    const oldRating = readNumberField8(normalized, ["oldRating", "old_rating"]);
+    const newRating = readNumberField8(normalized, ["newRating", "new_rating"]);
+    const delta = readNumberField8(normalized, ["delta"]);
     if (!normalized || !userId || !usernameDisplay || oldRating === null || newRating === null || delta === null) {
       return null;
     }
@@ -10176,9 +11474,9 @@ var normalizeEloHistoryRecord = (value) => {
       oldRating,
       newRating,
       delta,
-      ratedGames: Math.max(0, Math.floor((_a = readNumberField7(normalized, ["ratedGames", "rated_games"])) != null ? _a : 0)),
-      ratedWins: Math.max(0, Math.floor((_b = readNumberField7(normalized, ["ratedWins", "rated_wins"])) != null ? _b : 0)),
-      ratedLosses: Math.max(0, Math.floor((_c = readNumberField7(normalized, ["ratedLosses", "rated_losses"])) != null ? _c : 0)),
+      ratedGames: Math.max(0, Math.floor((_a = readNumberField8(normalized, ["ratedGames", "rated_games"])) != null ? _a : 0)),
+      ratedWins: Math.max(0, Math.floor((_b = readNumberField8(normalized, ["ratedWins", "rated_wins"])) != null ? _b : 0)),
+      ratedLosses: Math.max(0, Math.floor((_c = readNumberField8(normalized, ["ratedLosses", "rated_losses"])) != null ? _c : 0)),
       provisional: readBooleanField7(normalized, ["provisional"]) === true
     };
   }).filter((player) => Boolean(player));
@@ -10198,19 +11496,19 @@ var normalizeStorageListResult2 = (value) => {
     return {
       objects: value.map((entry) => {
         var _a;
-        return (_a = asRecord6(entry)) != null ? _a : {};
+        return (_a = asRecord9(entry)) != null ? _a : {};
       }),
       cursor: null
     };
   }
-  const record = asRecord6(value);
+  const record = asRecord9(value);
   const objects = Array.isArray(record == null ? void 0 : record.objects) ? record.objects.map((entry) => {
     var _a;
-    return (_a = asRecord6(entry)) != null ? _a : {};
+    return (_a = asRecord9(entry)) != null ? _a : {};
   }) : [];
   return {
     objects,
-    cursor: readStringField11(record, ["cursor", "nextCursor", "next_cursor"])
+    cursor: readStringField12(record, ["cursor", "nextCursor", "next_cursor"])
   };
 };
 var listAllGlobalObjects = (nk, logger, collection, userId) => {
@@ -10233,7 +11531,7 @@ var listAllGlobalObjects = (nk, logger, collection, userId) => {
       }
       cursor = result.cursor;
     } catch (error) {
-      logger.warn("Unable to list storage collection %s: %s", collection, getErrorMessage3(error));
+      logger.warn("Unable to list storage collection %s: %s", collection, getErrorMessage5(error));
       return {
         supported: false,
         notes: [`Collection listing failed for '${collection}'.`],
@@ -10249,12 +11547,12 @@ var listAllGlobalObjects = (nk, logger, collection, userId) => {
 };
 var getLeaderboardRecordMetadata2 = (record) => {
   var _a;
-  return asRecord6((_a = asRecord6(record)) == null ? void 0 : _a.metadata);
+  return asRecord9((_a = asRecord9(record)) == null ? void 0 : _a.metadata);
 };
-var getLeaderboardRecordOwnerId2 = (record) => readStringField11(record, ["ownerId", "owner_id"]);
-var getLeaderboardRecordUsername2 = (record) => readStringField11(record, ["username"]);
-var getLeaderboardRecordScore2 = (record) => readNumberField7(record, ["score"]);
-var getLeaderboardRecordRank2 = (record) => readNumberField7(record, ["rank"]);
+var getLeaderboardRecordOwnerId2 = (record) => readStringField12(record, ["ownerId", "owner_id"]);
+var getLeaderboardRecordUsername2 = (record) => readStringField12(record, ["username"]);
+var getLeaderboardRecordScore2 = (record) => readNumberField8(record, ["score"]);
+var getLeaderboardRecordRank2 = (record) => readNumberField8(record, ["rank"]);
 var listAllLeaderboardRows = (nk) => {
   if (typeof nk.leaderboardRecordsList !== "function") {
     return [];
@@ -10262,7 +11560,7 @@ var listAllLeaderboardRows = (nk) => {
   const rows = [];
   let cursor = "";
   for (let page = 0; page < 50; page += 1) {
-    const result = asRecord6(nk.leaderboardRecordsList(ELO_LEADERBOARD_ID, [], 100, cursor, 0));
+    const result = asRecord9(nk.leaderboardRecordsList(ELO_LEADERBOARD_ID, [], 100, cursor, 0));
     const records = Array.isArray(result == null ? void 0 : result.records) ? result.records : [];
     records.forEach((record) => {
       var _a, _b, _c, _d, _e, _f;
@@ -10271,19 +11569,19 @@ var listAllLeaderboardRows = (nk) => {
         return;
       }
       const metadata = getLeaderboardRecordMetadata2(record);
-      const ratedGames = Math.max(0, Math.floor((_a = readNumberField7(metadata, ["ratedGames", "rated_games"])) != null ? _a : 0));
+      const ratedGames = Math.max(0, Math.floor((_a = readNumberField8(metadata, ["ratedGames", "rated_games"])) != null ? _a : 0));
       rows.push({
         userId,
-        usernameDisplay: (_c = (_b = readStringField11(metadata, ["usernameDisplay", "username_display"])) != null ? _b : getLeaderboardRecordUsername2(record)) != null ? _c : userId,
+        usernameDisplay: (_c = (_b = readStringField12(metadata, ["usernameDisplay", "username_display"])) != null ? _b : getLeaderboardRecordUsername2(record)) != null ? _c : userId,
         eloRating: sanitizeEloRating((_d = getLeaderboardRecordScore2(record)) != null ? _d : DEFAULT_ELO_RATING),
         ratedGames,
-        ratedWins: Math.max(0, Math.floor((_e = readNumberField7(metadata, ["ratedWins", "rated_wins"])) != null ? _e : 0)),
-        ratedLosses: Math.max(0, Math.floor((_f = readNumberField7(metadata, ["ratedLosses", "rated_losses"])) != null ? _f : 0)),
+        ratedWins: Math.max(0, Math.floor((_e = readNumberField8(metadata, ["ratedWins", "rated_wins"])) != null ? _e : 0)),
+        ratedLosses: Math.max(0, Math.floor((_f = readNumberField8(metadata, ["ratedLosses", "rated_losses"])) != null ? _f : 0)),
         provisional: readBooleanField7(metadata, ["provisional"]) === true || ratedGames < 10,
         rank: getLeaderboardRecordRank2(record)
       });
     });
-    const nextCursor = readStringField11(result, ["nextCursor", "next_cursor"]);
+    const nextCursor = readStringField12(result, ["nextCursor", "next_cursor"]);
     if (!nextCursor) {
       break;
     }
@@ -10331,7 +11629,7 @@ var loadTournamentMatchHistory = (nk, runs) => {
   );
   const objectByKey = new Map(
     objects.map((object) => {
-      const key = readStringField11(object, ["key"]);
+      const key = readStringField12(object, ["key"]);
       return key ? [key, object] : null;
     }).filter((entry) => Boolean(entry))
   );
@@ -10341,27 +11639,27 @@ var loadTournamentMatchHistory = (nk, runs) => {
     return normalizeTournamentMatchResult((_b = (_a = objectByKey.get(resultId)) == null ? void 0 : _a.value) != null ? _b : null);
   }).filter((record) => Boolean(record)).map((record) => {
     var _a, _b, _c, _d, _e, _f, _g;
-    const summary = asRecord6(record.summary);
-    const classificationRecord = asRecord6(summary == null ? void 0 : summary.classification);
+    const summary = asRecord9(record.summary);
+    const classificationRecord = asRecord9(summary == null ? void 0 : summary.classification);
     const entryContext = (_a = entryContextByMatchId.get(record.matchId)) != null ? _a : null;
     const players = Array.isArray(summary == null ? void 0 : summary.players) ? summary.players.map((player) => {
-      const normalized = asRecord6(player);
-      const userId = readStringField11(normalized, ["userId", "user_id"]);
+      const normalized = asRecord9(player);
+      const userId = readStringField12(normalized, ["userId", "user_id"]);
       if (!normalized || !userId) {
         return null;
       }
       return {
         userId,
-        username: readStringField11(normalized, ["username"]),
+        username: readStringField12(normalized, ["username"]),
         color: (() => {
-          const color = readStringField11(normalized, ["color"]);
+          const color = readStringField12(normalized, ["color"]);
           return color === "light" || color === "dark" ? color : null;
         })(),
         didWin: readBooleanField7(normalized, ["didWin", "did_win"]),
-        capturesMade: readNumberField7(normalized, ["capturesMade", "captures_made"]),
-        capturesSuffered: readNumberField7(normalized, ["capturesSuffered", "captures_suffered"]),
-        playerMoveCount: readNumberField7(normalized, ["playerMoveCount", "player_move_count"]),
-        finishedCount: readNumberField7(normalized, ["finishedCount", "finished_count"]),
+        capturesMade: readNumberField8(normalized, ["capturesMade", "captures_made"]),
+        capturesSuffered: readNumberField8(normalized, ["capturesSuffered", "captures_suffered"]),
+        playerMoveCount: readNumberField8(normalized, ["playerMoveCount", "player_move_count"]),
+        finishedCount: readNumberField8(normalized, ["finishedCount", "finished_count"]),
         isBot: isTournamentBotUserId(userId)
       };
     }).filter((player) => Boolean(player)) : [];
@@ -10369,10 +11667,10 @@ var loadTournamentMatchHistory = (nk, runs) => {
       source: "tournament",
       matchId: record.matchId,
       startedAt: (_b = entryContext == null ? void 0 : entryContext.startedAt) != null ? _b : null,
-      endedAt: (_d = (_c = readStringField11(summary, ["completedAt", "completed_at"])) != null ? _c : entryContext == null ? void 0 : entryContext.completedAt) != null ? _d : record.updatedAt,
+      endedAt: (_d = (_c = readStringField12(summary, ["completedAt", "completed_at"])) != null ? _c : entryContext == null ? void 0 : entryContext.completedAt) != null ? _d : record.updatedAt,
       durationSeconds: (_e = entryContext == null ? void 0 : entryContext.durationSeconds) != null ? _e : null,
       reason: "completed",
-      modeId: (_g = readStringField11(summary, ["modeId", "mode_id"])) != null ? _g : getRunGameMode((_f = runs.find((run) => run.runId === record.runId)) != null ? _f : runs[0]),
+      modeId: (_g = readStringField12(summary, ["modeId", "mode_id"])) != null ? _g : getRunGameMode((_f = runs.find((run) => run.runId === record.runId)) != null ? _f : runs[0]),
       classification: {
         ranked: readBooleanField7(classificationRecord, ["ranked"]) === true,
         casual: readBooleanField7(classificationRecord, ["casual"]) === true,
@@ -10383,9 +11681,9 @@ var loadTournamentMatchHistory = (nk, runs) => {
       },
       tournamentRunId: record.runId,
       tournamentId: record.tournamentId,
-      winnerUserId: readStringField11(summary, ["winnerUserId", "winner_user_id"]),
-      loserUserId: readStringField11(summary, ["loserUserId", "loser_user_id"]),
-      totalMoves: readNumberField7(summary, ["totalMoves", "total_moves"]),
+      winnerUserId: readStringField12(summary, ["winnerUserId", "winner_user_id"]),
+      loserUserId: readStringField12(summary, ["loserUserId", "loser_user_id"]),
+      totalMoves: readNumberField8(summary, ["totalMoves", "total_moves"]),
       totalTurns: null,
       players
     };
@@ -10512,29 +11810,30 @@ var loadKnownUsers = (nk, userIds, leaderboardRows) => {
       }
     ]);
     const objects = nk.storageRead(requests);
-    const objectMap = new Map(
-      objects.map((object) => {
-        const collection = readStringField11(object, ["collection"]);
-        const key = readStringField11(object, ["key"]);
-        const userId = readStringField11(object, ["userId", "user_id"]);
-        return collection && key && userId ? [`${collection}:${key}:${userId}`, object] : null;
-      }).filter((entry) => Boolean(entry))
+    const objectEntries = objects.map((object) => {
+      const collection = readStringField12(object, ["collection"]);
+      const key = readStringField12(object, ["key"]);
+      const userId = readStringField12(object, ["userId", "user_id"]);
+      return collection && key && userId ? [`${collection}:${key}:${userId}`, object] : null;
+    }).filter(
+      (entry) => entry !== null
     );
+    const objectMap = new Map(objectEntries);
     chunk.forEach((userId) => {
       var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
-      const usernameProfile = asRecord6(
+      const usernameProfile = asRecord9(
         (_b = (_a = objectMap.get(`${USERNAME_PROFILE_COLLECTION}:${USERNAME_PROFILE_KEY}:${userId}`)) == null ? void 0 : _a.value) != null ? _b : null
       );
-      const progressionProfile = asRecord6(
+      const progressionProfile = asRecord9(
         (_d = (_c = objectMap.get(`${PROGRESSION_COLLECTION}:${PROGRESSION_PROFILE_KEY}:${userId}`)) == null ? void 0 : _c.value) != null ? _d : null
       );
       const leaderboardRow = (_e = leaderboardByUserId.get(userId)) != null ? _e : null;
       records.set(userId, {
         userId,
-        username: (_g = (_f = readStringField11(usernameProfile, ["usernameDisplay", "username_display"])) != null ? _f : leaderboardRow == null ? void 0 : leaderboardRow.usernameDisplay) != null ? _g : userId,
-        createdAt: readStringField11(usernameProfile, ["createdAt", "created_at"]),
-        totalXp: readNumberField7(progressionProfile, ["totalXp", "total_xp"]),
-        currentRankTitle: readStringField11(progressionProfile, ["currentRankTitle", "current_rank_title"]),
+        username: (_g = (_f = readStringField12(usernameProfile, ["usernameDisplay", "username_display"])) != null ? _f : leaderboardRow == null ? void 0 : leaderboardRow.usernameDisplay) != null ? _g : userId,
+        createdAt: readStringField12(usernameProfile, ["createdAt", "created_at"]),
+        totalXp: readNumberField8(progressionProfile, ["totalXp", "total_xp"]),
+        currentRankTitle: readStringField12(progressionProfile, ["currentRankTitle", "current_rank_title"]),
         eloRating: (_h = leaderboardRow == null ? void 0 : leaderboardRow.eloRating) != null ? _h : null,
         ratedGames: (_i = leaderboardRow == null ? void 0 : leaderboardRow.ratedGames) != null ? _i : null,
         ratedWins: (_j = leaderboardRow == null ? void 0 : leaderboardRow.ratedWins) != null ? _j : null,
@@ -11456,7 +12755,7 @@ var buildTournamentsData = (context) => {
   });
   context.tournamentMatches.forEach((match) => {
     var _a;
-    const round = readNumberField7(match, ["round"]);
+    const round = readNumberField8(match, ["round"]);
     const derivedRound = typeof round === "number" ? Math.max(1, Math.floor(round)) : (() => {
       var _a2, _b, _c;
       const run = context.runs.find((candidate) => candidate.runId === match.tournamentRunId);
@@ -11882,7 +13181,7 @@ var ELO_PROFILE_COLLECTION2 = "elo_profiles";
 var ELO_PROFILE_KEY2 = "profile";
 var SECURE_RANDOM_UINT32_DIVISOR = 4294967296;
 var SECURE_RANDOM_FALLBACK_HEX_LENGTH = 8;
-var asRecord7 = (value) => typeof value === "object" && value !== null ? value : null;
+var asRecord10 = (value) => typeof value === "object" && value !== null ? value : null;
 var hasCryptoGetRandomValues = (value) => typeof value === "object" && value !== null && typeof value.getRandomValues === "function";
 var getSecureRandomUnit = (nk) => {
   const cryptoApi = globalThis.crypto;
@@ -11902,8 +13201,8 @@ var getSecureRandomUnit = (nk) => {
   throw new Error("Authoritative dice roll requires a cryptographically secure random source.");
 };
 var rollAuthoritativeDice = (nk) => rollDice(() => getSecureRandomUnit(nk));
-var readStringField12 = (value, keys) => {
-  const record = asRecord7(value);
+var readStringField13 = (value, keys) => {
+  const record = asRecord10(value);
   if (!record) {
     return null;
   }
@@ -11915,8 +13214,8 @@ var readStringField12 = (value, keys) => {
   }
   return null;
 };
-var readNumberField8 = (value, keys) => {
-  const record = asRecord7(value);
+var readNumberField9 = (value, keys) => {
+  const record = asRecord10(value);
   if (!record) {
     return null;
   }
@@ -11946,7 +13245,7 @@ var decodeMessageData = (data, nk) => {
   if (typeof data === "string") {
     return data;
   }
-  const binaryToString = (_a = asRecord7(nk)) == null ? void 0 : _a.binaryToString;
+  const binaryToString = (_a = asRecord10(nk)) == null ? void 0 : _a.binaryToString;
   if (typeof binaryToString === "function") {
     try {
       return String(binaryToString(data));
@@ -11964,9 +13263,9 @@ var decodeMessageData = (data, nk) => {
   }
   return String(data != null ? data : "");
 };
-var getPresenceUserId = (presence) => readStringField12(presence, ["userId", "user_id"]);
-var getPresenceSessionId = (presence) => readStringField12(presence, ["sessionId", "session_id"]);
-var getSenderUserId = (sender) => readStringField12(sender, ["userId", "user_id"]);
+var getPresenceUserId = (presence) => readStringField13(presence, ["userId", "user_id"]);
+var getPresenceSessionId = (presence) => readStringField13(presence, ["sessionId", "session_id"]);
+var getSenderUserId = (sender) => readStringField13(sender, ["userId", "user_id"]);
 var getPresenceKey = (presence) => {
   const sessionId = getPresenceSessionId(presence);
   if (sessionId) {
@@ -11977,20 +13276,20 @@ var getPresenceKey = (presence) => {
 };
 var getPresenceMetadata = (presence) => {
   var _a;
-  const metadata = (_a = asRecord7(presence)) == null ? void 0 : _a.metadata;
-  return asRecord7(metadata);
+  const metadata = (_a = asRecord10(presence)) == null ? void 0 : _a.metadata;
+  return asRecord10(metadata);
 };
 var isSpectatorPresenceRequest = (presence) => {
-  const record = asRecord7(presence);
+  const record = asRecord10(presence);
   const metadata = getPresenceMetadata(presence);
   return (record == null ? void 0 : record.role) === "spectator" || (metadata == null ? void 0 : metadata.role) === "spectator";
 };
 var getMatchId = (ctx) => {
   var _a;
-  return (_a = readStringField12(ctx, ["matchId", "match_id"])) != null ? _a : "";
+  return (_a = readStringField13(ctx, ["matchId", "match_id"])) != null ? _a : "";
 };
-var getMessageOpCode = (message) => readNumberField8(message, ["opCode", "op_code"]);
-var getContextUserId2 = (ctx) => readStringField12(ctx, ["userId", "user_id"]);
+var getMessageOpCode = (message) => readNumberField9(message, ["opCode", "op_code"]);
+var getContextUserId2 = (ctx) => readStringField13(ctx, ["userId", "user_id"]);
 var resolveMatchModeId = (value) => isMatchModeId(value) ? value : "standard";
 var resolveConfiguredRewardXp = (value) => {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -12176,24 +13475,24 @@ var parseRpcPayload = (payload) => {
   }
   try {
     const data = JSON.parse(payload);
-    return (_a = asRecord7(data)) != null ? _a : {};
+    return (_a = asRecord10(data)) != null ? _a : {};
   } catch (_error) {
     return {};
   }
 };
 var normalizePrivateMatchCodeRecord = (value) => {
   var _a;
-  const record = asRecord7(value);
+  const record = asRecord10(value);
   if (!record) {
     return null;
   }
-  const code = normalizePrivateMatchCodeInput((_a = readStringField12(record, ["code"])) != null ? _a : "");
-  const matchId = readStringField12(record, ["matchId", "match_id"]);
+  const code = normalizePrivateMatchCodeInput((_a = readStringField13(record, ["code"])) != null ? _a : "");
+  const matchId = readStringField13(record, ["matchId", "match_id"]);
   const modeId = record.modeId;
-  const creatorUserId = readStringField12(record, ["creatorUserId", "creator_user_id"]);
-  const joinedUserId = readStringField12(record, ["joinedUserId", "joined_user_id"]);
-  const createdAt = readStringField12(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField12(record, ["updatedAt", "updated_at"]);
+  const creatorUserId = readStringField13(record, ["creatorUserId", "creator_user_id"]);
+  const joinedUserId = readStringField13(record, ["joinedUserId", "joined_user_id"]);
+  const createdAt = readStringField13(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField13(record, ["updatedAt", "updated_at"]);
   if (!isPrivateMatchCode(code) || !isMatchModeId(modeId) || !creatorUserId || !createdAt || !updatedAt) {
     return null;
   }
@@ -12249,9 +13548,9 @@ var writePrivateMatchCodeRecord = (nk, record, version) => {
     write
   ]);
 };
-var getErrorMessage4 = (error) => error instanceof Error ? error.message : String(error);
+var getErrorMessage6 = (error) => error instanceof Error ? error.message : String(error);
 var isPrivateMatchCodeReservationConflict = (error) => {
-  const message = getErrorMessage4(error).toLowerCase();
+  const message = getErrorMessage6(error).toLowerCase();
   return message.includes("version check") || message.includes("version conflict") || message.includes("storage write rejected") || message.includes("already exists");
 };
 var reservePrivateMatchCodeRecord = (nk, modeId, creatorUserId) => {
@@ -12723,7 +14022,7 @@ var buildMatchEndPayload = (state, reason, winnerColor, forfeitingColor) => {
   };
 };
 var syncCompletedMatchEnd = (state) => {
-  var _a, _b;
+  var _a, _b, _c;
   if (!state.gameState.winner) {
     state.matchEnd = null;
     return;
@@ -12731,7 +14030,11 @@ var syncCompletedMatchEnd = (state) => {
   if (((_a = state.matchEnd) == null ? void 0 : _a.reason) === "forfeit_inactivity" || ((_b = state.matchEnd) == null ? void 0 : _b.reason) === "forfeit_disconnect") {
     return;
   }
+  const softCurrencyAwarded = ((_c = state.matchEnd) == null ? void 0 : _c.softCurrencyAwarded) === true;
   state.matchEnd = buildMatchEndPayload(state, "completed", state.gameState.winner);
+  if (softCurrencyAwarded) {
+    state.matchEnd.softCurrencyAwarded = true;
+  }
 };
 var buildRematchMatchParams = (state, privateCode) => {
   const rematchPlayerIds = getOrderedRematchHumanUserIds(state);
@@ -12785,7 +14088,7 @@ var maybeCreateRematchMatch = (logger, nk, dispatcher, state, currentMatchId) =>
           "Private rematch code %s cleanup failed after matchCreate error on match %s: %s",
           privateCodeReservation.code,
           currentMatchId,
-          getErrorMessage4(deleteError)
+          getErrorMessage6(deleteError)
         );
       }
     }
@@ -12810,7 +14113,7 @@ var maybeCreateRematchMatch = (logger, nk, dispatcher, state, currentMatchId) =>
         nextMatchId,
         currentMatchId,
         privateCodeReservation.code,
-        getErrorMessage4(error)
+        getErrorMessage6(error)
       );
       const rematchPlayerIds = getOrderedRematchHumanUserIds(state);
       if (rematchPlayerIds) {
@@ -12992,7 +14295,7 @@ var buildPlayerMatchSummary = (state, matchId, playerUserId, playerColor) => {
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   };
 };
-var getPresenceUsername = (presence) => readStringField12(presence, ["username", "displayName", "display_name", "name"]);
+var getPresenceUsername = (presence) => readStringField13(presence, ["username", "displayName", "display_name", "name"]);
 var buildAnalyticsMatchPlayers = (state) => Object.entries(state.assignments).map(([userId, color]) => {
   var _a, _b;
   const presence = getPrimaryUserPresence(state, userId);
@@ -13090,6 +14393,11 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_GET_CHALLENGE_DEFINITIONS_NAME, rpcGetChallengeDefinitions);
   initializer.registerRpc(RPC_GET_USER_CHALLENGE_PROGRESS_NAME, rpcGetUserChallengeProgress);
   initializer.registerRpc(RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME, rpcSubmitCompletedBotMatch);
+  initializer.registerRpc(RPC_GET_WALLET, rpcGetWallet);
+  initializer.registerRpc(RPC_GET_STOREFRONT, rpcGetStorefront);
+  initializer.registerRpc(RPC_GET_FULL_CATALOG, rpcGetFullCatalog);
+  initializer.registerRpc(RPC_PURCHASE_ITEM, rpcPurchaseItem);
+  initializer.registerRpc(RPC_GET_OWNED_COSMETICS, rpcGetOwnedCosmetics);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
   initializer.registerRpc(RPC_CREATE_PRIVATE_MATCH, rpcCreatePrivateMatch);
   initializer.registerRpc(RPC_JOIN_PRIVATE_MATCH, rpcJoinPrivateMatch);
@@ -13124,6 +14432,16 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_TOURNAMENTS, rpcAdminGetAnalyticsTournaments);
   initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_PROGRESSION, rpcAdminGetAnalyticsProgression);
   initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_REALTIME, rpcAdminGetAnalyticsRealtime);
+  initializer.registerRpc(RPC_ADMIN_GET_FULL_CATALOG, rpcAdminGetFullCatalog);
+  initializer.registerRpc(RPC_ADMIN_UPSERT_COSMETIC, rpcAdminUpsertCosmetic);
+  initializer.registerRpc(RPC_ADMIN_DISABLE_COSMETIC, rpcAdminDisableCosmetic);
+  initializer.registerRpc(RPC_ADMIN_ENABLE_COSMETIC, rpcAdminEnableCosmetic);
+  initializer.registerRpc(RPC_ADMIN_GET_ROTATION_STATE, rpcAdminGetRotationState);
+  initializer.registerRpc(RPC_ADMIN_SET_MANUAL_ROTATION, rpcAdminSetManualRotation);
+  initializer.registerRpc(RPC_ADMIN_CLEAR_MANUAL_ROTATION, rpcAdminClearManualRotation);
+  initializer.registerRpc(RPC_ADMIN_SET_LIMITED_TIME_EVENT, rpcAdminSetLimitedTimeEvent);
+  initializer.registerRpc(RPC_ADMIN_REMOVE_LIMITED_TIME_EVENT, rpcAdminRemoveLimitedTimeEvent);
+  initializer.registerRpc(RPC_ADMIN_GET_STORE_STATS, rpcAdminGetStoreStats);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,
@@ -13236,7 +14554,7 @@ function rpcCreatePrivateMatch(ctx, logger, nk, payload) {
       logger.warn(
         "Private code %s reservation cleanup failed after matchCreate error: %s",
         privateCode,
-        getErrorMessage4(deleteError)
+        getErrorMessage6(deleteError)
       );
     }
     throw error;
@@ -13249,7 +14567,7 @@ function rpcCreatePrivateMatch(ctx, logger, nk, payload) {
       matchId,
       ctx.userId,
       privateCode,
-      getErrorMessage4(error)
+      getErrorMessage6(error)
     );
     throw new Error("Private table was created but could not be published. Please create a new private table.");
   }
@@ -13335,14 +14653,14 @@ function matchInit(_ctx, logger, nk, params) {
   const privateCode = typeof params.privateCode === "string" ? normalizePrivateMatchCodeInput(params.privateCode) : "";
   const privateCreatorUserId = typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
   const privateGuestUserId = typeof params.privateGuestUserId === "string" ? params.privateGuestUserId : null;
-  const botUserId = readStringField12(params, ["botUserId", "bot_user_id"]);
-  const botDifficultyValue = readStringField12(params, ["botDifficulty", "bot_difficulty"]);
+  const botUserId = readStringField13(params, ["botUserId", "bot_user_id"]);
+  const botDifficultyValue = readStringField13(params, ["botDifficulty", "bot_difficulty"]);
   const botDifficulty = botDifficultyValue && isBotDifficulty(botDifficultyValue) ? botDifficultyValue : DEFAULT_BOT_DIFFICULTY;
-  const botDisplayName = (_a = readStringField12(params, ["botDisplayName", "bot_display_name"])) != null ? _a : `${botDifficulty.slice(0, 1).toUpperCase()}${botDifficulty.slice(1)} Bot`;
+  const botDisplayName = (_a = readStringField13(params, ["botDisplayName", "bot_display_name"])) != null ? _a : `${botDifficulty.slice(0, 1).toUpperCase()}${botDifficulty.slice(1)} Bot`;
   const winRewardSource = params.winRewardSource === "private_pvp_win" ? "private_pvp_win" : "pvp_win";
   const allowsChallengeRewards = params.allowsChallengeRewards !== false;
   const tournamentMatchWinXp = resolveConfiguredRewardXp(
-    readNumberField8(params, ["tournamentMatchWinXp", "tournament_match_win_xp"])
+    readNumberField9(params, ["tournamentMatchWinXp", "tournament_match_win_xp"])
   );
   const assignments = {};
   if (playerIds[0]) {
@@ -14236,6 +15554,7 @@ function awardWinnerProgression(logger, nk, dispatcher, state, matchId, analytic
     }, configuredTournamentMatchWinXp !== null ? { awardedXp: configuredTournamentMatchWinXp } : {}), {
       analyticsWriteBuffer
     }));
+    awardMatchCompletionSoftCurrency(logger, nk, state, matchId);
     if (awardResponse.duplicate) {
       return awardResponse;
     }
@@ -14262,6 +15581,53 @@ function awardWinnerProgression(logger, nk, dispatcher, state, matchId, analytic
       error instanceof Error ? error.message : String(error)
     );
     return null;
+  }
+}
+function awardMatchCompletionSoftCurrency(logger, nk, state, matchId) {
+  var _a, _b, _c, _d, _e;
+  if ((_a = state.matchEnd) == null ? void 0 : _a.softCurrencyAwarded) {
+    return;
+  }
+  const winnerUserId = (_c = (_b = state.matchEnd) == null ? void 0 : _b.winnerUserId) != null ? _c : null;
+  const loserUserId = (_e = (_d = state.matchEnd) == null ? void 0 : _d.loserUserId) != null ? _e : null;
+  const grants = [
+    { userId: winnerUserId, amount: 15 },
+    { userId: loserUserId, amount: 5 }
+  ].filter(
+    (grant) => typeof grant.userId === "string" && grant.userId.length > 0 && !isTournamentBotUserId(grant.userId)
+  );
+  if (grants.length === 0) {
+    if (state.matchEnd) {
+      state.matchEnd.softCurrencyAwarded = true;
+    }
+    return;
+  }
+  try {
+    nk.walletsUpdate(
+      grants.map((grant) => ({
+        userId: grant.userId,
+        changeset: {
+          [SOFT_CURRENCY_KEY]: grant.amount
+        },
+        metadata: {
+          source: "match_completion",
+          matchId,
+          amount: grant.amount
+        }
+      }))
+    );
+    grants.forEach((grant) => {
+      logger.info("Soft currency awarded", { userId: grant.userId, amount: grant.amount, matchId });
+    });
+    if (state.matchEnd) {
+      state.matchEnd.softCurrencyAwarded = true;
+    }
+  } catch (error) {
+    logger.error(
+      "Failed to award soft currency for match %s: %s",
+      matchId,
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 function processCompletedMatchSummaries(logger, nk, state, matchId) {
@@ -14363,11 +15729,11 @@ var readTournamentEloRanksByUserId = (logger, nk, playerUserIds) => {
     const ownerRecords = Array.isArray(result.ownerRecords) ? result.ownerRecords : Array.isArray(result.owner_records) ? result.owner_records : [];
     return ownerRecords.reduce(
       (entries, record) => {
-        const ownerId = readStringField12(record, ["ownerId", "owner_id"]);
+        const ownerId = readStringField13(record, ["ownerId", "owner_id"]);
         if (!ownerId) {
           return entries;
         }
-        const rank = readNumberField8(record, ["rank"]);
+        const rank = readNumberField9(record, ["rank"]);
         entries[ownerId] = typeof rank === "number" ? rank : null;
         return entries;
       },
@@ -14385,16 +15751,16 @@ var readTournamentEloRanksByUserId = (logger, nk, playerUserIds) => {
 var buildEloProfileFromStorageObject = (userId, fallbackUsernameDisplay, rawValue, rank) => {
   var _a, _b, _c, _d, _e;
   const normalizedFallbackName = fallbackUsernameDisplay.trim().length > 0 ? fallbackUsernameDisplay : userId;
-  const usernameDisplay = (_a = readStringField12(rawValue, ["usernameDisplay", "username_display"])) != null ? _a : normalizedFallbackName;
-  const eloRating = sanitizeEloRating((_b = readNumberField8(rawValue, ["eloRating", "elo_rating"])) != null ? _b : DEFAULT_ELO_RATING);
-  const ratedGames = sanitizeRatedGameCount((_c = readNumberField8(rawValue, ["ratedGames", "rated_games"])) != null ? _c : 0);
+  const usernameDisplay = (_a = readStringField13(rawValue, ["usernameDisplay", "username_display"])) != null ? _a : normalizedFallbackName;
+  const eloRating = sanitizeEloRating((_b = readNumberField9(rawValue, ["eloRating", "elo_rating"])) != null ? _b : DEFAULT_ELO_RATING);
+  const ratedGames = sanitizeRatedGameCount((_c = readNumberField9(rawValue, ["ratedGames", "rated_games"])) != null ? _c : 0);
   const ratedWins = Math.min(
     ratedGames,
-    sanitizeRatedGameCount((_d = readNumberField8(rawValue, ["ratedWins", "rated_wins"])) != null ? _d : 0)
+    sanitizeRatedGameCount((_d = readNumberField9(rawValue, ["ratedWins", "rated_wins"])) != null ? _d : 0)
   );
   const ratedLosses = Math.min(
     Math.max(0, ratedGames - ratedWins),
-    sanitizeRatedGameCount((_e = readNumberField8(rawValue, ["ratedLosses", "rated_losses"])) != null ? _e : 0)
+    sanitizeRatedGameCount((_e = readNumberField9(rawValue, ["ratedLosses", "rated_losses"])) != null ? _e : 0)
   );
   return {
     leaderboardId: ELO_LEADERBOARD_ID,
@@ -14406,8 +15772,8 @@ var buildEloProfileFromStorageObject = (userId, fallbackUsernameDisplay, rawValu
     ratedLosses,
     provisional: ratedGames < PROVISIONAL_RATED_GAMES,
     rank,
-    lastRatedMatchId: readStringField12(rawValue, ["lastRatedMatchId", "last_rated_match_id"]),
-    lastRatedAt: readStringField12(rawValue, ["lastRatedAt", "last_rated_at"])
+    lastRatedMatchId: readStringField13(rawValue, ["lastRatedMatchId", "last_rated_match_id"]),
+    lastRatedAt: readStringField13(rawValue, ["lastRatedAt", "last_rated_at"])
   };
 };
 var buildTournamentRewardSummaryReadModelsByUserId = (logger, nk, state) => {
@@ -14665,6 +16031,9 @@ var runtimeGlobals = {
   rpcGetMyRatingProfile,
   rpcListTopEloPlayers,
   rpcGetEloLeaderboardAroundMe,
+  rpcGetStorefront,
+  rpcPurchaseItem,
+  rpcGetOwnedCosmetics,
   rpcMatchmakerAdd,
   rpcCreatePrivateMatch,
   rpcJoinPrivateMatch,

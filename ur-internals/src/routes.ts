@@ -32,6 +32,11 @@ export const appRoutes = {
     home: '/analytics',
     section: (sectionId: AnalyticsSectionId | string) => `/analytics/${sectionId}`,
   },
+  store: {
+    catalog: '/store/catalog',
+    rotation: '/store/rotation',
+    stats: '/store/stats',
+  },
   legacy: {
     auditLog: '/audit-log',
     tournaments: {
@@ -122,6 +127,27 @@ export const primaryNavItems: SidebarNavItem[] = [
     to: appRoutes.analytics.section('overview'),
     short: 'AN',
     section: 'Monitor',
+    end: true,
+  },
+  {
+    label: 'Catalog',
+    to: appRoutes.store.catalog,
+    short: 'CT',
+    section: 'Store',
+    end: true,
+  },
+  {
+    label: 'Rotation',
+    to: appRoutes.store.rotation,
+    short: 'RT',
+    section: 'Store',
+    end: true,
+  },
+  {
+    label: 'Store Stats',
+    to: appRoutes.store.stats,
+    short: 'SS',
+    section: 'Store',
     end: true,
   },
   {

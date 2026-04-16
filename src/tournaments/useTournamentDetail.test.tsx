@@ -15,6 +15,7 @@ const mockLaunchMatch = jest.fn();
 const mockUseFocusEffect = jest.fn();
 const mockConnectSocketWithRetry = jest.fn();
 const mockSocket = {
+  ondisconnect: undefined as ((event: Event) => void) | undefined,
   onnotification: undefined as ((notification: unknown) => void) | undefined,
 };
 
@@ -270,14 +271,14 @@ describe('useTournamentDetail', () => {
     const focusCallback = mockUseFocusEffect.mock.calls.at(-1)?.[0] as () => void | (() => void);
     const setIntervalSpy = jest.spyOn(global, 'setInterval');
 
-    let cleanup: void | (() => void);
+    let cleanup: void | (() => void) = undefined;
     await act(async () => {
       cleanup = focusCallback();
       await flush();
     });
 
     expect(setIntervalSpy).not.toHaveBeenCalled();
-    cleanup?.();
+    (cleanup as (() => void) | undefined)?.();
     setIntervalSpy.mockRestore();
   });
 
@@ -297,14 +298,14 @@ describe('useTournamentDetail', () => {
     const focusCallback = mockUseFocusEffect.mock.calls.at(-1)?.[0] as () => void | (() => void);
     const setIntervalSpy = jest.spyOn(global, 'setInterval');
 
-    let cleanup: void | (() => void);
+    let cleanup: void | (() => void) = undefined;
     await act(async () => {
       cleanup = focusCallback();
       await flush();
     });
 
     expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 4_000);
-    cleanup?.();
+    (cleanup as (() => void) | undefined)?.();
     setIntervalSpy.mockRestore();
   });
 });

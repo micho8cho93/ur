@@ -4,6 +4,7 @@ import Lobby from '@/app/(game)/lobby';
 
 const mockUseMatchmaking = jest.fn();
 const mockUseTournamentList = jest.fn();
+const mockUseStore = jest.fn();
 const mockReplace = jest.fn();
 const mockPush = jest.fn();
 const mockBack = jest.fn();
@@ -16,6 +17,10 @@ jest.mock('@/hooks/useMatchmaking', () => ({
 
 jest.mock('@/src/tournaments/useTournamentList', () => ({
   useTournamentList: (...args: unknown[]) => mockUseTournamentList(...args),
+}));
+
+jest.mock('@/src/store/StoreProvider', () => ({
+  useStore: () => mockUseStore(),
 }));
 
 jest.mock('expo-router', () => ({
@@ -103,6 +108,9 @@ describe('Lobby private game join input', () => {
       pendingPrivateMode: null,
       createdPrivateMatch: null,
     });
+    mockUseStore.mockReturnValue({
+      softCurrency: 1234,
+    });
     mockUseTournamentList.mockReturnValue({
       tournaments: [
         {
@@ -189,6 +197,17 @@ describe('Lobby private game join input', () => {
     expect(view.getByText('Create Private Game')).toBeTruthy();
     expect(view.getByText('Capture')).toBeTruthy();
     expect(view.getByText('Enter Private Code')).toBeTruthy();
+  });
+
+  it('renders the store action and opens the store route', () => {
+    const view = render(<Lobby />);
+
+    expect(view.getByText('shopping-cart')).toBeTruthy();
+    expect(view.getByText('1234 Coins')).toBeTruthy();
+
+    fireEvent.press(view.getByLabelText('Store'));
+
+    expect(mockPush).toHaveBeenCalledWith('/store');
   });
 
   it('removes the extra create-private copy once a private room has been created', () => {

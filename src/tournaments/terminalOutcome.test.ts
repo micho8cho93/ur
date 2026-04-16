@@ -19,6 +19,11 @@ const createTournament = (overrides: Partial<PublicTournamentDetail> = {}): Publ
   region: 'Global',
   buyInLabel: 'Free',
   prizeLabel: 'No prize listed',
+  bots: {
+    autoAdd: false,
+    difficulty: null,
+    count: 0,
+  },
   isLocked: true,
   currentRound: 1,
   membership: {

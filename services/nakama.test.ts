@@ -73,6 +73,7 @@ describe('NakamaService', () => {
     const firstSocket = {
       connect: jest.fn().mockResolvedValue(session),
       disconnect: jest.fn(),
+      ondisconnect: undefined as ((event: Event) => void) | undefined,
     };
     const secondSocket = {
       connect: jest.fn().mockResolvedValue(session),

@@ -194,7 +194,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
               privateMatch: true,
               privateCode: result.code,
               ...(isHost ? { privateHost: true } : {}),
-            }),
+            }) as never,
           );
           setPendingPrivateMode(null);
           setSocketState('idle');
@@ -246,7 +246,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
               offline: true,
               botDifficulty: isOfflineBotMatch ? difficulty : null,
               modeId: matchConfig.modeId,
-            }),
+            }) as never,
           );
         },
       );
@@ -300,7 +300,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
           setSocketState('connected');
           setStatus('matched');
           setActiveAction(null);
-          router.push(buildMatchRoutePath({ id: result.matchId }));
+          router.push(buildMatchRoutePath({ id: result.matchId }) as never);
         },
       );
     } catch (error) {

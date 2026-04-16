@@ -49,6 +49,40 @@ import {
   RPC_SUBMIT_COMPLETED_BOT_MATCH,
   type ProcessCompletedMatchResult,
 } from "./challenges";
+import {
+  RPC_GET_WALLET,
+  rpcGetWallet,
+} from "./wallet";
+import {
+  RPC_GET_OWNED_COSMETICS,
+  RPC_GET_FULL_CATALOG,
+  RPC_GET_STOREFRONT,
+  RPC_PURCHASE_ITEM,
+  RPC_ADMIN_CLEAR_MANUAL_ROTATION,
+  RPC_ADMIN_DISABLE_COSMETIC,
+  RPC_ADMIN_ENABLE_COSMETIC,
+  RPC_ADMIN_GET_FULL_CATALOG,
+  RPC_ADMIN_GET_ROTATION_STATE,
+  RPC_ADMIN_GET_STORE_STATS,
+  RPC_ADMIN_REMOVE_LIMITED_TIME_EVENT,
+  RPC_ADMIN_SET_LIMITED_TIME_EVENT,
+  RPC_ADMIN_SET_MANUAL_ROTATION,
+  RPC_ADMIN_UPSERT_COSMETIC,
+  rpcAdminClearManualRotation,
+  rpcAdminDisableCosmetic,
+  rpcAdminEnableCosmetic,
+  rpcAdminGetFullCatalog,
+  rpcAdminGetRotationState,
+  rpcAdminGetStoreStats,
+  rpcAdminRemoveLimitedTimeEvent,
+  rpcAdminSetLimitedTimeEvent,
+  rpcAdminSetManualRotation,
+  rpcAdminUpsertCosmetic,
+  rpcGetFullCatalog,
+  rpcGetOwnedCosmetics,
+  rpcGetStorefront,
+  rpcPurchaseItem,
+} from "./cosmeticStore";
 import { normalizeChallengeProgressSnapshot } from "./challengeProgress";
 import {
   EmojiReactionBroadcastPayload,
@@ -95,6 +129,7 @@ import {
   sanitizeRatedGameCount,
 } from "../../shared/elo";
 import { buildProgressionSnapshot, type ProgressionAwardResponse, type XpSource } from "../../shared/progression";
+import { SOFT_CURRENCY_KEY } from "../../shared/wallet";
 import {
   generatePrivateMatchCode,
   isPrivateMatchCode,
@@ -1556,7 +1591,11 @@ const syncCompletedMatchEnd = (state: MatchState): void => {
     return;
   }
 
+  const softCurrencyAwarded = state.matchEnd?.softCurrencyAwarded === true;
   state.matchEnd = buildMatchEndPayload(state, "completed", state.gameState.winner);
+  if (softCurrencyAwarded) {
+    state.matchEnd.softCurrencyAwarded = true;
+  }
 };
 
 const buildRematchMatchParams = (
@@ -2035,6 +2074,11 @@ function InitModule(
   initializer.registerRpc(RPC_GET_CHALLENGE_DEFINITIONS_NAME, rpcGetChallengeDefinitions);
   initializer.registerRpc(RPC_GET_USER_CHALLENGE_PROGRESS_NAME, rpcGetUserChallengeProgress);
   initializer.registerRpc(RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME, rpcSubmitCompletedBotMatch);
+  initializer.registerRpc(RPC_GET_WALLET, rpcGetWallet);
+  initializer.registerRpc(RPC_GET_STOREFRONT, rpcGetStorefront);
+  initializer.registerRpc(RPC_GET_FULL_CATALOG, rpcGetFullCatalog);
+  initializer.registerRpc(RPC_PURCHASE_ITEM, rpcPurchaseItem);
+  initializer.registerRpc(RPC_GET_OWNED_COSMETICS, rpcGetOwnedCosmetics);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
   initializer.registerRpc(RPC_CREATE_PRIVATE_MATCH, rpcCreatePrivateMatch);
   initializer.registerRpc(RPC_JOIN_PRIVATE_MATCH, rpcJoinPrivateMatch);
@@ -2069,6 +2113,16 @@ function InitModule(
   initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_TOURNAMENTS, rpcAdminGetAnalyticsTournaments);
   initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_PROGRESSION, rpcAdminGetAnalyticsProgression);
   initializer.registerRpc(RPC_ADMIN_GET_ANALYTICS_REALTIME, rpcAdminGetAnalyticsRealtime);
+  initializer.registerRpc(RPC_ADMIN_GET_FULL_CATALOG, rpcAdminGetFullCatalog);
+  initializer.registerRpc(RPC_ADMIN_UPSERT_COSMETIC, rpcAdminUpsertCosmetic);
+  initializer.registerRpc(RPC_ADMIN_DISABLE_COSMETIC, rpcAdminDisableCosmetic);
+  initializer.registerRpc(RPC_ADMIN_ENABLE_COSMETIC, rpcAdminEnableCosmetic);
+  initializer.registerRpc(RPC_ADMIN_GET_ROTATION_STATE, rpcAdminGetRotationState);
+  initializer.registerRpc(RPC_ADMIN_SET_MANUAL_ROTATION, rpcAdminSetManualRotation);
+  initializer.registerRpc(RPC_ADMIN_CLEAR_MANUAL_ROTATION, rpcAdminClearManualRotation);
+  initializer.registerRpc(RPC_ADMIN_SET_LIMITED_TIME_EVENT, rpcAdminSetLimitedTimeEvent);
+  initializer.registerRpc(RPC_ADMIN_REMOVE_LIMITED_TIME_EVENT, rpcAdminRemoveLimitedTimeEvent);
+  initializer.registerRpc(RPC_ADMIN_GET_STORE_STATS, rpcAdminGetStoreStats);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,
@@ -3586,6 +3640,8 @@ function awardWinnerProgression(
       analyticsWriteBuffer,
     });
 
+    awardMatchCompletionSoftCurrency(logger, nk, state, matchId);
+
     if (awardResponse.duplicate) {
       return awardResponse;
     }
@@ -3614,6 +3670,63 @@ function awardWinnerProgression(
       error instanceof Error ? error.message : String(error)
     );
     return null;
+  }
+}
+
+function awardMatchCompletionSoftCurrency(
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  state: MatchState,
+  matchId: string,
+): void {
+  if (state.matchEnd?.softCurrencyAwarded) {
+    return;
+  }
+
+  const winnerUserId = state.matchEnd?.winnerUserId ?? null;
+  const loserUserId = state.matchEnd?.loserUserId ?? null;
+  const grants = [
+    { userId: winnerUserId, amount: 15 },
+    { userId: loserUserId, amount: 5 },
+  ].filter((grant): grant is { userId: string; amount: number } =>
+    typeof grant.userId === "string" && grant.userId.length > 0 && !isTournamentBotUserId(grant.userId)
+  );
+
+  if (grants.length === 0) {
+    if (state.matchEnd) {
+      state.matchEnd.softCurrencyAwarded = true;
+    }
+    return;
+  }
+
+  try {
+    nk.walletsUpdate(
+      grants.map((grant) => ({
+        userId: grant.userId,
+        changeset: {
+          [SOFT_CURRENCY_KEY]: grant.amount,
+        },
+        metadata: {
+          source: "match_completion",
+          matchId,
+          amount: grant.amount,
+        },
+      }))
+    );
+
+    grants.forEach((grant) => {
+      logger.info("Soft currency awarded", { userId: grant.userId, amount: grant.amount, matchId });
+    });
+
+    if (state.matchEnd) {
+      state.matchEnd.softCurrencyAwarded = true;
+    }
+  } catch (error) {
+    logger.error(
+      "Failed to award soft currency for match %s: %s",
+      matchId,
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
@@ -4157,6 +4270,9 @@ type RuntimeGlobalBindings = {
   rpcGetMyRatingProfile: typeof rpcGetMyRatingProfile;
   rpcListTopEloPlayers: typeof rpcListTopEloPlayers;
   rpcGetEloLeaderboardAroundMe: typeof rpcGetEloLeaderboardAroundMe;
+  rpcGetStorefront: typeof rpcGetStorefront;
+  rpcPurchaseItem: typeof rpcPurchaseItem;
+  rpcGetOwnedCosmetics: typeof rpcGetOwnedCosmetics;
   rpcMatchmakerAdd: typeof rpcMatchmakerAdd;
   rpcCreatePrivateMatch: typeof rpcCreatePrivateMatch;
   rpcJoinPrivateMatch: typeof rpcJoinPrivateMatch;
@@ -4182,6 +4298,9 @@ const runtimeGlobals: RuntimeGlobalBindings = {
   rpcGetMyRatingProfile,
   rpcListTopEloPlayers,
   rpcGetEloLeaderboardAroundMe,
+  rpcGetStorefront,
+  rpcPurchaseItem,
+  rpcGetOwnedCosmetics,
   rpcMatchmakerAdd,
   rpcCreatePrivateMatch,
   rpcJoinPrivateMatch,

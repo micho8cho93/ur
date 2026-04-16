@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   ImageBackground,
+  ImageStyle,
   Platform,
   Pressable,
   ScrollView,
@@ -223,7 +224,11 @@ export default function LoginScreen() {
             resizeMode="contain"
             accessibilityRole="image"
             accessibilityLabel="UR Legacy"
-            style={[styles.logo, isDesktopWeb && styles.logoDesktopWeb, { width: logoWidth, height: logoWidth * 0.88 }]}
+            style={[
+              styles.logo as ImageStyle,
+              isDesktopWeb && (styles.logoDesktopWeb as ImageStyle),
+              { width: logoWidth, height: logoWidth * 0.88 },
+            ]}
           />
 
           <View style={[styles.buttonColumn, isCompactLayout && styles.buttonColumnCompact]}>

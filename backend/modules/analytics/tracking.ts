@@ -77,10 +77,21 @@ export type XpAwardAnalyticsEvent = {
   rankChanged: boolean;
 };
 
+export type CosmeticPurchaseAnalyticsEvent = {
+  eventId: string;
+  type: "cosmetic_purchase";
+  occurredAt: string;
+  userId: string;
+  cosmeticId: string;
+  currency: "soft" | "premium";
+  amount: number;
+};
+
 export type AnalyticsEvent =
   | MatchStartAnalyticsEvent
   | MatchEndAnalyticsEvent
-  | XpAwardAnalyticsEvent;
+  | XpAwardAnalyticsEvent
+  | CosmeticPurchaseAnalyticsEvent;
 
 export type ActiveTrackedMatch = {
   matchId: string;
@@ -371,6 +382,36 @@ const normalizeAnalyticsEvent = (value: unknown): AnalyticsEvent | null => {
     return normalizeXpAwardEvent(record);
   }
 
+  if (type === "cosmetic_purchase") {
+    const eventId = readStringField(record, ["eventId", "event_id"]);
+    const occurredAt = readStringField(record, ["occurredAt", "occurred_at"]);
+    const userId = readStringField(record, ["userId", "user_id"]);
+    const cosmeticId = readStringField(record, ["cosmeticId", "cosmetic_id"]);
+    const currency = readStringField(record, ["currency"]);
+    const amount = readNumberField(record, ["amount"]);
+
+    if (
+      !eventId ||
+      !occurredAt ||
+      !userId ||
+      !cosmeticId ||
+      (currency !== "soft" && currency !== "premium") ||
+      typeof amount !== "number"
+    ) {
+      return null;
+    }
+
+    return {
+      eventId,
+      type: "cosmetic_purchase",
+      occurredAt,
+      userId,
+      cosmeticId,
+      currency,
+      amount,
+    };
+  }
+
   return null;
 };
 
@@ -542,6 +583,25 @@ export const recordXpAwardAnalyticsEvent = (
   };
 
   writeEvent(nk, logger, normalizedEvent, writeBuffer);
+};
+
+export const recordCosmeticPurchaseAnalyticsEvent = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  event: Omit<CosmeticPurchaseAnalyticsEvent, "eventId" | "type" | "occurredAt"> & { occurredAt?: string },
+): void => {
+  const occurredAt = event.occurredAt ?? new Date().toISOString();
+  const normalizedEvent: CosmeticPurchaseAnalyticsEvent = {
+    eventId: buildEventId("cosmetic_purchase", occurredAt, `${event.userId}:${event.cosmeticId}`),
+    type: "cosmetic_purchase",
+    occurredAt,
+    userId: event.userId,
+    cosmeticId: event.cosmeticId,
+    currency: event.currency,
+    amount: event.amount,
+  };
+
+  writeEvent(nk, logger, normalizedEvent);
 };
 
 export const unregisterActiveMatch = (matchId: string): void => {

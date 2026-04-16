@@ -143,14 +143,14 @@ describe('useTournamentList', () => {
     const focusCallback = mockUseFocusEffect.mock.calls.at(-1)?.[0] as () => void | (() => void);
     const setIntervalSpy = jest.spyOn(global, 'setInterval');
 
-    let cleanup: void | (() => void);
+    let cleanup: void | (() => void) = undefined;
     await act(async () => {
       cleanup = focusCallback();
       await flush();
     });
 
     expect(setIntervalSpy).not.toHaveBeenCalled();
-    cleanup?.();
+    (cleanup as (() => void) | undefined)?.();
     setIntervalSpy.mockRestore();
   });
 
@@ -167,14 +167,14 @@ describe('useTournamentList', () => {
     const focusCallback = mockUseFocusEffect.mock.calls.at(-1)?.[0] as () => void | (() => void);
     const setIntervalSpy = jest.spyOn(global, 'setInterval');
 
-    let cleanup: void | (() => void);
+    let cleanup: void | (() => void) = undefined;
     await act(async () => {
       cleanup = focusCallback();
       await flush();
     });
 
     expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 10_000);
-    cleanup?.();
+    (cleanup as (() => void) | undefined)?.();
     setIntervalSpy.mockRestore();
   });
 });

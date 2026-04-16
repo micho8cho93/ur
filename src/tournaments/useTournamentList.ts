@@ -25,6 +25,7 @@ type UseTournamentListOptions = {
 const LIST_POLL_INTERVAL_MS = 10_000;
 const TOURNAMENT_SOCKET_NOTIFICATION_RETRY_DELAY_MS = 800;
 const NOOP_NOTIFICATION_HANDLER = () => {};
+const NOOP_DISCONNECT_HANDLER = () => {};
 
 export const useTournamentList = ({ featured = false, limit = 50 }: UseTournamentListOptions = {}) => {
   const [tournaments, setTournaments] = useState<PublicTournamentSummary[]>([]);
@@ -137,7 +138,7 @@ export const useTournamentList = ({ featured = false, limit = 50 }: UseTournamen
       }
 
       if (attachedSocket.ondisconnect === handleSocketDisconnect) {
-        attachedSocket.ondisconnect = previousOnDisconnect ?? null;
+        attachedSocket.ondisconnect = previousOnDisconnect ?? NOOP_DISCONNECT_HANDLER;
       }
     };
   }, [refresh]);

@@ -93,6 +93,10 @@ export const assertAdmin = (
     throw new Error(`Unauthorized: ${requiredRole} role required.`);
   }
 
+  if (!actualRole) {
+    throw new Error(`Unauthorized: ${requiredRole} role required.`);
+  }
+
   return actualRole;
 };
 

@@ -1,7 +1,8 @@
 import { urTheme } from '@/constants/urTheme';
 import { PlayerColor } from '@/logic/types';
+import { useCosmeticTheme } from '@/src/store/CosmeticThemeContext';
 import React, { useEffect, useMemo } from 'react';
-import { Image, ImageSourcePropType, StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import Animated, {
   Extrapolation,
   Easing,
@@ -15,6 +16,11 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+// Cosmetic preview regression checklist:
+// - Default light piece art remains assets/pieces/piece_light.png with no tintColor.
+// - Default dark piece art remains assets/pieces/piece_dark.png with no tintColor.
+// - Reserve pieces keep using the owning color's default PNG art.
+// - Cosmetic piece previews swap piece PNG sources; they do not apply tint, outline, or color treatments.
 type PieceVariant = 'light' | 'dark' | 'reserve';
 type PieceHighlightTone = 'gold' | 'deepBlue';
 
@@ -51,12 +57,6 @@ const PIECE_SIZE_PRESETS = {
   lg: 46,
 } as const;
 
-const PIECE_ART_SOURCES: Record<PieceVariant, ImageSourcePropType> = {
-  light: require('../../assets/pieces/piece_light.png'),
-  dark: require('../../assets/pieces/piece_dark.png'),
-  reserve: require('../../assets/pieces/piece_light.png'),
-};
-
 // The visible token body occupies about 62.5% of the exported PNG frame.
 export const PIECE_ART_VISIBLE_COVERAGE = 0.625;
 // Match the current dark token center so every token lands on the same gameplay point.
@@ -79,6 +79,7 @@ const PieceComponent: React.FC<PieceProps> = ({
   variant,
   state = 'idle',
 }) => {
+  const { pieceImageSources } = useCosmeticTheme();
   const intro = useSharedValue(0.9);
   const glowPulse = useSharedValue(0);
   const motion = useSharedValue(0);
@@ -88,11 +89,11 @@ const PieceComponent: React.FC<PieceProps> = ({
   const resolvedVariant: PieceVariant = variant ?? color;
   const resolvedSource = useMemo(() => {
     if (resolvedVariant === 'reserve') {
-      return color === 'dark' ? PIECE_ART_SOURCES.dark : PIECE_ART_SOURCES.light;
+      return color === 'dark' ? pieceImageSources.reserveDark : pieceImageSources.reserveLight;
     }
 
-    return PIECE_ART_SOURCES[resolvedVariant];
-  }, [color, resolvedVariant]);
+    return resolvedVariant === 'dark' ? pieceImageSources.dark : pieceImageSources.light;
+  }, [color, pieceImageSources.dark, pieceImageSources.light, pieceImageSources.reserveDark, pieceImageSources.reserveLight, resolvedVariant]);
 
   useEffect(() => {
     intro.value = withSpring(1, urTheme.motion.spring.game);

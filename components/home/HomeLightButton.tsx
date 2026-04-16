@@ -149,7 +149,6 @@ export function HomeLightButton({
     >
       {({ pressed }) => (
         <ImageBackground
-          pointerEvents="none"
           source={lightButtonArt}
           resizeMode="stretch"
           style={[

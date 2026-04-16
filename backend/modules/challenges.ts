@@ -16,6 +16,7 @@ import {
 } from "../../shared/challenges";
 import { getMatchConfig, isMatchModeId } from "../../logic/matchConfigs";
 import { ProgressionProfile, getRankForXp } from "../../shared/progression";
+import { calculateChallengeSoftCurrencyReward } from "../../shared/wallet";
 import {
   MAX_WRITE_ATTEMPTS,
   PROGRESSION_COLLECTION,
@@ -40,6 +41,7 @@ import {
   evaluateChallengeCompletions,
   normalizeChallengeProgressSnapshot,
 } from "./challengeProgress";
+import { awardChallengeSoftCurrency } from "./wallet";
 
 type RuntimeContext = any;
 type RuntimeLogger = any;
@@ -56,12 +58,14 @@ type ProcessedMatchResultRecord = {
   summary: CompletedMatchSummary;
   completedChallengeIds: ChallengeId[];
   awardedXp: number;
+  awardedSoftCurrency: number;
 };
 
 export type ProcessCompletedMatchResult = {
   duplicate: boolean;
   completedChallengeIds: ChallengeId[];
   awardedXp: number;
+  awardedSoftCurrency: number;
   totalXp: number;
   progressionRank: string;
 };
@@ -283,6 +287,7 @@ const normalizeProcessedMatchResult = (rawValue: unknown): ProcessedMatchResultR
     ? (record.completedChallengeIds.filter((challengeId): challengeId is ChallengeId => typeof challengeId === "string") as ChallengeId[])
     : [];
   const awardedXp = typeof record.awardedXp === "number" ? record.awardedXp : 0;
+  const awardedSoftCurrency = typeof record.awardedSoftCurrency === "number" ? record.awardedSoftCurrency : 0;
 
   if (!matchId || !playerUserId || !processedAt || !isCompletedMatchSummary(summary)) {
     return null;
@@ -295,6 +300,7 @@ const normalizeProcessedMatchResult = (rawValue: unknown): ProcessedMatchResultR
     summary,
     completedChallengeIds,
     awardedXp,
+    awardedSoftCurrency,
   };
 };
 
@@ -403,6 +409,7 @@ export const processCompletedMatch = (
         duplicate: true,
         completedChallengeIds: existingProcessedMatch.completedChallengeIds,
         awardedXp: existingProcessedMatch.awardedXp,
+        awardedSoftCurrency: existingProcessedMatch.awardedSoftCurrency,
         totalXp: currentProfile.totalXp,
         progressionRank: getRankForXp(currentProfile.totalXp).title,
       };
@@ -411,6 +418,7 @@ export const processCompletedMatch = (
     const completedChallengeIds: ChallengeId[] = [];
     const completionWrites: ChallengeCompletionRecord[] = [];
     let totalAwardedXp = 0;
+    let totalAwardedSoftCurrency = 0;
     let projectedTotalXp = currentProfile.totalXp;
     const completedChallengeIdsSet = new Set<ChallengeId>(
       CHALLENGE_DEFINITIONS.filter((definition) => currentProgress.challenges[definition.id]?.completed).map(
@@ -451,11 +459,14 @@ export const processCompletedMatch = (
         if (!rewardLedgerObjectsByChallengeId[challengeId]) {
           totalAwardedXp += definition.rewardXp;
           projectedTotalXp += definition.rewardXp;
+          const rewardSoftCurrency = calculateChallengeSoftCurrencyReward(definition.rewardXp);
+          totalAwardedSoftCurrency += rewardSoftCurrency;
           completionWrites.push({
             challengeId,
             completedAt: now,
             completedMatchId: matchId,
             rewardXp: definition.rewardXp,
+            rewardSoftCurrency,
             rewardLedgerKey: buildChallengeRewardLedgerKey(challengeId),
           });
         }
@@ -482,6 +493,7 @@ export const processCompletedMatch = (
       summary,
       completedChallengeIds,
       awardedXp: totalAwardedXp,
+      awardedSoftCurrency: totalAwardedSoftCurrency,
     };
 
     let ledgerRunningTotal = currentProfile.totalXp;
@@ -545,19 +557,34 @@ export const processCompletedMatch = (
     ];
 
     try {
+      completionWrites.forEach((completion) => {
+        if (completion.rewardSoftCurrency <= 0) {
+          return;
+        }
+
+        awardChallengeSoftCurrency(nk, logger, {
+          userId,
+          matchId,
+          challengeId: completion.challengeId,
+          rewardXp: completion.rewardXp,
+        });
+      });
+
       nk.storageWrite(writes);
       logger.info(
-        "Processed completed match %s for user %s: %d challenge completions, %d XP awarded.",
+        "Processed completed match %s for user %s: %d challenge completions, %d XP and %d Coins awarded.",
         matchId,
         userId,
         completedChallengeIds.length,
-        totalAwardedXp
+        totalAwardedXp,
+        totalAwardedSoftCurrency
       );
 
       return {
         duplicate: false,
         completedChallengeIds,
         awardedXp: totalAwardedXp,
+        awardedSoftCurrency: totalAwardedSoftCurrency,
         totalXp: nextTotalXp,
         progressionRank: nextProfile.currentRankTitle,
       };
@@ -572,6 +599,7 @@ export const processCompletedMatch = (
           duplicate: true,
           completedChallengeIds: refreshedProcessed.completedChallengeIds,
           awardedXp: refreshedProcessed.awardedXp,
+          awardedSoftCurrency: refreshedProcessed.awardedSoftCurrency,
           totalXp: refreshedProfile.totalXp,
           progressionRank: getRankForXp(refreshedProfile.totalXp).title,
         };

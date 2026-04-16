@@ -19,6 +19,7 @@ import type { Notification, Socket } from '@heroiclabs/nakama-js';
 const DETAIL_POLL_INTERVAL_MS = 4_000;
 const TOURNAMENT_SOCKET_NOTIFICATION_RETRY_DELAY_MS = 800;
 const NOOP_NOTIFICATION_HANDLER = () => {};
+const NOOP_DISCONNECT_HANDLER = () => {};
 
 export const useTournamentDetail = (runId: string | null) => {
   const [tournament, setTournament] = useState<PublicTournamentDetail | null>(null);
@@ -173,7 +174,7 @@ export const useTournamentDetail = (runId: string | null) => {
       }
 
       if (attachedSocket.ondisconnect === handleSocketDisconnect) {
-        attachedSocket.ondisconnect = previousOnDisconnect ?? null;
+        attachedSocket.ondisconnect = previousOnDisconnect ?? NOOP_DISCONNECT_HANDLER;
       }
     };
   }, [refresh, runId]);

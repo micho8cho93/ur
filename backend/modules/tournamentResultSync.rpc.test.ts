@@ -41,6 +41,7 @@ jest.mock('./challenges', () => {
       duplicate: false,
       completedChallengeIds: [],
       awardedXp: 0,
+      awardedSoftCurrency: 0,
       totalXp: 200,
       progressionRank: 'Beginner',
     })),
@@ -234,6 +235,7 @@ describe('tournament match result synchronization', () => {
       duplicate: false,
       completedChallengeIds: [],
       awardedXp: 0,
+      awardedSoftCurrency: 0,
       totalXp: 200,
       progressionRank: 'Beginner',
     });
@@ -317,7 +319,16 @@ describe('tournament match result synchronization', () => {
         ],
         finalizationResult: {
           run: {} as never,
-          standings: [],
+          nakamaTournament: null,
+          finalSnapshot: {
+            generatedAt: '2026-03-29T18:39:00.000Z',
+            overrideExpiry: 0,
+            rankCount: 2,
+            records: [],
+            prevCursor: null,
+            nextCursor: null,
+          },
+          disabledRanks: true,
           championUserId: 'user-light',
           championRewardResult: null,
         },

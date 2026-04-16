@@ -25,11 +25,18 @@ const mockMatchDiceRollStage = jest.fn(({
   );
 });
 const mockBoard = jest.fn();
-const mockGameStageHUD = jest.fn((_props?: unknown) => {
+type MockGameStageHUDProps = {
+  timerDurationMs?: number;
+  timerRemainingMs?: number;
+  timerKey?: string;
+  timerIsRunning?: boolean;
+};
+
+const mockGameStageHUD = jest.fn((_props?: MockGameStageHUDProps) => {
   const { View } = require('react-native');
   return <View testID="mock-stage-hud" />;
 });
-const mockEdgeScore = jest.fn(({ title }: { title?: string }) => {
+const mockEdgeScore = jest.fn(({ title }: { side?: 'light' | 'dark'; title?: string }) => {
   const { Text, View } = require('react-native');
   return (
     <View testID="mock-edge-score">
@@ -37,7 +44,13 @@ const mockEdgeScore = jest.fn(({ title }: { title?: string }) => {
     </View>
   );
 });
-const mockAudioSettingsModal = jest.fn((_props?: unknown) => {
+type MockAudioSettingsModalProps = {
+  showTimerToggle?: boolean;
+  showTimerDurationPicker?: boolean;
+  timerToggleTitle?: string;
+};
+
+const mockAudioSettingsModal = jest.fn((_props?: MockAudioSettingsModalProps) => {
   const { View } = require('react-native');
   return <View testID="mock-audio-settings" />;
 });
@@ -142,7 +155,12 @@ const mockDiceStageVisual = jest.fn((_props?: unknown) => {
   const { View } = require('react-native');
   return <View testID="mock-dice-stage-visual" />;
 });
-const defaultMockPieceRailImplementation = (_props?: unknown) => {
+type MockPieceRailProps = {
+  color?: 'light' | 'dark';
+  trayScale?: number;
+};
+
+const defaultMockPieceRailImplementation = (_props?: MockPieceRailProps) => {
   const { View } = require('react-native');
   return <View testID="mock-piece-rail" />;
 };
@@ -185,9 +203,10 @@ const mockGetMatchPreferences = jest.fn();
 const mockUpdateMatchPreferences = jest.fn();
 const mockConnectSocketWithRetry = jest.fn();
 const mockDisconnectSocket = jest.fn();
-const mockRefreshElo = jest.fn(() => Promise.resolve(null));
-const mockRefreshProgression = jest.fn(() => Promise.resolve(null));
-const mockRefreshChallenges = jest.fn(() => Promise.resolve(null));
+const mockRefreshElo: jest.Mock<Promise<unknown>, []> = jest.fn(() => Promise.resolve(null));
+const mockRefreshProgression: jest.Mock<Promise<unknown>, []> = jest.fn(() => Promise.resolve(null));
+const mockRefreshChallenges: jest.Mock<Promise<unknown>, []> = jest.fn(() => Promise.resolve(null));
+const mockRefreshWallet: jest.Mock<Promise<unknown>, []> = jest.fn(() => Promise.resolve(null));
 const mockSubmitCompletedBotMatchResult = jest.fn();
 let mockProgression = null as ReturnType<typeof buildProgressionSnapshot> | null;
 let mockProgressionErrorMessage: string | null = null;
@@ -236,6 +255,28 @@ const baseGameState: GameState = {
   rollValue: null,
 };
 
+type MockSnapshotPlayers = {
+  light: { userId: string | null; title: string | null };
+  dark: { userId: string | null; title: string | null };
+};
+
+type MockAuthoritativeMatchEnd = {
+  reason: string;
+  winnerUserId: string | null;
+  loserUserId: string | null;
+  forfeitingUserId: string | null;
+  message: string | null;
+};
+
+type MockAuthoritativeRematch = {
+  status: string;
+  deadlineMs: number;
+  decisionsByUserId: Record<string, string>;
+  acceptedUserIds: string[];
+  nextMatchId: string | null;
+  nextPrivateCode: string | null;
+};
+
 const mockStoreState = {
   applyServerSnapshot: mockApplyServerSnapshot,
   botDifficulty: 'easy' as const,
@@ -243,36 +284,36 @@ const mockStoreState = {
   initGame: mockInitGame,
   makeMove: mockMakeMove,
   matchId: 'local-1',
-  matchPresences: [],
-  matchToken: null,
-  authoritativeServerTimeMs: null,
-  authoritativeTurnDurationMs: null,
-  authoritativeTurnStartedAtMs: null,
-  authoritativeTurnDeadlineMs: null,
-  authoritativeTurnRemainingMs: null,
-  authoritativeActiveTimedPlayer: null,
-  authoritativeActiveTimedPlayerColor: null,
-  authoritativeActiveTimedPhase: null,
-  authoritativePlayers: null,
-  authoritativeAfkAccumulatedMs: null,
-  authoritativeAfkRemainingMs: null,
-  authoritativeReconnectingPlayer: null,
-  authoritativeReconnectingPlayerColor: null,
-  authoritativeReconnectGraceDurationMs: null,
-  authoritativeReconnectDeadlineMs: null,
-  authoritativeReconnectRemainingMs: null,
-  authoritativeMatchEnd: null,
-  authoritativeRematch: null,
-  authoritativeSnapshotReceivedAtMs: null,
-  lastProgressionAward: null,
-  lastEloRatingChange: null,
-  lastProgressionSnapshot: null,
-  lastEloRatingProfileSnapshot: null,
-  lastChallengeProgressSnapshot: null,
+  matchPresences: [] as string[],
+  matchToken: null as string | null,
+  authoritativeServerTimeMs: null as number | null,
+  authoritativeTurnDurationMs: null as number | null,
+  authoritativeTurnStartedAtMs: null as number | null,
+  authoritativeTurnDeadlineMs: null as number | null,
+  authoritativeTurnRemainingMs: null as number | null,
+  authoritativeActiveTimedPlayer: null as string | null,
+  authoritativeActiveTimedPlayerColor: null as 'light' | 'dark' | null,
+  authoritativeActiveTimedPhase: null as string | null,
+  authoritativePlayers: null as MockSnapshotPlayers | null,
+  authoritativeAfkAccumulatedMs: null as { light: number; dark: number } | null,
+  authoritativeAfkRemainingMs: null as number | null,
+  authoritativeReconnectingPlayer: null as string | null,
+  authoritativeReconnectingPlayerColor: null as 'light' | 'dark' | null,
+  authoritativeReconnectGraceDurationMs: null as number | null,
+  authoritativeReconnectDeadlineMs: null as number | null,
+  authoritativeReconnectRemainingMs: null as number | null,
+  authoritativeMatchEnd: null as MockAuthoritativeMatchEnd | null,
+  authoritativeRematch: null as MockAuthoritativeRematch | null,
+  authoritativeSnapshotReceivedAtMs: null as number | null,
+  lastProgressionAward: null as unknown,
+  lastEloRatingChange: null as unknown,
+  lastProgressionSnapshot: null as ReturnType<typeof buildProgressionSnapshot> | null,
+  lastEloRatingProfileSnapshot: null as EloRatingProfileRpcResponse | null,
+  lastChallengeProgressSnapshot: null as ReturnType<typeof createDefaultUserChallengeProgressSnapshot> | null,
   moveCommandSender: null,
-  nakamaSession: null,
-  onlineMode: 'offline' as const,
-  playerColor: 'light' as const,
+  nakamaSession: null as unknown,
+  onlineMode: 'offline' as 'offline' | 'nakama',
+  playerColor: 'light' as 'light' | 'dark' | null,
   playerId: 'light',
   reset: mockReset,
   roll: mockRoll,
@@ -296,9 +337,9 @@ const mockStoreState = {
   setServerRevision: jest.fn(),
   setSocketState: mockSetSocketState,
   setUserId: jest.fn(),
-  socketState: 'connected' as const,
+  socketState: 'connected' as 'idle' | 'connecting' | 'connected' | 'error',
   updateMatchPresences: mockUpdateMatchPresences,
-  userId: null,
+  userId: null as string | null,
   validMoves: [] as MoveAction[],
 };
 
@@ -382,20 +423,25 @@ jest.mock('@/components/game/Board', () => {
 
   return {
     BOARD_IMAGE_SOURCE: 1,
+    VERTICAL_BOARD_ART_INSETS: {
+      top: 0,
+      bottom: 0,
+    },
     Board: MockBoard,
     getBoardPiecePixelSize: () => 28,
+    getVerticalBoardDisplayRowCenterRatio: (row: number) => row / 8,
   };
 });
 
 jest.mock('@/components/game/PieceRail', () => {
   return {
-    PieceRail: (props: unknown) => mockPieceRail(props),
+    PieceRail: (props: MockPieceRailProps) => mockPieceRail(props),
   };
 });
 
 jest.mock('@/components/game/GameStageHUD', () => {
   return {
-    GameStageHUD: (props: unknown) => mockGameStageHUD(props),
+    GameStageHUD: (props: MockGameStageHUDProps) => mockGameStageHUD(props),
   };
 });
 
@@ -453,7 +499,7 @@ jest.mock('@/components/game/ReserveCascadeIntro', () => {
 
 jest.mock('@/components/game/AudioSettingsModal', () => {
   return {
-    AudioSettingsModal: (props: unknown) => mockAudioSettingsModal(props),
+    AudioSettingsModal: (props: MockAudioSettingsModalProps) => mockAudioSettingsModal(props),
   };
 });
 
@@ -487,7 +533,8 @@ jest.mock('@/components/tutorial/PlayTutorialCoachModal', () => {
 });
 
 jest.mock('@/components/progression/CinematicXpRewardModal', () => ({
-  CinematicXpRewardModal: (props: unknown) => mockCinematicXpRewardModal(props),
+  CinematicXpRewardModal: (props: Parameters<typeof mockCinematicXpRewardModal>[0]) =>
+    mockCinematicXpRewardModal(props),
 }));
 
 jest.mock('@/components/match/MatchResultSummaryContent', () => {
@@ -637,6 +684,18 @@ jest.mock('@/src/challenges/useChallenges', () => ({
     definitions: mockChallengeDefinitions,
     progress: mockChallengeProgress,
     refresh: mockRefreshChallenges,
+  }),
+}));
+
+jest.mock('@/src/wallet/useWallet', () => ({
+  useWallet: () => ({
+    wallet: { soft_currency: 0 },
+    softCurrency: 0,
+    status: 'ready',
+    errorMessage: null,
+    isLoading: false,
+    isRefreshing: false,
+    refresh: mockRefreshWallet,
   }),
 }));
 
@@ -925,6 +984,7 @@ describe('GameRoom match dice stage', () => {
     mockRefreshElo.mockImplementation(() => Promise.resolve(null));
     mockRefreshProgression.mockImplementation(() => Promise.resolve(null));
     mockRefreshChallenges.mockImplementation(() => Promise.resolve(null));
+    mockRefreshWallet.mockImplementation(() => Promise.resolve(null));
     mockSubmitCompletedBotMatchResult.mockResolvedValue({ progressionAward: null });
     mockProgression = null;
     mockProgressionErrorMessage = null;
@@ -1974,7 +2034,7 @@ describe('GameRoom match dice stage', () => {
         width: 390,
         height: 844,
       },
-    } as typeof window;
+    } as unknown as typeof window;
     Object.defineProperty(global, 'window', {
       configurable: true,
       value: mockWindow,
@@ -2045,7 +2105,7 @@ describe('GameRoom match dice stage', () => {
         width: 390,
         height: 844,
       },
-    } as typeof window;
+    } as unknown as typeof window;
     Object.defineProperty(global, 'window', {
       configurable: true,
       value: mockWindow,
@@ -2101,7 +2161,7 @@ describe('GameRoom match dice stage', () => {
         width: 390,
         height: 844,
       },
-    } as typeof window;
+    } as unknown as typeof window;
     Object.defineProperty(global, 'window', {
       configurable: true,
       value: mockWindow,
@@ -2135,7 +2195,7 @@ describe('GameRoom match dice stage', () => {
       });
 
       const stack = screen.getByTestId('mobile-web-roll-action-stack');
-      const stackChildren = stack.children.filter((child) => typeof child !== 'string') as any[];
+      const stackChildren = stack.children.filter((child: unknown) => typeof child !== 'string') as any[];
 
       expect(stackChildren[0]?.props.testID).toBe('emoji-reaction-control');
       expect(stackChildren[1]).toBeTruthy();
@@ -2165,7 +2225,7 @@ describe('GameRoom match dice stage', () => {
         width: 390,
         height: 844,
       },
-    } as typeof window;
+    } as unknown as typeof window;
     Object.defineProperty(global, 'window', {
       configurable: true,
       value: mockWindow,
@@ -2238,7 +2298,7 @@ describe('GameRoom match dice stage', () => {
         width: 1194,
         height: 724,
       },
-    } as typeof window;
+    } as unknown as typeof window;
     Object.defineProperty(global, 'window', {
       configurable: true,
       value: mockWindow,
@@ -2545,7 +2605,7 @@ describe('GameRoom match dice stage', () => {
         width: 1280,
         height: 720,
       },
-    } as typeof window;
+    } as unknown as typeof window;
     Object.defineProperty(global, 'window', {
       configurable: true,
       value: mockWindow,
@@ -2863,10 +2923,10 @@ describe('GameRoom match dice stage', () => {
     expect(
       mockGameStageHUD.mock.calls.some(
         ([props]) =>
-          props.timerDurationMs === 10_000 &&
-          props.timerRemainingMs === 10_000 &&
-          props.timerKey === '7:15000' &&
-          props.timerIsRunning === true,
+          props?.timerDurationMs === 10_000 &&
+          props?.timerRemainingMs === 10_000 &&
+          props?.timerKey === '7:15000' &&
+          props?.timerIsRunning === true,
       ),
     ).toBe(true);
   });
@@ -5339,9 +5399,9 @@ describe('GameRoom match dice stage', () => {
     expect(
       mockAudioSettingsModal.mock.calls.some(
         ([props]) =>
-          props.showTimerToggle === true &&
-          props.showTimerDurationPicker === false &&
-          props.timerToggleTitle === 'Turn Timer Animation',
+          props?.showTimerToggle === true &&
+          props?.showTimerDurationPicker === false &&
+          props?.timerToggleTitle === 'Turn Timer Animation',
       ),
     ).toBe(true);
 
@@ -5359,9 +5419,9 @@ describe('GameRoom match dice stage', () => {
     expect(
       mockAudioSettingsModal.mock.calls.some(
         ([props]) =>
-          props.showTimerToggle === true &&
-          props.showTimerDurationPicker === true &&
-          props.timerToggleTitle === 'Turn Timer',
+          props?.showTimerToggle === true &&
+          props?.showTimerDurationPicker === true &&
+          props?.timerToggleTitle === 'Turn Timer',
       ),
     ).toBe(true);
   });

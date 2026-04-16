@@ -35,6 +35,22 @@ type StorageWriteRequest = {
   version?: string;
 };
 
+type TournamentRecordListEntry = {
+  rank: number;
+  owner_id: string;
+  username: string;
+  score: number;
+  subscore?: number;
+  num_score?: number;
+  metadata?: Record<string, unknown>;
+};
+
+type TournamentRecordsListResponse = {
+  records: TournamentRecordListEntry[];
+  owner_records: TournamentRecordListEntry[];
+  rank_count: number;
+};
+
 const TOURNAMENT_VARIANTS = [
   { gameMode: 'gameMode_1_piece', label: 'Pure Luck' },
   { gameMode: 'gameMode_3_pieces', label: 'Race' },
@@ -131,11 +147,13 @@ const createNakama = () => {
     storageWrite,
     tournamentsGetId,
     tournamentRanksDisable: jest.fn(),
-    tournamentRecordsList: jest.fn(() => ({
+    tournamentRecordsList: jest.fn(
+      (): TournamentRecordsListResponse => ({
       records: [],
       owner_records: [],
       rank_count: 4,
-    })),
+      }),
+    ),
     tournamentJoin: jest.fn((tournamentId: string) => {
       entrantCounts.set(tournamentId, (entrantCounts.get(tournamentId) ?? 0) + 1);
     }),

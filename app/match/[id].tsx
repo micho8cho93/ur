@@ -87,6 +87,7 @@ import {
   recordOfflineRoll,
 } from '@/src/offlineMatch/offlineMatchRewards';
 import { useProgression } from '@/src/progression/useProgression';
+import { useWallet } from '@/src/wallet/useWallet';
 import {
   deriveServerConfirmedTournamentOutcome,
   isServerConfirmedTournamentTerminal,
@@ -999,6 +1000,7 @@ export function GameRoom() {
     })),
   );
   const { progression, refresh: refreshProgression, errorMessage: progressionError } = useProgression();
+  const { refresh: refreshWallet } = useWallet();
   const { ratingProfile, refresh: refreshElo } = useEloRating();
   const {
     definitions: challengeDefinitions,
@@ -3483,6 +3485,7 @@ export function GameRoom() {
     void Promise.allSettled([
       isRankedHumanMatch ? refreshElo({ silent: true }) : Promise.resolve(null),
       refreshProgression({ silent: true }),
+      refreshWallet({ silent: true }),
       shouldShowChallengeRewards ? refreshChallenges({ silent: true }) : Promise.resolve(null),
     ]);
   }, [
@@ -3490,6 +3493,7 @@ export function GameRoom() {
     refreshChallenges,
     refreshElo,
     refreshProgression,
+    refreshWallet,
     shouldShowChallengeRewards,
     tournamentRewardSummary,
   ]);
@@ -3560,6 +3564,7 @@ export function GameRoom() {
         const [progressionResult, challengesResult] = await Promise.all([
           refreshProgression({ silent: true }),
           refreshChallenges({ silent: true }),
+          refreshWallet({ silent: true }),
         ]);
 
         if (!isMounted) {
@@ -3606,6 +3611,7 @@ export function GameRoom() {
     progressionError,
     refreshChallenges,
     refreshProgression,
+    refreshWallet,
     resolvedBotDifficulty,
     setLastProgressionAward,
     isPostMatchFlowActive,
@@ -3644,6 +3650,7 @@ export function GameRoom() {
       try {
         const eloPromise = isRankedHumanMatch ? refreshElo({ silent: true }) : Promise.resolve(null);
         const progressionPromise = refreshProgression({ silent: true });
+        const walletPromise = refreshWallet({ silent: true });
         const challengesPromise = shouldShowChallengeRewards
           ? refreshChallenges({ silent: true })
           : Promise.resolve(null);
@@ -3651,6 +3658,7 @@ export function GameRoom() {
           eloPromise,
           progressionPromise,
           challengesPromise,
+          walletPromise,
         ]);
 
         if (!isMounted) {
@@ -3713,6 +3721,7 @@ export function GameRoom() {
     refreshElo,
     refreshChallenges,
     refreshProgression,
+    refreshWallet,
     shouldShowChallengeRewards,
     isPostMatchFlowActive,
     tournamentRewardFallbackActive,

@@ -3,7 +3,9 @@ import { AuthProvider } from '@/src/auth/AuthProvider';
 import { ChallengesProvider } from '@/src/challenges/ChallengesContext';
 import { EloRatingProvider } from '@/src/elo/EloContext';
 import { ProgressionProvider } from '@/src/progression/ProgressionContext';
+import { StoreProvider } from '@/src/store/StoreProvider';
 import { ScreenTransitionProvider } from '@/src/transitions/ScreenTransitionContext';
+import { WalletProvider } from '@/src/wallet/WalletContext';
 import {
   HOME_FREDOKA_FONT_FAMILY,
   HOME_GROBOLD_FONT_FAMILY,
@@ -82,11 +84,15 @@ export default function Layout() {
       <AuthProvider>
         <EloRatingProvider>
           <ProgressionProvider>
-            <ChallengesProvider>
-              <ScreenTransitionProvider>
-                <RootNavigator />
-              </ScreenTransitionProvider>
-            </ChallengesProvider>
+            <WalletProvider>
+              <ChallengesProvider>
+                <StoreProvider>
+                  <ScreenTransitionProvider>
+                    <RootNavigator />
+                  </ScreenTransitionProvider>
+                </StoreProvider>
+              </ChallengesProvider>
+            </WalletProvider>
           </ProgressionProvider>
         </EloRatingProvider>
       </AuthProvider>

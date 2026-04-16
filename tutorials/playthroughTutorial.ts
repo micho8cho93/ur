@@ -2,6 +2,7 @@ import type { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { buildTutorialFrames } from './tutorialEngine';
 import type {
   TutorialResultModalContent,
+  TutorialMoveStep,
   TutorialRollStep,
   TutorialRollValue,
   TutorialStep,
@@ -51,13 +52,13 @@ type TutorialInstructionParams = {
   turn: PlayerColor;
 };
 
-const assertTutorial = (condition: boolean, message: string): asserts condition => {
+function assertTutorial(condition: boolean, message: string): asserts condition {
   if (condition) {
     return;
   }
 
   throw new Error(`[PlaythroughTutorial] ${message}`);
-};
+}
 
 const cloneGameState = (state: GameState): GameState => JSON.parse(JSON.stringify(state)) as GameState;
 
@@ -90,7 +91,7 @@ const moveStep = (
   pieceId: string,
   fromIndex: number,
   toIndex: number,
-): TutorialStep => ({
+): TutorialMoveStep => ({
   id,
   kind: 'MOVE',
   player,
@@ -228,11 +229,11 @@ const getRollStepOrThrow = (stepId: string): TutorialRollStep => {
   return step;
 };
 
-const getMoveStepOrThrow = (stepId: string) => {
+const getMoveStepOrThrow = (stepId: string): TutorialMoveStep & { fromIndex: number } => {
   const step = PLAYTHROUGH_TUTORIAL_SCRIPT[getStepIndexOrThrow(stepId)];
   assertTutorial(step.kind === 'MOVE', `Expected "${stepId}" to be a MOVE step.`);
   assertTutorial(typeof step.fromIndex === 'number', `Expected "${stepId}" to define fromIndex.`);
-  return step;
+  return step as TutorialMoveStep & { fromIndex: number };
 };
 
 const buildLesson = (spec: PlaythroughTutorialLessonSpec): PlaythroughTutorialLesson => {
@@ -277,7 +278,9 @@ assertTutorial(
 export const getPlaythroughTutorialLessonState = (lessonIndex: number): GameState => {
   const lesson = PLAYTHROUGH_TUTORIAL_LESSONS[lessonIndex];
   assertTutorial(Boolean(lesson), `Unknown lesson index ${lessonIndex}.`);
-  return cloneGameState(PLAYTHROUGH_TUTORIAL_FRAMES[lesson.startFrameIndex].gameState);
+  const frame = PLAYTHROUGH_TUTORIAL_FRAMES[lesson.startFrameIndex];
+  assertTutorial(Boolean(frame), `Missing frame for lesson index ${lessonIndex}.`);
+  return cloneGameState(frame.gameState);
 };
 
 const PLAYTHROUGH_TUTORIAL_INSTRUCTION_BY_STEP_ID: Record<string, string> = {

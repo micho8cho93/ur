@@ -646,7 +646,7 @@ const buildMatchDurationBuckets = (bracket: TournamentBracketState | null): Matc
     .map((entry) => getEntryDurationSeconds(entry))
     .filter((duration): duration is number => duration !== null);
 
-  const buckets: Array<Omit<MatchDurationBucket, "count"> & { count: number }> = [
+  const buckets: Array<Omit<MatchDurationBucket, "count" | "minSeconds"> & { minSeconds: number; count: number }> = [
     { label: "<5m", minSeconds: 0, maxSeconds: 5 * 60, count: 0 },
     { label: "5-10m", minSeconds: 5 * 60, maxSeconds: 10 * 60, count: 0 },
     { label: "10-15m", minSeconds: 10 * 60, maxSeconds: 15 * 60, count: 0 },
@@ -657,11 +657,12 @@ const buildMatchDurationBuckets = (bracket: TournamentBracketState | null): Matc
   durations.forEach((duration) => {
     const bucket =
       buckets.find((candidate) => {
+        const minSeconds = candidate.minSeconds;
         if (candidate.maxSeconds === null) {
-          return duration >= candidate.minSeconds;
+          return duration >= minSeconds;
         }
 
-        return duration >= candidate.minSeconds && duration < candidate.maxSeconds;
+        return duration >= minSeconds && duration < candidate.maxSeconds;
       }) ?? buckets[buckets.length - 1];
 
     bucket.count += 1;

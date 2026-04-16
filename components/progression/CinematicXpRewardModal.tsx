@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type DimensionValue,
   useWindowDimensions,
 } from 'react-native';
 
@@ -99,7 +100,7 @@ export const CinematicXpRewardModal: React.FC<CinematicXpRewardModalProps> = ({
   const awardedXp = Math.max(0, newTotalXp - previousTotalXp);
   const rankChanged = previousSnapshot.currentRank !== liveSnapshot.currentRank;
   const isMaxRank = liveSnapshot.nextRank === null || liveSnapshot.nextRankThreshold === null;
-  const progressWidth = `${Math.max(0, Math.min(100, liveSnapshot.progressPercent))}%`;
+  const progressWidth = `${Math.max(0, Math.min(100, liveSnapshot.progressPercent))}%` as DimensionValue;
   const progressLabel = isMaxRank
     ? `${formatProgressionXp(displayedXp)} XP total`
     : `${formatProgressionXp(displayedXp)} / ${formatProgressionXp(

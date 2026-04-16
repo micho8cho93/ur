@@ -23,6 +23,7 @@ export default function GameLayout() {
         <Stack.Screen name="lobby" options={{ title: 'Lobby' }} />
         <Stack.Screen name="bot" options={{ title: 'Bot Match' }} />
         <Stack.Screen name="game-modes" options={{ title: 'Game Modes' }} />
+        <Stack.Screen name="store" options={{ title: 'Store' }} />
         <Stack.Screen name="tournaments/index" options={{ title: 'Tournaments' }} />
         <Stack.Screen name="tournaments/[runId]" options={{ title: 'Tournament' }} />
       </Stack>

@@ -46,6 +46,21 @@ describe("InitModule tournament RPC registration", () => {
         "rpc_admin_get_tournament_live_status",
         "rpc_admin_get_tournament_run",
         "rpc_admin_list_tournaments",
+        "get_wallet",
+        "get_storefront",
+        "get_full_catalog",
+        "purchase_item",
+        "get_owned_cosmetics",
+        "admin_get_full_catalog",
+        "admin_upsert_cosmetic",
+        "admin_disable_cosmetic",
+        "admin_enable_cosmetic",
+        "admin_get_rotation_state",
+        "admin_set_manual_rotation",
+        "admin_clear_manual_rotation",
+        "admin_set_limited_time_event",
+        "admin_remove_limited_time_event",
+        "admin_get_store_stats",
       ]),
     );
     expect(initializer.registerMatch).toHaveBeenCalledWith(
@@ -78,6 +93,24 @@ describe("InitModule tournament RPC registration", () => {
     );
     expect(entrypointSource).toContain(
       "initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_LIVE_STATUS, rpcAdminGetTournamentLiveStatus);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_GET_WALLET, rpcGetWallet);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_GET_STOREFRONT, rpcGetStorefront);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_GET_FULL_CATALOG, rpcGetFullCatalog);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_PURCHASE_ITEM, rpcPurchaseItem);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_GET_OWNED_COSMETICS, rpcGetOwnedCosmetics);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_GET_STORE_STATS, rpcAdminGetStoreStats);",
     );
     expect(entrypointSource).toContain(
       "initializer.registerMatch(MATCH_HANDLER, {",

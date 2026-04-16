@@ -1,6 +1,7 @@
 import { SlotDiceScene } from '@/components/game/SlotDiceScene';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures } from '@/constants/urTheme';
+import { useCosmeticTheme } from '@/src/store/CosmeticThemeContext';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
@@ -27,6 +28,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import { DEFAULT_DICE_ROLL_DURATION_MS, SLOT_DICE_JACKPOT_VALUE } from './slotDiceShared';
 
+// Cosmetic preview regression checklist:
+// - Default active card background stays #5A2E10.
+// - Default locked card background stays #3A3228.
+// - Default jackpot/result text colors stay #FFF2D8 / #F6E6CC.
+// - Cosmetic dice previews swap marked/unmarked die PNG sources; they do not apply tint or color treatments.
 const STAGE_ROLL_BUTTON_WIDTH_SCALE = 1.2;
 const STAGE_ROLL_BUTTON_HEIGHT_SCALE = 0.8;
 const STAGE_ROLL_SCENE_SCALE = 1.08;
@@ -143,6 +149,7 @@ export const DiceStageVisual: React.FC<DiceStageVisualProps> = ({
   reelOrientation = 'horizontal',
   visible = true,
 }) => {
+  const { diceImageSources } = useCosmeticTheme();
   const { width } = useWindowDimensions();
   const isCompactVisual = compact || width < 1280;
   const sceneSize = isCompactVisual ? 1.12 : 1.26;
@@ -169,6 +176,8 @@ export const DiceStageVisual: React.FC<DiceStageVisualProps> = ({
         ]}
       >
         <SlotDiceScene
+          markedDieSource={diceImageSources.marked}
+          unmarkedDieSource={diceImageSources.unmarked}
           diceImageScale={diceImageScale}
           playbackId={renderedPlaybackId}
           durationMs={animationDurationMs}
@@ -202,6 +211,7 @@ export const Dice: React.FC<DiceProps> = ({
   artSize,
   onMeasuredWidth,
 }) => {
+  const { diceImageSources } = useCosmeticTheme();
   const { width } = useWindowDimensions();
   const isMobileWidth = width < 760;
   const isIOS = Platform.OS === 'ios';
@@ -512,6 +522,8 @@ export const Dice: React.FC<DiceProps> = ({
   const renderDiceVisual = (sceneStyle?: StyleProp<ViewStyle>) => (
     <View pointerEvents="none" testID="dice-roll-scene-host" style={[styles.rollSceneViewport, sceneStyle]}>
       <SlotDiceScene
+        markedDieSource={diceImageSources.marked}
+        unmarkedDieSource={diceImageSources.unmarked}
         playbackId={renderedPlaybackId}
         durationMs={animationDurationMs}
         onSettled={onResultShown}

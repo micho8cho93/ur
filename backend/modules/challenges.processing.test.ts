@@ -6,6 +6,7 @@ import {
   createDefaultUserChallengeProgressSnapshot,
 } from "../../shared/challenges";
 import { createDefaultProgressionProfile } from "../../shared/progression";
+import { SOFT_CURRENCY_KEY, calculateChallengeSoftCurrencyReward } from "../../shared/wallet";
 import { ensureUserChallengeProgress, getUserChallengeProgress, processCompletedMatch } from "./challenges";
 
 type StoredObject = {
@@ -34,6 +35,7 @@ const PROGRESSION_COLLECTION = "progression";
 const PROGRESSION_PROFILE_KEY = "profile";
 const USER_CHALLENGE_PROGRESS_COLLECTION = "user_challenge_progress";
 const USER_CHALLENGE_PROGRESS_KEY = "progress";
+const PROCESSED_MATCH_RESULTS_COLLECTION = "processed_match_results";
 
 const createLogger = () => ({
   info: jest.fn(),
@@ -46,6 +48,8 @@ const buildStorageKey = (collection: string, key: string, userId = ""): string =
 
 const createNakama = () => {
   const storage = new Map<string, StoredObject>();
+  const walletLedger: Array<{ userId: string; changeset: Record<string, number>; metadata: Record<string, unknown> }> = [];
+  const wallets = new Map<string, Record<string, number>>();
   let versionCounter = 1;
 
   const storageRead = jest.fn((requests: StorageReadRequest[]) =>
@@ -54,7 +58,7 @@ const createNakama = () => {
       .filter((object): object is StoredObject => Boolean(object))
   );
 
-  const storageWrite = jest.fn((writes: StorageWriteRequest[]) => {
+  const applyStorageWrite = (writes: StorageWriteRequest[]) => {
     writes.forEach((write) => {
       const storageKey = buildStorageKey(write.collection, write.key, write.userId ?? "");
       const existing = storage.get(storageKey);
@@ -76,12 +80,39 @@ const createNakama = () => {
         version: `v${versionCounter++}`,
       });
     });
+  };
+
+  const storageWrite = jest.fn((writes: StorageWriteRequest[]) => {
+    applyStorageWrite(writes);
+  });
+
+  const walletLedgerList = jest.fn((userId: string) =>
+    walletLedger.filter((item) => item.userId === userId)
+  );
+
+  const walletUpdate = jest.fn((userId: string, changeset: Record<string, number>, metadata: Record<string, unknown>) => {
+    const current = wallets.get(userId) ?? {};
+    const next = { ...current };
+    Object.entries(changeset).forEach(([key, amount]) => {
+      next[key] = (next[key] ?? 0) + amount;
+    });
+    wallets.set(userId, next);
+    walletLedger.push({ userId, changeset, metadata });
+    return {
+      updated: next,
+      previous: current,
+    };
   });
 
   return {
     storage,
+    walletLedger,
+    wallets,
     storageRead,
     storageWrite,
+    applyStorageWrite,
+    walletLedgerList,
+    walletUpdate,
   };
 };
 
@@ -331,7 +362,113 @@ describe("challenge progression processing", () => {
     expect(first.duplicate).toBe(false);
     expect(second.duplicate).toBe(true);
     expect(second.awardedXp).toBe(first.awardedXp);
+    expect(second.awardedSoftCurrency).toBe(first.awardedSoftCurrency);
     expect(second.totalXp).toBe(first.totalXp);
+    expect(nk.walletUpdate).toHaveBeenCalledTimes(first.completedChallengeIds.length);
+  });
+
+  it("awards Coins equal to ten percent of newly completed challenge XP", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+
+    const result = processCompletedMatch(nk, logger, createSummary({ matchId: "match-coins" }));
+    const expectedCoins = result.completedChallengeIds.reduce((total, challengeId) => {
+      const definition = CHALLENGE_DEFINITIONS.find((entry) => entry.id === challengeId)!;
+      return total + calculateChallengeSoftCurrencyReward(definition.rewardXp);
+    }, 0);
+
+    expect(result.awardedSoftCurrency).toBe(expectedCoins);
+    expect(nk.wallets.get("user-1")?.[SOFT_CURRENCY_KEY]).toBe(expectedCoins);
+    expect(nk.walletUpdate).toHaveBeenCalledTimes(result.completedChallengeIds.length);
+    expect(nk.walletUpdate).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({ [SOFT_CURRENCY_KEY]: expect.any(Number) }),
+      expect.objectContaining({
+        source: "challenge_completion",
+        currency: SOFT_CURRENCY_KEY,
+        matchId: "match-coins",
+      }),
+      true
+    );
+  });
+
+  it("uses wallet ledger metadata to avoid duplicate Coin grants after a storage retry", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+
+    nk.storageWrite
+      .mockImplementationOnce(() => {
+        throw new Error("transient storage conflict");
+      })
+      .mockImplementation((writes: StorageWriteRequest[]) => {
+        nk.applyStorageWrite(writes);
+      });
+
+    const result = processCompletedMatch(nk, logger, createSummary({ matchId: "match-retry" }));
+
+    expect(result.duplicate).toBe(false);
+    expect(result.awardedSoftCurrency).toBeGreaterThan(0);
+    expect(nk.walletUpdate).toHaveBeenCalledTimes(result.completedChallengeIds.length);
+    expect(nk.wallets.get("user-1")?.[SOFT_CURRENCY_KEY]).toBe(result.awardedSoftCurrency);
+  });
+
+  it("does not update the wallet when a matching challenge Coin ledger entry already exists", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    const summary = createSummary({ matchId: "match-ledger-seeded" });
+    const firstVictoryCoins = calculateChallengeSoftCurrencyReward(50);
+
+    nk.walletLedger.push({
+      userId: "user-1",
+      changeset: { [SOFT_CURRENCY_KEY]: firstVictoryCoins },
+      metadata: {
+        source: "challenge_completion",
+        currency: SOFT_CURRENCY_KEY,
+        matchId: summary.matchId,
+        challengeId: CHALLENGE_IDS.FIRST_VICTORY,
+        amount: firstVictoryCoins,
+      },
+    });
+
+    const result = processCompletedMatch(nk, logger, summary);
+
+    expect(result.completedChallengeIds).toContain(CHALLENGE_IDS.FIRST_VICTORY);
+    expect(result.awardedSoftCurrency).toBeGreaterThanOrEqual(firstVictoryCoins);
+    expect(nk.walletUpdate).not.toHaveBeenCalledWith(
+      "user-1",
+      { [SOFT_CURRENCY_KEY]: firstVictoryCoins },
+      expect.objectContaining({ challengeId: CHALLENGE_IDS.FIRST_VICTORY }),
+      true
+    );
+  });
+
+  it("defaults legacy processed match records without Coin totals to zero", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    const summary = createSummary({ matchId: "match-legacy" });
+    seedProgressionProfile(nk, "user-1", 50);
+
+    nk.storage.set(buildStorageKey(PROCESSED_MATCH_RESULTS_COLLECTION, "match-legacy", "user-1"), {
+      collection: PROCESSED_MATCH_RESULTS_COLLECTION,
+      key: "match-legacy",
+      userId: "user-1",
+      value: {
+        matchId: "match-legacy",
+        playerUserId: "user-1",
+        processedAt: "2026-03-28T12:01:00.000Z",
+        summary,
+        completedChallengeIds: [CHALLENGE_IDS.FIRST_VICTORY],
+        awardedXp: 50,
+      },
+      version: "seed-processed-1",
+    });
+
+    const result = processCompletedMatch(nk, logger, summary);
+
+    expect(result.duplicate).toBe(true);
+    expect(result.awardedXp).toBe(50);
+    expect(result.awardedSoftCurrency).toBe(0);
+    expect(nk.walletUpdate).not.toHaveBeenCalled();
   });
 
   it("repairs old saved challenge snapshots that are missing the new stats fields", () => {

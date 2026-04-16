@@ -8,6 +8,9 @@ describe('console routes', () => {
     expect(appRoutes.tournaments.create).toBe('/tournaments/runs/new')
     expect(appRoutes.analytics.home).toBe('/analytics')
     expect(appRoutes.analytics.section('players')).toBe('/analytics/players')
+    expect(appRoutes.store.catalog).toBe('/store/catalog')
+    expect(appRoutes.store.rotation).toBe('/store/rotation')
+    expect(appRoutes.store.stats).toBe('/store/stats')
     expect(appRoutes.settings).toBe('/settings')
   })
 
@@ -25,6 +28,9 @@ describe('console routes', () => {
       'Matches',
       'Players',
       'Analytics',
+      'Catalog',
+      'Rotation',
+      'Store Stats',
       'Audit Log',
       'Settings',
     ])

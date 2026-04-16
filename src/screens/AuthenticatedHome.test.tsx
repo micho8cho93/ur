@@ -8,6 +8,7 @@ import { CHALLENGE_DEFINITIONS, createDefaultUserChallengeProgressSnapshot } fro
 
 const mockUseAuth = jest.fn();
 const mockUseProgression = jest.fn();
+const mockUseWallet = jest.fn();
 const mockUseEloRating = jest.fn();
 const mockUseChallenges = jest.fn();
 const mockPush = jest.fn();
@@ -30,6 +31,10 @@ jest.mock('@/src/auth/useAuth', () => ({
 
 jest.mock('@/src/progression/useProgression', () => ({
   useProgression: (...args: unknown[]) => mockUseProgression(...args),
+}));
+
+jest.mock('@/src/wallet/useWallet', () => ({
+  useWallet: (...args: unknown[]) => mockUseWallet(...args),
 }));
 
 jest.mock('@/src/elo/useEloRating', () => ({
@@ -107,6 +112,15 @@ describe('AuthenticatedHome', () => {
       isLoading: false,
     });
 
+    mockUseWallet.mockReturnValue({
+      wallet: { soft_currency: 37 },
+      softCurrency: 37,
+      errorMessage: null,
+      isLoading: false,
+      isRefreshing: false,
+      refresh: jest.fn(),
+    });
+
     mockUseEloRating.mockReturnValue({
       ratingProfile: {
         leaderboardId: 'elo_global',
@@ -147,6 +161,7 @@ describe('AuthenticatedHome', () => {
     const view = render(<AuthenticatedHome />);
 
     expect(view.getByText('Michel')).toBeTruthy();
+    expect(view.getByText('37 Coins')).toBeTruthy();
     expect(view.getByLabelText('Current progression rank badge: Apprentice Scribe')).toBeTruthy();
     expect(view.getByText('Logout')).toBeTruthy();
     expect(view.getByText('XP & Rank')).toBeTruthy();
@@ -197,6 +212,7 @@ describe('AuthenticatedHome', () => {
     const view = render(<AuthenticatedHome />);
 
     expect(view.getByText('Guest')).toBeTruthy();
+    expect(view.getByText('0 Coins')).toBeTruthy();
     expect(view.getByLabelText('Current progression rank badge: Laborer')).toBeTruthy();
     expect(view.getByText('Back')).toBeTruthy();
     expect(view.queryByText('Logout')).toBeNull();
@@ -217,6 +233,7 @@ describe('AuthenticatedHome', () => {
     const view = render(<AuthenticatedHome />);
 
     expect(view.getByText('XP & Rank')).toBeTruthy();
+    expect(view.getByText('37 Coins')).toBeTruthy();
     expect(view.getByText('Elo Rating')).toBeTruthy();
     expect(view.getAllByText('Challenges')).toHaveLength(2);
     expect(view.getByText('Status')).toBeTruthy();

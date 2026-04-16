@@ -120,6 +120,7 @@ export type ChallengeCompletionRecord = {
   completedAt: string;
   completedMatchId: string;
   rewardXp: number;
+  rewardSoftCurrency: number;
   rewardLedgerKey: string;
 };
 

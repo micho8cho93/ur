@@ -4,6 +4,7 @@ import {
   Animated,
   Easing,
   Image,
+  ImageSourcePropType,
   LayoutChangeEvent,
   StyleSheet,
   View,
@@ -60,12 +61,14 @@ const JACKPOT_PULSE_FALL_MS = scaleDuration(236);
 type SlotDiceSceneProps = {
   diceImageScale?: number;
   durationMs?: number;
+  markedDieSource?: ImageSourcePropType;
   onSettled?: () => void;
   orientation?: 'horizontal' | 'vertical';
   playbackId: number;
   presentation?: 'embedded' | 'stage';
   rollValue: number | null;
   size?: number;
+  unmarkedDieSource?: ImageSourcePropType;
   variant?: SlotDiceVariant;
 };
 
@@ -76,11 +79,13 @@ type SlotReelProps = {
   index: number;
   jackpotPulseDelayMs: number;
   jackpotPulseToken: number;
+  markedDieSource: ImageSourcePropType;
   onStopComplete?: (index: number) => void;
   playbackId: number;
   presentation: 'embedded' | 'stage';
   spinning: boolean;
   targetMarked: boolean;
+  unmarkedDieSource: ImageSourcePropType;
   variant: SlotDiceVariant;
 };
 
@@ -126,11 +131,13 @@ const SlotReel: React.FC<SlotReelProps> = ({
   index,
   jackpotPulseDelayMs,
   jackpotPulseToken,
+  markedDieSource,
   onStopComplete,
   playbackId,
   presentation,
   spinning,
   targetMarked,
+  unmarkedDieSource,
   variant,
 }) => {
   const spinSeedMarked = (playbackId + index) % 2 === 0;
@@ -615,7 +622,7 @@ const SlotReel: React.FC<SlotReelProps> = ({
               <View pointerEvents="none" style={styles.reelFace} testID={`slot-die-face-${index}`}>
                 <View style={[styles.dieArtWrap, dieArtStyle]}>
                   <Image
-                    source={DICE_UNMARKED}
+                    source={unmarkedDieSource}
                     style={[styles.dieImage, { height: imageSize, width: imageSize }]}
                     resizeMode="contain"
                     testID={`slot-die-image-${index}`}
@@ -644,7 +651,7 @@ const SlotReel: React.FC<SlotReelProps> = ({
                   >
                     <View style={[styles.dieArtWrap, dieArtStyle]}>
                       <Image
-                        source={faceMarked ? DICE_MARKED : DICE_UNMARKED}
+                        source={faceMarked ? markedDieSource : unmarkedDieSource}
                         style={[styles.dieImage, { height: imageSize, width: imageSize }]}
                         resizeMode="contain"
                         testID={`slot-die-strip-image-${index}-${faceIndex}`}
@@ -734,12 +741,14 @@ const SlotReel: React.FC<SlotReelProps> = ({
 export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
   diceImageScale = 1,
   durationMs = DEFAULT_DICE_ROLL_DURATION_MS,
+  markedDieSource = DICE_MARKED,
   onSettled,
   orientation = 'horizontal',
   playbackId,
   presentation = 'embedded',
   rollValue,
   size = 1,
+  unmarkedDieSource = DICE_UNMARKED,
   variant = 'animated',
 }) => {
   const [layout, setLayout] = useState({ height: 0, width: 0 });
@@ -1058,11 +1067,13 @@ export const SlotDiceScene: React.FC<SlotDiceSceneProps> = ({
                   index={index}
                   jackpotPulseDelayMs={jackpotPulseDelayByReel[index] ?? JACKPOT_PULSE_LEAD_MS}
                   jackpotPulseToken={jackpotPulseToken}
+                  markedDieSource={markedDieSource}
                   onStopComplete={handleReelStopComplete}
                   playbackId={playbackId}
                   presentation={presentation}
                   spinning={variant === 'animated' ? spinningReels[index] : false}
                   targetMarked={variant === 'start' ? false : targetFaces[index]}
+                  unmarkedDieSource={unmarkedDieSource}
                   variant={variant}
                 />
               ))}

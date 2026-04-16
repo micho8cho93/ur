@@ -10,6 +10,7 @@ import {
   readRunOrThrow,
   resolveOverrideExpiry,
   resolveRunStandingsSnapshot,
+  TournamentStandingsSnapshot,
 } from "./admin";
 import { assertAdmin } from "./auth";
 import {
@@ -24,7 +25,6 @@ import type {
   RuntimeContext,
   RuntimeLogger,
   RuntimeNakama,
-  TournamentStandingsSnapshot,
 } from "./types";
 
 export const RPC_ADMIN_EXPORT_TOURNAMENT = "rpc_admin_export_tournament";

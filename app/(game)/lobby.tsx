@@ -29,6 +29,7 @@ import {
   resolveHomeFredokaFontFamily,
   resolveHomeMagicFontFamily,
 } from '@/src/home/homeTheme';
+import { useStore } from '@/src/store/StoreProvider';
 import { useTournamentList } from '@/src/tournaments/useTournamentList';
 import { useFonts } from 'expo-font';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -133,6 +134,7 @@ export default function Lobby() {
   const { mode: rawMode } = useLocalSearchParams<{ mode?: string }>();
   const mode: LobbyMode = useMemo(() => (rawMode === 'online' ? 'online' : 'bot'), [rawMode]);
   const router = useRouter();
+  const { softCurrency } = useStore();
   const [confirmJoinRunId, setConfirmJoinRunId] = useState<string | null>(null);
   const [privateCodeInput, setPrivateCodeInput] = useState('');
   const {
@@ -313,6 +315,20 @@ export default function Lobby() {
               iconName="arrow-back"
               fontFamily={buttonFontFamily}
             />
+            <View style={styles.storeActionGroup}>
+              <View style={styles.storeBalancePill}>
+                <Text style={[styles.storeBalanceText, { fontFamily: bodyFontFamily }]}>
+                  {softCurrency} Coins
+                </Text>
+              </View>
+              <SketchButton
+                label="Store"
+                accessibilityLabel="Store"
+                onPress={() => router.push('/store' as never)}
+                iconName="shopping-cart"
+                fontFamily={buttonFontFamily}
+              />
+            </View>
           </View>
 
           <View style={[styles.stage, { width: stageWidth }]}>
@@ -715,8 +731,33 @@ const styles = StyleSheet.create({
   },
   topBar: {
     width: '100%',
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: urTheme.spacing.sm,
     marginBottom: urTheme.spacing.sm,
+  },
+  storeActionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: urTheme.spacing.sm,
+  },
+  storeBalancePill: {
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: urPanelColors.parchmentBorder,
+    backgroundColor: urPanelColors.parchmentSurface,
+  },
+  storeBalanceText: {
+    color: urTextColors.titleOnPanel,
+    fontSize: 13,
+    lineHeight: 15,
+    textAlign: 'center',
+    ...urTextVariants.body,
   },
   hero: {
     width: '100%',

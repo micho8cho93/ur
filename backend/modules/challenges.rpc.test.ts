@@ -126,6 +126,8 @@ describe('rpcSubmitCompletedBotMatch', () => {
     const nk = {
       storageRead: jest.fn().mockReturnValue([]),
       storageWrite: jest.fn(),
+      walletLedgerList: jest.fn().mockReturnValue([]),
+      walletUpdate: jest.fn(),
     };
 
     const response = rpcSubmitCompletedBotMatch(

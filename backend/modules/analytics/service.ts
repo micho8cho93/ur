@@ -883,16 +883,17 @@ const loadKnownUsers = (
       value?: unknown;
     }>;
 
-    const objectMap = new Map(
-      objects
-        .map((object) => {
-          const collection = readStringField(object, ["collection"]);
-          const key = readStringField(object, ["key"]);
-          const userId = readStringField(object, ["userId", "user_id"]);
-          return collection && key && userId ? ([`${collection}:${key}:${userId}`, object] as const) : null;
-        })
-        .filter((entry): entry is readonly [string, { value?: unknown }] => Boolean(entry)),
-    );
+    const objectEntries = objects
+      .map((object): readonly [`${string}:${string}:${string}`, typeof object] | null => {
+        const collection = readStringField(object, ["collection"]);
+        const key = readStringField(object, ["key"]);
+        const userId = readStringField(object, ["userId", "user_id"]);
+        return collection && key && userId ? ([`${collection}:${key}:${userId}`, object] as const) : null;
+      })
+      .filter(
+        (entry): entry is readonly [`${string}:${string}:${string}`, (typeof objects)[number]] => entry !== null,
+      );
+    const objectMap = new Map(objectEntries);
 
     chunk.forEach((userId) => {
       const usernameProfile = asRecord(

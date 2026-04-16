@@ -8,6 +8,9 @@ import { LegacyTournamentDetailRedirect } from './pages/LegacyTournamentDetailRe
 import { LoginPage } from './pages/Login'
 import { OverviewPage } from './pages/Overview'
 import { SettingsPage } from './pages/Settings'
+import { StoreCatalogPage } from './pages/StoreCatalog'
+import { StoreRotationPage } from './pages/StoreRotation'
+import { StoreStatsPage } from './pages/StoreStats'
 import { TournamentDetailPage } from './pages/TournamentDetail'
 import { TournamentsPage } from './pages/Tournaments'
 import { WorkspaceChooserPage } from './pages/WorkspaceChooser'
@@ -60,6 +63,18 @@ export const router = createBrowserRouter([
           {
             path: appRoutes.analytics.section(':sectionId'),
             element: <AnalyticsPage />,
+          },
+          {
+            path: appRoutes.store.catalog,
+            element: <StoreCatalogPage />,
+          },
+          {
+            path: appRoutes.store.rotation,
+            element: <StoreRotationPage />,
+          },
+          {
+            path: appRoutes.store.stats,
+            element: <StoreStatsPage />,
           },
           {
             path: appRoutes.settings,

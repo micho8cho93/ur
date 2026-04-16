@@ -2,6 +2,7 @@ import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures } from '@/constants/urTheme';
 import { isRosette, isWarZone } from '@/logic/constants';
 import { PlayerColor } from '@/logic/types';
+import { useCosmeticTheme } from '@/src/store/CosmeticThemeContext';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Polygon } from 'react-native-svg';
@@ -16,6 +17,12 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Piece } from './Piece';
 
+// Cosmetic preview regression checklist:
+// - Default normal tile formula: rgb(210 + seed*4, 187 + floor(seed*4/2), 147 + floor(seed*4/3)).
+// - Default rosette formula: rgb(176 + seed*4, 130 + floor(seed*4/2), 74 + floor(seed*4/3)).
+// - Default war formula: rgb(154 + seed*4, 106 + floor(seed*4/2), 66 + floor(seed*4/3)).
+// - Default border colors stay rgba(246, 214, 151, 0.38) for rosettes and rgba(90, 63, 39, 0.28) otherwise.
+// - Cosmetic tile previews swap tile PNG sources; they do not apply tint, outline, or color treatments.
 interface TileProps {
   row: number;
   col: number;
@@ -199,6 +206,7 @@ const TileComponent: React.FC<TileProps> = ({
   highlightMode = 'theatrical',
   skin = 'default',
 }) => {
+  const { tileImageSources, hasBoardTileAssetOverride } = useCosmeticTheme();
   const rosette = isRosette(row, col);
   const war = isWarZone(row, col);
   const pulse = useSharedValue(isValidTarget ? 1 : 0);
@@ -333,12 +341,19 @@ const TileComponent: React.FC<TileProps> = ({
     transform: [{ scale: 0.82 + rosetteBurst.value * 0.7 }],
   }));
 
-  const baseBackground = rosette
+  const defaultBaseBackground = rosette
     ? `rgb(${176 + toneOffset}, ${130 + Math.floor(toneOffset / 2)}, ${74 + Math.floor(toneOffset / 3)})`
     : war
       ? `rgb(${154 + toneOffset}, ${106 + Math.floor(toneOffset / 2)}, ${66 + Math.floor(toneOffset / 3)})`
       : `rgb(${210 + toneOffset}, ${187 + Math.floor(toneOffset / 2)}, ${147 + Math.floor(toneOffset / 3)})`;
-  const borderColor = rosette ? 'rgba(246, 214, 151, 0.38)' : 'rgba(90, 63, 39, 0.28)';
+  const defaultBorderColor = rosette ? 'rgba(246, 214, 151, 0.38)' : 'rgba(90, 63, 39, 0.28)';
+  const themedTileImageSource = rosette
+    ? tileImageSources.rosette
+    : war
+      ? tileImageSources.war
+      : tileImageSources.normal;
+  const baseBackground = defaultBaseBackground;
+  const borderColor = defaultBorderColor;
   const handlePress = useCallback(() => {
     onPress?.(row, col);
   }, [col, onPress, row]);
@@ -360,20 +375,26 @@ const TileComponent: React.FC<TileProps> = ({
     >
       {skin !== 'transparent' && (
         <>
-          <Image
-            source={urTextures.lapisMosaic}
-            resizeMode="cover"
-            style={[
-              styles.tileTexture,
-              styles.tileMottleTexture,
-              rosette && styles.rosetteTextureTint,
-              war && styles.warTextureTint,
-            ]}
-          />
-          <Image source={urTextures.wood} resizeMode="repeat" style={styles.tileTexture} />
-          {rosette && <RosetteArtwork size={cellRenderedSize} />}
-          {!rosette && war && <WarArtwork size={cellRenderedSize} />}
-          {!rosette && !war && <PipArtwork size={cellRenderedSize} />}
+          {hasBoardTileAssetOverride ? (
+            <Image source={themedTileImageSource} resizeMode="cover" style={styles.tileAssetImage} />
+          ) : (
+            <>
+              <Image
+                source={urTextures.lapisMosaic}
+                resizeMode="cover"
+                style={[
+                  styles.tileTexture,
+                  styles.tileMottleTexture,
+                  rosette && styles.rosetteTextureTint,
+                  war && styles.warTextureTint,
+                ]}
+              />
+              <Image source={urTextures.wood} resizeMode="repeat" style={styles.tileTexture} />
+              {rosette && <RosetteArtwork size={cellRenderedSize} />}
+              {!rosette && war && <WarArtwork size={cellRenderedSize} />}
+              {!rosette && !war && <PipArtwork size={cellRenderedSize} />}
+            </>
+          )}
 
           <View
             style={[
@@ -492,6 +513,10 @@ const styles = StyleSheet.create({
   tileTexture: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.12,
+  },
+  tileAssetImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 1,
   },
   tileMottleTexture: {
     opacity: 0.1,

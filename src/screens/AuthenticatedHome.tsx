@@ -8,6 +8,7 @@ import { MIN_WIDE_WEB_BACKGROUND_WIDTH } from '@/components/ui/WideScreenBackgro
 import { urTheme } from '@/constants/urTheme';
 import { useAuth } from '@/src/auth/useAuth';
 import { useProgression } from '@/src/progression/useProgression';
+import { useWallet } from '@/src/wallet/useWallet';
 import {
   HOME_FREDOKA_FONT_FAMILY,
   HOME_GROBOLD_FONT_FAMILY,
@@ -43,6 +44,8 @@ export default function AuthenticatedHome() {
   const runScreenTransition = useScreenTransition();
   const { user, logout } = useAuth();
   const { progression } = useProgression();
+  const { softCurrency } = useWallet();
+  const displayedSoftCurrency = user?.provider === 'guest' ? 0 : softCurrency;
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const [isProgressionModalOpen, setIsProgressionModalOpen] = React.useState(false);
   const [fontsLoaded] = useFonts({
@@ -182,11 +185,35 @@ export default function AuthenticatedHome() {
     </Text>
   );
 
+  const renderWalletBalance = () => (
+    <View
+      accessibilityLabel={`${displayedSoftCurrency} Coins`}
+      style={[
+        styles.walletChip,
+        isDesktopLayout ? styles.walletChipDesktop : styles.walletChipCompact,
+      ]}
+    >
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.72}
+        style={[
+          styles.walletChipText,
+          isDesktopLayout ? styles.walletChipTextDesktop : styles.walletChipTextCompact,
+          { fontFamily: usernameFontFamily },
+        ]}
+      >
+        {displayedSoftCurrency.toLocaleString()} Coins
+      </Text>
+    </View>
+  );
+
   const utilityBarContent = (
     <View style={styles.topOverlayRow}>
       <View testID="authenticated-home-utility-left" style={styles.topOverlayLeft}>
         {renderUtilityControl()}
         {renderIdentityLabel()}
+        {renderWalletBalance()}
       </View>
       <View testID="authenticated-home-utility-right" style={styles.topOverlayRight}>
         {renderUtilityAction()}
@@ -426,6 +453,44 @@ const styles = StyleSheet.create({
   utilityUsernameCompact: {
     fontSize: 22,
     lineHeight: 26,
+  },
+  walletChip: {
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 226, 150, 0.62)',
+    backgroundColor: 'rgba(67, 37, 15, 0.66)',
+    shadowColor: '#2D1607',
+    shadowOpacity: 0.28,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  walletChipDesktop: {
+    minWidth: 92,
+    height: 34,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+  },
+  walletChipCompact: {
+    minWidth: 82,
+    height: 30,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+  },
+  walletChipText: {
+    color: '#FFE296',
+    textShadowColor: 'rgba(72, 31, 10, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
+  },
+  walletChipTextDesktop: {
+    fontSize: 16,
+    lineHeight: 19,
+  },
+  walletChipTextCompact: {
+    fontSize: 14,
+    lineHeight: 17,
   },
   header: {
     alignItems: 'center',

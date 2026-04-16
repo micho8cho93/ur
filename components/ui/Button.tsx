@@ -71,9 +71,12 @@ export const Button: React.FC<ButtonProps> = ({
   style,
   className,
   labelStyle,
+  onFocus,
+  onBlur,
   ...props
 }) => {
   const isDisabled = Boolean(disabled || loading);
+  const [isFocused, setIsFocused] = React.useState(false);
 
   return (
     <Pressable
@@ -81,13 +84,21 @@ export const Button: React.FC<ButtonProps> = ({
       className={className}
       accessibilityRole="button"
       disabled={isDisabled}
+      onFocus={(event) => {
+        setIsFocused(true);
+        onFocus?.(event);
+      }}
+      onBlur={(event) => {
+        setIsFocused(false);
+        onBlur?.(event);
+      }}
       style={({ pressed }) => [
         styles.pressable,
         style,
         pressed && !isDisabled ? styles.pressablePressed : null,
       ]}
     >
-      {({ pressed, hovered, focused }) => {
+      {({ pressed, hovered }) => {
         const palette = isDisabled ? disabledPalette : variants[variant];
         const isRoyalPrimary = variant === 'primary';
 
@@ -96,7 +107,7 @@ export const Button: React.FC<ButtonProps> = ({
             <RoyalPrimaryButtonFrame
               pressed={pressed && !isDisabled}
               hovered={hovered && !isDisabled}
-              focused={focused && !isDisabled}
+              focused={isFocused && !isDisabled}
               disabled={isDisabled}
               outerRadius={20}
               innerRadius={17}

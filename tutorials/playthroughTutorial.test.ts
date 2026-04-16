@@ -65,6 +65,10 @@ const replayScriptManually = (): ReplayFrame[] => {
       return;
     }
 
+    if (step.kind !== 'MOVE') {
+      throw new Error(`Unexpected scripted step ${step.id}`);
+    }
+
     const move = getValidMoves(state, state.rollValue ?? 0).find(
       (candidate) =>
         candidate.pieceId === step.pieceId &&

@@ -107,7 +107,7 @@ const countThreatenedPieces = (state: GameState, defenderColor: PlayerColor): nu
 
   return defender.pieces.reduce((count, piece) => {
     const coord = getPieceCoord(state, defenderColor, piece.position);
-    if (!isContestedWarTile(state.matchConfig, coord)) {
+    if (!coord || !isContestedWarTile(state.matchConfig, coord)) {
       return count;
     }
 
@@ -121,7 +121,7 @@ const countCaptureThreats = (state: GameState, attackerColor: PlayerColor): numb
 
   return defender.pieces.reduce((count, piece) => {
     const coord = getPieceCoord(state, defenderColor, piece.position);
-    if (!isContestedWarTile(state.matchConfig, coord)) {
+    if (!coord || !isContestedWarTile(state.matchConfig, coord)) {
       return count;
     }
 
@@ -179,7 +179,7 @@ const doesMoveCapture = (state: GameState, move: MoveAction): boolean => {
 
 const isMoveUnsafe = (state: GameState, moverColor: PlayerColor, move: MoveAction): boolean => {
   const coord = getPieceCoord(state, moverColor, move.toIndex);
-  if (!isContestedWarTile(state.matchConfig, coord)) {
+  if (!coord || !isContestedWarTile(state.matchConfig, coord)) {
     return false;
   }
 
