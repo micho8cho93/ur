@@ -11,18 +11,26 @@ import type {
 export const PLAYTHROUGH_TUTORIAL_ID = 'playthrough' as const;
 export const PLAYTHROUGH_TUTORIAL_LESSON_COUNT = 6 as const;
 
-export const PLAYTHROUGH_TUTORIAL_OPENING_MODAL = {
-  eyebrow: 'How To Play',
-  title: 'Roll, move, and race to score',
-  body:
-    'Start by rolling the dice, then move your piece the same number of spaces.\n\nYour goal is to take each light piece from your side, move it up into the middle column, come down the last two tiles, and move it off the board to score.',
-  actionLabel: 'Start Tutorial',
-} as const;
+export const PLAYTHROUGH_TUTORIAL_OPENING_PAGES = [
+  {
+    eyebrow: undefined,
+    title: 'Welcome to the Royal Game of Ur',
+    body:
+      "In this tutorial, you’ll learn to play one of the world’s most ancient board games, played by royals and common folk in Mesopotamia since at least 4,500 years ago!",
+    actionLabel: 'Next',
+  },
+  {
+    eyebrow: undefined,
+    title: 'Welcome to the Royal Game of Ur',
+    body:
+      'It’s a simple race game – roll the dice each turn to move one of your seven checkers across the board and towards your finish line. The first player to move all seven checkers from the beginning to the end of their path wins!',
+    actionLabel: 'Start Game',
+  },
+] as const;
 
 export const PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL = {
-  eyebrow: 'Tutorial Complete',
-  title: 'Now finish the match',
-  body: 'The guided part is over. Keep playing against the bot from here and win this match to earn your first XP.',
+  title: 'Tutorial Complete',
+  body: "You’ve learned the basics, now play on to finish this match and earn your first XP!",
   actionLabel: 'Play For XP',
 } as const;
 
@@ -34,6 +42,8 @@ type PlaythroughTutorialLessonSpec = {
   implication: string;
   rollStepId: string;
   moveStepId: string;
+  coachPlacement?: 'center' | 'side';
+  showResultModal?: boolean;
 };
 
 export type PlaythroughTutorialLesson = PlaythroughTutorialLessonSpec & {
@@ -123,9 +133,9 @@ export const PLAYTHROUGH_TUTORIAL_SCRIPT: readonly TutorialStep[] = [
   rollStep('roll-light-pass-before-capture-setup', 'light', 0, {
     expectNoMoves: true,
     resultModal: {
-      eyebrow: 'Zeros In Ur',
-      title: 'Zeros Can Be Rolled',
-      body: 'In Ur, a roll of 0 is valid. It means no piece can move this turn, so play passes to the other side.',
+      title: 'I rolled a zero?',
+      body:
+        'Yes, that’s right. Unlike modern dice, the four-sided dice used in ancient Mesopotamia can result in a roll of 1, 2, 3, 4, or 0! Here’s how they work: each die can either land on a marked side, which counts as one, or an unmarked side, which counts as zero. Adding them all up gives you your roll. The highest roll is four, and the lowest is zero, which skips your turn. The most likely roll is two. Use these probabilities to your advantage when deciding which checkers to move!',
     },
   }),
   rollStep('roll-dark-set-capture-target', 'dark', 3),
@@ -142,18 +152,6 @@ export const PLAYTHROUGH_TUTORIAL_SCRIPT: readonly TutorialStep[] = [
   rollStep('roll-dark-pass-before-score-setup', 'dark', 0, true),
   rollStep('roll-light-home-rosette', 'light', 2),
   moveStep('move-light-home-rosette', 'light', 'light-0', 11, 13),
-  rollStep('roll-light-home-rosette-no-move', 'light', 2, {
-    expectNoMoves: true,
-    forceNoMoves: true,
-    resultModal: {
-      eyebrow: 'Blocked Roll',
-      title: 'No Move',
-      body: 'When you roll a number but none of your pieces can legally use it, the game shows No Move and your turn ends.',
-      delayMs: 1_000,
-    },
-  }),
-  rollStep('roll-dark-pass-after-home-rosette-no-move', 'dark', 0, true),
-
   rollStep('roll-light-score', 'light', 1),
   moveStep('move-light-score', 'light', 'light-0', 13, 14),
 ] as const;
@@ -162,45 +160,50 @@ const PLAYTHROUGH_TUTORIAL_LESSON_SPECS: readonly PlaythroughTutorialLessonSpec[
   {
     id: 'enter-board',
     lessonNumber: 1,
-    title: 'Bring Your First Runner In',
-    objective: 'Roll 1 and move your first light piece out of reserve onto the board.',
-    implication: 'Pieces begin in reserve. Bringing one in starts the race and gives you a runner to develop.',
+    title: 'Bring Your First Checker In',
+    objective: 'Roll 1 and move your first light checker out of reserve onto the board.',
+    implication: 'Pieces begin in reserve. Bringing one in starts the race and gives you a checker to develop.',
     rollStepId: 'roll-light-enter',
     moveStepId: 'move-light-enter',
+    showResultModal: false,
   },
   {
     id: 'opening-rosette-extra-roll',
     lessonNumber: 2,
-    title: 'Rosettes Let You Roll Again',
+    title: 'Rosette Tiles Give You Another Roll',
     objective: 'Land on the rosette to earn an extra roll.',
-    implication: 'Landing on a rosette gives you another roll immediately, so Light keeps the turn here.',
+    implication: 'Landing on a rosette tile gives you another roll, so it is still your turn.',
     rollStepId: 'roll-light-opening-rosette',
     moveStepId: 'move-light-opening-rosette',
   },
   {
     id: 'enter-war-zone',
     lessonNumber: 3,
-    title: 'Step Into The War Zone',
+    title: 'Step onto the Royal Road',
     objective: 'Keep that same runner moving and enter the shared middle row.',
-    implication: 'The middle row is where both sides can fight over the same squares, so captures become possible there.',
+    implication:
+      'Your path is highlighted in blue. This is the path your checkers will take. Your checkers must reach the end of the path and exit the board to score. First player to score all seven of their checkers wins! Within the middle column, your opponent can land on your checker to capture it, which removes it from play and sends it back to your tray. Unless your checker is on the rosette tile, which is a safe spot. While a checker is here, it can’t be removed from play!',
     rollStepId: 'roll-light-enter-war-zone',
     moveStepId: 'move-light-enter-war-zone',
+    coachPlacement: 'side',
   },
   {
     id: 'shared-rosette-bonus-and-safety',
     lessonNumber: 4,
-    title: 'The Shared Rosette Is Safe',
-    objective: 'Land your runner on the shared rosette.',
-    implication: 'The shared rosette is safe from capture even with Dark waiting behind you, so it gives your runner a protected stop in the middle lane.',
+    title: 'The Shared Rosette Tile Is Safe',
+    objective: 'Land your checker on the shared rosette.',
+    implication:
+      'This central rosette tile is the most important tile in the game. It gives you another roll AND keeps your checker safe from capture. Use it to your advantage and the Royal Road will be yours!',
     rollStepId: 'roll-light-shared-rosette',
     moveStepId: 'move-light-shared-rosette',
   },
   {
     id: 'capture-in-shared-row',
     lessonNumber: 5,
-    title: 'Capture In The Shared Row',
+    title: "Capture Your Opponents' Checkers",
     objective: 'Use the bonus roll to capture the dark piece waiting ahead of you.',
-    implication: 'Captures send the opposing piece back to reserve and buy your runner more space to race.',
+    implication:
+      'While in the shared central area of the board, you and your opponent can capture each others’ pieces, sending them back to the beginning in their player’s tray.',
     rollStepId: 'roll-light-capture',
     moveStepId: 'move-light-capture',
   },
@@ -284,37 +287,35 @@ export const getPlaythroughTutorialLessonState = (lessonIndex: number): GameStat
 };
 
 const PLAYTHROUGH_TUTORIAL_INSTRUCTION_BY_STEP_ID: Record<string, string> = {
-  'roll-light-enter': 'Roll the dice, then move your piece that many spaces.',
-  'move-light-enter': 'Move your first piece onto the board.',
-  'roll-dark-open-with-runner': 'Dark moves first and starts its own runner.',
-  'move-dark-open-with-runner': 'Dark is bringing a piece onto the board.',
-  'roll-light-opening-rosette': 'Roll again and keep moving the same piece.',
-  'move-light-opening-rosette': 'Move up the board and land on the rosette for another roll.',
-  'roll-light-enter-war-zone': 'Rosettes grant another roll, so move toward the middle column.',
-  'move-light-enter-war-zone': 'Move into the middle column.',
-  'roll-dark-enter-capture-runner': 'Dark is bringing in another piece.',
-  'move-dark-enter-capture-runner': 'Dark is setting up a piece in the shared row.',
-  'roll-light-advance-before-rosette': 'Roll again and keep moving down the middle column.',
-  'move-light-advance-before-rosette': 'Move one step closer to the shared rosette.',
-  'roll-dark-advance-capture-runner': 'Dark is moving deeper into the shared row.',
-  'move-dark-advance-capture-runner': 'Dark is moving into your path.',
-  'roll-light-pass-before-capture-setup': 'Roll again and be ready for the rosette.',
-  'roll-dark-set-capture-target': 'Dark is moving one more time.',
-  'move-dark-set-capture-target': 'Dark is giving you a capture target.',
-  'roll-light-shared-rosette': 'Move down and try to land on the rosette tile.',
-  'move-light-shared-rosette': 'Move onto the rosette tile for another roll.',
-  'roll-light-capture': 'Roll again and capture the dark piece ahead.',
-  'move-light-capture': 'Capture the dark piece in the middle column.',
-  'roll-dark-pass-after-capture': 'Dark is rolling now.',
-  'roll-light-home-stretch': 'Move down toward the last two tiles.',
-  'move-light-home-stretch': 'Keep moving toward the last two tiles.',
-  'roll-dark-pass-before-score-setup': 'Dark is rolling now.',
-  'roll-light-home-rosette': 'Move onto the home rosette.',
-  'move-light-home-rosette': 'Land on the home rosette for one more roll.',
-  'roll-light-home-rosette-no-move': 'Not every rolled number can be used, even from the home rosette.',
-  'roll-dark-pass-after-home-rosette-no-move': 'Dark is rolling now.',
-  'roll-light-score': 'Roll a 1, then use SCORE to move off the board.',
-  'move-light-score': 'Use SCORE to move your piece off the board and score.',
+  'roll-light-enter': 'Roll the dice to get started',
+  'move-light-enter': 'Move your first checker onto the board',
+  'roll-dark-open-with-runner': "Opponent's turn",
+  'move-dark-open-with-runner': 'Opponent moves',
+  'roll-light-opening-rosette': 'Your turn. Roll again!',
+  'move-light-opening-rosette': 'Move your checker to the rosette tile',
+  'roll-light-enter-war-zone': 'Roll again!',
+  'move-light-enter-war-zone': 'Advance your checker',
+  'roll-dark-enter-capture-runner': "Opponent's turn",
+  'move-dark-enter-capture-runner': 'Opponent moves',
+  'roll-light-advance-before-rosette': 'Your turn, roll again!',
+  'move-light-advance-before-rosette': 'Advance your checker',
+  'roll-dark-advance-capture-runner': "Opponent's turn",
+  'move-dark-advance-capture-runner': 'Opponent moves',
+  'roll-light-pass-before-capture-setup': 'Your turn, roll again!',
+  'roll-dark-set-capture-target': "Opponent's turn",
+  'move-dark-set-capture-target': 'Opponent moves',
+  'roll-light-shared-rosette': 'Your turn, roll again!',
+  'move-light-shared-rosette': 'Land on the rosette tile for another roll!',
+  'roll-light-capture': 'Roll again!',
+  'move-light-capture': "Capture your opponent's checker.",
+  'roll-dark-pass-after-capture': "Opponent's turn",
+  'roll-light-home-stretch': 'Your turn to roll!',
+  'move-light-home-stretch': 'Advance your checker',
+  'roll-dark-pass-before-score-setup': "Opponent's turn",
+  'roll-light-home-rosette': 'Your turn to roll!',
+  'move-light-home-rosette': 'Advance your checker',
+  'roll-light-score': 'Roll a 1 to move off the board and score a point!',
+  'move-light-score': 'Move your checker off the board to score a point!',
 };
 
 export const getPlaythroughTutorialInstruction = ({

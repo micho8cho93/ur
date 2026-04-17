@@ -12,6 +12,7 @@ import { EmptyState } from '../components/EmptyState'
 import { FilterBar } from '../components/FilterBar'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
+import { useSession } from '../auth/useSession'
 import type {
   CosmeticAssetMediaType,
   CosmeticDefinition,
@@ -26,7 +27,7 @@ const cosmeticTypes: CosmeticType[] = ['board', 'pieces', 'dice_animation', 'emo
 const cosmeticTiers: CosmeticTier[] = ['common', 'rare', 'epic', 'legendary']
 const currencies: CurrencyType[] = ['soft', 'premium']
 const rotationPools: RotationPool[] = ['daily', 'featured', 'limited']
-const maxUploadBytes = 8 * 1024 * 1024
+const maxUploadBytes = 3 * 1024 * 1024
 
 type CatalogForm = {
   id: string
@@ -241,6 +242,7 @@ function AssetPreview({
 }
 
 export function StoreCatalogPage() {
+  const { adminIdentity } = useSession()
   const [catalog, setCatalog] = useState<CosmeticDefinition[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -250,6 +252,7 @@ export function StoreCatalogPage() {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [previewItem, setPreviewItem] = useState<CosmeticDefinition | null>(null)
+  const canEditCatalog = adminIdentity?.role === 'operator' || adminIdentity?.role === 'admin'
 
   const visibleCatalog = useMemo(
     () =>
@@ -389,6 +392,10 @@ export function StoreCatalogPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!canEditCatalog) {
+      setError('Read-only access detected. This account can view the catalog but cannot modify it.')
+      return
+    }
     setSaving(true)
     setError(null)
 
@@ -446,6 +453,11 @@ export function StoreCatalogPage() {
       />
 
       {error ? <div className="alert alert--error">{error}</div> : null}
+      {!canEditCatalog ? (
+        <div className="alert alert--warning">
+          Read-only access detected. Uploads and catalog edits require operator or admin permissions.
+        </div>
+      ) : null}
 
       <FilterBar>
         <label className="field">
@@ -470,7 +482,7 @@ export function StoreCatalogPage() {
 
       <SectionPanel title="Add or edit item" subtitle="Changes write through the admin catalog RPC.">
         <form className="form" onSubmit={(event) => void handleSubmit(event)}>
-          <div className="form-grid">
+          <fieldset className="form-grid" disabled={!canEditCatalog}>
             <label className="field">
               <span className="field__label">ID</span>
               <input value={form.id} required onChange={(event) => updateForm({ id: event.target.value })} />
@@ -539,7 +551,7 @@ export function StoreCatalogPage() {
                 }}
               />
               <span className="field__hint">
-                Uploads are saved with the catalog item and can be previewed immediately. Max {formatBytes(maxUploadBytes)}.
+                Uploads are saved inline with the catalog item, so the practical limit is {formatBytes(maxUploadBytes)}.
               </span>
             </label>
             {form.uploadedAsset ? (
@@ -593,12 +605,12 @@ export function StoreCatalogPage() {
                 <option value="disabled">Disabled</option>
               </select>
             </label>
-          </div>
+          </fieldset>
           <ActionToolbar>
-            <button className="button button--primary" type="submit" disabled={saving}>
+            <button className="button button--primary" type="submit" disabled={saving || !canEditCatalog}>
               {saving ? 'Saving...' : 'Save item'}
             </button>
-            <button className="button button--secondary" type="button" onClick={() => setForm(emptyForm)}>
+            <button className="button button--secondary" type="button" onClick={() => setForm(emptyForm)} disabled={!canEditCatalog}>
               Clear
             </button>
           </ActionToolbar>

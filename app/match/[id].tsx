@@ -44,11 +44,7 @@ import { useGameLoop } from '@/hooks/useGameLoop';
 import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty } from '@/logic/bot/types';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import { applyMove as applyEngineMove, getValidMoves } from '@/logic/engine';
-import {
-  getMatchConfig,
-  getMatchRulesIntro,
-  getPracticeModeRewardLabel,
-} from '@/logic/matchConfigs';
+import { getMatchConfig, getMatchRulesIntro } from '@/logic/matchConfigs';
 import type { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { gameAudio } from '@/services/audio';
 import { submitCompletedBotMatchResult } from '@/services/botMatchRewards';
@@ -123,7 +119,7 @@ import {
   PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL,
   PLAYTHROUGH_TUTORIAL_ID,
   PLAYTHROUGH_TUTORIAL_LESSONS,
-  PLAYTHROUGH_TUTORIAL_OPENING_MODAL,
+  PLAYTHROUGH_TUTORIAL_OPENING_PAGES,
   PLAYTHROUGH_TUTORIAL_SCRIPT,
   getPlaythroughTutorialInstruction,
   getPlaythroughTutorialLessonState,
@@ -1075,7 +1071,6 @@ export function GameRoom() {
       }),
     [authoritativePlayers, humanScoreTitle, isOffline, isOfflineLocalPvPMatch, playerRankTitle, resolvedPlayerColor, scoreTitles],
   );
-  const practiceModeRewardLabel = isPracticeModeMatch ? getPracticeModeRewardLabel(effectiveMatchConfig) : null;
   const hasAssignedColor = resolvedPlayerColor === 'light' || resolvedPlayerColor === 'dark';
   const canSyncOfflineBotRewards =
     isOfflineBotMatch && effectiveMatchConfig.allowsXp && isNakamaEnabled() && hasNakamaConfig() && Boolean(user);
@@ -1425,6 +1420,7 @@ export function GameRoom() {
   const [tutorialPinnedObjectiveBanner, setTutorialPinnedObjectiveBanner] = React.useState<string | null>(null);
   const [tutorialLessonIndex, setTutorialLessonIndex] = React.useState(0);
   const [tutorialScriptStepIndex, setTutorialScriptStepIndex] = React.useState(0);
+  const [tutorialOpeningPageIndex, setTutorialOpeningPageIndex] = React.useState(0);
   const showWinModal = postMatchPresentationStage === 'result';
   const isPostMatchFlowActive = postMatchPresentationStage !== 'hidden';
   const showCinematicXpRewardModal =
@@ -1701,19 +1697,17 @@ export function GameRoom() {
     (tutorialCoachPhase === 'interlude' && tutorialCoachInterlude !== null) ||
     tutorialCoachPhase === 'lesson_result' ||
     tutorialCoachPhase === 'completion';
+  const tutorialOpeningPage =
+    PLAYTHROUGH_TUTORIAL_OPENING_PAGES[tutorialOpeningPageIndex] ?? PLAYTHROUGH_TUTORIAL_OPENING_PAGES[0];
   const tutorialCoachEyebrow =
     tutorialCoachPhase === 'opening'
-      ? PLAYTHROUGH_TUTORIAL_OPENING_MODAL.eyebrow
+      ? tutorialOpeningPage.eyebrow
       : tutorialCoachPhase === 'interlude'
         ? tutorialCoachInterlude?.eyebrow
-      : tutorialCoachPhase === 'lesson_result'
-        ? 'What this means'
-        : tutorialCoachPhase === 'completion'
-          ? PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL.eyebrow
-        : undefined;
+      : undefined;
   const tutorialCoachTitle =
     tutorialCoachPhase === 'opening'
-      ? PLAYTHROUGH_TUTORIAL_OPENING_MODAL.title
+      ? tutorialOpeningPage.title
       : tutorialCoachPhase === 'interlude'
         ? tutorialCoachInterlude?.title ?? ''
       : tutorialCoachPhase === 'lesson_result' && tutorialLesson
@@ -1723,7 +1717,7 @@ export function GameRoom() {
         : '';
   const tutorialCoachBody =
     tutorialCoachPhase === 'opening'
-      ? PLAYTHROUGH_TUTORIAL_OPENING_MODAL.body
+      ? tutorialOpeningPage.body
       : tutorialCoachPhase === 'interlude'
         ? tutorialCoachInterlude?.body ?? ''
       : tutorialCoachPhase === 'lesson_result' && tutorialLesson
@@ -1733,7 +1727,7 @@ export function GameRoom() {
         : '';
   const tutorialCoachActionLabel =
     tutorialCoachPhase === 'opening'
-      ? PLAYTHROUGH_TUTORIAL_OPENING_MODAL.actionLabel
+      ? tutorialOpeningPage.actionLabel
       : tutorialCoachPhase === 'interlude'
         ? tutorialCoachInterlude?.actionLabel ?? 'Continue'
       : tutorialCoachPhase === 'completion'
@@ -2489,11 +2483,17 @@ export function GameRoom() {
       advanceTutorialScriptStep();
 
       if (tutorialLesson && tutorialScriptStepIndex === tutorialLesson.moveStepIndex) {
-        setTutorialCoachPhase(
-          tutorialLessonIndex === PLAYTHROUGH_TUTORIAL_LESSONS.length - 1
-            ? 'completion'
-            : 'lesson_result',
-        );
+        if (tutorialLessonIndex === PLAYTHROUGH_TUTORIAL_LESSONS.length - 1) {
+          setTutorialCoachPhase('completion');
+          return;
+        }
+
+        if (tutorialLesson.showResultModal === false) {
+          setTutorialLessonIndex((current) => current + 1);
+          return;
+        }
+
+        setTutorialCoachPhase('lesson_result');
       }
     },
     [
@@ -2511,6 +2511,13 @@ export function GameRoom() {
 
   const handleContinueTutorialCoach = React.useCallback(() => {
     if (tutorialCoachPhase === 'opening') {
+      if (tutorialOpeningPageIndex < PLAYTHROUGH_TUTORIAL_OPENING_PAGES.length - 1) {
+        setTutorialOpeningPageIndex((current) =>
+          Math.min(current + 1, PLAYTHROUGH_TUTORIAL_OPENING_PAGES.length - 1),
+        );
+        return;
+      }
+
       setTutorialCoachPhase('lesson_play');
       return;
     }
@@ -2539,7 +2546,7 @@ export function GameRoom() {
       clearTutorialProgressTimers();
       setTutorialCoachPhase('freeplay');
     }
-  }, [clearTutorialProgressTimers, tutorialCoachPhase, tutorialLessonIndex]);
+  }, [clearTutorialProgressTimers, tutorialCoachPhase, tutorialLessonIndex, tutorialOpeningPageIndex]);
 
   const triggerLocalRoll = React.useCallback((options?: { autoTriggered?: boolean }) => {
     if (showRulesIntroModal || !introsComplete || !canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
@@ -4089,6 +4096,7 @@ export function GameRoom() {
 
     setTutorialLessonIndex(0);
     setTutorialScriptStepIndex(0);
+    setTutorialOpeningPageIndex(0);
     setTutorialCoachInterlude(null);
     setTutorialForcedNoMove(false);
     setTutorialPinnedObjectiveBanner(null);
@@ -4874,10 +4882,7 @@ export function GameRoom() {
     <>
       <MatchResultSummaryContent
         didPlayerWin={didPlayerWin}
-        isPracticeModeMatch={isPracticeModeMatch}
         isPrivateMatch={isPrivateMatch}
-        canSyncOfflineBotRewards={canSyncOfflineBotRewards}
-        practiceModeRewardLabel={practiceModeRewardLabel}
         isPlaythroughTutorialMatch={isPlaythroughTutorialMatch}
         isRankedHumanMatch={isRankedHumanMatch}
         lastEloRatingChange={lastEloRatingChange}
@@ -4886,7 +4891,6 @@ export function GameRoom() {
         shouldShowAccountRewards={shouldShowAccountRewards}
         progression={progression}
         isRefreshingMatchRewards={isRefreshingMatchRewards}
-        progressionError={progressionError}
         lastProgressionAward={lastProgressionAward}
         animateProgressionAward={!didPlayXpRewardReveal}
         shouldShowChallengeRewards={shouldShowChallengeRewards}
@@ -4895,19 +4899,6 @@ export function GameRoom() {
         tournamentRewardSummary={isTournamentRewardSummaryPrimary ? tournamentRewardSummary : null}
         resultCountdownLabel={resultCountdownLabel}
       />
-      {showWinModal && isOfflineBotMatch ? (
-        <View style={styles.rematchCard}>
-          <Text style={styles.rematchEyebrow}>Play Again</Text>
-          <Text style={styles.rematchBodyText}>Start a fresh bot match with the same mode and difficulty.</Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={handleOfflineBotPlayAgain}
-            style={({ pressed }) => [styles.rematchButton, pressed && styles.rematchButtonPressed]}
-          >
-            <Text style={styles.rematchButtonText}>Play Again</Text>
-          </Pressable>
-        </View>
-      ) : null}
       {showWinModal && isEligibleForRematch && authoritativeRematch && authoritativeRematch.status !== 'idle' ? (
         <View style={styles.rematchCard}>
           <Text style={styles.rematchEyebrow}>Rematch Window</Text>
@@ -7090,12 +7081,20 @@ export function GameRoom() {
         visible={shouldRenderResultModal}
         title={isTournamentMatch ? tournamentResultModalTitle : winModalTitle}
         message={isTournamentMatch ? tournamentResultModalMessage : winModalMessage}
-        actionLabel={resultModalActionLabel}
+        actionLabel={isOfflineBotMatch ? 'Play Again' : resultModalActionLabel}
         actionLoading={isTournamentResultModal && isValidatingTournamentExit}
         onAction={
           showTournamentAdvanceResolutionModal || showTournamentFallbackPendingModal
             ? undefined
-            : handleExit
+            : isOfflineBotMatch
+              ? handleOfflineBotPlayAgain
+              : handleExit
+        }
+        secondaryActionLabel={isOfflineBotMatch ? resultModalActionLabel : undefined}
+        onSecondaryAction={
+          isOfflineBotMatch && !showTournamentAdvanceResolutionModal && !showTournamentFallbackPendingModal
+            ? handleExit
+            : undefined
         }
         maxWidth={520}
       >
@@ -7182,6 +7181,7 @@ export function GameRoom() {
         title={tutorialCoachTitle}
         body={tutorialCoachBody}
         actionLabel={tutorialCoachActionLabel}
+        placement={tutorialCoachPhase === 'lesson_result' ? tutorialLesson?.coachPlacement ?? 'center' : 'center'}
         onContinue={handleContinueTutorialCoach}
       />
       </View>
@@ -7631,36 +7631,6 @@ const styles = StyleSheet.create({
   },
   scoreInfoButtonPressed: {
     opacity: 0.82,
-  },
-  practiceRewardLabel: {
-    marginBottom: urTheme.spacing.sm,
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.sm,
-    borderRadius: urTheme.radii.md,
-    borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.44)',
-    backgroundColor: 'rgba(13, 15, 18, 0.54)',
-  },
-  practiceRewardLabelText: {
-    ...urTypography.label,
-    color: urTheme.colors.parchment,
-    fontSize: 11,
-    textAlign: 'center',
-  },
-  privateRewardLabel: {
-    marginBottom: urTheme.spacing.sm,
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.sm,
-    borderRadius: urTheme.radii.md,
-    borderWidth: 1,
-    borderColor: 'rgba(137, 193, 255, 0.34)',
-    backgroundColor: 'rgba(10, 25, 42, 0.56)',
-  },
-  privateRewardLabelText: {
-    ...urTypography.label,
-    color: 'rgba(216, 232, 251, 0.96)',
-    fontSize: 11,
-    textAlign: 'center',
   },
   tournamentReturnButton: {
     width: '100%',

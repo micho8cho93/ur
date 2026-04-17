@@ -3,7 +3,9 @@ import { AuthProvider } from '@/src/auth/AuthProvider';
 import { ChallengesProvider } from '@/src/challenges/ChallengesContext';
 import { EloRatingProvider } from '@/src/elo/EloContext';
 import { ProgressionProvider } from '@/src/progression/ProgressionContext';
+import { InventoryProvider, useInventory } from '@/src/store/InventoryContext';
 import { StoreProvider } from '@/src/store/StoreProvider';
+import { CosmeticThemeProvider } from '@/src/store/CosmeticThemeContext';
 import { ScreenTransitionProvider } from '@/src/transitions/ScreenTransitionContext';
 import { WalletProvider } from '@/src/wallet/WalletContext';
 import {
@@ -67,6 +69,16 @@ function RootNavigator() {
   );
 }
 
+function AppThemeShell() {
+  const { equippedTheme } = useInventory();
+
+  return (
+    <CosmeticThemeProvider theme={equippedTheme}>
+      <RootNavigator />
+    </CosmeticThemeProvider>
+  );
+}
+
 export default function Layout() {
   const [fontsLoaded] = useFonts({
     [HOME_FREDOKA_FONT_FAMILY]: require('../assets/fonts/LilitaOne-Regular.ttf'),
@@ -87,9 +99,11 @@ export default function Layout() {
             <WalletProvider>
               <ChallengesProvider>
                 <StoreProvider>
-                  <ScreenTransitionProvider>
-                    <RootNavigator />
-                  </ScreenTransitionProvider>
+                  <InventoryProvider>
+                    <ScreenTransitionProvider>
+                      <AppThemeShell />
+                    </ScreenTransitionProvider>
+                  </InventoryProvider>
                 </StoreProvider>
               </ChallengesProvider>
             </WalletProvider>

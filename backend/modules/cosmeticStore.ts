@@ -23,7 +23,11 @@ import type {
   StoreStatsResponse,
   StorefrontResponse,
 } from "../../shared/cosmetics";
-import { isCosmeticDefinition, isLimitedTimeEvent } from "../../shared/cosmetics";
+import {
+  MAX_INLINE_COSMETIC_UPLOAD_BYTES,
+  isCosmeticDefinition,
+  isLimitedTimeEvent,
+} from "../../shared/cosmetics";
 import {
   GLOBAL_STORAGE_USER_ID,
   MAX_WRITE_ATTEMPTS,
@@ -654,6 +658,14 @@ const upsertCatalogItem = (
     if (patch.uploadedAsset === null) {
       delete patchWithoutAssetRemoval.uploadedAsset;
     }
+
+    if (
+      patchWithoutAssetRemoval.uploadedAsset &&
+      patchWithoutAssetRemoval.uploadedAsset.sizeBytes > MAX_INLINE_COSMETIC_UPLOAD_BYTES
+    ) {
+      throw new Error("INVALID_COSMETIC_ASSET");
+    }
+
     const merged = {
       ...(existingIndex >= 0 ? items[existingIndex] : {}),
       ...patchWithoutAssetRemoval,

@@ -1,5 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 import { Board } from './Board';
 import { createInitialState, getValidMoves } from '@/logic/engine';
 import { getPathCoord } from '@/logic/pathVariants';
@@ -16,6 +17,8 @@ jest.mock('./Tile', () => {
       piece,
       pieceInvalidSelectionToken,
       onPress,
+      onHoverIn,
+      onHoverOut,
       isInteractive,
     }: {
       row: number;
@@ -23,9 +26,17 @@ jest.mock('./Tile', () => {
       piece?: { id: string; color: PlayerColor };
       pieceInvalidSelectionToken?: number;
       onPress?: (row: number, col: number) => void;
+      onHoverIn?: (row: number, col: number) => void;
+      onHoverOut?: (row: number, col: number) => void;
       isInteractive?: boolean;
     }) => (
-      <Pressable testID={`tile-${row}-${col}`} onPress={() => onPress?.(row, col)} disabled={!isInteractive}>
+      <Pressable
+        testID={`tile-${row}-${col}`}
+        onPress={() => onPress?.(row, col)}
+        onHoverIn={() => onHoverIn?.(row, col)}
+        onHoverOut={() => onHoverOut?.(row, col)}
+        disabled={!isInteractive}
+      >
         <Text>{`${row}-${col}`}</Text>
         {piece ? (
           <Text testID={`tile-piece-feedback-${piece.id}`}>{String(pieceInvalidSelectionToken ?? 0)}</Text>
@@ -71,10 +82,33 @@ const setAllPiecesFinished = (state: GameState, color: PlayerColor) => {
   });
 };
 
+const setActivePieces = (state: GameState, color: PlayerColor, activePieceIndexes: number[]) => {
+  const player = state[color];
+  const activeIndexes = new Set(activePieceIndexes);
+  player.finishedCount = player.pieces.length - activeIndexes.size;
+
+  player.pieces.forEach((piece, index) => {
+    if (activeIndexes.has(index)) {
+      piece.position = index;
+      piece.isFinished = false;
+      return;
+    }
+
+    piece.position = state.matchConfig.pieceCountPerSide + 20 + index;
+    piece.isFinished = true;
+  });
+};
+
 describe('Board interactions', () => {
+  const originalPlatform = Platform.OS;
+
   beforeEach(() => {
     jest.useFakeTimers();
     jest.spyOn(console, 'info').mockImplementation(() => {});
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'ios',
+    });
   });
 
   afterEach(() => {
@@ -83,46 +117,99 @@ describe('Board interactions', () => {
     });
     jest.useRealTimers();
     jest.restoreAllMocks();
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => originalPlatform,
+    });
   });
 
-  it('moves a piece directly when its piece tile is pressed', () => {
+  it('does not auto-highlight one of several legal moves', () => {
     const state = createInitialState();
     state.currentTurn = 'light';
     state.phase = 'moving';
     state.rollValue = 1;
-    setOnlyActivePiece(state, 'light', 0, 0);
+    setActivePieces(state, 'light', [0, 3]);
     setAllPiecesFinished(state, 'dark');
 
     const validMoves = getValidMoves(state, 1);
-    const onMakeMove = jest.fn();
 
     render(
       <Board
+        autoMoveHintEnabled
         gameStateOverride={state}
         validMovesOverride={validMoves}
-        onMakeMoveOverride={onMakeMove}
+        onMakeMoveOverride={jest.fn()}
         playerColorOverride="light"
       />,
     );
 
-    fireEvent.press(screen.getByTestId('tile-2-3'));
-    act(() => {
-      jest.advanceTimersByTime(180);
-    });
-
-    expect(onMakeMove).toHaveBeenCalledWith(validMoves[0]);
+    expect(screen.queryByTestId('board-preview-valid')).toBeNull();
+    expect(screen.queryByTestId('board-preview-destination')).toBeNull();
   });
 
-  it('moves a piece directly when the pulsing destination overlay is pressed', () => {
+  it('reveals a path after hovering a piece on web', () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+
     const state = createInitialState();
     state.currentTurn = 'light';
     state.phase = 'moving';
     state.rollValue = 1;
-    setOnlyActivePiece(state, 'light', 0, 0);
+    setActivePieces(state, 'light', [0, 3]);
+    setAllPiecesFinished(state, 'dark');
+
+    const validMoves = getValidMoves(state, 1);
+    const pieceTile = getPathCoord(state.matchConfig.pathVariant, 'light', 0);
+
+    if (!pieceTile) {
+      throw new Error('Expected a board coordinate for the hover test tile.');
+    }
+
+    render(
+      <Board
+        autoMoveHintEnabled
+        gameStateOverride={state}
+        validMovesOverride={validMoves}
+        onMakeMoveOverride={jest.fn()}
+        playerColorOverride="light"
+      />,
+    );
+
+    const tile = screen.getByTestId(`tile-${pieceTile.row}-${pieceTile.col}`);
+    act(() => {
+      fireEvent(tile, 'hoverIn');
+    });
+
+    expect(screen.getByTestId('board-preview-valid')).toBeTruthy();
+  });
+
+  it('moves a hovered piece on web with a single click', () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      get: () => 'web',
+    });
+
+    const state = createInitialState();
+    state.currentTurn = 'light';
+    state.phase = 'moving';
+    state.rollValue = 1;
+    setActivePieces(state, 'light', [0, 3]);
     setAllPiecesFinished(state, 'dark');
 
     const validMoves = getValidMoves(state, 1);
     const onMakeMove = jest.fn();
+    const pieceTile = getPathCoord(state.matchConfig.pathVariant, 'light', 0);
+
+    if (!pieceTile) {
+      throw new Error('Expected a board coordinate for the web click test tile.');
+    }
+
+    const targetMove = validMoves.find((move) => move.fromIndex === 0);
+    if (!targetMove) {
+      throw new Error('Expected a valid move for the clicked piece.');
+    }
 
     render(
       <Board
@@ -134,9 +221,55 @@ describe('Board interactions', () => {
       />,
     );
 
-    fireEvent.press(screen.getByTestId('board-preview-destination'));
+    const tile = screen.getByTestId(`tile-${pieceTile.row}-${pieceTile.col}`);
 
-    expect(onMakeMove).toHaveBeenCalledWith(validMoves[0]);
+    act(() => {
+      fireEvent(tile, 'hoverIn');
+    });
+    expect(screen.getByTestId('board-preview-valid')).toBeTruthy();
+
+    fireEvent.press(tile);
+    expect(onMakeMove).toHaveBeenCalledWith(expect.objectContaining(targetMove));
+  });
+
+  it('selects a piece on mobile and commits it on the second tap', () => {
+    const state = createInitialState();
+    state.currentTurn = 'light';
+    state.phase = 'moving';
+    state.rollValue = 1;
+    setActivePieces(state, 'light', [0, 3]);
+    setAllPiecesFinished(state, 'dark');
+
+    const validMoves = getValidMoves(state, 1);
+    const onMakeMove = jest.fn();
+    const pieceTile = getPathCoord(state.matchConfig.pathVariant, 'light', 0);
+
+    if (!pieceTile) {
+      throw new Error('Expected a board coordinate for the mobile test tile.');
+    }
+
+    render(
+      <Board
+        autoMoveHintEnabled
+        gameStateOverride={state}
+        validMovesOverride={validMoves}
+        onMakeMoveOverride={onMakeMove}
+        playerColorOverride="light"
+      />,
+    );
+
+    fireEvent.press(screen.getByTestId(`tile-${pieceTile.row}-${pieceTile.col}`));
+    expect(onMakeMove).not.toHaveBeenCalled();
+    expect(screen.getByTestId('board-preview-valid')).toBeTruthy();
+
+    fireEvent.press(screen.getByTestId(`tile-${pieceTile.row}-${pieceTile.col}`));
+    const targetMove = validMoves.find((move) => move.fromIndex === 0);
+    if (!targetMove) {
+      throw new Error('Expected a valid move for the tapped piece.');
+    }
+    expect(onMakeMove).toHaveBeenCalledWith(
+      expect.objectContaining(targetMove),
+    );
   });
 
   it('shows a blocked red path when an owned piece cannot move', () => {
@@ -209,16 +342,21 @@ describe('Board interactions', () => {
     expect(screen.getByTestId('tile-piece-feedback-light-0').props.children).toBe('1');
   });
 
-  it('emits the selected piece while the auto-commit window is open', () => {
+  it('emits the selected piece while a mobile tap selection is open', () => {
     const state = createInitialState();
     state.currentTurn = 'light';
     state.phase = 'moving';
     state.rollValue = 1;
-    setOnlyActivePiece(state, 'light', 0, 0);
+    setActivePieces(state, 'light', [0, 3]);
     setAllPiecesFinished(state, 'dark');
 
     const validMoves = getValidMoves(state, 1);
     const onSelectedPieceChange = jest.fn();
+    const pieceTile = getPathCoord(state.matchConfig.pathVariant, 'light', 0);
+
+    if (!pieceTile) {
+      throw new Error('Expected a board coordinate for the selected-piece test tile.');
+    }
 
     render(
       <Board
@@ -230,9 +368,14 @@ describe('Board interactions', () => {
       />,
     );
 
-    fireEvent.press(screen.getByTestId('tile-2-3'));
+    const targetMove = validMoves.find((move) => move.fromIndex === 0);
+    if (!targetMove) {
+      throw new Error('Expected a valid move for the tapped piece.');
+    }
 
-    expect(onSelectedPieceChange).toHaveBeenLastCalledWith(validMoves[0]?.pieceId ?? null);
+    fireEvent.press(screen.getByTestId(`tile-${pieceTile.row}-${pieceTile.col}`));
+
+    expect(onSelectedPieceChange).toHaveBeenLastCalledWith(targetMove.pieceId);
   });
 
   it('suppresses move affordances and interaction when motion is frozen', () => {
@@ -245,6 +388,11 @@ describe('Board interactions', () => {
 
     const validMoves = getValidMoves(state, 1);
     const onMakeMove = jest.fn();
+    const pieceTile = getPathCoord(state.matchConfig.pathVariant, 'light', 0);
+
+    if (!pieceTile) {
+      throw new Error('Expected a board coordinate for the frozen test tile.');
+    }
 
     const { queryByTestId, rerender } = render(
       <Board
@@ -258,11 +406,11 @@ describe('Board interactions', () => {
 
     expect(queryByTestId('board-preview-destination')).toBeTruthy();
 
-    fireEvent.press(screen.getByTestId('tile-2-3'));
+    fireEvent.press(screen.getByTestId(`tile-${pieceTile.row}-${pieceTile.col}`));
     act(() => {
       jest.advanceTimersByTime(180);
     });
-    expect(onMakeMove).toHaveBeenCalledTimes(1);
+    expect(onMakeMove).not.toHaveBeenCalled();
 
     onMakeMove.mockClear();
 
@@ -279,7 +427,7 @@ describe('Board interactions', () => {
 
     expect(queryByTestId('board-preview-destination')).toBeNull();
 
-    fireEvent.press(screen.getByTestId('tile-2-3'));
+    fireEvent.press(screen.getByTestId(`tile-${pieceTile.row}-${pieceTile.col}`));
     expect(onMakeMove).not.toHaveBeenCalled();
   });
 });

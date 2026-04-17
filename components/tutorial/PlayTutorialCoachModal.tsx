@@ -21,6 +21,7 @@ interface PlayTutorialCoachModalProps {
   title: string;
   body: string;
   actionLabel?: string;
+  placement?: 'center' | 'side';
   onContinue: () => void;
 }
 
@@ -30,17 +31,33 @@ export const PlayTutorialCoachModal: React.FC<PlayTutorialCoachModalProps> = ({
   title,
   body,
   actionLabel = 'Continue',
+  placement = 'center',
   onContinue,
 }) => {
   const { width, height } = useWindowDimensions();
   const isMobileWeb = Platform.OS === 'web' && width < 760;
+  const isSidePlacement = placement === 'side' && !isMobileWeb;
+  const sheetWidth = isSidePlacement ? Math.min(390, Math.max(300, Math.round(width * 0.34))) : 440;
   const resolvedMaxHeight = Math.max(
     280,
     Math.min(height - (isMobileWeb ? 20 : 32), Math.round(height * (isMobileWeb ? 0.9 : 0.84))),
   );
   const overlayContent = (
-    <View style={[styles.backdrop, isMobileWeb && styles.backdropMobileWeb]}>
-      <View style={[styles.sheet, isMobileWeb && styles.sheetMobileWeb, { maxHeight: resolvedMaxHeight }]}>
+    <View
+      style={[
+        styles.backdrop,
+        isMobileWeb && styles.backdropMobileWeb,
+        isSidePlacement && styles.backdropSidePlacement,
+      ]}
+    >
+      <View
+        style={[
+          styles.sheet,
+          isMobileWeb && styles.sheetMobileWeb,
+          isSidePlacement && styles.sheetSidePlacement,
+          { maxHeight: resolvedMaxHeight, width: isSidePlacement ? sheetWidth : '100%', maxWidth: sheetWidth },
+        ]}
+      >
         <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.texture} />
         <Image source={urTextures.border} resizeMode="repeat" style={styles.borderTexture} />
         <View style={styles.sheetGlow} />
@@ -100,6 +117,10 @@ const styles = StyleSheet.create({
     paddingTop: urTheme.spacing.lg,
     paddingBottom: urTheme.spacing.sm,
   },
+  backdropSidePlacement: {
+    alignItems: 'flex-end',
+    paddingRight: urTheme.spacing.lg,
+  },
   sheet: {
     width: '100%',
     maxWidth: 440,
@@ -121,6 +142,9 @@ const styles = StyleSheet.create({
   sheetMobileWeb: {
     paddingHorizontal: urTheme.spacing.md,
     paddingTop: urTheme.spacing.md,
+  },
+  sheetSidePlacement: {
+    marginLeft: 'auto',
   },
   texture: {
     ...StyleSheet.absoluteFillObject,

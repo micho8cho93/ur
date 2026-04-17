@@ -57,16 +57,15 @@ export const MatchChallengeRewardsPanel: React.FC<MatchChallengeRewardsPanelProp
     setIsExpanded(false);
   }, [summarySignature]);
 
+  if (loading) {
+    return null;
+  }
+
   return (
     <View style={styles.panel}>
       <Text style={styles.eyebrow}>Challenge Rewards</Text>
 
-      {loading ? (
-        <View style={styles.stateBlock}>
-          <Text style={styles.stateTitle}>Confirming match rewards…</Text>
-          <Text style={styles.stateText}>Waiting for the archive to return your updated challenge record.</Text>
-        </View>
-      ) : errorMessage ? (
+      {errorMessage ? (
         <View style={styles.stateBlock}>
           <Text style={styles.stateTitle}>Challenge rewards unavailable</Text>
           <Text style={styles.stateText}>{errorMessage}</Text>

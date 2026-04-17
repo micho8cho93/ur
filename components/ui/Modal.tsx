@@ -30,6 +30,9 @@ interface ModalProps {
   actionLabel?: string;
   actionLoading?: boolean;
   onAction?: () => void;
+  secondaryActionLabel?: string;
+  secondaryActionLoading?: boolean;
+  onSecondaryAction?: () => void;
   children?: React.ReactNode;
   maxWidth?: number;
 }
@@ -143,6 +146,9 @@ export const Modal: React.FC<ModalProps> = ({
   actionLabel,
   actionLoading = false,
   onAction,
+  secondaryActionLabel,
+  secondaryActionLoading = false,
+  onSecondaryAction,
   children,
   maxWidth = 380,
 }) => {
@@ -179,6 +185,16 @@ export const Modal: React.FC<ModalProps> = ({
         {actionLabel && onAction ? (
           <View style={styles.buttonWrap}>
             <Button title={actionLabel} onPress={onAction} loading={actionLoading} />
+            {secondaryActionLabel && onSecondaryAction ? (
+              <View style={styles.secondaryButtonWrap}>
+                <Button
+                  title={secondaryActionLabel}
+                  onPress={onSecondaryAction}
+                  loading={secondaryActionLoading}
+                  variant="secondary"
+                />
+              </View>
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -334,5 +350,9 @@ const styles = StyleSheet.create({
   buttonWrap: {
     width: '100%',
     marginTop: urTheme.spacing.md,
+  },
+  secondaryButtonWrap: {
+    width: '100%',
+    marginTop: urTheme.spacing.sm,
   },
 });

@@ -2,7 +2,6 @@ import { MatchChallengeRewardsPanel } from '@/components/challenges/MatchChallen
 import { EloImpactIndicator } from '@/components/elo/EloImpactIndicator';
 import { EloMatchSummaryPanel } from '@/components/elo/EloMatchSummaryPanel';
 import { ProgressionAwardSummary } from '@/components/progression/ProgressionAwardSummary';
-import { XPDisplay } from '@/components/challenges/XPDisplay';
 import { urTheme, urTypography } from '@/constants/urTheme';
 import { formatProgressionXp } from '@/src/progression/progressionDisplay';
 import type { MatchChallengeRewardSummary } from '@/src/challenges/challengeUi';
@@ -14,10 +13,7 @@ import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 type MatchResultSummaryContentProps = {
   didPlayerWin: boolean;
-  isPracticeModeMatch: boolean;
   isPrivateMatch: boolean;
-  canSyncOfflineBotRewards: boolean;
-  practiceModeRewardLabel: string | null;
   isPlaythroughTutorialMatch: boolean;
   isRankedHumanMatch: boolean;
   lastEloRatingChange: EloRatingChangeNotificationPayload | null;
@@ -26,7 +22,6 @@ type MatchResultSummaryContentProps = {
   shouldShowAccountRewards: boolean;
   progression: ProgressionSnapshot | null;
   isRefreshingMatchRewards: boolean;
-  progressionError: string | null;
   lastProgressionAward: ProgressionAwardResponse | null;
   animateProgressionAward?: boolean;
   shouldShowChallengeRewards: boolean;
@@ -40,10 +35,7 @@ const formatSignedValue = (value: number) => `${value >= 0 ? '+' : ''}${Math.tru
 
 export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps> = ({
   didPlayerWin,
-  isPracticeModeMatch,
   isPrivateMatch,
-  canSyncOfflineBotRewards,
-  practiceModeRewardLabel,
   isPlaythroughTutorialMatch,
   isRankedHumanMatch,
   lastEloRatingChange,
@@ -52,7 +44,6 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
   shouldShowAccountRewards,
   progression,
   isRefreshingMatchRewards,
-  progressionError,
   lastProgressionAward,
   animateProgressionAward = true,
   shouldShowChallengeRewards,
@@ -64,13 +55,10 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
   const { width } = useWindowDimensions();
   const useCompactRewardStats = width < 480;
 
+  const showEloPanel = !isPlaythroughTutorialMatch && !tournamentRewardSummary;
+
   return (
     <>
-      {didPlayerWin && isPracticeModeMatch && !isPrivateMatch && canSyncOfflineBotRewards && practiceModeRewardLabel ? (
-        <View style={styles.practiceRewardLabel}>
-          <Text style={styles.practiceRewardLabelText}>{practiceModeRewardLabel}</Text>
-        </View>
-      ) : null}
       {didPlayerWin && isPrivateMatch ? (
         <View style={styles.privateRewardLabel}>
           <Text style={styles.privateRewardLabelText}>Private Match: Reduced XP Reward</Text>
@@ -127,64 +115,42 @@ export const MatchResultSummaryContent: React.FC<MatchResultSummaryContentProps>
           <Text style={styles.resultCountdownText}>{resultCountdownLabel}</Text>
         </View>
       ) : null}
-      {!isPlaythroughTutorialMatch && !tournamentRewardSummary ? (
-        <EloMatchSummaryPanel
-          result={isRankedHumanMatch ? lastEloRatingChange : null}
-          pending={isRankedHumanMatch && !lastEloRatingChange}
-          ratingProfile={eloRatingProfile}
-          unchangedReason={!isRankedHumanMatch ? eloUnchangedReason : null}
+      {shouldShowAccountRewards && didPlayerWin && !tournamentRewardSummary ? (
+        <ProgressionAwardSummary
+          progression={progression}
+          award={lastProgressionAward}
+          animateProgressBar={animateProgressionAward}
+          pending={!lastProgressionAward}
         />
       ) : null}
-      {shouldShowAccountRewards ? (
-        <>
-          <XPDisplay
-            progression={progression}
-            isLoading={isRefreshingMatchRewards && !progression}
-            errorMessage={progressionError}
-            compact
-            style={styles.matchRewardsXpDisplay}
-          />
-          {didPlayerWin && !tournamentRewardSummary ? (
-            <ProgressionAwardSummary
-              progression={progression}
-              award={lastProgressionAward}
-              animateProgressBar={animateProgressionAward}
-              pending={!lastProgressionAward}
-            />
-          ) : null}
-          {shouldShowChallengeRewards ? (
-            <MatchChallengeRewardsPanel
-              summary={matchChallengeSummary}
-              loading={isRefreshingMatchRewards && !matchChallengeSummary}
-              errorMessage={matchRewardsErrorMessage}
-            />
-          ) : null}
-        </>
+      {showEloPanel && isRankedHumanMatch ? (
+        <EloMatchSummaryPanel
+          result={lastEloRatingChange}
+          pending={!lastEloRatingChange}
+          ratingProfile={eloRatingProfile}
+          unchangedReason={null}
+        />
+      ) : null}
+      {shouldShowAccountRewards && shouldShowChallengeRewards ? (
+        <MatchChallengeRewardsPanel
+          summary={matchChallengeSummary}
+          loading={isRefreshingMatchRewards && !matchChallengeSummary}
+          errorMessage={matchRewardsErrorMessage}
+        />
+      ) : null}
+      {showEloPanel && !isRankedHumanMatch ? (
+        <EloMatchSummaryPanel
+          result={null}
+          pending={false}
+          ratingProfile={eloRatingProfile}
+          unchangedReason={eloUnchangedReason}
+        />
       ) : null}
     </>
   );
 };
 
 const styles = StyleSheet.create({
-  matchRewardsXpDisplay: {
-    width: '100%',
-    marginBottom: urTheme.spacing.sm,
-  },
-  practiceRewardLabel: {
-    marginBottom: urTheme.spacing.sm,
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.sm,
-    borderRadius: urTheme.radii.md,
-    borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.44)',
-    backgroundColor: 'rgba(13, 15, 18, 0.54)',
-  },
-  practiceRewardLabelText: {
-    ...urTypography.label,
-    color: urTheme.colors.parchment,
-    fontSize: 11,
-    textAlign: 'center',
-  },
   privateRewardLabel: {
     marginBottom: urTheme.spacing.sm,
     paddingHorizontal: urTheme.spacing.md,

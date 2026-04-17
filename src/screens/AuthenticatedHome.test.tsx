@@ -164,6 +164,7 @@ describe('AuthenticatedHome', () => {
     expect(view.getByText('37 Coins')).toBeTruthy();
     expect(view.getByLabelText('Current progression rank badge: Apprentice Scribe')).toBeTruthy();
     expect(view.getByText('Logout')).toBeTruthy();
+    expect(view.getByText('Inventory')).toBeTruthy();
     expect(view.getByText('XP & Rank')).toBeTruthy();
     expect(view.getByText('Elo Rating')).toBeTruthy();
     expect(view.getAllByText('Challenges')).toHaveLength(2);
@@ -184,11 +185,13 @@ describe('AuthenticatedHome', () => {
     fireEvent.press(view.getByText('Quick Play'));
     fireEvent.press(view.getByText('Play Online'));
     fireEvent.press(view.getByText('Tutorial'));
+    fireEvent.press(view.getByText('Inventory'));
 
     expect(mockPush).toHaveBeenCalledWith('/leaderboard');
     expect(mockPush).toHaveBeenCalledWith('/challenges');
     expect(mockPush).toHaveBeenCalledWith('/(game)/game-modes');
     expect(mockPush).toHaveBeenCalledWith('/(game)/lobby?mode=online');
+    expect(mockPush).toHaveBeenCalledWith('/(game)/inventory');
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('/match/local-'));
     });

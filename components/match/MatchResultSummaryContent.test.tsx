@@ -30,10 +30,7 @@ describe('MatchResultSummaryContent', () => {
     render(
       <MatchResultSummaryContent
         didPlayerWin
-        isPracticeModeMatch={false}
         isPrivateMatch={false}
-        canSyncOfflineBotRewards={false}
-        practiceModeRewardLabel={null}
         isPlaythroughTutorialMatch={false}
         isRankedHumanMatch={false}
         lastEloRatingChange={null}
@@ -42,7 +39,6 @@ describe('MatchResultSummaryContent', () => {
         shouldShowAccountRewards={false}
         progression={null}
         isRefreshingMatchRewards={false}
-        progressionError={null}
         lastProgressionAward={null}
         shouldShowChallengeRewards={false}
         matchChallengeSummary={null}

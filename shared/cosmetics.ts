@@ -6,6 +6,10 @@ export type CurrencyType = "soft" | "premium";
 export type RotationPool = "daily" | "featured" | "limited";
 export type CosmeticAssetMediaType = "image" | "audio" | "video" | "animation";
 
+// Cosmetic uploads are embedded directly into Nakama RPC payloads and catalog
+// storage, so we keep them well below the transport/storage ceiling.
+export const MAX_INLINE_COSMETIC_UPLOAD_BYTES = 3 * 1024 * 1024;
+
 export type UploadedCosmeticAsset = {
   fileName: string;
   mimeType: string;

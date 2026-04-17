@@ -6,7 +6,7 @@ import {
   PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL,
   PLAYTHROUGH_TUTORIAL_FRAMES,
   PLAYTHROUGH_TUTORIAL_LESSONS,
-  PLAYTHROUGH_TUTORIAL_OPENING_MODAL,
+  PLAYTHROUGH_TUTORIAL_OPENING_PAGES,
   PLAYTHROUGH_TUTORIAL_SCRIPT,
   getPlaythroughTutorialInstruction,
   getPlaythroughTutorialLessonState,
@@ -230,45 +230,34 @@ describe('playthrough tutorial continuous script', () => {
     expect(lightRollValues.some((roll, index) => roll === 0 && lightRollValues[index + 1] === 0)).toBe(false);
   });
 
-  it('teaches zero rolls and blocked non-zero rolls with scripted result modals', () => {
+  it('teaches zero rolls with the scripted result modal', () => {
     const zeroRollStep = PLAYTHROUGH_TUTORIAL_SCRIPT.find(
       (step) => step.kind === 'ROLL' && step.id === 'roll-light-pass-before-capture-setup',
-    );
-    const blockedRollStep = PLAYTHROUGH_TUTORIAL_SCRIPT.find(
-      (step) => step.kind === 'ROLL' && step.id === 'roll-light-home-rosette-no-move',
-    );
-    const homeRosetteMoveIndex = PLAYTHROUGH_TUTORIAL_SCRIPT.findIndex(
-      (step) => step.kind === 'MOVE' && step.id === 'move-light-home-rosette',
-    );
-    const blockedRollIndex = PLAYTHROUGH_TUTORIAL_SCRIPT.findIndex(
-      (step) => step.kind === 'ROLL' && step.id === 'roll-light-home-rosette-no-move',
     );
 
     expect(zeroRollStep).toMatchObject({
       value: 0,
       expectNoMoves: true,
       resultModal: {
-        title: 'Zeros Can Be Rolled',
+        title: 'I rolled a zero?',
       },
     });
-    expect(blockedRollStep).toMatchObject({
-      value: 2,
-      expectNoMoves: true,
-      forceNoMoves: true,
-      resultModal: {
-        title: 'No Move',
-      },
-    });
-    expect(blockedRollIndex).toBe(homeRosetteMoveIndex + 1);
+    expect(PLAYTHROUGH_TUTORIAL_SCRIPT.some((step) => step.id === 'roll-light-home-rosette-no-move')).toBe(false);
   });
 
   it('exports opening and completion modal copy for the guided flow', () => {
-    expect(PLAYTHROUGH_TUTORIAL_OPENING_MODAL).toMatchObject({
-      title: 'Roll, move, and race to score',
-      actionLabel: 'Start Tutorial',
-    });
+    expect(PLAYTHROUGH_TUTORIAL_OPENING_PAGES).toMatchObject([
+      {
+        title: 'Welcome to the Royal Game of Ur',
+        actionLabel: 'Next',
+      },
+      {
+        title: 'Welcome to the Royal Game of Ur',
+        actionLabel: 'Start Game',
+      },
+    ]);
     expect(PLAYTHROUGH_TUTORIAL_COMPLETION_MODAL).toMatchObject({
-      title: 'Now finish the match',
+      title: 'Tutorial Complete',
       actionLabel: 'Play For XP',
     });
   });
@@ -282,7 +271,7 @@ describe('playthrough tutorial continuous script', () => {
         rollValue: null,
         hasMoves: false,
       }),
-    ).toBe('Roll again and keep moving the same piece.');
+    ).toBe('Your turn. Roll again!');
 
     expect(
       getPlaythroughTutorialInstruction({
@@ -292,7 +281,7 @@ describe('playthrough tutorial continuous script', () => {
         rollValue: 3,
         hasMoves: true,
       }),
-    ).toBe('Move up the board and land on the rosette for another roll.');
+    ).toBe('Move your checker to the rosette tile');
 
     expect(
       getPlaythroughTutorialInstruction({
@@ -306,13 +295,13 @@ describe('playthrough tutorial continuous script', () => {
 
     expect(
       getPlaythroughTutorialInstruction({
-        stepId: 'roll-light-home-rosette-no-move',
+        stepId: 'move-light-score',
         turn: 'light',
         phase: 'moving',
-        rollValue: 2,
-        hasMoves: false,
+        rollValue: 1,
+        hasMoves: true,
       }),
-    ).toBe('No move matches that roll, so your turn passes.');
+    ).toBe('Move your checker off the board to score a point!');
   });
 
   it('derives the exported frame timeline only by applying the next scripted step', () => {

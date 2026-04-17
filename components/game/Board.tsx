@@ -36,7 +36,7 @@ import { Tile } from './Tile';
 // Cosmetic preview regression checklist:
 // - Default board PNG source remains assets/board/board_design.png.
 // - Default frame background stays transparent with no border.
-// - Live matches do not add a provider; useCosmeticTheme() falls back to the same PNG.
+// - If no cosmetic provider is present, useCosmeticTheme() falls back to the same PNG.
 export const BOARD_IMAGE_SOURCE = DEFAULT_BOARD_IMAGE_SOURCE;
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -174,7 +174,6 @@ const MOVE_SLIDE_MIN_DURATION_MS = 240;
 const MOVE_SLIDE_BASE_DURATION_MS = 150;
 const MOVE_SLIDE_STEP_DURATION_MS = 110;
 const MOVE_SLIDE_MAX_DURATION_MS = 640;
-const AUTO_COMMIT_SELECTED_MOVE_MS = 180;
 const SHOW_BOARD_ALIGNMENT_DEBUG = false;
 const VERTICAL_BOARD_ART_SOURCE_HEIGHT = 1024;
 const VERTICAL_BOARD_ART_GRID_TOP_PX = 47;
@@ -479,6 +478,7 @@ export const Board: React.FC<BoardProps> = ({
   const storeAuthoritativeHistoryCount = useGameStore((state) => state.authoritativeHistoryCount) ?? 0;
   const { board, boardImageSource } = useCosmeticTheme();
   const { width } = useWindowDimensions();
+  const isWebPlatform = Platform.OS === 'web';
   const [selectedMove, setSelectedMove] = useState<MoveAction | null>(null);
   const [hoveredMove, setHoveredMove] = useState<MoveAction | null>(null);
   const [blockedPreview, setBlockedPreview] = useState<PreviewState | null>(null);
@@ -855,31 +855,6 @@ export const Board: React.FC<BoardProps> = ({
     [validMoves],
   );
   const scoringMoves = useMemo(() => validMoves.filter((move) => move.toIndex === pathLength), [pathLength, validMoves]);
-  const suggestedMove = useMemo(() => {
-    if (!autoMoveHintEnabled || !isInteractiveTurn || gameState.phase !== 'moving' || validMoves.length === 0) {
-      return null;
-    }
-
-    return [...validMoves].sort((left, right) => {
-      const leftUsesBoardPiece = left.fromIndex >= 0 ? 1 : 0;
-      const rightUsesBoardPiece = right.fromIndex >= 0 ? 1 : 0;
-
-      if (leftUsesBoardPiece !== rightUsesBoardPiece) {
-        return rightUsesBoardPiece - leftUsesBoardPiece;
-      }
-
-      if (left.toIndex !== right.toIndex) {
-        return right.toIndex - left.toIndex;
-      }
-
-      if (left.fromIndex !== right.fromIndex) {
-        return right.fromIndex - left.fromIndex;
-      }
-
-      return left.pieceId.localeCompare(right.pieceId);
-    })[0] ?? null;
-  }, [autoMoveHintEnabled, gameState.phase, isInteractiveTurn, validMoves]);
-
   const spawnCueColor: 'light' | 'dark' = gameState.currentTurn;
   const hasScoringMove = scoringMoves.length > 0;
   const scoreCueSize = Math.round(
@@ -912,7 +887,15 @@ export const Board: React.FC<BoardProps> = ({
       })()
       : null;
 
-  const hintedMove = !selectedMove && !hoveredMove ? suggestedMove : null;
+  const hintedMove =
+    !selectedMove &&
+    !hoveredMove &&
+    autoMoveHintEnabled &&
+    isInteractiveTurn &&
+    gameState.phase === 'moving' &&
+    validMoves.length === 1
+      ? validMoves[0]
+      : null;
   const validPreview = selectedMove ?? hoveredMove ?? hintedMove;
   const previewState = useMemo<PreviewState | null>(() => {
     if (blockedPreview) {
@@ -1418,17 +1401,12 @@ export const Board: React.FC<BoardProps> = ({
         return;
       }
 
-      clearAutoCommitMoveTimer();
       clearInvalidPieceFeedback();
       setBlockedPreview(null);
       setHoveredMove(null);
       setSelectedMove(move);
-      autoCommitMoveTimerRef.current = setTimeout(() => {
-        autoCommitMoveTimerRef.current = null;
-        executeMove(move);
-      }, AUTO_COMMIT_SELECTED_MOVE_MS);
     },
-    [clearAutoCommitMoveTimer, clearInvalidPieceFeedback, executeMove, gameState.phase, isInteractiveTurn],
+    [clearInvalidPieceFeedback, gameState.phase, isInteractiveTurn],
   );
 
   const isMoveValid = (move: MoveAction | null | undefined): move is MoveAction =>
@@ -1520,6 +1498,13 @@ export const Board: React.FC<BoardProps> = ({
     );
 
     if (moveFromTile) {
+      if (isWebPlatform) {
+        clearInvalidPieceFeedback();
+        setBlockedPreview(null);
+        executeMove(moveFromTile);
+        return;
+      }
+
       if (selectedMove && areMovesEqual(selectedMove, moveFromTile)) {
         clearInvalidPieceFeedback();
         executeMove(moveFromTile);
@@ -1582,6 +1567,7 @@ export const Board: React.FC<BoardProps> = ({
     notifyInteraction,
     assignedPlayerColor,
     isInteractiveTurn,
+    isWebPlatform,
     gameState.phase,
     getPieceAt,
     mapAssignedIndexToCoord,

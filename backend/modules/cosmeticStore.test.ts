@@ -1,4 +1,5 @@
 import { PREMIUM_CURRENCY_KEY, SOFT_CURRENCY_KEY } from "../../shared/wallet";
+import { MAX_INLINE_COSMETIC_UPLOAD_BYTES } from "../../shared/cosmetics";
 import { ADMIN_COLLECTION, ADMIN_ROLE_KEY } from "./tournaments/auth";
 import { CATALOG_COLLECTION, CATALOG_ITEMS_KEY, getCatalog, invalidateCatalogCache } from "./cosmeticCatalog";
 import {
@@ -357,6 +358,41 @@ describe("cosmetic store RPC helpers", () => {
               sizeBytes: 42,
               mediaType: "audio",
               dataUrl: "data:audio/mpeg;base64,AAAA",
+              uploadedAt: "2026-04-16T00:00:00.000Z",
+            },
+          },
+        }),
+      ),
+    ).toThrow("INVALID_COSMETIC_ASSET");
+  });
+
+  it("rejects uploaded assets that exceed the inline upload limit", () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    seedAdminRole(nk);
+
+    expect(() =>
+      rpcAdminUpsertCosmetic(
+        { userId: "admin-1" },
+        logger,
+        nk,
+        JSON.stringify({
+          cosmetic: {
+            id: "board_too_large_001",
+            name: "Too Large Board",
+            tier: "rare",
+            type: "board",
+            price: { currency: "soft", amount: 500 },
+            rotationPools: ["daily"],
+            rarityWeight: 0.7,
+            releasedDate: "2026-04-15T00:00:00.000Z",
+            assetKey: "board_too_large_001",
+            uploadedAsset: {
+              fileName: "board.png",
+              mimeType: "image/png",
+              sizeBytes: MAX_INLINE_COSMETIC_UPLOAD_BYTES + 1,
+              mediaType: "image",
+              dataUrl: "data:image/png;base64,AAAA",
               uploadedAt: "2026-04-16T00:00:00.000Z",
             },
           },

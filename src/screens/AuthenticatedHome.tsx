@@ -104,18 +104,24 @@ export default function AuthenticatedHome() {
     });
   };
 
+  const handleInventoryPress = () => {
+    router.push('/(game)/inventory');
+  };
+
   const renderUtilitySketchButton = ({
     label,
     accessibilityLabel,
     onPress,
     iconName,
     disabled = false,
+    style,
   }: {
     label: string;
     accessibilityLabel: string;
     onPress: () => void;
     iconName?: React.ComponentProps<typeof SketchButton>['iconName'];
     disabled?: boolean;
+    style?: React.ComponentProps<typeof SketchButton>['style'];
   }) => (
     <SketchButton
       label={label}
@@ -123,6 +129,7 @@ export default function AuthenticatedHome() {
       onPress={onPress}
       iconName={iconName}
       disabled={disabled}
+      style={style}
       fontFamily={buttonFontFamily}
     />
   );
@@ -140,6 +147,7 @@ export default function AuthenticatedHome() {
           void handleBackToLogin();
         },
         iconName: 'arrow-back',
+        style: styles.utilityActionButton,
       });
     }
 
@@ -169,6 +177,20 @@ export default function AuthenticatedHome() {
         void handleLogout();
       },
       disabled: isLoggingOut,
+      style: styles.utilityActionButton,
+    });
+  };
+
+  const renderInventoryAction = () => {
+    if (user?.provider !== 'google') {
+      return null;
+    }
+
+    return renderUtilitySketchButton({
+      label: 'Inventory',
+      accessibilityLabel: 'Open inventory',
+      onPress: handleInventoryPress,
+      style: styles.utilityActionButton,
     });
   };
 
@@ -216,7 +238,14 @@ export default function AuthenticatedHome() {
         {renderWalletBalance()}
       </View>
       <View testID="authenticated-home-utility-right" style={styles.topOverlayRight}>
-        {renderUtilityAction()}
+        {user?.provider === 'guest' ? (
+          renderUtilityAction()
+        ) : (
+          <View style={styles.utilityActions}>
+            {renderUtilityAction()}
+            {renderInventoryAction()}
+          </View>
+        )}
       </View>
     </View>
   );
@@ -434,6 +463,13 @@ const styles = StyleSheet.create({
     minHeight: 42,
     alignItems: 'flex-end',
     justifyContent: 'center',
+  },
+  utilityActions: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  utilityActionButton: {
+    alignSelf: 'flex-end',
   },
   utilitySpacer: {
     width: 88,

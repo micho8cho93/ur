@@ -111,11 +111,10 @@ describe('MatchChallengeRewardsPanel', () => {
     expect(screen.queryByText('First Victory')).toBeNull();
   });
 
-  it('shows unchanged loading, error, and empty states', () => {
+  it('renders nothing while loading and shows error + empty states otherwise', () => {
     const view = render(<MatchChallengeRewardsPanel summary={null} loading />);
 
-    expect(screen.getByText('Confirming match rewards…')).toBeTruthy();
-    expect(screen.getByText('Waiting for the archive to return your updated challenge record.')).toBeTruthy();
+    expect(screen.queryByText('Challenge Rewards')).toBeNull();
 
     view.rerender(<MatchChallengeRewardsPanel summary={null} errorMessage="Archive unavailable" />);
 
