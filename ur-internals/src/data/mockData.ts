@@ -32,6 +32,7 @@ export const mockTournaments: Tournament[] = [
     operator: 'incr',
     xpPerMatchWin: 100,
     xpForTournamentChampion: 250,
+    gemsForRank1: 0,
     metadata: {
       gameMode: 'standard',
       region: 'Global',
@@ -74,6 +75,7 @@ export const mockTournaments: Tournament[] = [
     operator: 'incr',
     xpPerMatchWin: 125,
     xpForTournamentChampion: 400,
+    gemsForRank1: 0,
     metadata: {
       gameMode: 'gameMode_capture',
       region: 'EU / NA',
@@ -116,6 +118,7 @@ export const mockTournaments: Tournament[] = [
     operator: 'incr',
     xpPerMatchWin: 150,
     xpForTournamentChampion: 500,
+    gemsForRank1: 0,
     metadata: {
       gameMode: 'gameMode_full_path',
       region: 'Global',
