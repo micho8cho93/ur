@@ -6,7 +6,8 @@
       "Bash(cd:*)",
       "Bash(cat:*)",
       "Bash(node:*)",
-      "Bash(npx jest *)"
+      "Bash(npx jest *)",
+      "Bash(git log *)"
     ]
   }
 }

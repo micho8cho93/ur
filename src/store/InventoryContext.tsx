@@ -162,6 +162,7 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
     storefront,
     loading: isStoreLoading,
     errorMessage: storeErrorMessage,
+    refresh: refreshStorefront,
   } = useStore();
   const [catalogItems, setCatalogItems] = useState<CosmeticDefinition[]>([]);
   const [equippedIdsByType, setEquippedIdsByType] = useState<InventoryLoadout>(createEmptyLoadout());
@@ -188,9 +189,10 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
     setErrorMessage(null);
 
     try {
-      const [nextCatalogItems, nextLoadout] = await Promise.all([
+      const [nextCatalogItems, nextLoadout, nextStorefront] = await Promise.all([
         getFullCatalog(),
         readStoredLoadout(user.id),
+        refreshStorefront({ silent: true }),
       ]);
 
       if (requestIdRef.current !== requestId) {
@@ -198,9 +200,8 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
       }
 
       const catalogById = new Map(nextCatalogItems.items.map((item) => [item.id, item]));
-      const sanitizedLoadout = storefront
-        ? sanitizeLoadout(nextLoadout, new Set(storefront.ownedIds ?? []), catalogById)
-        : nextLoadout;
+      const freshOwnedIds = new Set((nextStorefront ?? storefront)?.ownedIds ?? []);
+      const sanitizedLoadout = sanitizeLoadout(nextLoadout, freshOwnedIds, catalogById);
 
       setCatalogItems(nextCatalogItems.items);
       setEquippedIdsByType(sanitizedLoadout);
@@ -215,7 +216,7 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
         setIsCatalogLoading(false);
       }
     }
-  }, [storefront?.ownedIds, user]);
+  }, [refreshStorefront, storefront, user]);
 
   useEffect(() => {
     if (isAuthLoading || isStoreLoading) {
@@ -387,7 +388,7 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
   const value = useMemo<InventoryContextValue>(
     () => ({
       isLoading: isAuthLoading || isStoreLoading || isCatalogLoading,
-      errorMessage: errorMessage ?? storeErrorMessage,
+      errorMessage: errorMessage ?? (storefront != null ? null : storeErrorMessage),
       ownedCosmetics: ownedDefinitions.map((item) => ({
         ...item,
         isEquipped: isEquipped(item.id),

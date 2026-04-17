@@ -126,7 +126,9 @@ export const StoreProvider: React.FC<PropsWithChildren> = ({ children }) => {
             ownedIds: [...current.ownedIds, itemId],
           };
         });
+        setErrorMessage(null);
         void wallet.refresh({ silent: true });
+        void refresh({ silent: true });
         return result;
       } catch (error) {
         return {
@@ -135,7 +137,7 @@ export const StoreProvider: React.FC<PropsWithChildren> = ({ children }) => {
         };
       }
     },
-    [wallet],
+    [refresh, wallet],
   );
 
   const value = useMemo<StoreContextValue>(
