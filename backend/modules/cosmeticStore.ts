@@ -621,23 +621,25 @@ const parseRemoveLimitedTimeEventRequest = (payload: string): AdminRemoveLimited
 
 const isUploadedAssetCompatible = (item: CosmeticDefinition): boolean => {
   const mediaType = item.uploadedAsset?.mediaType;
-  if (!mediaType) {
-    return true;
+  if (mediaType) {
+    if (item.type === "music" || item.type === "sound_effect") {
+      if (mediaType !== "audio") return false;
+    } else if (item.type === "board" || item.type === "pieces") {
+      if (mediaType !== "image" && mediaType !== "animation") return false;
+    } else if (item.type === "dice_animation" || item.type === "emote") {
+      if (mediaType !== "image" && mediaType !== "animation" && mediaType !== "video") return false;
+    } else {
+      return false;
+    }
   }
 
-  if (item.type === "music" || item.type === "sound_effect") {
-    return mediaType === "audio";
+  if (item.uploadedAsset2) {
+    if (item.type !== "dice_animation") return false;
+    const mt2 = item.uploadedAsset2.mediaType;
+    if (mt2 !== "image" && mt2 !== "animation" && mt2 !== "video") return false;
   }
 
-  if (item.type === "board" || item.type === "pieces") {
-    return mediaType === "image" || mediaType === "animation";
-  }
-
-  if (item.type === "dice_animation" || item.type === "emote") {
-    return mediaType === "image" || mediaType === "animation" || mediaType === "video";
-  }
-
-  return false;
+  return true;
 };
 
 const upsertCatalogItem = (
@@ -651,10 +653,20 @@ const upsertCatalogItem = (
     if (patch.uploadedAsset === null) {
       delete patchWithoutAssetRemoval.uploadedAsset;
     }
+    if (patch.uploadedAsset2 === null) {
+      delete patchWithoutAssetRemoval.uploadedAsset2;
+    }
 
     if (
       patchWithoutAssetRemoval.uploadedAsset &&
       patchWithoutAssetRemoval.uploadedAsset.sizeBytes > MAX_INLINE_COSMETIC_UPLOAD_BYTES
+    ) {
+      throw new Error("INVALID_COSMETIC_ASSET");
+    }
+
+    if (
+      patchWithoutAssetRemoval.uploadedAsset2 &&
+      patchWithoutAssetRemoval.uploadedAsset2.sizeBytes > MAX_INLINE_COSMETIC_UPLOAD_BYTES
     ) {
       throw new Error("INVALID_COSMETIC_ASSET");
     }
@@ -665,6 +677,9 @@ const upsertCatalogItem = (
     };
     if (patch.uploadedAsset === null) {
       delete merged.uploadedAsset;
+    }
+    if (patch.uploadedAsset2 === null) {
+      delete merged.uploadedAsset2;
     }
 
     if (!isCosmeticDefinition(merged)) {

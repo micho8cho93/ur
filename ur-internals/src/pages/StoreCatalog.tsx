@@ -41,6 +41,7 @@ type CatalogForm = {
   releasedDate: string
   assetKey: string
   uploadedAsset: UploadedCosmeticAsset | null
+  uploadedAsset2: UploadedCosmeticAsset | null
   disabled: boolean
 }
 
@@ -56,6 +57,7 @@ const emptyForm: CatalogForm = {
   releasedDate: new Date().toISOString(),
   assetKey: '',
   uploadedAsset: null,
+  uploadedAsset2: null,
   disabled: false,
 }
 
@@ -72,13 +74,17 @@ function formFromCosmetic(item: CosmeticDefinition): CatalogForm {
     releasedDate: item.releasedDate,
     assetKey: item.assetKey,
     uploadedAsset: item.uploadedAsset ?? null,
+    uploadedAsset2: item.uploadedAsset2 ?? null,
     disabled: item.disabled === true,
   }
 }
 
 function buildCosmeticPatch(
   form: CatalogForm,
-): Omit<CosmeticDefinition, 'uploadedAsset'> & { uploadedAsset: UploadedCosmeticAsset | null } {
+): Omit<CosmeticDefinition, 'uploadedAsset' | 'uploadedAsset2'> & {
+  uploadedAsset: UploadedCosmeticAsset | null
+  uploadedAsset2: UploadedCosmeticAsset | null
+} {
   return {
     id: form.id.trim(),
     name: form.name.trim(),
@@ -93,6 +99,7 @@ function buildCosmeticPatch(
     releasedDate: form.releasedDate.trim(),
     assetKey: form.assetKey.trim() || form.id.trim(),
     uploadedAsset: form.uploadedAsset,
+    uploadedAsset2: form.type === 'dice_animation' ? form.uploadedAsset2 : null,
     disabled: form.disabled,
   }
 }
@@ -437,6 +444,20 @@ export function StoreCatalogPage() {
     }
   }
 
+  async function handleAssetUpload2(file: File | undefined) {
+    if (!file) {
+      return
+    }
+
+    setError(null)
+    try {
+      const uploadedAsset2 = await uploadedAssetFromFile(file, form.type)
+      updateForm({ uploadedAsset2 })
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'Unable to upload asset.')
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -541,7 +562,7 @@ export function StoreCatalogPage() {
               <input value={form.assetKey} onChange={(event) => updateForm({ assetKey: event.target.value })} />
             </label>
             <label className="field field--full">
-              <span className="field__label">Upload asset</span>
+              <span className="field__label">{form.type === 'dice_animation' ? 'Upload asset (frame 1)' : 'Upload asset'}</span>
               <input
                 type="file"
                 accept={acceptForCosmeticType(form.type)}
@@ -556,7 +577,7 @@ export function StoreCatalogPage() {
             </label>
             {form.uploadedAsset ? (
               <div className="field field--full">
-                <span className="field__label">Uploaded preview</span>
+                <span className="field__label">{form.type === 'dice_animation' ? 'Frame 1 preview' : 'Uploaded preview'}</span>
                 <div className="asset-edit-preview">
                   <AssetPreview
                     asset={form.uploadedAsset}
@@ -566,7 +587,7 @@ export function StoreCatalogPage() {
                     }}
                     onOpen={() => {
                       if (form.uploadedAsset) {
-                        setPreviewItem({ ...buildCosmeticPatch(form), uploadedAsset: form.uploadedAsset })
+                        setPreviewItem({ ...buildCosmeticPatch(form), uploadedAsset: form.uploadedAsset, uploadedAsset2: form.uploadedAsset2 ?? undefined })
                       }
                     }}
                   />
@@ -575,6 +596,44 @@ export function StoreCatalogPage() {
                   </button>
                 </div>
               </div>
+            ) : null}
+            {form.type === 'dice_animation' ? (
+              <>
+                <label className="field field--full">
+                  <span className="field__label">Upload asset (frame 2)</span>
+                  <input
+                    type="file"
+                    accept={acceptForCosmeticType(form.type)}
+                    onChange={(event) => {
+                      void handleAssetUpload2(event.target.files?.[0])
+                      event.target.value = ''
+                    }}
+                  />
+                  <span className="field__hint">Second PNG for the dice animation — both frames required.</span>
+                </label>
+                {form.uploadedAsset2 ? (
+                  <div className="field field--full">
+                    <span className="field__label">Frame 2 preview</span>
+                    <div className="asset-edit-preview">
+                      <AssetPreview
+                        asset={form.uploadedAsset2}
+                        item={{
+                          name: form.name || form.uploadedAsset2.fileName,
+                          assetKey: form.assetKey || form.id || 'uploaded',
+                        }}
+                        onOpen={() => {
+                          if (form.uploadedAsset2) {
+                            setPreviewItem({ ...buildCosmeticPatch(form), uploadedAsset: form.uploadedAsset2, uploadedAsset2: undefined })
+                          }
+                        }}
+                      />
+                      <button className="button button--danger" type="button" onClick={() => updateForm({ uploadedAsset2: null })}>
+                        Remove frame 2
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </>
             ) : null}
             <label className="field">
               <span className="field__label">Released date</span>

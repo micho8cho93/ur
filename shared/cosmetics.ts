@@ -37,6 +37,7 @@ export type CosmeticDefinition = {
   releasedDate: string;
   assetKey: string;
   uploadedAsset?: UploadedCosmeticAsset;
+  uploadedAsset2?: UploadedCosmeticAsset;
   disabled?: boolean;
 };
 
@@ -108,9 +109,10 @@ export type StoreRotationStateResponse = {
 };
 
 export type AdminUpsertCosmeticRequest = {
-  cosmetic: Partial<Omit<CosmeticDefinition, "uploadedAsset">> & {
+  cosmetic: Partial<Omit<CosmeticDefinition, "uploadedAsset" | "uploadedAsset2">> & {
     id: string;
     uploadedAsset?: UploadedCosmeticAsset | null;
+    uploadedAsset2?: UploadedCosmeticAsset | null;
   };
 };
 
@@ -226,6 +228,7 @@ export const isCosmeticDefinition = (value: unknown): value is CosmeticDefinitio
     typeof value.releasedDate === "string" &&
     typeof value.assetKey === "string" &&
     (typeof value.uploadedAsset === "undefined" || isUploadedCosmeticAsset(value.uploadedAsset)) &&
+    (typeof value.uploadedAsset2 === "undefined" || isUploadedCosmeticAsset(value.uploadedAsset2)) &&
     (typeof value.disabled === "undefined" || typeof value.disabled === "boolean")
   );
 };

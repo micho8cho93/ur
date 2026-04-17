@@ -31,6 +31,7 @@ export interface CosmeticDefinition {
   releasedDate: string
   assetKey: string
   uploadedAsset?: UploadedCosmeticAsset
+  uploadedAsset2?: UploadedCosmeticAsset
   disabled?: boolean
 }
 

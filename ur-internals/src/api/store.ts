@@ -196,9 +196,10 @@ export async function getAdminFullCatalog(): Promise<FullCatalogResponse> {
 }
 
 export async function upsertCosmetic(
-  cosmetic: Partial<Omit<CosmeticDefinition, 'uploadedAsset'>> & {
+  cosmetic: Partial<Omit<CosmeticDefinition, 'uploadedAsset' | 'uploadedAsset2'>> & {
     id: string
     uploadedAsset?: CosmeticDefinition['uploadedAsset'] | null
+    uploadedAsset2?: CosmeticDefinition['uploadedAsset2'] | null
   },
 ) {
   return normalizeMutation(await callRpc<unknown>(RPC_ADMIN_UPSERT_COSMETIC, { cosmetic }))
