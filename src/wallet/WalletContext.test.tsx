@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import React from 'react';
 
-import { SOFT_CURRENCY_KEY } from '@/shared/wallet';
+import { PREMIUM_CURRENCY_KEY, SOFT_CURRENCY_KEY } from '@/shared/wallet';
 import { WalletProvider } from './WalletContext';
 import { useWallet } from './useWallet';
 
@@ -28,8 +28,9 @@ describe('WalletProvider', () => {
       isLoading: false,
     });
     mockGetWallet.mockResolvedValue({
-      wallet: { [SOFT_CURRENCY_KEY]: 88 },
+      wallet: { [SOFT_CURRENCY_KEY]: 88, [PREMIUM_CURRENCY_KEY]: 12 },
       softCurrency: 88,
+      premiumCurrency: 12,
     });
   });
 
@@ -40,7 +41,8 @@ describe('WalletProvider', () => {
       expect(result.current.softCurrency).toBe(88);
     });
 
-    expect(result.current.wallet).toEqual({ [SOFT_CURRENCY_KEY]: 88 });
+    expect(result.current.premiumCurrency).toBe(12);
+    expect(result.current.wallet).toEqual({ [SOFT_CURRENCY_KEY]: 88, [PREMIUM_CURRENCY_KEY]: 12 });
     expect(result.current.status).toBe('ready');
   });
 
@@ -52,8 +54,9 @@ describe('WalletProvider', () => {
     });
 
     mockGetWallet.mockResolvedValueOnce({
-      wallet: { [SOFT_CURRENCY_KEY]: 91 },
+      wallet: { [SOFT_CURRENCY_KEY]: 91, [PREMIUM_CURRENCY_KEY]: 25 },
       softCurrency: 91,
+      premiumCurrency: 25,
     });
 
     await act(async () => {
@@ -61,6 +64,7 @@ describe('WalletProvider', () => {
     });
 
     expect(result.current.softCurrency).toBe(91);
+    expect(result.current.premiumCurrency).toBe(25);
   });
 
   it('resets when there is no authenticated user', async () => {
@@ -72,6 +76,7 @@ describe('WalletProvider', () => {
     const { result } = renderHook(() => useWallet(), { wrapper });
 
     expect(result.current.softCurrency).toBe(0);
+    expect(result.current.premiumCurrency).toBe(0);
     expect(result.current.wallet).toBeNull();
     expect(result.current.status).toBe('idle');
     expect(mockGetWallet).not.toHaveBeenCalled();

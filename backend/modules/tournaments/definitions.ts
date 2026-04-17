@@ -266,6 +266,30 @@ const normalizeRewardPoolAmount = (value: unknown): number | null => {
   return Math.round(parsed * 100) / 100;
 };
 
+export type TournamentGemRewardSettings = {
+  gemsForRank1: number;
+  gemsForRank2: number;
+  gemsForRank3: number;
+};
+
+export const resolveTournamentGemRewardSettings = (value: unknown): TournamentGemRewardSettings => ({
+  gemsForRank1: clampNonNegativeInteger(
+    readNumberField(value, ["gemsForRank1", "gems_for_rank_1", "gemsForChampion", "gems_for_champion"]),
+    0,
+    1_000_000,
+  ),
+  gemsForRank2: clampNonNegativeInteger(
+    readNumberField(value, ["gemsForRank2", "gems_for_rank_2", "gemsForFinalist", "gems_for_finalist"]),
+    0,
+    1_000_000,
+  ),
+  gemsForRank3: clampNonNegativeInteger(
+    readNumberField(value, ["gemsForRank3", "gems_for_rank_3", "gemsForSemifinalist", "gems_for_semifinalist"]),
+    0,
+    1_000_000,
+  ),
+});
+
 export const resolveTournamentXpRewardSettings = (value: unknown): TournamentXpRewardSettings => ({
   xpPerMatchWin: clampNonNegativeInteger(
     readNumberField(value, [

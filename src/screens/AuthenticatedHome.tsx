@@ -44,8 +44,9 @@ export default function AuthenticatedHome() {
   const runScreenTransition = useScreenTransition();
   const { user, logout } = useAuth();
   const { progression } = useProgression();
-  const { softCurrency } = useWallet();
+  const { softCurrency, premiumCurrency } = useWallet();
   const displayedSoftCurrency = user?.provider === 'guest' ? 0 : softCurrency;
+  const displayedPremiumCurrency = user?.provider === 'guest' ? 0 : premiumCurrency;
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const [isProgressionModalOpen, setIsProgressionModalOpen] = React.useState(false);
   const [fontsLoaded] = useFonts({
@@ -230,12 +231,38 @@ export default function AuthenticatedHome() {
     </View>
   );
 
+  const renderGemBalance = () => (
+    <View
+      accessibilityLabel={`${displayedPremiumCurrency} Gems`}
+      style={[
+        styles.walletChip,
+        styles.gemChip,
+        isDesktopLayout ? styles.walletChipDesktop : styles.walletChipCompact,
+      ]}
+    >
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.72}
+        style={[
+          styles.walletChipText,
+          styles.gemChipText,
+          isDesktopLayout ? styles.walletChipTextDesktop : styles.walletChipTextCompact,
+          { fontFamily: usernameFontFamily },
+        ]}
+      >
+        {displayedPremiumCurrency.toLocaleString()} Gems
+      </Text>
+    </View>
+  );
+
   const utilityBarContent = (
     <View style={styles.topOverlayRow}>
       <View testID="authenticated-home-utility-left" style={styles.topOverlayLeft}>
         {renderUtilityControl()}
         {renderIdentityLabel()}
         {renderWalletBalance()}
+        {renderGemBalance()}
       </View>
       <View testID="authenticated-home-utility-right" style={styles.topOverlayRight}>
         {user?.provider === 'guest' ? (
@@ -527,6 +554,14 @@ const styles = StyleSheet.create({
   walletChipTextCompact: {
     fontSize: 14,
     lineHeight: 17,
+  },
+  gemChip: {
+    borderColor: 'rgba(120, 200, 255, 0.62)',
+    backgroundColor: 'rgba(14, 38, 68, 0.72)',
+  },
+  gemChipText: {
+    color: '#82DEFF',
+    textShadowColor: 'rgba(10, 40, 90, 0.5)',
   },
   header: {
     alignItems: 'center',

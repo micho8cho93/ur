@@ -9,6 +9,7 @@ export type WalletStatus = 'idle' | 'loading' | 'ready' | 'error';
 export type WalletContextValue = {
   wallet: WalletRpcResponse['wallet'] | null;
   softCurrency: number;
+  premiumCurrency: number;
   status: WalletStatus;
   errorMessage: string | null;
   isLoading: boolean;
@@ -25,6 +26,7 @@ export const WalletProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const { user, isLoading: isAuthLoading } = useAuth();
   const [wallet, setWallet] = useState<WalletRpcResponse['wallet'] | null>(null);
   const [softCurrency, setSoftCurrency] = useState(0);
+  const [premiumCurrency, setPremiumCurrency] = useState(0);
   const [status, setStatus] = useState<WalletStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeUserIdRef = useRef<string | null>(null);
@@ -36,6 +38,7 @@ export const WalletProvider: React.FC<PropsWithChildren> = ({ children }) => {
     activeUserIdRef.current = null;
     setWallet(null);
     setSoftCurrency(0);
+    setPremiumCurrency(0);
     setStatus('idle');
     setErrorMessage(null);
   }, []);
@@ -65,6 +68,7 @@ export const WalletProvider: React.FC<PropsWithChildren> = ({ children }) => {
         activeUserIdRef.current = user.id;
         setWallet(nextWallet.wallet);
         setSoftCurrency(nextWallet.softCurrency);
+        setPremiumCurrency(nextWallet.premiumCurrency);
         setStatus('ready');
         return nextWallet;
       } catch (error) {
@@ -99,13 +103,14 @@ export const WalletProvider: React.FC<PropsWithChildren> = ({ children }) => {
     () => ({
       wallet,
       softCurrency,
+      premiumCurrency,
       status,
       errorMessage,
       isLoading: status === 'loading' && !wallet,
       isRefreshing: status === 'loading' && Boolean(wallet),
       refresh,
     }),
-    [errorMessage, refresh, softCurrency, status, wallet],
+    [errorMessage, premiumCurrency, refresh, softCurrency, status, wallet],
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

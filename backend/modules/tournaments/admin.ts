@@ -14,11 +14,13 @@ import {
   getActorLabel,
   parseJsonPayload,
   readNumberField,
+  resolveTournamentGemRewardSettings,
   resolveTournamentXpRewardSettings,
   readStringField,
   requireAuthenticatedUserId,
   slugify,
 } from "./definitions";
+import { addPremiumCurrency } from "../wallet";
 import {
   buildTournamentBotDisplayNames,
   buildTournamentBotSummary,
@@ -104,6 +106,14 @@ export type FinalizeTournamentRunOptions = {
   overrideExpiry?: number | null;
 };
 
+export type TournamentGemRewardResult = {
+  userId: string;
+  rank: number;
+  gemAmount: number;
+  duplicate: boolean;
+  source: "tournament_reward";
+};
+
 export type FinalizeTournamentRunResult = {
   run: TournamentRunRecord;
   nakamaTournament: Record<string, unknown> | null;
@@ -111,6 +121,7 @@ export type FinalizeTournamentRunResult = {
   disabledRanks: boolean;
   championUserId: string | null;
   championRewardResult: (XpRewardResult & { source: "tournament_champion" }) | null;
+  gemRewardResults: TournamentGemRewardResult[];
 };
 
 export const RUNS_COLLECTION = "tournament_runs";
@@ -1667,6 +1678,60 @@ export const finalizeTournamentRun = (
     logger.warn("Unable to resolve champion user ID for finalized tournament %s.", run.runId);
   }
 
+  const gemSettings = resolveTournamentGemRewardSettings(run.metadata);
+  const gemRewardResults: TournamentGemRewardResult[] = [];
+  const rankedGemRewards: Array<{ rank: number; gems: number }> = [
+    { rank: 1, gems: gemSettings.gemsForRank1 },
+    { rank: 2, gems: gemSettings.gemsForRank2 },
+    { rank: 3, gems: gemSettings.gemsForRank3 },
+  ];
+
+  for (const { rank, gems } of rankedGemRewards) {
+    if (gems <= 0) {
+      continue;
+    }
+
+    const rankUserId =
+      rank === 1
+        ? (championUserId ?? resolveTopRankOwnerId(effectiveSnapshot, 1))
+        : resolveTopRankOwnerId(effectiveSnapshot, rank);
+
+    if (!rankUserId || isTournamentBotUserId(rankUserId)) {
+      logger.info(
+        "Skipping gem reward for rank %d on run %s (no real user at this placement).",
+        rank,
+        run.runId,
+      );
+      continue;
+    }
+
+    try {
+      const result = addPremiumCurrency(nk, logger, {
+        userId: rankUserId,
+        amount: gems,
+        source: "tournament_reward",
+        deduplicationKey: `tournament_reward:${run.runId}:rank:${rank}`,
+        metadata: { runId: run.runId, tournamentId: run.tournamentId, rank },
+      });
+      gemRewardResults.push({
+        userId: rankUserId,
+        rank,
+        gemAmount: gems,
+        duplicate: result.duplicate,
+        source: "tournament_reward",
+      });
+    } catch (error) {
+      logger.warn(
+        "Unable to award %d gems to rank %d user %s for run %s: %s",
+        gems,
+        rank,
+        rankUserId,
+        run.runId,
+        getErrorMessage(error),
+      );
+    }
+  }
+
   return {
     run,
     nakamaTournament,
@@ -1674,6 +1739,7 @@ export const finalizeTournamentRun = (
     disabledRanks,
     championUserId,
     championRewardResult,
+    gemRewardResults,
   };
 };
 

@@ -113,8 +113,9 @@ describe('AuthenticatedHome', () => {
     });
 
     mockUseWallet.mockReturnValue({
-      wallet: { soft_currency: 37 },
+      wallet: { soft_currency: 37, premium_currency: 0 },
       softCurrency: 37,
+      premiumCurrency: 0,
       errorMessage: null,
       isLoading: false,
       isRefreshing: false,

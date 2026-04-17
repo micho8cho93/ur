@@ -331,6 +331,7 @@ describe('tournament match result synchronization', () => {
           disabledRanks: true,
           championUserId: 'user-light',
           championRewardResult: null,
+          gemRewardResults: [],
         },
         retryableFailure: false,
       } as ReturnType<typeof processCompletedAuthoritativeTournamentMatch>);
@@ -414,6 +415,7 @@ describe('tournament match result synchronization', () => {
         },
         championUserId: 'user-light',
         championRewardResult: null,
+        gemRewardResults: [],
         disabledRanks: true,
         nakamaTournament: null,
       },
@@ -675,6 +677,7 @@ describe('tournament match result synchronization', () => {
           },
           championUserId: 'user-light',
           championRewardResult: null,
+          gemRewardResults: [],
           disabledRanks: true,
           nakamaTournament: null,
         },
@@ -764,6 +767,7 @@ describe('tournament match result synchronization', () => {
           },
           championUserId: 'user-light',
           championRewardResult: null,
+          gemRewardResults: [],
           disabledRanks: true,
           nakamaTournament: null,
         },
@@ -850,6 +854,7 @@ describe('tournament match result synchronization', () => {
       },
       championUserId: 'user-light',
       championRewardResult: null,
+      gemRewardResults: [],
       disabledRanks: true,
       nakamaTournament: null,
     });
@@ -954,6 +959,7 @@ describe('tournament match result synchronization', () => {
       },
       championUserId: 'user-light',
       championRewardResult: null,
+      gemRewardResults: [],
       disabledRanks: true,
       nakamaTournament: null,
     });

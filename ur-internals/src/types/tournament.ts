@@ -103,6 +103,7 @@ export interface Tournament {
   roundCount: number
   xpPerMatchWin: number
   xpForTournamentChampion: number
+  gemsForRank1: number
   metadata: Record<string, unknown>
   registrations: TournamentRegistration[]
   bracket: TournamentBracket | null
@@ -277,6 +278,7 @@ export interface CreateTournamentInput {
   enableRanks: boolean
   xpPerMatchWin: number
   xpForTournamentChampion: number
+  gemsForRank1: number
 }
 
 export interface TournamentExportBundle {

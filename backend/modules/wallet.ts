@@ -6,6 +6,7 @@ import {
   buildWalletRpcResponse,
   calculateChallengeSoftCurrencyReward,
   parseWalletBalances,
+  sanitizePremiumCurrencyAmount,
 } from "../../shared/wallet";
 
 type RuntimeContext = any;
@@ -231,6 +232,161 @@ export const awardChallengeSoftCurrency = (
   );
 
   return { awardedSoftCurrency, duplicate: false };
+};
+
+export type PremiumCurrencySource =
+  | "tournament_reward"
+  | "iap_purchase_ios"
+  | "iap_purchase_android"
+  | "stripe_purchase"
+  | "admin_grant"
+  | "gem_pack_purchase_placeholder";
+
+type AddPremiumCurrencyParams = {
+  userId: string;
+  amount: number;
+  source: PremiumCurrencySource;
+  deduplicationKey: string;
+  metadata?: Record<string, unknown>;
+};
+
+type SpendPremiumCurrencyParams = {
+  userId: string;
+  amount: number;
+  source: string;
+  metadata?: Record<string, unknown>;
+};
+
+const buildPremiumCurrencyAddMetadata = (
+  source: PremiumCurrencySource,
+  deduplicationKey: string,
+  amount: number,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> => ({
+  source,
+  currency: PREMIUM_CURRENCY_KEY,
+  deduplicationKey,
+  amount,
+  ...extra,
+});
+
+const isPremiumCurrencyLedgerItem = (
+  item: RuntimeRecord,
+  deduplicationKey: string,
+): boolean => {
+  const ledgerMetadata = getLedgerItemMetadata(item);
+  if (!ledgerMetadata) {
+    return false;
+  }
+
+  if (readStringField(ledgerMetadata, ["currency"]) !== PREMIUM_CURRENCY_KEY) {
+    return false;
+  }
+
+  if (
+    readStringField(ledgerMetadata, ["deduplicationKey", "deduplication_key"]) !== deduplicationKey
+  ) {
+    return false;
+  }
+
+  const changeset = getLedgerItemChangeset(item);
+  return !changeset || (readNumberField(changeset, [PREMIUM_CURRENCY_KEY]) ?? 0) > 0;
+};
+
+const hasPremiumCurrencyLedgerEntry = (
+  nk: RuntimeNakama,
+  userId: string,
+  deduplicationKey: string,
+): boolean => {
+  let cursor = "";
+
+  while (true) {
+    const result = cursor
+      ? nk.walletLedgerList(userId, WALLET_LEDGER_PAGE_SIZE, cursor)
+      : nk.walletLedgerList(userId, WALLET_LEDGER_PAGE_SIZE);
+    const { items, cursor: nextCursor } = normalizeWalletLedgerResult(result);
+
+    if (items.some((item) => isPremiumCurrencyLedgerItem(item, deduplicationKey))) {
+      return true;
+    }
+
+    if (!nextCursor || nextCursor === cursor) {
+      return false;
+    }
+
+    cursor = nextCursor;
+  }
+};
+
+export const addPremiumCurrency = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  params: AddPremiumCurrencyParams,
+): { awardedPremiumCurrency: number; duplicate: boolean } => {
+  const amount = sanitizePremiumCurrencyAmount(params.amount);
+  if (amount <= 0) {
+    return { awardedPremiumCurrency: 0, duplicate: false };
+  }
+
+  if (hasPremiumCurrencyLedgerEntry(nk, params.userId, params.deduplicationKey)) {
+    return { awardedPremiumCurrency: amount, duplicate: true };
+  }
+
+  const metadata = buildPremiumCurrencyAddMetadata(
+    params.source,
+    params.deduplicationKey,
+    amount,
+    params.metadata ?? {},
+  );
+
+  nk.walletUpdate(params.userId, { [PREMIUM_CURRENCY_KEY]: amount }, metadata, true);
+
+  logger.info(
+    "Awarded %d gems to user %s (source=%s, deduplicationKey=%s).",
+    amount,
+    params.userId,
+    params.source,
+    params.deduplicationKey,
+  );
+
+  return { awardedPremiumCurrency: amount, duplicate: false };
+};
+
+export const spendPremiumCurrency = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  params: SpendPremiumCurrencyParams,
+): { spentPremiumCurrency: number } => {
+  const amount = sanitizePremiumCurrencyAmount(params.amount);
+  if (amount <= 0) {
+    return { spentPremiumCurrency: 0 };
+  }
+
+  const wallet = getWalletForUser(nk, params.userId);
+  if (wallet[PREMIUM_CURRENCY_KEY] < amount) {
+    throw new Error("INSUFFICIENT_GEMS");
+  }
+
+  nk.walletUpdate(
+    params.userId,
+    { [PREMIUM_CURRENCY_KEY]: -amount },
+    {
+      source: params.source,
+      currency: PREMIUM_CURRENCY_KEY,
+      amount,
+      ...(params.metadata ?? {}),
+    },
+    true,
+  );
+
+  logger.info(
+    "Spent %d gems from user %s (source=%s).",
+    amount,
+    params.userId,
+    params.source,
+  );
+
+  return { spentPremiumCurrency: amount };
 };
 
 export const rpcGetWallet = (

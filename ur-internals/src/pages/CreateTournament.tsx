@@ -30,6 +30,7 @@ type FormState = {
   enableRanks: boolean
   xpPerMatchWin: string
   xpForTournamentChampion: string
+  gemsForRank1: string
   description: string
 }
 
@@ -45,6 +46,7 @@ const initialState: FormState = {
   enableRanks: true,
   xpPerMatchWin: '100',
   xpForTournamentChampion: '250',
+  gemsForRank1: '0',
   description: '',
 }
 
@@ -77,6 +79,7 @@ export function CreateTournamentPage() {
     const entrants = Number(form.entrants)
     const xpPerMatchWin = Number(form.xpPerMatchWin)
     const xpForTournamentChampion = Number(form.xpForTournamentChampion)
+    const gemsForRank1 = Number(form.gemsForRank1)
     const roundCount = getSingleEliminationRoundCount(entrants)
 
     if (!form.name.trim()) {
@@ -109,6 +112,11 @@ export function CreateTournamentPage() {
       return
     }
 
+    if (!Number.isFinite(gemsForRank1) || gemsForRank1 < 0) {
+      setError('Winner gem reward must be 0 or greater.')
+      return
+    }
+
     try {
       setIsSaving(true)
 
@@ -125,6 +133,7 @@ export function CreateTournamentPage() {
         enableRanks: form.enableRanks,
         xpPerMatchWin: Math.floor(xpPerMatchWin),
         xpForTournamentChampion: Math.floor(xpForTournamentChampion),
+        gemsForRank1: Math.floor(gemsForRank1),
       })
 
       void navigate(appRoutes.tournaments.detail(tournament.id))
@@ -300,6 +309,22 @@ export function CreateTournamentPage() {
                 />
                 <span className="field__hint">
                   This champion bonus is awarded once when the run is finalized.
+                </span>
+              </div>
+
+              <div className="field">
+                <label htmlFor="gemsForRank1">Gems for winning the tournament</label>
+                <input
+                  id="gemsForRank1"
+                  name="gemsForRank1"
+                  type="number"
+                  min="0"
+                  value={form.gemsForRank1}
+                  onChange={(event) => updateField('gemsForRank1', event)}
+                  required
+                />
+                <span className="field__hint">
+                  Gems awarded to the champion when the run is finalized. Set to 0 to disable.
                 </span>
               </div>
             </div>

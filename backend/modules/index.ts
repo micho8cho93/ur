@@ -54,6 +54,10 @@ import {
   rpcGetWallet,
 } from "./wallet";
 import {
+  RPC_CONFIRM_GEM_PACK_PURCHASE,
+  rpcConfirmGemPackPurchase,
+} from "./gemPurchase";
+import {
   RPC_GET_OWNED_COSMETICS,
   RPC_GET_FULL_CATALOG,
   RPC_GET_STOREFRONT,
@@ -2077,6 +2081,7 @@ function InitModule(
   initializer.registerRpc(RPC_GET_USER_CHALLENGE_PROGRESS_NAME, rpcGetUserChallengeProgress);
   initializer.registerRpc(RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME, rpcSubmitCompletedBotMatch);
   initializer.registerRpc(RPC_GET_WALLET, rpcGetWallet);
+  initializer.registerRpc(RPC_CONFIRM_GEM_PACK_PURCHASE, rpcConfirmGemPackPurchase);
   initializer.registerRpc(RPC_GET_STOREFRONT, rpcGetStorefront);
   initializer.registerRpc(RPC_GET_FULL_CATALOG, rpcGetFullCatalog);
   initializer.registerRpc(RPC_PURCHASE_ITEM, rpcPurchaseItem);

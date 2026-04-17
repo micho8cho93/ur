@@ -386,6 +386,17 @@ function normalizeTournament(runValue: unknown, nakamaTournamentValue: unknown):
         ]) ?? DEFAULT_TOURNAMENT_CHAMPION_XP,
       ),
     ),
+    gemsForRank1: Math.max(
+      0,
+      Math.floor(
+        readNumberField(metadata, [
+          'gemsForRank1',
+          'gems_for_rank_1',
+          'gemsForChampion',
+          'gems_for_champion',
+        ]) ?? 0,
+      ),
+    ),
     metadata,
     registrations: readArrayField(run, ['registrations'])
       .map((entry) => normalizeTournamentRegistration(entry))
@@ -529,10 +540,12 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
       operator: 'incr',
       xpPerMatchWin: input.xpPerMatchWin,
       xpForTournamentChampion: input.xpForTournamentChampion,
+      gemsForRank1: input.gemsForRank1,
       metadata: {
         gameMode: input.gameMode,
         xpPerMatchWin: input.xpPerMatchWin,
         xpForTournamentChampion: input.xpForTournamentChampion,
+        gemsForRank1: input.gemsForRank1,
         autoAddBots: input.autoAddBots,
         botDifficulty: input.autoAddBots ? input.botDifficulty ?? DEFAULT_BOT_DIFFICULTY : null,
       },
@@ -562,6 +575,7 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
         gameMode: input.gameMode,
         xpPerMatchWin: input.xpPerMatchWin,
         xpForTournamentChampion: input.xpForTournamentChampion,
+        gemsForRank1: input.gemsForRank1,
         autoAddBots: input.autoAddBots,
         botDifficulty: input.autoAddBots ? input.botDifficulty ?? DEFAULT_BOT_DIFFICULTY : null,
       },
