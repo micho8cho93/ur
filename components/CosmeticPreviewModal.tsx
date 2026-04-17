@@ -1,7 +1,6 @@
-import { Board } from '@/components/game/Board';
 import { Dice } from '@/components/game/Dice';
+import { BoardCosmeticPreview } from '@/components/cosmetics/BoardCosmeticPreview';
 import { Button } from '@/components/ui/Button';
-import { createPreviewGameState } from '@/logic/previewState';
 import { cosmeticDefinitionToTheme } from '@/shared/cosmeticTheme';
 import type { CosmeticDefinition, CosmeticTier } from '@/shared/cosmetics';
 import type { AudioAssetSource } from '@/src/cosmetics/audioAssets';
@@ -15,7 +14,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -160,10 +158,8 @@ export const CosmeticPreviewModal = ({
   isOwned,
   relatedCosmetics = [],
 }: CosmeticPreviewModalProps) => {
-  const { width } = useWindowDimensions();
   const [activeCosmeticId, setActiveCosmeticId] = useState<string | null>(cosmetic?.id ?? null);
   const [diceRollValue, setDiceRollValue] = useState<number>(randomDiceValue);
-  const previewState = useMemo(() => createPreviewGameState(), []);
 
   useEffect(() => {
     if (cosmetic?.id) {
@@ -194,7 +190,6 @@ export const CosmeticPreviewModal = ({
     [activeCosmetic],
   );
   const activeIsOwned = Boolean(activeCosmetic && cosmetic && activeCosmetic.id === cosmetic.id && isOwned);
-  const boardScale = width < 420 ? 0.86 : 0.78;
 
   const renderPreviewContent = () => {
     if (!activeCosmetic) {
@@ -234,18 +229,10 @@ export const CosmeticPreviewModal = ({
     }
 
     return (
-      <View style={styles.boardPreview} testID="cosmetic-preview-board">
-        <Board
-          gameStateOverride={previewState}
-          validMovesOverride={[]}
-          onMakeMoveOverride={() => undefined}
-          playerColorOverride="light"
-          allowInteraction={false}
-          freezeMotion
-          boardScale={boardScale}
-          orientation="vertical"
-          showRailHints={false}
-          autoMoveHintEnabled={false}
+      <View style={styles.boardPreview}>
+        <BoardCosmeticPreview
+          cosmetic={activeCosmetic}
+          testID="cosmetic-preview-board"
         />
       </View>
     );
@@ -412,11 +399,13 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   previewArea: {
-    minHeight: 420,
-    maxHeight: 560,
+    width: '100%',
+    minHeight: 360,
+    maxHeight: 520,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   boardPreview: {
     width: '100%',
