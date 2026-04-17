@@ -42,6 +42,7 @@ import {
   normalizeChallengeProgressSnapshot,
 } from "./challengeProgress";
 import { awardChallengeSoftCurrency } from "./wallet";
+import { SOFT_CURRENCY_KEY } from "../../shared/wallet";
 
 type RuntimeContext = any;
 type RuntimeLogger = any;
@@ -684,6 +685,22 @@ export const rpcSubmitCompletedBotMatch = (
         source: matchConfig.offlineWinRewardSource,
       })
     : null;
+
+  if (summary.didWin && matchConfig.allowsCoins) {
+    nk.walletUpdate(
+      ctx.userId,
+      {
+        [SOFT_CURRENCY_KEY]: 10,
+      },
+      {
+        source: "local_bot_win",
+        matchId: summary.matchId,
+        modeId,
+        amount: 10,
+      },
+      true
+    );
+  }
 
   if (rewardMode !== "base_win_only") {
     processCompletedMatch(nk, logger, summary);
