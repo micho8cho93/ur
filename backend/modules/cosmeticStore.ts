@@ -220,15 +220,8 @@ const readRotationObject = (
       key: STORE_ROTATION_KEY,
       userId: GLOBAL_STORAGE_USER_ID,
     },
-    {
-      collection: STORE_STATE_COLLECTION,
-      key: STORE_ROTATION_KEY,
-      userId: "system",
-    },
   ]) as RuntimeStorageObject[];
-  const object =
-    findStorageObject(objects, STORE_STATE_COLLECTION, STORE_ROTATION_KEY, GLOBAL_STORAGE_USER_ID) ??
-    findStorageObject(objects, STORE_STATE_COLLECTION, STORE_ROTATION_KEY, "system");
+  const object = findStorageObject(objects, STORE_STATE_COLLECTION, STORE_ROTATION_KEY, GLOBAL_STORAGE_USER_ID);
 
   return {
     object,

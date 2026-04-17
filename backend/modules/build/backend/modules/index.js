@@ -4670,6 +4670,21 @@ var rpcSubmitCompletedBotMatch = (ctx, logger, nk, payload) => {
     matchId: summary.matchId,
     source: matchConfig.offlineWinRewardSource
   }) : null;
+  if (summary.didWin && matchConfig.allowsCoins) {
+    nk.walletUpdate(
+      ctx.userId,
+      {
+        [SOFT_CURRENCY_KEY]: 10
+      },
+      {
+        source: "local_bot_win",
+        matchId: summary.matchId,
+        modeId,
+        amount: 10
+      },
+      true
+    );
+  }
   if (rewardMode !== "base_win_only") {
     processCompletedMatch(nk, logger, summary);
   }
@@ -4683,6 +4698,7 @@ var rpcGetUserChallengeProgress = (ctx, logger, nk, _payload) => {
 };
 
 // shared/cosmetics.ts
+var MAX_INLINE_COSMETIC_UPLOAD_BYTES = 3 * 1024 * 1024;
 var isRecord2 = (value) => typeof value === "object" && value !== null;
 var isStringArray = (value) => Array.isArray(value) && value.every((entry) => typeof entry === "string");
 var isCosmeticTier = (value) => value === "common" || value === "rare" || value === "epic" || value === "legendary";
@@ -6001,20 +6017,14 @@ var readOwnedCosmeticsObject = (nk, userId) => {
   };
 };
 var readRotationObject = (nk) => {
-  var _a;
   const objects = nk.storageRead([
     {
       collection: STORE_STATE_COLLECTION,
       key: STORE_ROTATION_KEY,
       userId: GLOBAL_STORAGE_USER_ID
-    },
-    {
-      collection: STORE_STATE_COLLECTION,
-      key: STORE_ROTATION_KEY,
-      userId: "system"
     }
   ]);
-  const object = (_a = findStorageObject(objects, STORE_STATE_COLLECTION, STORE_ROTATION_KEY, GLOBAL_STORAGE_USER_ID)) != null ? _a : findStorageObject(objects, STORE_STATE_COLLECTION, STORE_ROTATION_KEY, "system");
+  const object = findStorageObject(objects, STORE_STATE_COLLECTION, STORE_ROTATION_KEY, GLOBAL_STORAGE_USER_ID);
   return {
     object,
     rotation: normalizeRotationRecord(getStorageObjectValue(object))
@@ -6329,6 +6339,9 @@ var upsertCatalogItem = (nk, patch) => {
     const patchWithoutAssetRemoval = __spreadValues({}, patch);
     if (patch.uploadedAsset === null) {
       delete patchWithoutAssetRemoval.uploadedAsset;
+    }
+    if (patchWithoutAssetRemoval.uploadedAsset && patchWithoutAssetRemoval.uploadedAsset.sizeBytes > MAX_INLINE_COSMETIC_UPLOAD_BYTES) {
+      throw new Error("INVALID_COSMETIC_ASSET");
     }
     const merged = __spreadValues(__spreadValues({}, existingIndex >= 0 ? items[existingIndex] : {}), patchWithoutAssetRemoval);
     if (patch.uploadedAsset === null) {
