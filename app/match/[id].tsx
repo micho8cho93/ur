@@ -5639,6 +5639,13 @@ export function GameRoom() {
     !rollingVisual &&
     displayedRollLabel === null &&
     displayedRollText === JACKPOT_ROLL_VALUE;
+
+  useEffect(() => {
+    if (shouldJackpotGlowRollText) {
+      void gameAudio.play('rollJackpot');
+    }
+  }, [shouldJackpotGlowRollText]);
+
   const showMobileRollResult =
     introsComplete &&
     isMobileLayout &&

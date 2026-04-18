@@ -4,7 +4,7 @@ import type { AudioStatus } from 'expo-audio';
 import { Platform } from 'react-native';
 import { createShuffledPlaylistOrder } from './audioPlaylist';
 
-type AudioEvent = 'bgm' | 'roll' | 'move' | 'score' | 'capture' | 'win' | 'lose' | 'tray' | 'boardImpact';
+type AudioEvent = 'bgm' | 'roll' | 'rollJackpot' | 'move' | 'score' | 'capture' | 'win' | 'lose' | 'tray' | 'boardImpact';
 type SoundEffectEvent = Exclude<AudioEvent, 'bgm' | 'roll'>;
 type AudioPreferences = {
   musicEnabled: boolean;
@@ -40,11 +40,11 @@ const BGM_SOURCES = [
 ] as const;
 
 const ROLL_SEQUENCE_SOURCES = [
-  selectSfxSource(require('../assets/audio/sfx/dice-shake-3.ogg'), require('../assets/audio/sfx/dice-shake-3.m4a')),
-  selectSfxSource(require('../assets/audio/sfx/die-throw-2.ogg'), require('../assets/audio/sfx/die-throw-2.m4a')),
+  require('../assets/audio/sfx/spin-reel-slot-machine.wav'),
 ] as const;
 
 const SOUND_EFFECT_SOURCES: Record<SoundEffectEvent, number> = {
+  rollJackpot: require('../assets/audio/sfx/payout_award.wav'),
   move: selectSfxSource(require('../assets/audio/sfx/move.ogg'), require('../assets/audio/sfx/move.m4a')),
   score: selectSfxSource(require('../assets/audio/sfx/score.ogg'), require('../assets/audio/sfx/score.m4a')),
   capture: selectSfxSource(require('../assets/audio/sfx/capture.ogg'), require('../assets/audio/sfx/capture.m4a')),
@@ -58,6 +58,7 @@ const SOUND_EFFECT_SOURCES: Record<SoundEffectEvent, number> = {
 const AUDIO_VOLUMES: Record<AudioEvent, number> = {
   bgm: 0.45,
   roll: 0.85,
+  rollJackpot: 0.9,
   move: 0.7,
   score: 0.8,
   capture: 0.84,
@@ -68,6 +69,7 @@ const AUDIO_VOLUMES: Record<AudioEvent, number> = {
 };
 
 const AUDIO_POLYPHONY: Record<SoundEffectEvent, number> = {
+  rollJackpot: 1,
   move: 1,
   score: 1,
   capture: 1,
