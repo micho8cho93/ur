@@ -161,6 +161,7 @@ import {
   RPC_ADMIN_GET_TOURNAMENT_STANDINGS,
   RPC_ADMIN_LIST_TOURNAMENTS,
   RPC_ADMIN_OPEN_TOURNAMENT,
+  RPC_GET_ACTIVE_TOURNAMENT_FLOW,
   RPC_GET_PUBLIC_TOURNAMENT,
   RPC_GET_PUBLIC_TOURNAMENT_STANDINGS,
   RPC_JOIN_PUBLIC_TOURNAMENT,
@@ -180,6 +181,7 @@ import {
   rpcAdminListTournaments,
   rpcAdminOpenTournament,
   rpcAdminWhoAmI,
+  rpcGetActiveTournamentFlow,
   rpcGetPublicTournament,
   rpcGetPublicTournamentStandings,
   rpcJoinTournament,
@@ -2109,6 +2111,7 @@ function InitModule(
   initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG, rpcAdminGetTournamentAuditLog);
   initializer.registerRpc(RPC_TOURNAMENT_JOIN, rpcJoinTournament);
   initializer.registerRpc(RPC_LIST_PUBLIC_TOURNAMENTS, rpcListPublicTournaments);
+  initializer.registerRpc(RPC_GET_ACTIVE_TOURNAMENT_FLOW, rpcGetActiveTournamentFlow);
   initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT, rpcGetPublicTournament);
   initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT_STANDINGS, rpcGetPublicTournamentStandings);
   initializer.registerRpc(RPC_JOIN_PUBLIC_TOURNAMENT, rpcJoinPublicTournament);

@@ -374,8 +374,9 @@ describe('public tournament rpc flow', () => {
     expect(guestJoinResponse.tournament.currentRound).toBe(1);
     expect(guestJoinResponse.tournament.participation).toEqual(
       expect.objectContaining({
-        state: 'waiting_next_round',
+        state: 'in_match',
         canLaunch: true,
+        activeMatchId: 'match-tournament-1',
       }),
     );
     expect(nk.notificationSend).toHaveBeenCalledTimes(2);
@@ -431,7 +432,7 @@ describe('public tournament rpc flow', () => {
         tournamentRound: 1,
         tournamentEntryId: 'round-1-match-1',
         queueStatus: 'active_match',
-        statusMessage: 'Tournament match ready.',
+        statusMessage: 'Resuming active tournament match.',
         playerState: 'in_match',
         nextRoundReady: true,
       }),
@@ -2081,8 +2082,9 @@ describe('public tournament rpc flow', () => {
     expect(joinResponse.tournament.isLocked).toBe(true);
     expect(joinResponse.tournament.participation).toEqual(
       expect.objectContaining({
-        state: 'waiting_next_round',
+        state: 'in_match',
         canLaunch: true,
+        activeMatchId: 'match-tournament-1',
       }),
     );
 

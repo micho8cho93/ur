@@ -1,5 +1,6 @@
 import {
   getPublicTournament,
+  getActiveTournamentFlow,
   getPublicTournamentStatus,
   getPublicTournamentStandings,
   joinPublicTournament,
@@ -265,6 +266,46 @@ describe('tournament rpc parsing', () => {
           round: 2,
         }),
       ],
+    });
+  });
+
+  it('normalizes active tournament flow dispatch payloads', async () => {
+    mockRpc.mockResolvedValueOnce({
+      payload: JSON.stringify({
+        flow: {
+          runId: 'spring-open',
+          tournamentId: 'tour-1',
+          tournamentName: 'Spring Open',
+          gameMode: 'standard',
+          state: 'pending_match',
+          currentRound: 2,
+          currentMatchId: 'match-100',
+          pendingDestination: {
+            type: 'match',
+            matchId: 'match-100',
+            round: 2,
+          },
+          createdAt: '2026-03-27T10:00:00.000Z',
+          updatedAt: '2026-03-27T10:12:00.000Z',
+        },
+      }),
+    });
+
+    await expect(getActiveTournamentFlow()).resolves.toEqual({
+      runId: 'spring-open',
+      tournamentId: 'tour-1',
+      tournamentName: 'Spring Open',
+      gameMode: 'standard',
+      state: 'pending_match',
+      currentRound: 2,
+      currentMatchId: 'match-100',
+      pendingDestination: {
+        type: 'match',
+        matchId: 'match-100',
+        round: 2,
+      },
+      createdAt: '2026-03-27T10:00:00.000Z',
+      updatedAt: '2026-03-27T10:12:00.000Z',
     });
   });
 

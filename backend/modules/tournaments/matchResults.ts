@@ -17,6 +17,10 @@ import {
   getTournamentBracketParticipant,
   type TournamentBracketParticipantState,
 } from "./bracket";
+import {
+  ensureReadyTournamentMatchesForRun,
+  syncTournamentParticipantFlowsForRun,
+} from "./flow";
 import { readNumberField, readStringField } from "./definitions";
 import {
   finalizeTournamentRun,
@@ -817,6 +821,10 @@ const synchronizeTournamentRunFromRecord = (
   if (shouldAdvanceBracket) {
     try {
       updatedRun = updateTournamentRunBracket(nk, logger, completion) ?? readTournamentRunState(nk, record.runId).run ?? updatedRun;
+      if (updatedRun) {
+        updatedRun = ensureReadyTournamentMatchesForRun(nk, logger, updatedRun);
+        syncTournamentParticipantFlowsForRun(nk, updatedRun);
+      }
     } catch (error) {
       logRetryableTournamentSyncFailure(logger, completion, "bracket_update", error);
       return {

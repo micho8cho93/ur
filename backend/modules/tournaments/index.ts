@@ -28,11 +28,13 @@ import { RPC_TOURNAMENT_JOIN } from "./definitions";
 import { rpcJoinTournament } from "./joins";
 import {
   RPC_GET_PUBLIC_TOURNAMENT,
+  RPC_GET_ACTIVE_TOURNAMENT_FLOW,
   RPC_GET_PUBLIC_TOURNAMENT_STANDINGS,
   RPC_JOIN_PUBLIC_TOURNAMENT,
   RPC_LAUNCH_TOURNAMENT_MATCH,
   RPC_LIST_PUBLIC_TOURNAMENTS,
   rpcGetPublicTournament,
+  rpcGetActiveTournamentFlow,
   rpcGetPublicTournamentStandings,
   rpcJoinPublicTournament,
   rpcLaunchTournamentMatch,
@@ -55,6 +57,7 @@ export const registerTournamentRpcs = (initializer: RuntimeInitializer): void =>
   initializer.registerRpc(RPC_ADMIN_GET_TOURNAMENT_AUDIT_LOG, rpcAdminGetTournamentAuditLog);
   initializer.registerRpc(RPC_TOURNAMENT_JOIN, rpcJoinTournament);
   initializer.registerRpc(RPC_LIST_PUBLIC_TOURNAMENTS, rpcListPublicTournaments);
+  initializer.registerRpc(RPC_GET_ACTIVE_TOURNAMENT_FLOW, rpcGetActiveTournamentFlow);
   initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT, rpcGetPublicTournament);
   initializer.registerRpc(RPC_GET_PUBLIC_TOURNAMENT_STANDINGS, rpcGetPublicTournamentStandings);
   initializer.registerRpc(RPC_JOIN_PUBLIC_TOURNAMENT, rpcJoinPublicTournament);
@@ -66,6 +69,7 @@ export * from "./audit";
 export * from "./auth";
 export * from "./definitions";
 export * from "./export";
+export * from "./flow";
 export * from "./joins";
 export * from "./liveStatus";
 export * from "./matchResults";

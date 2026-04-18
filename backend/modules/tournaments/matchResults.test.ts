@@ -107,6 +107,7 @@ const createNakama = () => {
       owner_records: [] as Array<Record<string, unknown>>,
       rank_count: 0,
     })),
+    matchCreate: jest.fn(() => "match-next-round"),
     tournamentRecordWrite: jest.fn(
       (
         tournamentId: string,

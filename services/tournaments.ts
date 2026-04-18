@@ -7,8 +7,11 @@ import type {
   PublicTournamentStanding,
   PublicTournamentStatusSnapshot,
   PublicTournamentSummary,
+  ActiveTournamentFlow,
   TournamentMatchLaunchResult,
   TournamentMembershipState,
+  TournamentParticipantPendingDestination,
+  TournamentParticipantFlowState,
   TournamentParticipationState,
 } from '@/src/tournaments/types';
 
@@ -17,6 +20,7 @@ const RPC_GET_PUBLIC_TOURNAMENT = 'get_public_tournament';
 const RPC_GET_PUBLIC_TOURNAMENT_STANDINGS = 'get_public_tournament_standings';
 const RPC_JOIN_PUBLIC_TOURNAMENT = 'join_public_tournament';
 const RPC_LAUNCH_TOURNAMENT_MATCH = 'launch_tournament_match';
+const RPC_GET_ACTIVE_TOURNAMENT_FLOW = 'get_active_tournament_flow';
 
 type RpcPayloadRecord = Record<string, unknown>;
 
@@ -256,6 +260,73 @@ const normalizeParticipationState = (value: unknown): TournamentParticipationSta
   };
 };
 
+const normalizeParticipantFlowState = (value: unknown): TournamentParticipantFlowState => {
+  if (
+    value === 'registered' ||
+    value === 'pending_match' ||
+    value === 'in_match' ||
+    value === 'waiting_next_round' ||
+    value === 'eliminated' ||
+    value === 'completed'
+  ) {
+    return value;
+  }
+
+  return 'registered';
+};
+
+const normalizePendingDestination = (value: unknown): TournamentParticipantPendingDestination | null => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const type = readStringField(record, ['type']);
+  const round = readNumberField(record, ['round']);
+  const normalizedRound = typeof round === 'number' && Number.isFinite(round) ? Math.max(1, Math.floor(round)) : null;
+
+  if (type === 'match') {
+    const matchId = readStringField(record, ['matchId', 'match_id']);
+    return matchId ? { type: 'match', matchId, round: normalizedRound } : null;
+  }
+
+  if (type === 'waiting_room') {
+    return { type: 'waiting_room', round: normalizedRound };
+  }
+
+  return null;
+};
+
+const normalizeActiveTournamentFlow = (value: unknown): ActiveTournamentFlow | null => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const runId = readStringField(record, ['runId', 'run_id']);
+  const tournamentId = readStringField(record, ['tournamentId', 'tournament_id']) ?? runId;
+  const tournamentName = readStringField(record, ['tournamentName', 'tournament_name', 'name']);
+  const createdAt = readStringField(record, ['createdAt', 'created_at']);
+  const updatedAt = readStringField(record, ['updatedAt', 'updated_at']);
+
+  if (!runId || !tournamentId || !tournamentName || !createdAt || !updatedAt) {
+    return null;
+  }
+
+  return {
+    runId,
+    tournamentId,
+    tournamentName,
+    gameMode: readStringField(record, ['gameMode', 'game_mode']) ?? 'standard',
+    state: normalizeParticipantFlowState(readStringField(record, ['state'])),
+    currentRound: readNumberField(record, ['currentRound', 'current_round']),
+    currentMatchId: readStringField(record, ['currentMatchId', 'current_match_id']),
+    pendingDestination: normalizePendingDestination(record.pendingDestination ?? record.pending_destination),
+    createdAt,
+    updatedAt,
+  };
+};
+
 const normalizeTournamentBots = (value: unknown): PublicTournamentDetail['bots'] => {
   const record = asRecord(value);
   const autoAdd = record?.autoAdd === true;
@@ -467,6 +538,11 @@ export const getPublicTournamentStatus = async (
     tournament,
     standings,
   };
+};
+
+export const getActiveTournamentFlow = async (): Promise<ActiveTournamentFlow | null> => {
+  const response = await callTournamentRpc(RPC_GET_ACTIVE_TOURNAMENT_FLOW, {});
+  return normalizeActiveTournamentFlow(response.flow);
 };
 
 export const joinPublicTournament = async (

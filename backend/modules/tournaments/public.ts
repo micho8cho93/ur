@@ -19,13 +19,24 @@ import {
   getTournamentBracketEntryByMatchId,
   getTournamentBracketParticipant,
   hasTournamentBracketStarted,
-  startTournamentBracketMatch,
   upsertTournamentRegistration,
   type TournamentBracketEntry,
   type TournamentBracketParticipant,
   type TournamentBracketParticipantState,
   type TournamentBracketState,
 } from "./bracket";
+import {
+  buildTournamentParticipantFlowResponse,
+  ensureReadyTournamentMatchesForRun,
+  ensureTournamentMatchDispatchForParticipant,
+  isActiveTournamentParticipantFlow,
+  markTournamentParticipantFlowInMatch,
+  readTournamentParticipantFlow,
+  setRegisteredTournamentParticipantFlow,
+  syncTournamentParticipantFlow,
+  syncTournamentParticipantFlowsForRun,
+  type TournamentParticipantFlowResponse,
+} from "./flow";
 import {
   getActorLabel,
   parseJsonPayload,
@@ -37,13 +48,10 @@ import {
 import { maybeAutoFinalizeTournamentRunById } from "./matchResults";
 import type { RuntimeContext, RuntimeLogger, RuntimeNakama } from "./types";
 import { requireCompletedUsernameOnboarding } from "../usernameOnboarding";
-import { DEFAULT_BOT_DIFFICULTY } from "../../../logic/bot/types";
 import { getTournamentLobbyDeadlineAt } from "../../../shared/tournamentLobby";
 import {
-  buildTournamentBotDisplayNames,
   buildTournamentBotSummary,
   isTournamentBotUserId,
-  normalizeTournamentBotPolicy,
 } from "../../../shared/tournamentBots";
 import {
   TOURNAMENT_BRACKET_READY_NOTIFICATION_CODE,
@@ -71,6 +79,7 @@ export const RPC_GET_PUBLIC_TOURNAMENT = "get_public_tournament";
 export const RPC_GET_PUBLIC_TOURNAMENT_STANDINGS = "get_public_tournament_standings";
 export const RPC_JOIN_PUBLIC_TOURNAMENT = "join_public_tournament";
 export const RPC_LAUNCH_TOURNAMENT_MATCH = "launch_tournament_match";
+export const RPC_GET_ACTIVE_TOURNAMENT_FLOW = "get_active_tournament_flow";
 
 type TournamentRunMembershipRecord = {
   runId: string;
@@ -842,7 +851,7 @@ const maybeStartBracketForRun = (
     .toString(36)
     .slice(2, 10)}`;
 
-  const nextRun = updateRunWithRetry(nk, logger, run.runId, (current) => {
+  let nextRun = updateRunWithRetry(nk, logger, run.runId, (current) => {
     if (current.bracket) {
       return current;
     }
@@ -858,6 +867,9 @@ const maybeStartBracketForRun = (
       bracket: createSingleEliminationBracket(current.registrations, startedAt),
     };
   });
+
+  nextRun = ensureReadyTournamentMatchesForRun(nk, logger, nextRun);
+  syncTournamentParticipantFlowsForRun(nk, nextRun);
 
   if (
     nextRun.bracket &&
@@ -892,6 +904,14 @@ const buildTournamentLaunchResponse = (params: {
     nextRoundReady: params.nextRoundReady,
     queueStatus: params.queueStatus,
     statusMessage: params.statusMessage,
+  });
+
+const buildActiveTournamentFlowResponse = (
+  flow: TournamentParticipantFlowResponse | null,
+): string =>
+  JSON.stringify({
+    ok: true,
+    flow,
   });
 
 const maybeFinalizePublicRun = (
@@ -1091,6 +1111,7 @@ export const rpcJoinPublicTournament = (
 
     nk.tournamentJoin(run.tournamentId, userId, displayName);
     membership = writeMembership(nk, run, userId, displayName);
+    setRegisteredTournamentParticipantFlow(nk, run, userId);
     joined = true;
 
     appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.public_joined", {
@@ -1124,6 +1145,8 @@ export const rpcLaunchTournamentMatch = (
   nk: RuntimeNakama,
   payload: string,
 ): string => {
+  // Manual launch remains supported, but match allocation is now server-owned dispatch.
+  // Joining reserves a seat; only an active bracket entry may create or resume a match.
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
   const parsed = parseJsonPayload(payload);
@@ -1210,6 +1233,7 @@ export const rpcLaunchTournamentMatch = (
   }
 
   if (resolvedParticipantState.activeMatchId) {
+    markTournamentParticipantFlowInMatch(nk, run, userId, resolvedParticipantState.activeMatchId);
     return buildTournamentLaunchResponse({
       run,
       matchId: resolvedParticipantState.activeMatchId,
@@ -1223,6 +1247,7 @@ export const rpcLaunchTournamentMatch = (
   }
 
   if (!resolvedParticipantState.currentEntry) {
+    syncTournamentParticipantFlow(nk, run, userId);
     return buildTournamentLaunchResponse({
       run,
       matchId: null,
@@ -1238,6 +1263,7 @@ export const rpcLaunchTournamentMatch = (
   const entry = resolvedParticipantState.currentEntry;
 
   if (entry.status === "in_match" && entry.matchId) {
+    markTournamentParticipantFlowInMatch(nk, run, userId, entry.matchId);
     return buildTournamentLaunchResponse({
       run,
       matchId: entry.matchId,
@@ -1251,6 +1277,7 @@ export const rpcLaunchTournamentMatch = (
   }
 
   if (!resolvedParticipantState.canLaunch || entry.status !== "ready") {
+    syncTournamentParticipantFlow(nk, run, userId);
     return buildTournamentLaunchResponse({
       run,
       matchId: null,
@@ -1263,84 +1290,20 @@ export const rpcLaunchTournamentMatch = (
     });
   }
 
-  const metadata = readMetadata(run);
-  const modeId = readStringField(metadata, ["gameMode", "game_mode"]) ?? "standard";
-  const rewardSettings = resolveTournamentXpRewardSettings(metadata);
-  const botPolicy = normalizeTournamentBotPolicy(run.metadata);
-  let createdMatchId: string | null = null;
-  const launchedAt = new Date().toISOString();
-
-  run = updateRunWithRetry(nk, logger, run.runId, (current) => {
-    if (!current.bracket) {
-      return current;
-    }
-
-    const currentEntry = getTournamentBracketEntry(current.bracket, entry.entryId);
-    if (!currentEntry || currentEntry.matchId) {
-      return current;
-    }
-
-    if (!createdMatchId) {
-      const currentEntryBotUserId =
-        isTournamentBotUserId(currentEntry.playerAUserId) && currentEntry.playerAUserId !== userId
-          ? currentEntry.playerAUserId
-          : isTournamentBotUserId(currentEntry.playerBUserId) && currentEntry.playerBUserId !== userId
-            ? currentEntry.playerBUserId
-            : null;
-      const currentEntryBotDisplayName =
-        currentEntryBotUserId
-          ? buildTournamentBotDisplayNames([currentEntryBotUserId], botPolicy.difficulty)[currentEntryBotUserId] ??
-            currentEntryBotUserId
-          : null;
-
-      createdMatchId = nk.matchCreate("authoritative_match", {
-        playerIds: [currentEntry.playerAUserId, currentEntry.playerBUserId].filter(
-          (candidate): candidate is string => Boolean(candidate),
-        ),
-        modeId,
-        rankedMatch: true,
-        casualMatch: false,
-        botMatch: Boolean(currentEntryBotUserId),
-        privateMatch: false,
-        winRewardSource: "pvp_win",
-        allowsChallengeRewards: true,
-        tournamentRunId: current.runId,
-        tournamentId: current.tournamentId,
-        tournamentRound: currentEntry.round,
-        tournamentEntryId: currentEntry.entryId,
-        tournamentMatchWinXp: rewardSettings.xpPerMatchWin,
-        tournamentChampionXp: rewardSettings.xpForTournamentChampion,
-        tournamentEliminationRisk: true,
-        ...(currentEntryBotUserId
-          ? {
-              botDifficulty: botPolicy.difficulty ?? DEFAULT_BOT_DIFFICULTY,
-              botUserId: currentEntryBotUserId,
-              botDisplayName: currentEntryBotDisplayName,
-            }
-          : {}),
-      });
-    }
-
-    if (!createdMatchId) {
-      throw new Error("Unable to allocate tournament match.");
-    }
-
-    return {
-      ...current,
-      updatedAt: launchedAt,
-      bracket: startTournamentBracketMatch(current.bracket, userId, createdMatchId, launchedAt),
-    };
-  });
+  const dispatch = ensureTournamentMatchDispatchForParticipant(nk, logger, run, userId);
+  run = dispatch.run;
 
   const activeParticipant = run.bracket ? getTournamentBracketParticipant(run.bracket, userId) : null;
   const activeEntry = activeParticipant?.currentEntryId && run.bracket
     ? getTournamentBracketEntry(run.bracket, activeParticipant.currentEntryId)
     : null;
-  const resolvedMatchId = activeParticipant?.activeMatchId ?? activeEntry?.matchId ?? createdMatchId;
+  const resolvedMatchId = dispatch.flow.currentMatchId ?? activeParticipant?.activeMatchId ?? activeEntry?.matchId ?? null;
 
   if (!resolvedMatchId) {
     throw new Error("Unable to resolve tournament match assignment.");
   }
+
+  markTournamentParticipantFlowInMatch(nk, run, userId, resolvedMatchId);
 
   appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.match_launch.created", {
     matchId: resolvedMatchId,
@@ -1359,4 +1322,72 @@ export const rpcLaunchTournamentMatch = (
     queueStatus: "active_match",
     statusMessage: "Tournament match ready.",
   });
+};
+
+export const rpcGetActiveTournamentFlow = (
+  ctx: RuntimeContext,
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  _payload: string,
+): string => {
+  const userId = requireAuthenticatedUserId(ctx);
+  const runs = listPublicRuns(nk);
+  const membershipsByRunId = readMembershipsByRunId(
+    nk,
+    runs.map((run) => run.runId),
+    userId,
+  );
+  const activeFlows: TournamentParticipantFlowResponse[] = [];
+
+  runs.forEach((candidateRun) => {
+    let run = candidateRun;
+    const membership = resolveMembershipForRun(run, membershipsByRunId[run.runId] ?? null);
+    if (!membership) {
+      return;
+    }
+
+    try {
+      run = ensureRunRegistration(nk, logger, run, membership);
+      run = maybeStartBracketForRun(nk, logger, run);
+      run = maybeFinalizePublicRun(logger, nk, run);
+
+      if (!run.bracket) {
+        setRegisteredTournamentParticipantFlow(nk, run, userId);
+        return;
+      }
+
+      const dispatch = ensureTournamentMatchDispatchForParticipant(nk, logger, run, userId);
+      const flow = readTournamentParticipantFlow(nk, dispatch.run.runId, userId) ?? dispatch.flow;
+
+      if (!isActiveTournamentParticipantFlow(flow)) {
+        return;
+      }
+
+      activeFlows.push(buildTournamentParticipantFlowResponse(dispatch.run, flow));
+
+      if (flow.pendingDestination?.type === "match") {
+        markTournamentParticipantFlowInMatch(nk, dispatch.run, userId, flow.pendingDestination.matchId);
+      }
+    } catch (error) {
+      logger.warn(
+        "Unable to resolve active tournament flow for run %s user %s: %s",
+        candidateRun.runId,
+        userId,
+        String(error),
+      );
+    }
+  });
+
+  const selectedFlow =
+    activeFlows
+      .slice()
+      .sort((left, right) => {
+        if (left.pendingDestination?.type !== right.pendingDestination?.type) {
+          return left.pendingDestination?.type === "match" ? -1 : 1;
+        }
+
+        return right.updatedAt.localeCompare(left.updatedAt);
+      })[0] ?? null;
+
+  return buildActiveTournamentFlowResponse(selectedFlow);
 };

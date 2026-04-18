@@ -1,27 +1,21 @@
-import { TournamentStartWaitingRoom } from '@/components/tournaments/TournamentStartWaitingRoom';
 import { TournamentStandingsTable } from '@/components/tournaments/TournamentStandingsTable';
 import { Button } from '@/components/ui/Button';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
-import { useChallenges } from '@/src/challenges/useChallenges';
-import { useEloRating } from '@/src/elo/useEloRating';
-import { useProgression } from '@/src/progression/useProgression';
 import {
   buildTournamentRewardSummary,
   formatTournamentDateTime,
   getTournamentChipState,
   getTournamentDetailPrimaryState,
   getTournamentModeLabel,
-  isTournamentPlayerLaunchReady,
-  isTournamentPreStartWaitingRoomVisible,
   shouldShowTournamentDescription,
 } from '@/src/tournaments/presentation';
 import { useTournamentDetail } from '@/src/tournaments/useTournamentDetail';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Image, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 const multiplayerWideBackground = require('../../../assets/images/multiplayer_bg.png');
 const multiplayerMobileBackground = require('../../../assets/images/multiplayer_bg_mobile.png');
@@ -53,14 +47,10 @@ export default function TournamentDetailScreen() {
   const { width } = useWindowDimensions();
   const router = useRouter();
   const [isJoinConfirmationArmed, setIsJoinConfirmationArmed] = useState(false);
-  const autoLaunchRunIdRef = useRef<string | null>(null);
   const { runId: rawRunId } = useLocalSearchParams<{ runId?: string | string[] }>();
   const runId = useMemo(() => (Array.isArray(rawRunId) ? rawRunId[0] : rawRunId ?? null), [rawRunId]);
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
-  const { ratingProfile } = useEloRating();
-  const { progression } = useProgression();
-  const { definitions: challengeDefinitions, progress: challengeProgress } = useChallenges();
   const {
     tournament,
     standings,
@@ -76,8 +66,6 @@ export default function TournamentDetailScreen() {
 
   const chip = tournament ? getTournamentChipState(tournament) : null;
   const primary = tournament ? getTournamentDetailPrimaryState(tournament) : null;
-  const showStartWaitingRoom = tournament ? isTournamentPreStartWaitingRoomVisible(tournament) : false;
-  const playerLaunchReady = tournament ? isTournamentPlayerLaunchReady(tournament) : false;
   const showDescription = shouldShowTournamentDescription(tournament?.description);
   const primaryButtonTitle =
     primary?.intent === 'join' && isJoinConfirmationArmed ? 'Confirm' : primary?.label ?? 'Join';
@@ -88,43 +76,12 @@ export default function TournamentDetailScreen() {
     }
   }, [primary?.intent, tournament?.membership.isJoined]);
 
-  useEffect(() => {
-    if (!tournament || !showStartWaitingRoom || !playerLaunchReady) {
-      autoLaunchRunIdRef.current = null;
-      return;
-    }
-
-    if (launchingRunId === tournament.runId || autoLaunchRunIdRef.current === tournament.runId) {
-      return;
-    }
-
-    autoLaunchRunIdRef.current = tournament.runId;
-    void (async () => {
-      const didLaunch = await launchMatch(tournament);
-      if (!didLaunch) {
-        autoLaunchRunIdRef.current = null;
-      }
-    })();
-  }, [launchMatch, launchingRunId, playerLaunchReady, showStartWaitingRoom, tournament]);
-
-  useEffect(() => {
-    if (!showStartWaitingRoom) {
-      return;
-    }
-
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => true);
-    return () => {
-      subscription.remove();
-    };
-  }, [showStartWaitingRoom]);
-
   return (
     <View style={styles.screen}>
       <Stack.Screen
         options={{
-          headerBackVisible: !showStartWaitingRoom,
-          gestureEnabled: !showStartWaitingRoom,
-          headerLeft: showStartWaitingRoom ? () => null : undefined,
+          headerBackVisible: true,
+          gestureEnabled: true,
         }}
       />
       <WideScreenBackground
@@ -173,16 +130,6 @@ export default function TournamentDetailScreen() {
             <Button title="Back to Tournaments" variant="outline" onPress={() => router.replace('/tournaments' as never)} />
           </View>
         </ScrollView>
-      ) : showStartWaitingRoom ? (
-        <TournamentStartWaitingRoom
-          tournament={tournament}
-          eloProfile={ratingProfile}
-          progression={progression}
-          challengeDefinitions={challengeDefinitions}
-          challengeProgress={challengeProgress}
-          isLaunching={launchingRunId === tournament.runId}
-          errorMessage={errorMessage}
-        />
       ) : (
         <ScrollView
           style={styles.scrollView}
@@ -256,7 +203,7 @@ export default function TournamentDetailScreen() {
 
             {primary?.intent === 'join' && isJoinConfirmationArmed ? (
               <Text style={styles.confirmationHint}>
-                Confirm will claim your seat and send you into the tournament waiting room.
+                Confirm will claim your seat. You can keep using the app until the tournament director assigns your match.
               </Text>
             ) : null}
 

@@ -5,6 +5,38 @@ export type TournamentMembershipState = {
   joinedAt: string | null;
 };
 
+export type TournamentParticipantFlowState =
+  | 'registered'
+  | 'pending_match'
+  | 'in_match'
+  | 'waiting_next_round'
+  | 'eliminated'
+  | 'completed';
+
+export type TournamentParticipantPendingDestination =
+  | {
+      type: 'match';
+      matchId: string;
+      round: number | null;
+    }
+  | {
+      type: 'waiting_room';
+      round: number | null;
+    };
+
+export type ActiveTournamentFlow = {
+  runId: string;
+  tournamentId: string;
+  tournamentName: string;
+  gameMode: string;
+  state: TournamentParticipantFlowState;
+  currentRound: number | null;
+  currentMatchId: string | null;
+  pendingDestination: TournamentParticipantPendingDestination | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type TournamentParticipationState = {
   state: 'lobby' | 'in_match' | 'waiting_next_round' | 'eliminated' | 'runner_up' | 'champion' | null;
   currentRound: number | null;

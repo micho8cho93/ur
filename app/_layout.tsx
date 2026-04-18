@@ -7,6 +7,7 @@ import { InventoryProvider, useInventory } from '@/src/store/InventoryContext';
 import { StoreProvider } from '@/src/store/StoreProvider';
 import { CosmeticThemeProvider } from '@/src/store/CosmeticThemeContext';
 import { ScreenTransitionProvider } from '@/src/transitions/ScreenTransitionContext';
+import { TournamentFlowMonitor } from '@/src/tournaments/TournamentFlowMonitor';
 import { WalletProvider } from '@/src/wallet/WalletContext';
 import {
   HOME_FREDOKA_FONT_FAMILY,
@@ -101,6 +102,7 @@ export default function Layout() {
                 <StoreProvider>
                   <InventoryProvider>
                     <ScreenTransitionProvider>
+                      <TournamentFlowMonitor />
                       <AppThemeShell />
                     </ScreenTransitionProvider>
                   </InventoryProvider>
