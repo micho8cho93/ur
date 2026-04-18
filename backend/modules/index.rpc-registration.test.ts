@@ -132,7 +132,12 @@ describe("InitModule tournament RPC registration", () => {
     expect(entrypointSource).toContain(
       "initializer.registerRpc(RPC_ADMIN_GET_STORE_STATS, rpcAdminGetStoreStats);",
     );
-    expect(entrypointSource).toContain("registerFeedbackRpcs(initializer);");
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_SUBMIT_FEEDBACK, rpcSubmitFeedback);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_LIST_FEEDBACK, rpcAdminListFeedback);",
+    );
     expect(entrypointSource).toContain(
       "initializer.registerMatch(MATCH_HANDLER, {",
     );

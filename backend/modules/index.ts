@@ -150,7 +150,12 @@ import {
   RPC_CLAIM_USERNAME,
   RPC_GET_USERNAME_ONBOARDING_STATUS,
 } from "./usernameOnboarding";
-import { registerFeedbackRpcs } from "./feedback";
+import {
+  RPC_ADMIN_LIST_FEEDBACK,
+  RPC_SUBMIT_FEEDBACK,
+  rpcAdminListFeedback,
+  rpcSubmitFeedback,
+} from "./feedback";
 import {
   RPC_ADMIN_CLOSE_TOURNAMENT,
   RPC_ADMIN_CREATE_TOURNAMENT_RUN,
@@ -2540,7 +2545,8 @@ function InitModule(
   initializer.registerRpc(RPC_ADMIN_SET_LIMITED_TIME_EVENT, rpcAdminSetLimitedTimeEvent);
   initializer.registerRpc(RPC_ADMIN_REMOVE_LIMITED_TIME_EVENT, rpcAdminRemoveLimitedTimeEvent);
   initializer.registerRpc(RPC_ADMIN_GET_STORE_STATS, rpcAdminGetStoreStats);
-  registerFeedbackRpcs(initializer);
+  initializer.registerRpc(RPC_SUBMIT_FEEDBACK, rpcSubmitFeedback);
+  initializer.registerRpc(RPC_ADMIN_LIST_FEEDBACK, rpcAdminListFeedback);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,

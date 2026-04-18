@@ -7073,10 +7073,6 @@ function rpcAdminListFeedback(ctx, logger, nk, payload) {
   logger.info("Loaded %d feedback submissions for admin review.", submissions.length);
   return JSON.stringify({ submissions });
 }
-var registerFeedbackRpcs = (initializer) => {
-  initializer.registerRpc(RPC_SUBMIT_FEEDBACK, rpcSubmitFeedback);
-  initializer.registerRpc(RPC_ADMIN_LIST_FEEDBACK, rpcAdminListFeedback);
-};
 
 // backend/modules/tournaments/bracket.ts
 var normalizeParticipantState = (value) => {
@@ -15736,7 +15732,8 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_ADMIN_SET_LIMITED_TIME_EVENT, rpcAdminSetLimitedTimeEvent);
   initializer.registerRpc(RPC_ADMIN_REMOVE_LIMITED_TIME_EVENT, rpcAdminRemoveLimitedTimeEvent);
   initializer.registerRpc(RPC_ADMIN_GET_STORE_STATS, rpcAdminGetStoreStats);
-  registerFeedbackRpcs(initializer);
+  initializer.registerRpc(RPC_SUBMIT_FEEDBACK, rpcSubmitFeedback);
+  initializer.registerRpc(RPC_ADMIN_LIST_FEEDBACK, rpcAdminListFeedback);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,
