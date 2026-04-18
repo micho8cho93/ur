@@ -4186,6 +4186,66 @@ var awardChallengeSoftCurrency = (nk, logger, params) => {
   );
   return { awardedSoftCurrency, duplicate: false };
 };
+var buildPremiumCurrencyAddMetadata = (source, deduplicationKey, amount, extra = {}) => __spreadValues({
+  source,
+  currency: PREMIUM_CURRENCY_KEY,
+  deduplicationKey,
+  amount
+}, extra);
+var isPremiumCurrencyLedgerItem = (item, deduplicationKey) => {
+  var _a;
+  const ledgerMetadata = getLedgerItemMetadata(item);
+  if (!ledgerMetadata) {
+    return false;
+  }
+  if (readStringField6(ledgerMetadata, ["currency"]) !== PREMIUM_CURRENCY_KEY) {
+    return false;
+  }
+  if (readStringField6(ledgerMetadata, ["deduplicationKey", "deduplication_key"]) !== deduplicationKey) {
+    return false;
+  }
+  const changeset = getLedgerItemChangeset(item);
+  return !changeset || ((_a = readNumberField5(changeset, [PREMIUM_CURRENCY_KEY])) != null ? _a : 0) > 0;
+};
+var hasPremiumCurrencyLedgerEntry = (nk, userId, deduplicationKey) => {
+  let cursor = "";
+  while (true) {
+    const result = cursor ? nk.walletLedgerList(userId, WALLET_LEDGER_PAGE_SIZE, cursor) : nk.walletLedgerList(userId, WALLET_LEDGER_PAGE_SIZE);
+    const { items, cursor: nextCursor } = normalizeWalletLedgerResult(result);
+    if (items.some((item) => isPremiumCurrencyLedgerItem(item, deduplicationKey))) {
+      return true;
+    }
+    if (!nextCursor || nextCursor === cursor) {
+      return false;
+    }
+    cursor = nextCursor;
+  }
+};
+var addPremiumCurrency = (nk, logger, params) => {
+  var _a;
+  const amount = sanitizePremiumCurrencyAmount(params.amount);
+  if (amount <= 0) {
+    return { awardedPremiumCurrency: 0, duplicate: false };
+  }
+  if (hasPremiumCurrencyLedgerEntry(nk, params.userId, params.deduplicationKey)) {
+    return { awardedPremiumCurrency: amount, duplicate: true };
+  }
+  const metadata = buildPremiumCurrencyAddMetadata(
+    params.source,
+    params.deduplicationKey,
+    amount,
+    (_a = params.metadata) != null ? _a : {}
+  );
+  nk.walletUpdate(params.userId, { [PREMIUM_CURRENCY_KEY]: amount }, metadata, true);
+  logger.info(
+    "Awarded %d gems to user %s (source=%s, deduplicationKey=%s).",
+    amount,
+    params.userId,
+    params.source,
+    params.deduplicationKey
+  );
+  return { awardedPremiumCurrency: amount, duplicate: false };
+};
 var rpcGetWallet = (ctx, _logger, nk, _payload) => {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
@@ -4697,6 +4757,125 @@ var rpcGetUserChallengeProgress = (ctx, logger, nk, _payload) => {
   return JSON.stringify(getUserChallengeProgress(nk, logger, ctx.userId));
 };
 
+// shared/gemPacks.ts
+var GEM_PACK_CATALOG = [
+  {
+    id: "gems_100",
+    title: "100 Gems",
+    gemAmount: 100,
+    displayPrice: "$0.99",
+    provider: "placeholder",
+    productId: "gems_100",
+    enabled: false,
+    placeholder: true
+  },
+  {
+    id: "gems_500",
+    title: "500 Gems",
+    gemAmount: 500,
+    displayPrice: "$4.99",
+    provider: "placeholder",
+    productId: "gems_500",
+    enabled: false,
+    placeholder: true
+  },
+  {
+    id: "gems_1200",
+    title: "1200 Gems",
+    gemAmount: 1200,
+    displayPrice: "$9.99",
+    provider: "placeholder",
+    productId: "gems_1200",
+    enabled: false,
+    placeholder: true
+  },
+  {
+    id: "gems_2600",
+    title: "2600 Gems",
+    gemAmount: 2600,
+    displayPrice: "$19.99",
+    provider: "placeholder",
+    productId: "gems_2600",
+    enabled: false,
+    placeholder: true
+  }
+];
+
+// backend/modules/gemPurchase.ts
+var RPC_CONFIRM_GEM_PACK_PURCHASE = "confirm_gem_pack_purchase";
+var parseJsonPayload = (payload) => {
+  if (!payload) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(payload);
+    if (typeof parsed === "object" && parsed !== null) {
+      return parsed;
+    }
+  } catch (e) {
+  }
+  return {};
+};
+var readStringField8 = (value, keys) => {
+  for (const key of keys) {
+    const field = value[key];
+    if (typeof field === "string" && field.trim().length > 0) {
+      return field.trim();
+    }
+  }
+  return null;
+};
+var rpcConfirmGemPackPurchase = (ctx, logger, nk, payload) => {
+  var _a;
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  const params = parseJsonPayload(payload);
+  const packId = readStringField8(params, ["packId", "pack_id"]);
+  const provider = readStringField8(params, ["provider"]);
+  const receiptToken = readStringField8(params, ["receiptToken", "receipt_token"]);
+  if (!packId) {
+    throw new Error("MISSING_PACK_ID");
+  }
+  const pack = GEM_PACK_CATALOG.find((p) => p.id === packId);
+  if (!pack) {
+    throw new Error("GEM_PACK_NOT_FOUND");
+  }
+  if (!pack.enabled) {
+    throw new Error("GEM_PACK_NOT_AVAILABLE");
+  }
+  if (!pack.placeholder) {
+    if (pack.provider === "ios_iap" || pack.provider === "android_iap") {
+      throw new Error("IAP_VERIFICATION_NOT_IMPLEMENTED");
+    }
+    if (pack.provider === "stripe") {
+      throw new Error("STRIPE_VERIFICATION_NOT_IMPLEMENTED");
+    }
+  }
+  if (!receiptToken) {
+    throw new Error("MISSING_RECEIPT_TOKEN");
+  }
+  const deduplicationKey = `iap:${pack.provider}:${packId}:${ctx.userId}:${receiptToken}`;
+  const result = addPremiumCurrency(nk, logger, {
+    userId: ctx.userId,
+    amount: pack.gemAmount,
+    source: pack.placeholder ? "gem_pack_purchase_placeholder" : `iap_purchase_${pack.provider}`,
+    deduplicationKey,
+    metadata: {
+      packId,
+      provider: provider != null ? provider : pack.provider,
+      receiptToken
+    }
+  });
+  const wallet = parseWalletBalances((_a = nk.accountGetId(ctx.userId)) == null ? void 0 : _a.wallet);
+  return JSON.stringify({
+    success: true,
+    gemAmount: result.awardedPremiumCurrency,
+    duplicate: result.duplicate,
+    newPremiumCurrency: wallet[PREMIUM_CURRENCY_KEY]
+  });
+};
+
 // shared/cosmetics.ts
 var MAX_INLINE_COSMETIC_UPLOAD_BYTES = 3 * 1024 * 1024;
 var isRecord2 = (value) => typeof value === "object" && value !== null;
@@ -4712,7 +4891,7 @@ var isCosmeticDefinition = (value) => {
   }
   const availabilityWindow = value.availabilityWindow;
   const hasValidAvailability = typeof availabilityWindow === "undefined" || isRecord2(availabilityWindow) && typeof availabilityWindow.start === "string" && typeof availabilityWindow.end === "string";
-  return typeof value.id === "string" && typeof value.name === "string" && isCosmeticTier(value.tier) && isCosmeticType(value.type) && isCurrencyType(value.price.currency) && typeof value.price.amount === "number" && Number.isFinite(value.price.amount) && value.price.amount >= 0 && isStringArray(value.rotationPools) && value.rotationPools.every((pool) => pool === "daily" || pool === "featured" || pool === "limited") && typeof value.rarityWeight === "number" && Number.isFinite(value.rarityWeight) && value.rarityWeight >= 0 && value.rarityWeight <= 1 && hasValidAvailability && typeof value.releasedDate === "string" && typeof value.assetKey === "string" && (typeof value.uploadedAsset === "undefined" || isUploadedCosmeticAsset(value.uploadedAsset)) && (typeof value.disabled === "undefined" || typeof value.disabled === "boolean");
+  return typeof value.id === "string" && typeof value.name === "string" && isCosmeticTier(value.tier) && isCosmeticType(value.type) && isCurrencyType(value.price.currency) && typeof value.price.amount === "number" && Number.isFinite(value.price.amount) && value.price.amount >= 0 && isStringArray(value.rotationPools) && value.rotationPools.every((pool) => pool === "daily" || pool === "featured" || pool === "limited") && typeof value.rarityWeight === "number" && Number.isFinite(value.rarityWeight) && value.rarityWeight >= 0 && value.rarityWeight <= 1 && hasValidAvailability && typeof value.releasedDate === "string" && typeof value.assetKey === "string" && (typeof value.uploadedAsset === "undefined" || isUploadedCosmeticAsset(value.uploadedAsset)) && (typeof value.uploadedAsset2 === "undefined" || isUploadedCosmeticAsset(value.uploadedAsset2)) && (typeof value.disabled === "undefined" || typeof value.disabled === "boolean");
 };
 var isLimitedTimeEvent = (value) => isRecord2(value) && typeof value.id === "string" && typeof value.name === "string" && isStringArray(value.cosmeticIds) && typeof value.startsAt === "string" && typeof value.endsAt === "string" && (typeof value.disabled === "undefined" || typeof value.disabled === "boolean");
 
@@ -5171,7 +5350,7 @@ var TOURNAMENT_STATUSES = [
   "complete",
   "cancelled"
 ];
-var readStringField8 = (value, keys) => {
+var readStringField9 = (value, keys) => {
   const record = asRecord2(value);
   if (!record) {
     return null;
@@ -5244,7 +5423,7 @@ var clampListLimit = (value, fallback = DEFAULT_LIST_LIMIT, max = MAX_LIST_LIMIT
   }
   return Math.min(max, floored);
 };
-var parseJsonPayload = (payload) => {
+var parseJsonPayload2 = (payload) => {
   if (!payload) {
     return {};
   }
@@ -5256,7 +5435,7 @@ var parseJsonPayload = (payload) => {
   return record;
 };
 var requireAuthenticatedUserId = (ctx) => {
-  const userId = readStringField8(ctx, ["userId", "user_id"]);
+  const userId = readStringField9(ctx, ["userId", "user_id"]);
   if (!userId) {
     throw new Error("Authentication required.");
   }
@@ -5266,7 +5445,7 @@ var getActorLabel = (ctx) => {
   var _a, _b;
   const ctxRecord = asRecord2(ctx);
   const vars = asRecord2(ctxRecord == null ? void 0 : ctxRecord.vars);
-  return (_b = (_a = readStringField8(ctxRecord, ["username", "displayName", "display_name", "name"])) != null ? _a : readStringField8(vars, ["usernameDisplay", "username_display", "displayName", "display_name", "email"])) != null ? _b : requireAuthenticatedUserId(ctx);
+  return (_b = (_a = readStringField9(ctxRecord, ["username", "displayName", "display_name", "name"])) != null ? _a : readStringField9(vars, ["usernameDisplay", "username_display", "displayName", "display_name", "email"])) != null ? _b : requireAuthenticatedUserId(ctx);
 };
 var normalizeTournamentStatus = (value, fallback = "draft") => {
   if (typeof value !== "string") {
@@ -5307,6 +5486,23 @@ var normalizeRewardPoolAmount = (value) => {
   }
   return Math.round(parsed * 100) / 100;
 };
+var resolveTournamentGemRewardSettings = (value) => ({
+  gemsForRank1: clampNonNegativeInteger2(
+    readNumberField6(value, ["gemsForRank1", "gems_for_rank_1", "gemsForChampion", "gems_for_champion"]),
+    0,
+    1e6
+  ),
+  gemsForRank2: clampNonNegativeInteger2(
+    readNumberField6(value, ["gemsForRank2", "gems_for_rank_2", "gemsForFinalist", "gems_for_finalist"]),
+    0,
+    1e6
+  ),
+  gemsForRank3: clampNonNegativeInteger2(
+    readNumberField6(value, ["gemsForRank3", "gems_for_rank_3", "gemsForSemifinalist", "gems_for_semifinalist"]),
+    0,
+    1e6
+  )
+});
 var resolveTournamentXpRewardSettings = (value) => ({
   xpPerMatchWin: clampNonNegativeInteger2(
     readNumberField6(value, [
@@ -5339,13 +5535,13 @@ var normalizeParticipant = (value) => {
   if (!record) {
     return null;
   }
-  const userId = readStringField8(record, ["userId", "user_id"]);
-  const displayName = readStringField8(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField8(record, ["joinedAt", "joined_at"]);
+  const userId = readStringField9(record, ["userId", "user_id"]);
+  const displayName = readStringField9(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField9(record, ["joinedAt", "joined_at"]);
   if (!userId || !displayName || !joinedAt) {
     return null;
   }
-  const status = readStringField8(record, ["status"]);
+  const status = readStringField9(record, ["status"]);
   const seed = readNumberField6(record, ["seed"]);
   return {
     userId,
@@ -5361,11 +5557,11 @@ var normalizeResult = (value) => {
   if (!record) {
     return null;
   }
-  const matchId = readStringField8(record, ["matchId", "match_id"]);
-  const submittedByUserId = readStringField8(record, ["submittedByUserId", "submitted_by_user_id"]);
-  const submittedAt = readStringField8(record, ["submittedAt", "submitted_at"]);
-  const playerAUserId = readStringField8(record, ["playerAUserId", "player_a_user_id"]);
-  const playerBUserId = readStringField8(record, ["playerBUserId", "player_b_user_id"]);
+  const matchId = readStringField9(record, ["matchId", "match_id"]);
+  const submittedByUserId = readStringField9(record, ["submittedByUserId", "submitted_by_user_id"]);
+  const submittedAt = readStringField9(record, ["submittedAt", "submitted_at"]);
+  const playerAUserId = readStringField9(record, ["playerAUserId", "player_a_user_id"]);
+  const playerBUserId = readStringField9(record, ["playerBUserId", "player_b_user_id"]);
   const scoreA = readNumberField6(record, ["scoreA", "score_a"]);
   const scoreB = readNumberField6(record, ["scoreB", "score_b"]);
   const round = readNumberField6(record, ["round"]);
@@ -5381,8 +5577,8 @@ var normalizeResult = (value) => {
     playerBUserId,
     scoreA,
     scoreB,
-    winnerUserId: readStringField8(record, ["winnerUserId", "winner_user_id"]),
-    notes: (_a = readStringField8(record, ["notes"])) != null ? _a : null
+    winnerUserId: readStringField9(record, ["winnerUserId", "winner_user_id"]),
+    notes: (_a = readStringField9(record, ["notes"])) != null ? _a : null
   };
 };
 var normalizeTournamentRecord = (value, fallbackId) => {
@@ -5391,13 +5587,13 @@ var normalizeTournamentRecord = (value, fallbackId) => {
   if (!record) {
     return null;
   }
-  const id = (_b = (_a = readStringField8(record, ["id"])) != null ? _a : fallbackId) != null ? _b : null;
-  const name = readStringField8(record, ["name"]);
-  const startsAt = readStringField8(record, ["startsAt", "starts_at"]);
-  const createdAt = readStringField8(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField8(record, ["updatedAt", "updated_at"]);
-  const createdByUserId = readStringField8(record, ["createdByUserId", "created_by_user_id"]);
-  const createdByLabel = readStringField8(record, ["createdByLabel", "created_by_label"]);
+  const id = (_b = (_a = readStringField9(record, ["id"])) != null ? _a : fallbackId) != null ? _b : null;
+  const name = readStringField9(record, ["name"]);
+  const startsAt = readStringField9(record, ["startsAt", "starts_at"]);
+  const createdAt = readStringField9(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField9(record, ["updatedAt", "updated_at"]);
+  const createdByUserId = readStringField9(record, ["createdByUserId", "created_by_user_id"]);
+  const createdByLabel = readStringField9(record, ["createdByLabel", "created_by_label"]);
   if (!id || !name || !startsAt || !createdAt || !updatedAt || !createdByUserId || !createdByLabel) {
     return null;
   }
@@ -5413,18 +5609,18 @@ var normalizeTournamentRecord = (value, fallbackId) => {
   });
   return {
     id,
-    slug: (_c = readStringField8(record, ["slug"])) != null ? _c : id,
+    slug: (_c = readStringField9(record, ["slug"])) != null ? _c : id,
     name,
-    description: (_d = readStringField8(record, ["description"])) != null ? _d : "",
+    description: (_d = readStringField9(record, ["description"])) != null ? _d : "",
     status: normalizeTournamentStatus(record.status, "draft"),
     startsAt,
     createdAt,
     updatedAt,
     createdByUserId,
     createdByLabel,
-    region: (_e = readStringField8(record, ["region"])) != null ? _e : "Global",
-    gameMode: (_f = readStringField8(record, ["gameMode", "game_mode"])) != null ? _f : "Standard",
-    entryFee: (_g = readStringField8(record, ["entryFee", "entry_fee"])) != null ? _g : "Free",
+    region: (_e = readStringField9(record, ["region"])) != null ? _e : "Global",
+    gameMode: (_f = readStringField9(record, ["gameMode", "game_mode"])) != null ? _f : "Standard",
+    entryFee: (_g = readStringField9(record, ["entryFee", "entry_fee"])) != null ? _g : "Free",
     maxParticipants: clampPositiveInteger(
       readNumberField6(record, ["maxParticipants", "max_participants"]),
       DEFAULT_MAX_PARTICIPANTS,
@@ -5432,7 +5628,7 @@ var normalizeTournamentRecord = (value, fallbackId) => {
     ),
     rewardCurrency: normalizeCurrency(record.rewardCurrency),
     rewardPoolAmount: normalizeRewardPoolAmount(record.rewardPoolAmount),
-    rewardNotes: readStringField8(record, ["rewardNotes", "reward_notes"]),
+    rewardNotes: readStringField9(record, ["rewardNotes", "reward_notes"]),
     tags: readStringArrayField(record, ["tags"]),
     scoring: {
       winPoints: (_h = readNumberField6(scoringRecord, ["winPoints", "win_points"])) != null ? _h : DEFAULT_TOURNAMENT_SCORING.winPoints,
@@ -5570,17 +5766,17 @@ var normalizeAuditEntry = (value) => {
   if (!record) {
     return null;
   }
-  const id = readStringField8(record, ["id"]);
-  const action = readStringField8(record, ["action"]);
-  const userId = readStringField8(record, ["userId", "user_id", "actorUserId", "actor_user_id"]);
-  const targetId = readStringField8(record, ["targetId", "target_id", "tournamentId", "tournament_id"]);
-  const timestamp = readStringField8(record, ["timestamp", "createdAt", "created_at"]);
+  const id = readStringField9(record, ["id"]);
+  const action = readStringField9(record, ["action"]);
+  const userId = readStringField9(record, ["userId", "user_id", "actorUserId", "actor_user_id"]);
+  const targetId = readStringField9(record, ["targetId", "target_id", "tournamentId", "tournament_id"]);
+  const timestamp = readStringField9(record, ["timestamp", "createdAt", "created_at"]);
   if (!id || !action || !userId || !targetId || !timestamp) {
     return null;
   }
   const payloadSummary = (_c = (_b = (_a = asRecord2(record.payloadSummary)) != null ? _a : asRecord2(record.payload_summary)) != null ? _b : asRecord2(record.metadata)) != null ? _c : {};
-  const actorLabel = (_d = readStringField8(record, ["actorLabel", "actor_label"])) != null ? _d : userId;
-  const tournamentName = (_f = (_e = readStringField8(record, ["tournamentName", "tournament_name"])) != null ? _e : readStringField8(record, ["targetName", "target_name"])) != null ? _f : targetId;
+  const actorLabel = (_d = readStringField9(record, ["actorLabel", "actor_label"])) != null ? _d : userId;
+  const tournamentName = (_f = (_e = readStringField9(record, ["tournamentName", "tournament_name"])) != null ? _e : readStringField9(record, ["targetName", "target_name"])) != null ? _f : targetId;
   return {
     id,
     userId,
@@ -5602,7 +5798,7 @@ var normalizeAuditLogRecord = (value) => {
   const entries = Array.isArray(record == null ? void 0 : record.entries) ? record.entries.map((entry) => normalizeAuditEntry(entry)).filter((entry) => Boolean(entry)) : [];
   return {
     entries,
-    updatedAt: (_a = readStringField8(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
+    updatedAt: (_a = readStringField9(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
   };
 };
 var readAuditLogState = (nk) => {
@@ -5680,7 +5876,7 @@ var resolveDefaultTargetId = (ctx, payload, response) => {
   var _a, _b, _c, _d, _e;
   const responseRun = asRecord2(response == null ? void 0 : response.run);
   const responseTournament = asRecord2(response == null ? void 0 : response.tournament);
-  return (_e = (_d = (_c = (_b = (_a = readStringField8(payload, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id"])) != null ? _a : readStringField8(response, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id", "userId", "user_id"])) != null ? _b : readStringField8(responseRun, ["runId", "run_id", "tournamentId", "tournament_id"])) != null ? _c : readStringField8(responseTournament, ["id", "tournamentId", "tournament_id"])) != null ? _d : readStringField8(ctx, ["userId", "user_id"])) != null ? _e : "unknown-target";
+  return (_e = (_d = (_c = (_b = (_a = readStringField9(payload, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id"])) != null ? _a : readStringField9(response, ["targetId", "target_id", "runId", "run_id", "tournamentId", "tournament_id", "userId", "user_id"])) != null ? _b : readStringField9(responseRun, ["runId", "run_id", "tournamentId", "tournament_id"])) != null ? _c : readStringField9(responseTournament, ["id", "tournamentId", "tournament_id"])) != null ? _d : readStringField9(ctx, ["userId", "user_id"])) != null ? _e : "unknown-target";
 };
 var resolveTargetId = (ctx, payload, response, resolver) => {
   var _a;
@@ -5702,11 +5898,11 @@ var resolveTargetName = (ctx, payload, response, targetId, resolver) => {
   }
   const responseRun = asRecord2(response == null ? void 0 : response.run);
   const responseTournament = asRecord2(response == null ? void 0 : response.tournament);
-  return (_d = (_c = (_b = readStringField8(responseRun, ["title", "name"])) != null ? _b : readStringField8(responseTournament, ["title", "name"])) != null ? _c : readStringField8(payload, ["title", "name"])) != null ? _d : targetId;
+  return (_d = (_c = (_b = readStringField9(responseRun, ["title", "name"])) != null ? _b : readStringField9(responseTournament, ["title", "name"])) != null ? _c : readStringField9(payload, ["title", "name"])) != null ? _d : targetId;
 };
 var safeParsePayload = (payload) => {
   try {
-    return parseJsonPayload(payload);
+    return parseJsonPayload2(payload);
   } catch (e) {
     return {};
   }
@@ -5775,7 +5971,7 @@ var ADMIN_ROLE_RANK = {
   operator: 2,
   admin: 3
 };
-var readStringField9 = (value, keys) => {
+var readStringField10 = (value, keys) => {
   const record = asRecord2(value);
   if (!record) {
     return null;
@@ -5789,7 +5985,7 @@ var readStringField9 = (value, keys) => {
   return null;
 };
 var getContextUserId = (ctx) => {
-  const userId = readStringField9(ctx, ["userId", "user_id"]);
+  const userId = readStringField10(ctx, ["userId", "user_id"]);
   if (!userId) {
     throw new Error("Authentication required.");
   }
@@ -5807,7 +6003,7 @@ var normalizeAdminRole = (value) => {
   if (!record) {
     return null;
   }
-  const role = (_a = readStringField9(record, ["role"])) == null ? void 0 : _a.toLowerCase();
+  const role = (_a = readStringField10(record, ["role"])) == null ? void 0 : _a.toLowerCase();
   if (role === "viewer" || role === "operator" || role === "admin") {
     return role;
   }
@@ -5864,9 +6060,9 @@ var resolveAdminProfile = (nk, userId) => {
     const users = Array.isArray(rawUsers) ? rawUsers : [];
     const profile = (_a = users.map((value) => normalizeUserRecord(value)).find((value) => Boolean(value))) != null ? _a : null;
     return {
-      username: readStringField9(profile, ["username"]),
-      displayName: readStringField9(profile, ["displayName", "display_name"]),
-      email: readStringField9(profile, ["email"])
+      username: readStringField10(profile, ["username"]),
+      displayName: readStringField10(profile, ["displayName", "display_name"]),
+      email: readStringField10(profile, ["email"])
     };
   } catch (e) {
     return {
@@ -5988,7 +6184,7 @@ var normalizeRotationRecord = (value) => {
     limitedTimeEvents: normalizeLimitedTimeEvents(record.limitedTimeEvents)
   };
 };
-var parseJsonPayload2 = (payload) => {
+var parseJsonPayload3 = (payload) => {
   let parsed;
   try {
     parsed = payload ? JSON.parse(payload) : {};
@@ -6269,7 +6465,7 @@ var updateRotationRecordWithRetry = (nk, logger, catalog, update) => {
   throw new Error("STORE_ROTATION_WRITE_FAILED");
 };
 var parseUpsertCosmeticRequest = (payload) => {
-  const record = parseJsonPayload2(payload);
+  const record = parseJsonPayload3(payload);
   const cosmetic = asRecord6(record.cosmetic);
   if (!cosmetic || typeof cosmetic.id !== "string" || cosmetic.id.trim().length === 0) {
     throw new Error("INVALID_PAYLOAD");
@@ -6279,21 +6475,21 @@ var parseUpsertCosmeticRequest = (payload) => {
   };
 };
 var parseToggleCosmeticRequest = (payload) => {
-  const record = parseJsonPayload2(payload);
+  const record = parseJsonPayload3(payload);
   if (typeof record.cosmeticId !== "string" || record.cosmeticId.trim().length === 0) {
     throw new Error("INVALID_PAYLOAD");
   }
   return { cosmeticId: record.cosmeticId };
 };
 var parseDeleteCosmeticRequest = (payload) => {
-  const record = parseJsonPayload2(payload);
+  const record = parseJsonPayload3(payload);
   if (typeof record.cosmeticId !== "string" || record.cosmeticId.trim().length === 0) {
     throw new Error("INVALID_PAYLOAD");
   }
   return { cosmeticId: record.cosmeticId };
 };
 var parseManualRotationRequest = (payload) => {
-  const record = parseJsonPayload2(payload);
+  const record = parseJsonPayload3(payload);
   const dailyRotationIds = normalizeStringArray(record.dailyRotationIds);
   const featuredIds = normalizeStringArray(record.featuredIds);
   if (dailyRotationIds.length > 8 || featuredIds.length > 2) {
@@ -6302,14 +6498,14 @@ var parseManualRotationRequest = (payload) => {
   return { dailyRotationIds, featuredIds };
 };
 var parseSetLimitedTimeEventRequest = (payload) => {
-  const record = parseJsonPayload2(payload);
+  const record = parseJsonPayload3(payload);
   if (!isLimitedTimeEvent(record.event)) {
     throw new Error("INVALID_PAYLOAD");
   }
   return { event: record.event };
 };
 var parseRemoveLimitedTimeEventRequest = (payload) => {
-  const record = parseJsonPayload2(payload);
+  const record = parseJsonPayload3(payload);
   if (typeof record.eventId !== "string" || record.eventId.trim().length === 0) {
     throw new Error("INVALID_PAYLOAD");
   }
@@ -6318,19 +6514,23 @@ var parseRemoveLimitedTimeEventRequest = (payload) => {
 var isUploadedAssetCompatible = (item) => {
   var _a;
   const mediaType = (_a = item.uploadedAsset) == null ? void 0 : _a.mediaType;
-  if (!mediaType) {
-    return true;
+  if (mediaType) {
+    if (item.type === "music" || item.type === "sound_effect") {
+      if (mediaType !== "audio") return false;
+    } else if (item.type === "board" || item.type === "pieces") {
+      if (mediaType !== "image" && mediaType !== "animation") return false;
+    } else if (item.type === "dice_animation" || item.type === "emote") {
+      if (mediaType !== "image" && mediaType !== "animation" && mediaType !== "video") return false;
+    } else {
+      return false;
+    }
   }
-  if (item.type === "music" || item.type === "sound_effect") {
-    return mediaType === "audio";
+  if (item.uploadedAsset2) {
+    if (item.type !== "dice_animation") return false;
+    const mt2 = item.uploadedAsset2.mediaType;
+    if (mt2 !== "image" && mt2 !== "animation" && mt2 !== "video") return false;
   }
-  if (item.type === "board" || item.type === "pieces") {
-    return mediaType === "image" || mediaType === "animation";
-  }
-  if (item.type === "dice_animation" || item.type === "emote") {
-    return mediaType === "image" || mediaType === "animation" || mediaType === "video";
-  }
-  return false;
+  return true;
 };
 var upsertCatalogItem = (nk, patch) => {
   let updatedItem = null;
@@ -6340,12 +6540,21 @@ var upsertCatalogItem = (nk, patch) => {
     if (patch.uploadedAsset === null) {
       delete patchWithoutAssetRemoval.uploadedAsset;
     }
+    if (patch.uploadedAsset2 === null) {
+      delete patchWithoutAssetRemoval.uploadedAsset2;
+    }
     if (patchWithoutAssetRemoval.uploadedAsset && patchWithoutAssetRemoval.uploadedAsset.sizeBytes > MAX_INLINE_COSMETIC_UPLOAD_BYTES) {
+      throw new Error("INVALID_COSMETIC_ASSET");
+    }
+    if (patchWithoutAssetRemoval.uploadedAsset2 && patchWithoutAssetRemoval.uploadedAsset2.sizeBytes > MAX_INLINE_COSMETIC_UPLOAD_BYTES) {
       throw new Error("INVALID_COSMETIC_ASSET");
     }
     const merged = __spreadValues(__spreadValues({}, existingIndex >= 0 ? items[existingIndex] : {}), patchWithoutAssetRemoval);
     if (patch.uploadedAsset === null) {
       delete merged.uploadedAsset;
+    }
+    if (patch.uploadedAsset2 === null) {
+      delete merged.uploadedAsset2;
     }
     if (!isCosmeticDefinition(merged)) {
       throw new Error("INVALID_COSMETIC");
@@ -6661,9 +6870,9 @@ var normalizeTournamentRunRegistration = (value) => {
   if (!record) {
     return null;
   }
-  const userId = readStringField8(record, ["userId", "user_id"]);
-  const displayName = readStringField8(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField8(record, ["joinedAt", "joined_at"]);
+  const userId = readStringField9(record, ["userId", "user_id"]);
+  const displayName = readStringField9(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField9(record, ["joinedAt", "joined_at"]);
   const seed = readNumberField6(record, ["seed"]);
   if (!userId || !displayName || !joinedAt || typeof seed !== "number" || !Number.isFinite(seed)) {
     return null;
@@ -6680,10 +6889,10 @@ var normalizeTournamentBracketParticipant = (value) => {
   if (!record) {
     return null;
   }
-  const userId = readStringField8(record, ["userId", "user_id"]);
-  const displayName = readStringField8(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField8(record, ["joinedAt", "joined_at"]);
-  const updatedAt = readStringField8(record, ["updatedAt", "updated_at"]);
+  const userId = readStringField9(record, ["userId", "user_id"]);
+  const displayName = readStringField9(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField9(record, ["joinedAt", "joined_at"]);
+  const updatedAt = readStringField9(record, ["updatedAt", "updated_at"]);
   const seed = readNumberField6(record, ["seed"]);
   if (!userId || !displayName || !joinedAt || !updatedAt || typeof seed !== "number" || !Number.isFinite(seed)) {
     return null;
@@ -6693,19 +6902,19 @@ var normalizeTournamentBracketParticipant = (value) => {
     displayName,
     joinedAt,
     seed: Math.max(1, Math.floor(seed)),
-    state: normalizeParticipantState(readStringField8(record, ["state"])),
+    state: normalizeParticipantState(readStringField9(record, ["state"])),
     currentRound: (() => {
       const round = readNumberField6(record, ["currentRound", "current_round"]);
       return typeof round === "number" && Number.isFinite(round) ? Math.max(1, Math.floor(round)) : null;
     })(),
-    currentEntryId: readStringField8(record, ["currentEntryId", "current_entry_id"]),
-    activeMatchId: readStringField8(record, ["activeMatchId", "active_match_id"]),
+    currentEntryId: readStringField9(record, ["currentEntryId", "current_entry_id"]),
+    activeMatchId: readStringField9(record, ["activeMatchId", "active_match_id"]),
     finalPlacement: (() => {
       const placement = readNumberField6(record, ["finalPlacement", "final_placement"]);
       return typeof placement === "number" && Number.isFinite(placement) ? Math.max(1, Math.floor(placement)) : null;
     })(),
     lastResult: (() => {
-      const result = readStringField8(record, ["lastResult", "last_result"]);
+      const result = readStringField9(record, ["lastResult", "last_result"]);
       return result === "win" || result === "loss" ? result : null;
     })(),
     updatedAt
@@ -6716,11 +6925,11 @@ var normalizeTournamentBracketEntry = (value) => {
   if (!record) {
     return null;
   }
-  const entryId = readStringField8(record, ["entryId", "entry_id"]);
+  const entryId = readStringField9(record, ["entryId", "entry_id"]);
   const round = readNumberField6(record, ["round"]);
   const slot = readNumberField6(record, ["slot"]);
-  const createdAt = readStringField8(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField8(record, ["updatedAt", "updated_at"]);
+  const createdAt = readStringField9(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField9(record, ["updatedAt", "updated_at"]);
   const sourceEntryIds = Array.isArray(record.sourceEntryIds) ? record.sourceEntryIds.filter((entry) => typeof entry === "string" && entry.trim().length > 0) : [];
   if (!entryId || typeof round !== "number" || !Number.isFinite(round) || typeof slot !== "number" || !Number.isFinite(slot) || !createdAt || !updatedAt) {
     return null;
@@ -6730,17 +6939,17 @@ var normalizeTournamentBracketEntry = (value) => {
     round: Math.max(1, Math.floor(round)),
     slot: Math.max(1, Math.floor(slot)),
     sourceEntryIds,
-    playerAUserId: readStringField8(record, ["playerAUserId", "player_a_user_id"]),
-    playerBUserId: readStringField8(record, ["playerBUserId", "player_b_user_id"]),
-    matchId: readStringField8(record, ["matchId", "match_id"]),
-    status: normalizeEntryStatus(readStringField8(record, ["status"])),
-    winnerUserId: readStringField8(record, ["winnerUserId", "winner_user_id"]),
-    loserUserId: readStringField8(record, ["loserUserId", "loser_user_id"]),
+    playerAUserId: readStringField9(record, ["playerAUserId", "player_a_user_id"]),
+    playerBUserId: readStringField9(record, ["playerBUserId", "player_b_user_id"]),
+    matchId: readStringField9(record, ["matchId", "match_id"]),
+    status: normalizeEntryStatus(readStringField9(record, ["status"])),
+    winnerUserId: readStringField9(record, ["winnerUserId", "winner_user_id"]),
+    loserUserId: readStringField9(record, ["loserUserId", "loser_user_id"]),
     createdAt,
     updatedAt,
-    readyAt: readStringField8(record, ["readyAt", "ready_at"]),
-    startedAt: readStringField8(record, ["startedAt", "started_at"]),
-    completedAt: readStringField8(record, ["completedAt", "completed_at"])
+    readyAt: readStringField9(record, ["readyAt", "ready_at"]),
+    startedAt: readStringField9(record, ["startedAt", "started_at"]),
+    completedAt: readStringField9(record, ["completedAt", "completed_at"])
   };
 };
 var normalizeTournamentBracketState = (value) => {
@@ -6748,11 +6957,11 @@ var normalizeTournamentBracketState = (value) => {
   if (!record) {
     return null;
   }
-  const startedAt = readStringField8(record, ["startedAt", "started_at"]);
-  const lockedAt = readStringField8(record, ["lockedAt", "locked_at"]);
+  const startedAt = readStringField9(record, ["startedAt", "started_at"]);
+  const lockedAt = readStringField9(record, ["lockedAt", "locked_at"]);
   const size = readNumberField6(record, ["size"]);
   const totalRounds = readNumberField6(record, ["totalRounds", "total_rounds"]);
-  if (readStringField8(record, ["format"]) !== "single_elimination" || !startedAt || !lockedAt || typeof size !== "number" || !Number.isFinite(size) || typeof totalRounds !== "number" || !Number.isFinite(totalRounds)) {
+  if (readStringField9(record, ["format"]) !== "single_elimination" || !startedAt || !lockedAt || typeof size !== "number" || !Number.isFinite(size) || typeof totalRounds !== "number" || !Number.isFinite(totalRounds)) {
     return null;
   }
   const participants = Array.isArray(record.participants) ? record.participants.map((entry) => normalizeTournamentBracketParticipant(entry)).filter((entry) => Boolean(entry)) : [];
@@ -6763,9 +6972,9 @@ var normalizeTournamentBracketState = (value) => {
     totalRounds: Math.max(1, Math.floor(totalRounds)),
     startedAt,
     lockedAt,
-    finalizedAt: readStringField8(record, ["finalizedAt", "finalized_at"]),
-    winnerUserId: readStringField8(record, ["winnerUserId", "winner_user_id"]),
-    runnerUpUserId: readStringField8(record, ["runnerUpUserId", "runner_up_user_id"]),
+    finalizedAt: readStringField9(record, ["finalizedAt", "finalized_at"]),
+    winnerUserId: readStringField9(record, ["winnerUserId", "winner_user_id"]),
+    runnerUpUserId: readStringField9(record, ["runnerUpUserId", "runner_up_user_id"]),
     participants,
     entries
   };
@@ -7038,7 +7247,7 @@ var readBooleanField5 = (value, keys) => {
   }
   return null;
 };
-var readStringField10 = (value, keys) => {
+var readStringField11 = (value, keys) => {
   const record = asRecord7(value);
   if (!record) {
     return null;
@@ -7066,7 +7275,7 @@ var buildTournamentBotDisplayName = (difficulty, ordinal) => `${formatBotDifficu
 var normalizeTournamentBotPolicy = (metadata) => {
   var _a;
   const autoAdd = (_a = readBooleanField5(metadata, ["autoAddBots", "auto_add_bots"])) != null ? _a : false;
-  const requestedDifficulty = readStringField10(metadata, ["botDifficulty", "bot_difficulty"]);
+  const requestedDifficulty = readStringField11(metadata, ["botDifficulty", "bot_difficulty"]);
   const difficulty = requestedDifficulty && isBotDifficulty(requestedDifficulty) ? requestedDifficulty : null;
   if (!autoAdd) {
     return {
@@ -7237,7 +7446,7 @@ var normalizeStandingsSnapshot = (value) => {
   }
   const rawRecords = Array.isArray(record.records) ? record.records : [];
   return {
-    generatedAt: (_a = readStringField8(record, ["generatedAt", "generated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString(),
+    generatedAt: (_a = readStringField9(record, ["generatedAt", "generated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString(),
     overrideExpiry: clampInteger(readNumberField6(record, ["overrideExpiry", "override_expiry"]), 0, 0, 2147483647),
     rankCount: (() => {
       const rankCount = readNumberField6(record, ["rankCount", "rank_count"]);
@@ -7247,8 +7456,8 @@ var normalizeStandingsSnapshot = (value) => {
       var _a2;
       return (_a2 = asRecord2(entry)) != null ? _a2 : {};
     }),
-    prevCursor: readStringField8(record, ["prevCursor", "prev_cursor"]),
-    nextCursor: readStringField8(record, ["nextCursor", "next_cursor"])
+    prevCursor: readStringField9(record, ["prevCursor", "prev_cursor"]),
+    nextCursor: readStringField9(record, ["nextCursor", "next_cursor"])
   };
 };
 var normalizeRunRecord = (value, fallbackId) => {
@@ -7257,13 +7466,13 @@ var normalizeRunRecord = (value, fallbackId) => {
   if (!record) {
     return null;
   }
-  const runId = (_b = (_a = readStringField8(record, ["runId", "run_id"])) != null ? _a : fallbackId) != null ? _b : null;
-  const tournamentId = (_c = readStringField8(record, ["tournamentId", "tournament_id"])) != null ? _c : runId;
-  const title = readStringField8(record, ["title"]);
-  const createdAt = readStringField8(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField8(record, ["updatedAt", "updated_at"]);
-  const createdByUserId = readStringField8(record, ["createdByUserId", "created_by_user_id"]);
-  const createdByLabel = readStringField8(record, ["createdByLabel", "created_by_label"]);
+  const runId = (_b = (_a = readStringField9(record, ["runId", "run_id"])) != null ? _a : fallbackId) != null ? _b : null;
+  const tournamentId = (_c = readStringField9(record, ["tournamentId", "tournament_id"])) != null ? _c : runId;
+  const title = readStringField9(record, ["title"]);
+  const createdAt = readStringField9(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField9(record, ["updatedAt", "updated_at"]);
+  const createdByUserId = readStringField9(record, ["createdByUserId", "created_by_user_id"]);
+  const createdByLabel = readStringField9(record, ["createdByLabel", "created_by_label"]);
   if (!runId || !tournamentId || !title || !createdAt || !updatedAt || !createdByUserId || !createdByLabel) {
     return null;
   }
@@ -7271,12 +7480,12 @@ var normalizeRunRecord = (value, fallbackId) => {
     runId,
     tournamentId,
     title,
-    description: (_d = readStringField8(record, ["description"])) != null ? _d : "",
+    description: (_d = readStringField9(record, ["description"])) != null ? _d : "",
     category: clampInteger(readNumberField6(record, ["category"]), DEFAULT_CATEGORY, 0, 127),
     authoritative: (_e = readBooleanField6(record, ["authoritative"])) != null ? _e : true,
-    sortOrder: normalizeSortOrder((_f = readStringField8(record, ["sortOrder", "sort_order"])) != null ? _f : DEFAULT_SORT_ORDER),
-    operator: normalizeOperator((_g = readStringField8(record, ["operator"])) != null ? _g : DEFAULT_OPERATOR),
-    resetSchedule: (_h = readStringField8(record, ["resetSchedule", "reset_schedule"])) != null ? _h : "",
+    sortOrder: normalizeSortOrder((_f = readStringField9(record, ["sortOrder", "sort_order"])) != null ? _f : DEFAULT_SORT_ORDER),
+    operator: normalizeOperator((_g = readStringField9(record, ["operator"])) != null ? _g : DEFAULT_OPERATOR),
+    resetSchedule: (_h = readStringField9(record, ["resetSchedule", "reset_schedule"])) != null ? _h : "",
     metadata: readMetadataField(record, ["metadata"]),
     startTime: clampInteger(readNumberField6(record, ["startTime", "start_time"]), 0, 0, 2147483647),
     endTime: clampInteger(readNumberField6(record, ["endTime", "end_time"]), 0, 0, 2147483647),
@@ -7290,14 +7499,14 @@ var normalizeRunRecord = (value, fallbackId) => {
     ),
     joinRequired: (_i = readBooleanField6(record, ["joinRequired", "join_required"])) != null ? _i : true,
     enableRanks: (_j = readBooleanField6(record, ["enableRanks", "enable_ranks"])) != null ? _j : true,
-    lifecycle: normalizeRunLifecycle((_k = readStringField8(record, ["lifecycle"])) != null ? _k : "draft"),
+    lifecycle: normalizeRunLifecycle((_k = readStringField9(record, ["lifecycle"])) != null ? _k : "draft"),
     createdAt,
     updatedAt,
     createdByUserId,
     createdByLabel,
-    openedAt: readStringField8(record, ["openedAt", "opened_at"]),
-    closedAt: readStringField8(record, ["closedAt", "closed_at"]),
-    finalizedAt: readStringField8(record, ["finalizedAt", "finalized_at"]),
+    openedAt: readStringField9(record, ["openedAt", "opened_at"]),
+    closedAt: readStringField9(record, ["closedAt", "closed_at"]),
+    finalizedAt: readStringField9(record, ["finalizedAt", "finalized_at"]),
     finalSnapshot: normalizeStandingsSnapshot(record.finalSnapshot),
     registrations: Array.isArray(record.registrations) ? record.registrations.map((entry) => normalizeTournamentRunRegistration(entry)).filter((entry) => Boolean(entry)) : [],
     bracket: normalizeTournamentBracketState(record.bracket)
@@ -7311,7 +7520,7 @@ var normalizeRunIndex = (value) => {
     runIds: Array.from(
       new Set(runIds.filter((entry) => typeof entry === "string" && entry.trim().length > 0))
     ),
-    updatedAt: (_a = readStringField8(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
+    updatedAt: (_a = readStringField9(record, ["updatedAt", "updated_at"])) != null ? _a : (/* @__PURE__ */ new Date(0)).toISOString()
   };
 };
 var readRunIndexState = (nk) => {
@@ -7443,7 +7652,7 @@ var readTournamentArray = (value) => {
 var mapTournamentsById = (value) => {
   return readTournamentArray(value).reduce(
     (accumulator, tournament) => {
-      const tournamentId = readStringField8(tournament, ["id"]);
+      const tournamentId = readStringField9(tournament, ["id"]);
       if (tournamentId) {
         accumulator[tournamentId] = tournament;
       }
@@ -7495,7 +7704,7 @@ var buildRunResponseMetadata = (value) => {
   var _a;
   const baseMetadata = readMetadataField(value, ["metadata"]);
   const explicitAutoAddBots = readBooleanField6(value, ["autoAddBots", "auto_add_bots"]);
-  const explicitBotDifficulty = readStringField8(value, ["botDifficulty", "bot_difficulty"]);
+  const explicitBotDifficulty = readStringField9(value, ["botDifficulty", "bot_difficulty"]);
   const normalizedPolicy = normalizeTournamentBotPolicy(__spreadValues(__spreadValues(__spreadValues({}, baseMetadata), explicitAutoAddBots !== null ? { autoAddBots: explicitAutoAddBots } : {}), explicitBotDifficulty !== null ? { botDifficulty: explicitBotDifficulty } : {}));
   return __spreadProps(__spreadValues({}, baseMetadata), {
     autoAddBots: normalizedPolicy.autoAdd,
@@ -7671,8 +7880,8 @@ var readTournamentRecordList = (value) => {
       var _a;
       return (_a = asRecord2(entry)) != null ? _a : {};
     }),
-    prevCursor: readStringField8(record, ["prev_cursor", "prevCursor"]),
-    nextCursor: readStringField8(record, ["next_cursor", "nextCursor"]),
+    prevCursor: readStringField9(record, ["prev_cursor", "prevCursor"]),
+    nextCursor: readStringField9(record, ["next_cursor", "nextCursor"]),
     rankCount: (() => {
       const parsed = readNumberField6(record, ["rank_count", "rankCount"]);
       return typeof parsed === "number" ? parsed : null;
@@ -7712,21 +7921,21 @@ var normalizeStoredTournamentMatchSummary = (value, options) => {
     return null;
   }
   const summary = asRecord2(record.summary);
-  const matchId = readStringField8(record, ["matchId", "match_id"]);
-  const completedAt = (_a = readStringField8(summary, ["completedAt", "completed_at"])) != null ? _a : readStringField8(record, ["updatedAt", "updated_at", "createdAt", "created_at"]);
+  const matchId = readStringField9(record, ["matchId", "match_id"]);
+  const completedAt = (_a = readStringField9(summary, ["completedAt", "completed_at"])) != null ? _a : readStringField9(record, ["updatedAt", "updated_at", "createdAt", "created_at"]);
   if (!summary || !matchId || !completedAt) {
     return null;
   }
   const players = Array.isArray(summary.players) ? summary.players.map((entry) => {
     var _a2, _b;
     const player = asRecord2(entry);
-    const userId = readStringField8(player, ["userId", "user_id"]);
+    const userId = readStringField9(player, ["userId", "user_id"]);
     if (!player || !userId) {
       return null;
     }
     return {
       userId,
-      username: readStringField8(player, ["username"]),
+      username: readStringField9(player, ["username"]),
       didWin: readBooleanField6(player, ["didWin"]) === true,
       score: Math.max(0, Math.floor((_a2 = readNumberField6(player, ["score"])) != null ? _a2 : 0)),
       finishedCount: Math.max(
@@ -7745,7 +7954,7 @@ var normalizeStoredTournamentMatchSummary = (value, options) => {
       const round = readNumberField6(summary, ["round"]);
       return typeof round === "number" && Number.isFinite(round) ? Math.max(1, Math.floor(round)) : null;
     })(),
-    entryId: readStringField8(summary, ["entryId", "entry_id"]),
+    entryId: readStringField9(summary, ["entryId", "entry_id"]),
     players
   };
 };
@@ -8053,7 +8262,7 @@ var readStandingsRecordRank = (record) => {
   const rank = readNumberField6(record, ["rank"]);
   return typeof rank === "number" && Number.isFinite(rank) ? rank : null;
 };
-var readStandingsRecordOwnerId = (record) => readStringField8(record, ["ownerId", "owner_id"]);
+var readStandingsRecordOwnerId = (record) => readStringField9(record, ["ownerId", "owner_id"]);
 var readStandingsRecordScore = (record) => {
   var _a;
   return Math.max(0, Math.floor((_a = readNumberField6(record, ["score"])) != null ? _a : 0));
@@ -8305,13 +8514,60 @@ var finalizeTournamentRun = (logger, nk, runId, options = {}) => {
   } else if (effectiveSnapshot.records.length > 0) {
     logger.warn("Unable to resolve champion user ID for finalized tournament %s.", run.runId);
   }
+  const gemSettings = resolveTournamentGemRewardSettings(run.metadata);
+  const gemRewardResults = [];
+  const rankedGemRewards = [
+    { rank: 1, gems: gemSettings.gemsForRank1 },
+    { rank: 2, gems: gemSettings.gemsForRank2 },
+    { rank: 3, gems: gemSettings.gemsForRank3 }
+  ];
+  for (const { rank, gems } of rankedGemRewards) {
+    if (gems <= 0) {
+      continue;
+    }
+    const rankUserId = rank === 1 ? championUserId != null ? championUserId : resolveTopRankOwnerId(effectiveSnapshot, 1) : resolveTopRankOwnerId(effectiveSnapshot, rank);
+    if (!rankUserId || isTournamentBotUserId(rankUserId)) {
+      logger.info(
+        "Skipping gem reward for rank %d on run %s (no real user at this placement).",
+        rank,
+        run.runId
+      );
+      continue;
+    }
+    try {
+      const result = addPremiumCurrency(nk, logger, {
+        userId: rankUserId,
+        amount: gems,
+        source: "tournament_reward",
+        deduplicationKey: `tournament_reward:${run.runId}:rank:${rank}`,
+        metadata: { runId: run.runId, tournamentId: run.tournamentId, rank }
+      });
+      gemRewardResults.push({
+        userId: rankUserId,
+        rank,
+        gemAmount: gems,
+        duplicate: result.duplicate,
+        source: "tournament_reward"
+      });
+    } catch (error) {
+      logger.warn(
+        "Unable to award %d gems to rank %d user %s for run %s: %s",
+        gems,
+        rank,
+        rankUserId,
+        run.runId,
+        getErrorMessage2(error)
+      );
+    }
+  }
   return {
     run,
     nakamaTournament,
     finalSnapshot: effectiveSnapshot,
     disabledRanks,
     championUserId,
-    championRewardResult
+    championRewardResult,
+    gemRewardResults
   };
 };
 var sortRuns = (runs) => runs.slice().sort((left, right) => {
@@ -8386,9 +8642,9 @@ var rpcAdminListTournaments = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
-      const parsed = parseJsonPayload(_payload);
+      const parsed = parseJsonPayload2(_payload);
       const limit = clampInteger(parsed.limit, 50, 1, MAX_RUN_LIST_LIMIT);
-      const lifecycleFilter = readStringField8(parsed, ["lifecycle"]);
+      const lifecycleFilter = readStringField9(parsed, ["lifecycle"]);
       const indexState = readRunIndexState(_nk);
       const runs = sortRuns(readRunsByIds(_nk, indexState.index.runIds).map(
         (run) => maybeAutoFinalizeAdminRun(_logger, _nk, run)
@@ -8427,8 +8683,8 @@ var rpcAdminGetTournamentRun = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       var _a, _b;
       assertAdmin(_ctx, "viewer", _nk);
-      const parsed = parseJsonPayload(_payload);
-      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const parsed = parseJsonPayload2(_payload);
+      const runId = readStringField9(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -8462,8 +8718,8 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
     (_ctx, _logger, _nk, _payload) => {
       var _a, _b, _c, _d, _e;
       assertAdmin(_ctx, "operator", _nk);
-      const parsed = parseJsonPayload(_payload);
-      const title = readStringField8(parsed, ["title"]);
+      const parsed = parseJsonPayload2(_payload);
+      const title = readStringField9(parsed, ["title"]);
       if (!title) {
         throw new Error("title is required.");
       }
@@ -8471,7 +8727,7 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
         const indexState = readRunIndexState(_nk);
         const createdAt = (/* @__PURE__ */ new Date()).toISOString();
         const runId = buildRunId(
-          readStringField8(parsed, ["runId", "run_id"]),
+          readStringField9(parsed, ["runId", "run_id"]),
           title,
           indexState.index.runIds
         );
@@ -8485,12 +8741,12 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
           runId,
           tournamentId: runId,
           title,
-          description: (_a = readStringField8(parsed, ["description"])) != null ? _a : "",
+          description: (_a = readStringField9(parsed, ["description"])) != null ? _a : "",
           category: clampInteger(readNumberField6(parsed, ["category"]), DEFAULT_CATEGORY, 0, 127),
           authoritative: (_b = readBooleanField6(parsed, ["authoritative"])) != null ? _b : true,
-          sortOrder: normalizeSortOrder(readStringField8(parsed, ["sortOrder", "sort_order"])),
-          operator: normalizeOperator(readStringField8(parsed, ["operator"])),
-          resetSchedule: (_c = readStringField8(parsed, ["resetSchedule", "reset_schedule"])) != null ? _c : "",
+          sortOrder: normalizeSortOrder(readStringField9(parsed, ["sortOrder", "sort_order"])),
+          operator: normalizeOperator(readStringField9(parsed, ["operator"])),
+          resetSchedule: (_c = readStringField9(parsed, ["resetSchedule", "reset_schedule"])) != null ? _c : "",
           metadata: buildRunResponseMetadata(parsed),
           startTime,
           endTime,
@@ -8555,8 +8811,8 @@ var rpcAdminOpenTournament = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "operator", _nk);
-      const parsed = parseJsonPayload(_payload);
-      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const parsed = parseJsonPayload2(_payload);
+      const runId = readStringField9(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -8617,8 +8873,8 @@ var rpcAdminDeleteTournament = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "admin", _nk);
-      const parsed = parseJsonPayload(_payload);
-      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const parsed = parseJsonPayload2(_payload);
+      const runId = readStringField9(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -8659,8 +8915,8 @@ var rpcAdminCloseTournament = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "operator", _nk);
-      const parsed = parseJsonPayload(_payload);
-      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const parsed = parseJsonPayload2(_payload);
+      const runId = readStringField9(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -8694,8 +8950,8 @@ var rpcAdminFinalizeTournament = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "admin", _nk);
-      const parsed = parseJsonPayload(_payload);
-      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const parsed = parseJsonPayload2(_payload);
+      const runId = readStringField9(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -8724,8 +8980,8 @@ var rpcAdminGetTournamentStandings = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
-      const parsed = parseJsonPayload(_payload);
-      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const parsed = parseJsonPayload2(_payload);
+      const runId = readStringField9(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -8757,8 +9013,8 @@ var rpcAdminGetTournamentAuditLog = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
-      const parsed = parseJsonPayload(_payload);
-      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const parsed = parseJsonPayload2(_payload);
+      const runId = readStringField9(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -8837,10 +9093,10 @@ var normalizeTournamentMatchResultRecord = (value) => {
   if (!record) {
     return null;
   }
-  const resultId = readStringField8(record, ["resultId", "result_id"]);
-  const matchId = readStringField8(record, ["matchId", "match_id"]);
-  const runId = readStringField8(record, ["runId", "run_id"]);
-  const tournamentId = readStringField8(record, ["tournamentId", "tournament_id"]);
+  const resultId = readStringField9(record, ["resultId", "result_id"]);
+  const matchId = readStringField9(record, ["matchId", "match_id"]);
+  const runId = readStringField9(record, ["runId", "run_id"]);
+  const tournamentId = readStringField9(record, ["tournamentId", "tournament_id"]);
   if (!resultId || !matchId || !runId || !tournamentId) {
     return null;
   }
@@ -8933,8 +9189,8 @@ var resolveUsernames = (nk, logger, players, run) => {
     try {
       const users = normalizeUsersArray(nk.usersGetId(unresolvedUserIds));
       users.forEach((user) => {
-        const userId = readStringField8(user, ["userId", "user_id", "id"]);
-        const username = readStringField8(user, ["username", "displayName", "display_name"]);
+        const userId = readStringField9(user, ["userId", "user_id", "id"]);
+        const username = readStringField9(user, ["username", "displayName", "display_name"]);
         if (userId && username) {
           usernames[userId] = username;
         }
@@ -9100,7 +9356,7 @@ var readTournamentEntrantCount = (value) => {
   return typeof entrants === "number" && Number.isFinite(entrants) ? Math.max(0, Math.floor(entrants)) : 0;
 };
 var resolveTournamentRunModeId = (run) => {
-  const modeId = readStringField8(run.metadata, ["gameMode", "game_mode"]);
+  const modeId = readStringField9(run.metadata, ["gameMode", "game_mode"]);
   return isMatchModeId(modeId) ? modeId : "standard";
 };
 var buildBotOnlyTournamentCompletion = (run, entryId) => {
@@ -9339,8 +9595,8 @@ var buildParticipantResolutions = (run, players) => players.map((player) => {
 });
 var resolveTournamentMatchContextFromParams = (params) => {
   var _a, _b;
-  const runId = readStringField8(params, ["tournamentRunId", "tournament_run_id", "runId", "run_id"]);
-  const tournamentId = readStringField8(params, ["tournamentId", "tournament_id"]);
+  const runId = readStringField9(params, ["tournamentRunId", "tournament_run_id", "runId", "run_id"]);
+  const tournamentId = readStringField9(params, ["tournamentId", "tournament_id"]);
   if (!runId && !tournamentId) {
     return null;
   }
@@ -9353,7 +9609,7 @@ var resolveTournamentMatchContextFromParams = (params) => {
     runId: normalizedRunId,
     tournamentId: tournamentId != null ? tournamentId : normalizedRunId,
     round: typeof round === "number" && Number.isFinite(round) ? Math.max(1, Math.floor(round)) : null,
-    entryId: (_b = readStringField8(params, [
+    entryId: (_b = readStringField9(params, [
       "tournamentEntryId",
       "tournament_entry_id",
       "tournamentMatchId",
@@ -9515,8 +9771,8 @@ var readTournamentAuditEntries = (nk, runId) => {
     var _a2;
     return (_a2 = asRecord2(entry)) != null ? _a2 : null;
   }).filter((entry) => Boolean(entry)).filter((entry) => {
-    const targetId = readStringField8(entry, ["targetId", "target_id"]);
-    const tournamentId = readStringField8(entry, ["tournamentId", "tournament_id"]);
+    const targetId = readStringField9(entry, ["targetId", "target_id"]);
+    const tournamentId = readStringField9(entry, ["tournamentId", "tournament_id"]);
     return targetId === runId || tournamentId === runId;
   });
 };
@@ -9565,8 +9821,8 @@ var rpcAdminExportTournament = (ctx, logger, nk, payload) => {
   return runAuditedAdminRpc(
     (_ctx, _logger, _nk, _payload) => {
       assertAdmin(_ctx, "viewer", _nk);
-      const parsed = parseJsonPayload(_payload);
-      const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+      const parsed = parseJsonPayload2(_payload);
+      const runId = readStringField9(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
       if (!runId) {
         throw new Error("runId is required.");
       }
@@ -9577,7 +9833,7 @@ var rpcAdminExportTournament = (ctx, logger, nk, payload) => {
         "countedResultIds",
         "counted_result_ids"
       ]);
-      const lastProcessedResultId = readStringField8(run.metadata, [
+      const lastProcessedResultId = readStringField9(run.metadata, [
         "lastProcessedResultId",
         "last_processed_result_id"
       ]);
@@ -9656,8 +9912,8 @@ var buildParticipantNameMap = (run) => {
   });
   (_b = run.finalSnapshot) == null ? void 0 : _b.records.forEach((record) => {
     const normalized = asRecord2(record);
-    const ownerId = readStringField8(normalized, ["ownerId", "owner_id"]);
-    const username = readStringField8(normalized, ["username"]);
+    const ownerId = readStringField9(normalized, ["ownerId", "owner_id"]);
+    const username = readStringField9(normalized, ["username"]);
     if (ownerId && username) {
       names.set(ownerId, username);
     }
@@ -10151,8 +10407,8 @@ var buildDetailResponse = (nk, runId) => {
 };
 var rpcAdminGetTournamentLiveStatus = (ctx, _logger, nk, payload) => {
   assertAdmin(ctx, "viewer", nk);
-  const parsed = parseJsonPayload(payload);
-  const runId = readStringField8(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
+  const parsed = parseJsonPayload2(payload);
+  const runId = readStringField9(parsed, ["runId", "run_id", "tournamentId", "tournament_id"]);
   if (runId) {
     return JSON.stringify(buildDetailResponse(nk, runId));
   }
@@ -10166,12 +10422,12 @@ var resolveDisplayName = (ctx, requestDisplayName, userId) => {
     return requestDisplayName.trim();
   }
   if (typeof ctx === "object" && ctx !== null) {
-    const username = readStringField8(ctx, ["username", "displayName", "display_name", "name"]);
+    const username = readStringField9(ctx, ["username", "displayName", "display_name", "name"]);
     if (username) {
       return username;
     }
     const vars = typeof ctx.vars === "object" && ctx.vars !== null ? ctx.vars : null;
-    const fallbackName = readStringField8(vars, ["usernameDisplay", "displayName", "email"]);
+    const fallbackName = readStringField9(vars, ["usernameDisplay", "displayName", "email"]);
     if (fallbackName) {
       return fallbackName;
     }
@@ -10186,10 +10442,10 @@ var assertTournamentJoinAllowed = (tournament) => {
 var rpcJoinTournament = (ctx, logger, nk, payload) => {
   var _a, _b, _c;
   const userId = requireAuthenticatedUserId(ctx);
-  const parsed = parseJsonPayload(payload);
+  const parsed = parseJsonPayload2(payload);
   const request = {
-    tournamentId: (_a = readStringField8(parsed, ["tournamentId", "tournament_id"])) != null ? _a : "",
-    displayName: (_b = readStringField8(parsed, ["displayName", "display_name"])) != null ? _b : void 0
+    tournamentId: (_a = readStringField9(parsed, ["tournamentId", "tournament_id"])) != null ? _a : "",
+    displayName: (_b = readStringField9(parsed, ["displayName", "display_name"])) != null ? _b : void 0
   };
   if (!request.tournamentId) {
     throw new Error("tournamentId is required.");
@@ -10284,12 +10540,12 @@ var normalizeMembershipRecord = (value, fallbackRunId, fallbackUserId) => {
   if (!record) {
     return null;
   }
-  const runId = (_a = readStringField8(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
-  const tournamentId = (_b = readStringField8(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
-  const userId = (_c = readStringField8(record, ["userId", "user_id"])) != null ? _c : fallbackUserId;
-  const displayName = readStringField8(record, ["displayName", "display_name"]);
-  const joinedAt = readStringField8(record, ["joinedAt", "joined_at"]);
-  const updatedAt = (_d = readStringField8(record, ["updatedAt", "updated_at"])) != null ? _d : joinedAt;
+  const runId = (_a = readStringField9(record, ["runId", "run_id"])) != null ? _a : fallbackRunId;
+  const tournamentId = (_b = readStringField9(record, ["tournamentId", "tournament_id"])) != null ? _b : runId;
+  const userId = (_c = readStringField9(record, ["userId", "user_id"])) != null ? _c : fallbackUserId;
+  const displayName = readStringField9(record, ["displayName", "display_name"]);
+  const joinedAt = readStringField9(record, ["joinedAt", "joined_at"]);
+  const updatedAt = (_d = readStringField9(record, ["updatedAt", "updated_at"])) != null ? _d : joinedAt;
   if (!runId || !tournamentId || !userId || !displayName || !joinedAt || !updatedAt) {
     return null;
   }
@@ -10337,11 +10593,11 @@ var getRunBotUserIds2 = (run) => {
 };
 var formatPrizeLabel = (metadata) => {
   var _a;
-  const explicitPrize = readStringField8(metadata, ["prizePool", "prize_pool", "prizeLabel", "prize_label"]);
+  const explicitPrize = readStringField9(metadata, ["prizePool", "prize_pool", "prizeLabel", "prize_label"]);
   if (explicitPrize) {
     return explicitPrize;
   }
-  const buyIn = (_a = readStringField8(metadata, ["buyIn", "buy_in"])) != null ? _a : "Free";
+  const buyIn = (_a = readStringField9(metadata, ["buyIn", "buy_in"])) != null ? _a : "Free";
   return buyIn === "Free" ? "No prize listed" : `${buyIn} buy-in`;
 };
 var buildMembershipState = (membership) => {
@@ -10384,7 +10640,7 @@ var readStandingsRecordRank2 = (record) => {
   const rank = readNumberField6(record, ["rank"]);
   return typeof rank === "number" && Number.isFinite(rank) ? Math.max(1, Math.floor(rank)) : null;
 };
-var readStandingsRecordOwnerId2 = (record) => readStringField8(record, ["ownerId", "owner_id"]);
+var readStandingsRecordOwnerId2 = (record) => readStringField9(record, ["ownerId", "owner_id"]);
 var readStandingsRecordMetadata = (record) => {
   var _a;
   return (_a = asRecord2(record == null ? void 0 : record.metadata)) != null ? _a : {};
@@ -10399,16 +10655,16 @@ var buildStoredFinalizedParticipationOverride = (run, userId, participant) => {
   }
   const finalPlacement = (_d = (_c = readStandingsRecordRank2(snapshotRecord)) != null ? _c : participant == null ? void 0 : participant.finalPlacement) != null ? _d : null;
   const metadata = readStandingsRecordMetadata(snapshotRecord);
-  const snapshotState = readStringField8(metadata, ["state"]);
+  const snapshotState = readStringField9(metadata, ["state"]);
   const state = snapshotState === "champion" || snapshotState === "runner_up" || snapshotState === "eliminated" ? snapshotState : finalPlacement === 1 ? "champion" : finalPlacement === 2 ? "runner_up" : typeof finalPlacement === "number" ? "eliminated" : null;
   if (!state) {
     return null;
   }
-  const snapshotLastResult = normalizeSnapshotResult(readStringField8(metadata, ["result"]));
+  const snapshotLastResult = normalizeSnapshotResult(readStringField9(metadata, ["result"]));
   return {
     state,
     currentRound: (_e = participant == null ? void 0 : participant.currentRound) != null ? _e : readNumberField6(metadata, ["round"]),
-    currentEntryId: (_f = participant == null ? void 0 : participant.currentEntryId) != null ? _f : readStringField8(metadata, ["entryId", "entry_id"]),
+    currentEntryId: (_f = participant == null ? void 0 : participant.currentEntryId) != null ? _f : readStringField9(metadata, ["entryId", "entry_id"]),
     activeMatchId: null,
     finalPlacement,
     lastResult: (_g = snapshotLastResult != null ? snapshotLastResult : participant == null ? void 0 : participant.lastResult) != null ? _g : state === "champion" ? "win" : state === "runner_up" ? "loss" : null,
@@ -10694,9 +10950,9 @@ var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
     lobbyDeadlineAt: getTournamentLobbyDeadlineAt(run.openedAt),
     entrants: getRunEntrants(run, nakamaTournament),
     maxEntrants: getRunMaxEntrants(run, nakamaTournament),
-    gameMode: (_d = readStringField8(metadata, ["gameMode", "game_mode"])) != null ? _d : "standard",
-    region: (_e = readStringField8(metadata, ["region"])) != null ? _e : "Global",
-    buyInLabel: (_f = readStringField8(metadata, ["buyIn", "buy_in"])) != null ? _f : "Free",
+    gameMode: (_d = readStringField9(metadata, ["gameMode", "game_mode"])) != null ? _d : "standard",
+    region: (_e = readStringField9(metadata, ["region"])) != null ? _e : "Global",
+    buyInLabel: (_f = readStringField9(metadata, ["buyIn", "buy_in"])) != null ? _f : "Free",
     prizeLabel: formatPrizeLabel(metadata),
     xpPerMatchWin: rewardSettings.xpPerMatchWin,
     xpForTournamentChampion: rewardSettings.xpForTournamentChampion,
@@ -10793,7 +11049,7 @@ var maybeStartBracketForRun = (nk, logger, run) => {
       bracket: createSingleEliminationBracket(current.registrations, startedAt)
     });
   });
-  if (nextRun.bracket && readStringField8(readMetadata(nextRun), [BRACKET_START_NOTIFICATION_TOKEN_KEY]) === bracketStartNotificationToken) {
+  if (nextRun.bracket && readStringField9(readMetadata(nextRun), [BRACKET_START_NOTIFICATION_TOKEN_KEY]) === bracketStartNotificationToken) {
     sendBracketReadyNotifications(nk, logger, nextRun);
   }
   return nextRun;
@@ -10830,7 +11086,7 @@ var maybeFinalizePublicRun = (logger, nk, run) => {
 };
 var rpcListPublicTournaments = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
-  const parsed = parseJsonPayload(payload);
+  const parsed = parseJsonPayload2(payload);
   const limit = clampInteger(parsed.limit, DEFAULT_PUBLIC_LIST_LIMIT, 1, 100);
   const runs = listPublicRuns(nk).map(
     (run) => maybeFinalizePublicRun(
@@ -10873,8 +11129,8 @@ var rpcListPublicTournaments = (ctx, logger, nk, payload) => {
 };
 var rpcGetPublicTournament = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
-  const parsed = parseJsonPayload(payload);
-  const runId = readStringField8(parsed, [
+  const parsed = parseJsonPayload2(payload);
+  const runId = readStringField9(parsed, [
     "runId",
     "run_id",
     "tournamentRunId",
@@ -10903,8 +11159,8 @@ var rpcGetPublicTournament = (ctx, logger, nk, payload) => {
 var rpcGetPublicTournamentStandings = (ctx, logger, nk, payload) => {
   var _a;
   const userId = requireAuthenticatedUserId(ctx);
-  const parsed = parseJsonPayload(payload);
-  const runId = readStringField8(parsed, [
+  const parsed = parseJsonPayload2(payload);
+  const runId = readStringField9(parsed, [
     "runId",
     "run_id",
     "tournamentRunId",
@@ -10938,8 +11194,8 @@ var rpcGetPublicTournamentStandings = (ctx, logger, nk, payload) => {
 var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
-  const parsed = parseJsonPayload(payload);
-  const runId = readStringField8(parsed, [
+  const parsed = parseJsonPayload2(payload);
+  const runId = readStringField9(parsed, [
     "runId",
     "run_id",
     "tournamentRunId",
@@ -10997,8 +11253,8 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
-  const parsed = parseJsonPayload(payload);
-  const runId = readStringField8(parsed, [
+  const parsed = parseJsonPayload2(payload);
+  const runId = readStringField9(parsed, [
     "runId",
     "run_id",
     "tournamentRunId",
@@ -11113,7 +11369,7 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
     });
   }
   const metadata = readMetadata(run);
-  const modeId = (_g = readStringField8(metadata, ["gameMode", "game_mode"])) != null ? _g : "standard";
+  const modeId = (_g = readStringField9(metadata, ["gameMode", "game_mode"])) != null ? _g : "standard";
   const rewardSettings = resolveTournamentXpRewardSettings(metadata);
   const botPolicy = normalizeTournamentBotPolicy(run.metadata);
   let createdMatchId = null;
@@ -11236,7 +11492,7 @@ var MAX_LIMIT = 100;
 var DEFAULT_RANGE_DAYS = 30;
 var DAY_MS = 24 * 60 * 60 * 1e3;
 var asRecord8 = (value) => typeof value === "object" && value !== null ? value : null;
-var readStringField11 = (value, keys) => {
+var readStringField12 = (value, keys) => {
   const record = asRecord8(value);
   if (!record) {
     return null;
@@ -11301,16 +11557,16 @@ var parseAnalyticsFilters = (payload, now = Date.now()) => {
   const fallbackEndMs = now;
   const fallbackStartMs = fallbackEndMs - (DEFAULT_RANGE_DAYS - 1) * DAY_MS;
   const rawStartMs = parseDateMs(
-    readStringField11(parsed, ["startDate", "start_date"]),
+    readStringField12(parsed, ["startDate", "start_date"]),
     fallbackStartMs
   );
   const rawEndMs = parseDateMs(
-    readStringField11(parsed, ["endDate", "end_date"]),
+    readStringField12(parsed, ["endDate", "end_date"]),
     fallbackEndMs
   );
   const { startMs, endMs } = sanitizeRange(rawStartMs, rawEndMs);
-  const tournamentId = readStringField11(parsed, ["tournamentId", "tournament_id"]);
-  const gameMode = readStringField11(parsed, ["gameMode", "game_mode"]);
+  const tournamentId = readStringField12(parsed, ["tournamentId", "tournament_id"]);
+  const gameMode = readStringField12(parsed, ["gameMode", "game_mode"]);
   const eloMin = readNumberField7(parsed, ["eloMin", "elo_min"]);
   const eloMax = readNumberField7(parsed, ["eloMax", "elo_max"]);
   return {
@@ -11372,7 +11628,7 @@ var PARTICIPATION_BUCKETS = [
   { key: "17_plus", label: "17+ entrants", min: 17, max: null }
 ];
 var asRecord9 = (value) => typeof value === "object" && value !== null ? value : null;
-var readStringField12 = (value, keys) => {
+var readStringField13 = (value, keys) => {
   const record = asRecord9(value);
   if (!record) {
     return null;
@@ -11494,7 +11750,7 @@ var createMetric = (value, availability, options) => {
 };
 var getRunGameMode = (run) => {
   var _a;
-  return (_a = readStringField12(run.metadata, ["gameMode", "game_mode"])) != null ? _a : "standard";
+  return (_a = readStringField13(run.metadata, ["gameMode", "game_mode"])) != null ? _a : "standard";
 };
 var runMatchesFilters = (run, filters) => {
   if (filters.tournamentId && filters.tournamentId !== run.runId && filters.tournamentId !== run.tournamentId) {
@@ -11517,10 +11773,10 @@ var matchesEloFilter = (eloRating, filters) => {
 var isHumanUserId = (userId) => typeof userId === "string" && userId.trim().length > 0 && !isTournamentBotUserId(userId);
 var normalizeTournamentMatchResult = (value) => {
   const record = asRecord9(value);
-  const resultId = readStringField12(record, ["resultId", "result_id"]);
-  const matchId = readStringField12(record, ["matchId", "match_id"]);
-  const runId = readStringField12(record, ["runId", "run_id"]);
-  const tournamentId = readStringField12(record, ["tournamentId", "tournament_id"]);
+  const resultId = readStringField13(record, ["resultId", "result_id"]);
+  const matchId = readStringField13(record, ["matchId", "match_id"]);
+  const runId = readStringField13(record, ["runId", "run_id"]);
+  const tournamentId = readStringField13(record, ["tournamentId", "tournament_id"]);
   if (!record || !resultId || !matchId || !runId || !tournamentId) {
     return null;
   }
@@ -11528,10 +11784,10 @@ var normalizeTournamentMatchResult = (value) => {
 };
 var normalizeEloHistoryRecord = (value) => {
   const record = asRecord9(value);
-  const matchId = readStringField12(record, ["matchId", "match_id"]);
-  const processedAt = readStringField12(record, ["processedAt", "processed_at"]);
-  const winnerUserId = readStringField12(record, ["winnerUserId", "winner_user_id"]);
-  const loserUserId = readStringField12(record, ["loserUserId", "loser_user_id"]);
+  const matchId = readStringField13(record, ["matchId", "match_id"]);
+  const processedAt = readStringField13(record, ["processedAt", "processed_at"]);
+  const winnerUserId = readStringField13(record, ["winnerUserId", "winner_user_id"]);
+  const loserUserId = readStringField13(record, ["loserUserId", "loser_user_id"]);
   if (!record || !matchId || !processedAt || !winnerUserId || !loserUserId) {
     return null;
   }
@@ -11539,8 +11795,8 @@ var normalizeEloHistoryRecord = (value) => {
   const playerResults = rawPlayers.map((player) => {
     var _a, _b, _c;
     const normalized = asRecord9(player);
-    const userId = readStringField12(normalized, ["userId", "user_id"]);
-    const usernameDisplay = readStringField12(normalized, ["usernameDisplay", "username_display"]);
+    const userId = readStringField13(normalized, ["userId", "user_id"]);
+    const usernameDisplay = readStringField13(normalized, ["usernameDisplay", "username_display"]);
     const oldRating = readNumberField8(normalized, ["oldRating", "old_rating"]);
     const newRating = readNumberField8(normalized, ["newRating", "new_rating"]);
     const delta = readNumberField8(normalized, ["delta"]);
@@ -11587,7 +11843,7 @@ var normalizeStorageListResult2 = (value) => {
   }) : [];
   return {
     objects,
-    cursor: readStringField12(record, ["cursor", "nextCursor", "next_cursor"])
+    cursor: readStringField13(record, ["cursor", "nextCursor", "next_cursor"])
   };
 };
 var listAllGlobalObjects = (nk, logger, collection, userId) => {
@@ -11628,8 +11884,8 @@ var getLeaderboardRecordMetadata2 = (record) => {
   var _a;
   return asRecord9((_a = asRecord9(record)) == null ? void 0 : _a.metadata);
 };
-var getLeaderboardRecordOwnerId2 = (record) => readStringField12(record, ["ownerId", "owner_id"]);
-var getLeaderboardRecordUsername2 = (record) => readStringField12(record, ["username"]);
+var getLeaderboardRecordOwnerId2 = (record) => readStringField13(record, ["ownerId", "owner_id"]);
+var getLeaderboardRecordUsername2 = (record) => readStringField13(record, ["username"]);
 var getLeaderboardRecordScore2 = (record) => readNumberField8(record, ["score"]);
 var getLeaderboardRecordRank2 = (record) => readNumberField8(record, ["rank"]);
 var listAllLeaderboardRows = (nk) => {
@@ -11651,7 +11907,7 @@ var listAllLeaderboardRows = (nk) => {
       const ratedGames = Math.max(0, Math.floor((_a = readNumberField8(metadata, ["ratedGames", "rated_games"])) != null ? _a : 0));
       rows.push({
         userId,
-        usernameDisplay: (_c = (_b = readStringField12(metadata, ["usernameDisplay", "username_display"])) != null ? _b : getLeaderboardRecordUsername2(record)) != null ? _c : userId,
+        usernameDisplay: (_c = (_b = readStringField13(metadata, ["usernameDisplay", "username_display"])) != null ? _b : getLeaderboardRecordUsername2(record)) != null ? _c : userId,
         eloRating: sanitizeEloRating((_d = getLeaderboardRecordScore2(record)) != null ? _d : DEFAULT_ELO_RATING),
         ratedGames,
         ratedWins: Math.max(0, Math.floor((_e = readNumberField8(metadata, ["ratedWins", "rated_wins"])) != null ? _e : 0)),
@@ -11660,7 +11916,7 @@ var listAllLeaderboardRows = (nk) => {
         rank: getLeaderboardRecordRank2(record)
       });
     });
-    const nextCursor = readStringField12(result, ["nextCursor", "next_cursor"]);
+    const nextCursor = readStringField13(result, ["nextCursor", "next_cursor"]);
     if (!nextCursor) {
       break;
     }
@@ -11708,7 +11964,7 @@ var loadTournamentMatchHistory = (nk, runs) => {
   );
   const objectByKey = new Map(
     objects.map((object) => {
-      const key = readStringField12(object, ["key"]);
+      const key = readStringField13(object, ["key"]);
       return key ? [key, object] : null;
     }).filter((entry) => Boolean(entry))
   );
@@ -11723,15 +11979,15 @@ var loadTournamentMatchHistory = (nk, runs) => {
     const entryContext = (_a = entryContextByMatchId.get(record.matchId)) != null ? _a : null;
     const players = Array.isArray(summary == null ? void 0 : summary.players) ? summary.players.map((player) => {
       const normalized = asRecord9(player);
-      const userId = readStringField12(normalized, ["userId", "user_id"]);
+      const userId = readStringField13(normalized, ["userId", "user_id"]);
       if (!normalized || !userId) {
         return null;
       }
       return {
         userId,
-        username: readStringField12(normalized, ["username"]),
+        username: readStringField13(normalized, ["username"]),
         color: (() => {
-          const color = readStringField12(normalized, ["color"]);
+          const color = readStringField13(normalized, ["color"]);
           return color === "light" || color === "dark" ? color : null;
         })(),
         didWin: readBooleanField7(normalized, ["didWin", "did_win"]),
@@ -11746,10 +12002,10 @@ var loadTournamentMatchHistory = (nk, runs) => {
       source: "tournament",
       matchId: record.matchId,
       startedAt: (_b = entryContext == null ? void 0 : entryContext.startedAt) != null ? _b : null,
-      endedAt: (_d = (_c = readStringField12(summary, ["completedAt", "completed_at"])) != null ? _c : entryContext == null ? void 0 : entryContext.completedAt) != null ? _d : record.updatedAt,
+      endedAt: (_d = (_c = readStringField13(summary, ["completedAt", "completed_at"])) != null ? _c : entryContext == null ? void 0 : entryContext.completedAt) != null ? _d : record.updatedAt,
       durationSeconds: (_e = entryContext == null ? void 0 : entryContext.durationSeconds) != null ? _e : null,
       reason: "completed",
-      modeId: (_g = readStringField12(summary, ["modeId", "mode_id"])) != null ? _g : getRunGameMode((_f = runs.find((run) => run.runId === record.runId)) != null ? _f : runs[0]),
+      modeId: (_g = readStringField13(summary, ["modeId", "mode_id"])) != null ? _g : getRunGameMode((_f = runs.find((run) => run.runId === record.runId)) != null ? _f : runs[0]),
       classification: {
         ranked: readBooleanField7(classificationRecord, ["ranked"]) === true,
         casual: readBooleanField7(classificationRecord, ["casual"]) === true,
@@ -11760,8 +12016,8 @@ var loadTournamentMatchHistory = (nk, runs) => {
       },
       tournamentRunId: record.runId,
       tournamentId: record.tournamentId,
-      winnerUserId: readStringField12(summary, ["winnerUserId", "winner_user_id"]),
-      loserUserId: readStringField12(summary, ["loserUserId", "loser_user_id"]),
+      winnerUserId: readStringField13(summary, ["winnerUserId", "winner_user_id"]),
+      loserUserId: readStringField13(summary, ["loserUserId", "loser_user_id"]),
       totalMoves: readNumberField8(summary, ["totalMoves", "total_moves"]),
       totalTurns: null,
       players
@@ -11890,9 +12146,9 @@ var loadKnownUsers = (nk, userIds, leaderboardRows) => {
     ]);
     const objects = nk.storageRead(requests);
     const objectEntries = objects.map((object) => {
-      const collection = readStringField12(object, ["collection"]);
-      const key = readStringField12(object, ["key"]);
-      const userId = readStringField12(object, ["userId", "user_id"]);
+      const collection = readStringField13(object, ["collection"]);
+      const key = readStringField13(object, ["key"]);
+      const userId = readStringField13(object, ["userId", "user_id"]);
       return collection && key && userId ? [`${collection}:${key}:${userId}`, object] : null;
     }).filter(
       (entry) => entry !== null
@@ -11909,10 +12165,10 @@ var loadKnownUsers = (nk, userIds, leaderboardRows) => {
       const leaderboardRow = (_e = leaderboardByUserId.get(userId)) != null ? _e : null;
       records.set(userId, {
         userId,
-        username: (_g = (_f = readStringField12(usernameProfile, ["usernameDisplay", "username_display"])) != null ? _f : leaderboardRow == null ? void 0 : leaderboardRow.usernameDisplay) != null ? _g : userId,
-        createdAt: readStringField12(usernameProfile, ["createdAt", "created_at"]),
+        username: (_g = (_f = readStringField13(usernameProfile, ["usernameDisplay", "username_display"])) != null ? _f : leaderboardRow == null ? void 0 : leaderboardRow.usernameDisplay) != null ? _g : userId,
+        createdAt: readStringField13(usernameProfile, ["createdAt", "created_at"]),
         totalXp: readNumberField8(progressionProfile, ["totalXp", "total_xp"]),
-        currentRankTitle: readStringField12(progressionProfile, ["currentRankTitle", "current_rank_title"]),
+        currentRankTitle: readStringField13(progressionProfile, ["currentRankTitle", "current_rank_title"]),
         eloRating: (_h = leaderboardRow == null ? void 0 : leaderboardRow.eloRating) != null ? _h : null,
         ratedGames: (_i = leaderboardRow == null ? void 0 : leaderboardRow.ratedGames) != null ? _i : null,
         ratedWins: (_j = leaderboardRow == null ? void 0 : leaderboardRow.ratedWins) != null ? _j : null,
@@ -13280,7 +13536,7 @@ var getSecureRandomUnit = (nk) => {
   throw new Error("Authoritative dice roll requires a cryptographically secure random source.");
 };
 var rollAuthoritativeDice = (nk) => rollDice(() => getSecureRandomUnit(nk));
-var readStringField13 = (value, keys) => {
+var readStringField14 = (value, keys) => {
   const record = asRecord10(value);
   if (!record) {
     return null;
@@ -13342,9 +13598,9 @@ var decodeMessageData = (data, nk) => {
   }
   return String(data != null ? data : "");
 };
-var getPresenceUserId = (presence) => readStringField13(presence, ["userId", "user_id"]);
-var getPresenceSessionId = (presence) => readStringField13(presence, ["sessionId", "session_id"]);
-var getSenderUserId = (sender) => readStringField13(sender, ["userId", "user_id"]);
+var getPresenceUserId = (presence) => readStringField14(presence, ["userId", "user_id"]);
+var getPresenceSessionId = (presence) => readStringField14(presence, ["sessionId", "session_id"]);
+var getSenderUserId = (sender) => readStringField14(sender, ["userId", "user_id"]);
 var getPresenceKey = (presence) => {
   const sessionId = getPresenceSessionId(presence);
   if (sessionId) {
@@ -13365,10 +13621,10 @@ var isSpectatorPresenceRequest = (presence) => {
 };
 var getMatchId = (ctx) => {
   var _a;
-  return (_a = readStringField13(ctx, ["matchId", "match_id"])) != null ? _a : "";
+  return (_a = readStringField14(ctx, ["matchId", "match_id"])) != null ? _a : "";
 };
 var getMessageOpCode = (message) => readNumberField9(message, ["opCode", "op_code"]);
-var getContextUserId2 = (ctx) => readStringField13(ctx, ["userId", "user_id"]);
+var getContextUserId2 = (ctx) => readStringField14(ctx, ["userId", "user_id"]);
 var resolveMatchModeId = (value) => isMatchModeId(value) ? value : "standard";
 var resolveConfiguredRewardXp = (value) => {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -13565,13 +13821,13 @@ var normalizePrivateMatchCodeRecord = (value) => {
   if (!record) {
     return null;
   }
-  const code = normalizePrivateMatchCodeInput((_a = readStringField13(record, ["code"])) != null ? _a : "");
-  const matchId = readStringField13(record, ["matchId", "match_id"]);
+  const code = normalizePrivateMatchCodeInput((_a = readStringField14(record, ["code"])) != null ? _a : "");
+  const matchId = readStringField14(record, ["matchId", "match_id"]);
   const modeId = record.modeId;
-  const creatorUserId = readStringField13(record, ["creatorUserId", "creator_user_id"]);
-  const joinedUserId = readStringField13(record, ["joinedUserId", "joined_user_id"]);
-  const createdAt = readStringField13(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField13(record, ["updatedAt", "updated_at"]);
+  const creatorUserId = readStringField14(record, ["creatorUserId", "creator_user_id"]);
+  const joinedUserId = readStringField14(record, ["joinedUserId", "joined_user_id"]);
+  const createdAt = readStringField14(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField14(record, ["updatedAt", "updated_at"]);
   if (!isPrivateMatchCode(code) || !isMatchModeId(modeId) || !creatorUserId || !createdAt || !updatedAt) {
     return null;
   }
@@ -14374,7 +14630,7 @@ var buildPlayerMatchSummary = (state, matchId, playerUserId, playerColor) => {
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   };
 };
-var getPresenceUsername = (presence) => readStringField13(presence, ["username", "displayName", "display_name", "name"]);
+var getPresenceUsername = (presence) => readStringField14(presence, ["username", "displayName", "display_name", "name"]);
 var buildAnalyticsMatchPlayers = (state) => Object.entries(state.assignments).map(([userId, color]) => {
   var _a, _b;
   const presence = getPrimaryUserPresence(state, userId);
@@ -14473,6 +14729,7 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_GET_USER_CHALLENGE_PROGRESS_NAME, rpcGetUserChallengeProgress);
   initializer.registerRpc(RPC_SUBMIT_COMPLETED_BOT_MATCH_NAME, rpcSubmitCompletedBotMatch);
   initializer.registerRpc(RPC_GET_WALLET, rpcGetWallet);
+  initializer.registerRpc(RPC_CONFIRM_GEM_PACK_PURCHASE, rpcConfirmGemPackPurchase);
   initializer.registerRpc(RPC_GET_STOREFRONT, rpcGetStorefront);
   initializer.registerRpc(RPC_GET_FULL_CATALOG, rpcGetFullCatalog);
   initializer.registerRpc(RPC_PURCHASE_ITEM, rpcPurchaseItem);
@@ -14733,10 +14990,10 @@ function matchInit(_ctx, logger, nk, params) {
   const privateCode = typeof params.privateCode === "string" ? normalizePrivateMatchCodeInput(params.privateCode) : "";
   const privateCreatorUserId = typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
   const privateGuestUserId = typeof params.privateGuestUserId === "string" ? params.privateGuestUserId : null;
-  const botUserId = readStringField13(params, ["botUserId", "bot_user_id"]);
-  const botDifficultyValue = readStringField13(params, ["botDifficulty", "bot_difficulty"]);
+  const botUserId = readStringField14(params, ["botUserId", "bot_user_id"]);
+  const botDifficultyValue = readStringField14(params, ["botDifficulty", "bot_difficulty"]);
   const botDifficulty = botDifficultyValue && isBotDifficulty(botDifficultyValue) ? botDifficultyValue : DEFAULT_BOT_DIFFICULTY;
-  const botDisplayName = (_a = readStringField13(params, ["botDisplayName", "bot_display_name"])) != null ? _a : `${botDifficulty.slice(0, 1).toUpperCase()}${botDifficulty.slice(1)} Bot`;
+  const botDisplayName = (_a = readStringField14(params, ["botDisplayName", "bot_display_name"])) != null ? _a : `${botDifficulty.slice(0, 1).toUpperCase()}${botDifficulty.slice(1)} Bot`;
   const winRewardSource = params.winRewardSource === "private_pvp_win" ? "private_pvp_win" : "pvp_win";
   const allowsChallengeRewards = params.allowsChallengeRewards !== false;
   const tournamentMatchWinXp = resolveConfiguredRewardXp(
@@ -15809,7 +16066,7 @@ var readTournamentEloRanksByUserId = (logger, nk, playerUserIds) => {
     const ownerRecords = Array.isArray(result.ownerRecords) ? result.ownerRecords : Array.isArray(result.owner_records) ? result.owner_records : [];
     return ownerRecords.reduce(
       (entries, record) => {
-        const ownerId = readStringField13(record, ["ownerId", "owner_id"]);
+        const ownerId = readStringField14(record, ["ownerId", "owner_id"]);
         if (!ownerId) {
           return entries;
         }
@@ -15831,7 +16088,7 @@ var readTournamentEloRanksByUserId = (logger, nk, playerUserIds) => {
 var buildEloProfileFromStorageObject = (userId, fallbackUsernameDisplay, rawValue, rank) => {
   var _a, _b, _c, _d, _e;
   const normalizedFallbackName = fallbackUsernameDisplay.trim().length > 0 ? fallbackUsernameDisplay : userId;
-  const usernameDisplay = (_a = readStringField13(rawValue, ["usernameDisplay", "username_display"])) != null ? _a : normalizedFallbackName;
+  const usernameDisplay = (_a = readStringField14(rawValue, ["usernameDisplay", "username_display"])) != null ? _a : normalizedFallbackName;
   const eloRating = sanitizeEloRating((_b = readNumberField9(rawValue, ["eloRating", "elo_rating"])) != null ? _b : DEFAULT_ELO_RATING);
   const ratedGames = sanitizeRatedGameCount((_c = readNumberField9(rawValue, ["ratedGames", "rated_games"])) != null ? _c : 0);
   const ratedWins = Math.min(
@@ -15852,8 +16109,8 @@ var buildEloProfileFromStorageObject = (userId, fallbackUsernameDisplay, rawValu
     ratedLosses,
     provisional: ratedGames < PROVISIONAL_RATED_GAMES,
     rank,
-    lastRatedMatchId: readStringField13(rawValue, ["lastRatedMatchId", "last_rated_match_id"]),
-    lastRatedAt: readStringField13(rawValue, ["lastRatedAt", "last_rated_at"])
+    lastRatedMatchId: readStringField14(rawValue, ["lastRatedMatchId", "last_rated_match_id"]),
+    lastRatedAt: readStringField14(rawValue, ["lastRatedAt", "last_rated_at"])
   };
 };
 var buildTournamentRewardSummaryReadModelsByUserId = (logger, nk, state) => {

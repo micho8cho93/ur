@@ -183,10 +183,6 @@ export const useTournamentDetail = (runId: string | null) => {
     useCallback(() => {
       void refresh();
 
-      if (isSocketNotificationAvailable) {
-        return undefined;
-      }
-
       const pollId = setInterval(() => {
         void refresh();
       }, DETAIL_POLL_INTERVAL_MS);
@@ -194,7 +190,7 @@ export const useTournamentDetail = (runId: string | null) => {
       return () => {
         clearInterval(pollId);
       };
-    }, [isSocketNotificationAvailable, refresh]),
+    }, [refresh]),
   );
 
   const joinTournament = useCallback(async () => {

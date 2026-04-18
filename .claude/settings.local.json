@@ -8,7 +8,11 @@
       "Bash(node:*)",
       "Bash(npx jest *)",
       "Bash(git log *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(git diff *)",
+      "Bash(grep -v \"^$\\\\|^commit\\\\|^Author\\\\|^Date\\\\|^    \")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('expo', {}\\).get\\('extra', {}\\), indent=2\\)\\)\")",
+      "Bash(npm run *)"
     ]
   }
 }
