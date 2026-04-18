@@ -45,6 +45,11 @@ import {
   readStringField,
   requireAuthenticatedUserId,
 } from "./definitions";
+import {
+  getWalletForUser,
+  spendPremiumCurrency,
+  spendSoftCurrency,
+} from "../wallet";
 import { maybeAutoFinalizeTournamentRunById } from "./matchResults";
 import type { RuntimeContext, RuntimeLogger, RuntimeNakama } from "./types";
 import { requireCompletedUsernameOnboarding } from "../usernameOnboarding";
@@ -53,6 +58,8 @@ import {
   buildTournamentBotSummary,
   isTournamentBotUserId,
 } from "../../../shared/tournamentBots";
+import { PREMIUM_CURRENCY_KEY, SOFT_CURRENCY_KEY } from "../../../shared/wallet";
+import { formatTournamentEntryFee, parseTournamentEntryFee } from "../../../shared/tournamentFees";
 import {
   TOURNAMENT_BRACKET_READY_NOTIFICATION_CODE,
   TOURNAMENT_BRACKET_READY_NOTIFICATION_SUBJECT,
@@ -204,9 +211,12 @@ const formatPrizeLabel = (metadata: Record<string, unknown>): string => {
     return explicitPrize;
   }
 
-  const buyIn = readStringField(metadata, ["buyIn", "buy_in"]) ?? "Free";
+  const buyIn = readStringField(metadata, ["buyIn", "buy_in", "entryFee", "entry_fee"]) ?? "Free";
   return buyIn === "Free" ? "No prize listed" : `${buyIn} buy-in`;
 };
+
+const resolveTournamentEntryFee = (metadata: Record<string, unknown>) =>
+  parseTournamentEntryFee(readStringField(metadata, ["buyIn", "buy_in", "entryFee", "entry_fee"]) ?? "Free");
 
 const buildMembershipState = (membership: TournamentRunMembershipRecord | null): PublicMembershipState => ({
   isJoined: Boolean(membership),
@@ -736,7 +746,9 @@ const buildPublicTournamentResponse = (
     maxEntrants: getRunMaxEntrants(run, nakamaTournament),
     gameMode: readStringField(metadata, ["gameMode", "game_mode"]) ?? "standard",
     region: readStringField(metadata, ["region"]) ?? "Global",
-    buyInLabel: readStringField(metadata, ["buyIn", "buy_in"]) ?? "Free",
+    buyInLabel: formatTournamentEntryFee(
+      readStringField(metadata, ["buyIn", "buy_in", "entryFee", "entry_fee"]) ?? "Free",
+    ),
     prizeLabel: formatPrizeLabel(metadata),
     xpPerMatchWin: rewardSettings.xpPerMatchWin,
     xpForTournamentChampion: rewardSettings.xpForTournamentChampion,
@@ -1091,6 +1103,7 @@ export const rpcJoinPublicTournament = (
   run = maybeFinalizePublicRun(logger, nk, run);
   const nakamaTournamentBeforeJoin = getNakamaTournamentById(nk, run.tournamentId);
   assertPublicRunVisible(run, nakamaTournamentBeforeJoin);
+  const entryFee = resolveTournamentEntryFee(readMetadata(run));
 
   const existingMembership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   const displayName = getActorLabel(ctx);
@@ -1109,9 +1122,45 @@ export const rpcJoinPublicTournament = (
       throw new Error("This tournament is already full.");
     }
 
+    if (entryFee) {
+      const wallet = getWalletForUser(nk, userId);
+      const balanceKey = entryFee.currency === "soft" ? SOFT_CURRENCY_KEY : PREMIUM_CURRENCY_KEY;
+      const insufficientBalanceError =
+        entryFee.currency === "soft" ? "INSUFFICIENT_COINS" : "INSUFFICIENT_GEMS";
+      const balance = wallet[balanceKey] ?? 0;
+
+      if (balance < entryFee.amount) {
+        throw new Error(insufficientBalanceError);
+      }
+    }
+
     nk.tournamentJoin(run.tournamentId, userId, displayName);
     membership = writeMembership(nk, run, userId, displayName);
     setRegisteredTournamentParticipantFlow(nk, run, userId);
+    if (entryFee) {
+      const feeMetadata = {
+        runId: run.runId,
+        tournamentId: run.tournamentId,
+        amount: entryFee.amount,
+        currency: entryFee.currency,
+      };
+
+      if (entryFee.currency === "soft") {
+        spendSoftCurrency(nk, logger, {
+          userId,
+          amount: entryFee.amount,
+          source: "tournament_entry_fee",
+          metadata: feeMetadata,
+        });
+      } else {
+        spendPremiumCurrency(nk, logger, {
+          userId,
+          amount: entryFee.amount,
+          source: "tournament_entry_fee",
+          metadata: feeMetadata,
+        });
+      }
+    }
     joined = true;
 
     appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.public_joined", {

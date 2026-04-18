@@ -161,7 +161,7 @@ describe("admin tournament run creation", () => {
           metadata: {
             gameMode: "Classic ladder",
             region: "Global",
-            buyIn: "Free",
+            buyIn: "250 coins",
           },
           startTime: 1_774_572_800,
           maxSize: 32,
@@ -201,6 +201,10 @@ describe("admin tournament run creation", () => {
         endTime: 1_774_572_800 + AUTO_TOURNAMENT_DURATION_SECONDS,
         maxSize: 32,
         maxNumScore: 5,
+        metadata: expect.objectContaining({
+          buyIn: "250 coins",
+          entryFee: "250 coins",
+        }),
       }),
     );
 

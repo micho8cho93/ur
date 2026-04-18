@@ -43,6 +43,12 @@ type RuntimeGlobals = typeof globalThis & {
     nk: ReturnType<typeof createNakama>,
     payload: string,
   ) => string;
+  rpcListSpectatableMatches: (
+    ctx: { userId?: string | null },
+    logger: Record<string, jest.Mock>,
+    nk: ReturnType<typeof createNakama>,
+    payload: string,
+  ) => string;
   rpcJoinOpenOnlineMatch: (
     ctx: { userId?: string | null },
     logger: Record<string, jest.Mock>,
@@ -162,7 +168,7 @@ describe("open online match RPCs", () => {
         { userId: "creator-1" },
         logger,
         nk,
-        JSON.stringify({ wager: 15, durationMinutes: 5 }),
+        JSON.stringify({ wager: 15, durationMinutes: 5, modeId: "gameMode_3_pieces" }),
       ),
     ).toThrow("Wager must be between 10 and 100 coins in increments of 10.");
   });
@@ -177,7 +183,7 @@ describe("open online match RPCs", () => {
         { userId: "creator-1" },
         logger,
         nk,
-        JSON.stringify({ wager: 20, durationMinutes: 5 }),
+        JSON.stringify({ wager: 20, durationMinutes: 5, modeId: "gameMode_3_pieces" }),
       ),
     ).toThrow("INSUFFICIENT_FUNDS");
     expect(nk.wallets.get("creator-1")).toBe(5);
@@ -193,7 +199,7 @@ describe("open online match RPCs", () => {
         { userId: "creator-1" },
         logger,
         nk,
-        JSON.stringify({ wager: 20, durationMinutes: 5 }),
+        JSON.stringify({ wager: 20, durationMinutes: 5, modeId: "gameMode_3_pieces" }),
       ),
     );
 
@@ -225,7 +231,7 @@ describe("open online match RPCs", () => {
         { userId: "creator-1" },
         logger,
         nk,
-        JSON.stringify({ wager: 20, durationMinutes: 5 }),
+        JSON.stringify({ wager: 20, durationMinutes: 5, modeId: "gameMode_3_pieces" }),
       ),
     ).match;
 
@@ -256,6 +262,44 @@ describe("open online match RPCs", () => {
         entrants: 2,
       }),
     );
+  });
+
+  it("keeps matched open online games visible for spectating", () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = createLogger();
+    const nk = createNakama({ "creator-1": 100, "joiner-1": 100 });
+    const created = JSON.parse(
+      runtime.rpcCreateOpenOnlineMatch(
+        { userId: "creator-1" },
+        logger,
+        nk,
+        JSON.stringify({ wager: 20, durationMinutes: 5, modeId: "gameMode_3_pieces" }),
+      ),
+    ).match;
+
+    runtime.rpcJoinOpenOnlineMatch(
+      { userId: "joiner-1" },
+      logger,
+      nk,
+      JSON.stringify({ openMatchId: created.openMatchId }),
+    );
+
+    const onlineMatches = JSON.parse(runtime.rpcListOpenOnlineMatches({ userId: "viewer-1" }, logger, nk, ""));
+    expect(onlineMatches.matches).toEqual([
+      expect.objectContaining({
+        openMatchId: created.openMatchId,
+        matchId: "match-open-1",
+        status: "matched",
+      }),
+    ]);
+
+    const spectatableMatches = JSON.parse(runtime.rpcListSpectatableMatches({ userId: "viewer-1" }, logger, nk, ""));
+    expect(spectatableMatches.matches).toEqual([
+      expect.objectContaining({
+        matchId: "match-open-1",
+        modeId: "gameMode_3_pieces",
+      }),
+    ]);
   });
 
   it("refunds expired unjoined matches while listing", () => {

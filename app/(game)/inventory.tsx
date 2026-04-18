@@ -5,6 +5,7 @@ import { Stack } from 'expo-router';
 
 import { Button } from '@/components/ui/Button';
 import { urTheme, urTextVariants, urTypography } from '@/constants/urTheme';
+import { EQUIPPED_EMOJI_SLOT_COUNT } from '@/shared/emojiReactions';
 import { type CosmeticType } from '@/shared/cosmetics';
 import { useInventory } from '@/src/store/InventoryContext';
 
@@ -42,8 +43,8 @@ const INVENTORY_SECTIONS: InventorySection[] = [
   },
   {
     type: 'emote',
-    label: 'Emotes',
-    description: 'Future-facing reactions that will slot in here as they ship.',
+    label: 'Emojis',
+    description: 'Equip up to seven extra reactions from your collection.',
   },
 ];
 
@@ -86,13 +87,20 @@ export default function InventoryScreen() {
     errorMessage,
     ownedCosmeticsByType,
     equippedCosmeticsByType,
+    equippedEmoteCosmetics,
     equipCosmetic,
     unequipCosmetic,
+    unequipEmoteCosmetic,
+    unequipEmoteSlot,
     resetLoadout,
     refresh,
   } = useInventory();
 
-  const hasAnyEquipped = INVENTORY_SECTIONS.some((section) => Boolean(equippedCosmeticsByType[section.type]));
+  const emoteSlotsFilled = equippedEmoteCosmetics.filter(Boolean).length;
+  const hasAnyEquipped =
+    INVENTORY_SECTIONS.some((section) =>
+      section.type === 'emote' ? emoteSlotsFilled > 0 : Boolean(equippedCosmeticsByType[section.type]),
+    );
 
   return (
     <>
@@ -139,9 +147,9 @@ export default function InventoryScreen() {
               </Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Emotes</Text>
+              <Text style={styles.summaryLabel}>Emojis</Text>
               <Text style={styles.summaryValue}>
-                {formatEquippedLabel(equippedCosmeticsByType.emote?.name ?? null)}
+                {`${emoteSlotsFilled}/${EQUIPPED_EMOJI_SLOT_COUNT} equipped`}
               </Text>
             </View>
             <View style={styles.summaryActions}>
@@ -186,6 +194,68 @@ export default function InventoryScreen() {
             INVENTORY_SECTIONS.map((section) => {
               const items = ownedCosmeticsByType[section.type];
               const equippedItem = equippedCosmeticsByType[section.type];
+
+              if (section.type === 'emote') {
+                return (
+                  <View key={section.type} style={styles.sectionCard}>
+                    <View style={styles.sectionHeader}>
+                      <View style={styles.sectionHeaderText}>
+                        <Text style={styles.sectionTitle}>{section.label}</Text>
+                        <Text style={styles.sectionDescription}>{section.description}</Text>
+                      </View>
+                      <Text style={styles.sectionCount}>
+                        {`${emoteSlotsFilled}/${EQUIPPED_EMOJI_SLOT_COUNT} equipped`}
+                      </Text>
+                    </View>
+
+                    <View style={styles.slotCardList}>
+                      {equippedEmoteCosmetics.map((item, index) => (
+                        <View key={`emote-slot-${index}`} style={styles.slotCard}>
+                          <View style={styles.slotCardText}>
+                            <Text style={styles.slotLabel}>Slot {index + 1}</Text>
+                            <Text style={styles.slotValue}>{item?.name ?? 'Empty'}</Text>
+                          </View>
+                          <Button
+                            title={item ? 'Remove' : 'Empty'}
+                            variant="outline"
+                            disabled={!item}
+                            onPress={() => {
+                              void unequipEmoteSlot(index);
+                            }}
+                            style={styles.slotButton}
+                          />
+                        </View>
+                      ))}
+                    </View>
+
+                    {items.length === 0 ? (
+                      <View style={styles.emptyState}>
+                        <Text style={styles.emptyStateTitle}>No assets yet</Text>
+                        <Text style={styles.emptyStateText}>
+                          Buy or unlock emojis to fill the reaction wheel.
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.itemList}>
+                        {items.map((item) => (
+                          <InventoryItemCard
+                            key={item.id}
+                            title={item.name}
+                            typeLabel={item.tier.toUpperCase()}
+                            isEquipped={item.isEquipped}
+                            onEquip={() => {
+                              void equipCosmetic(item);
+                            }}
+                            onUnequip={() => {
+                              void unequipEmoteCosmetic(item.id);
+                            }}
+                          />
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                );
+              }
 
               return (
                 <View key={section.type} style={styles.sectionCard}>
@@ -373,6 +443,35 @@ const styles = StyleSheet.create({
   },
   itemList: {
     gap: 10,
+  },
+  slotCardList: {
+    gap: 10,
+  },
+  slotCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: urTheme.spacing.sm,
+    borderRadius: 18,
+    padding: urTheme.spacing.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  slotCardText: {
+    flex: 1,
+    gap: 4,
+  },
+  slotLabel: {
+    ...urTypography.label,
+    color: '#D8BF8A',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  slotValue: {
+    ...urTextVariants.body,
+    color: urTheme.colors.parchment,
+  },
+  slotButton: {
+    minWidth: 112,
   },
   itemCard: {
     gap: 10,

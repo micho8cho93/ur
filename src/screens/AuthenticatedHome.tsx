@@ -1,5 +1,7 @@
 import { HomeActionButton } from '@/components/home/HomeActionButton';
 import { ChallengeSummaryCard } from '@/components/challenges/ChallengeSummaryCard';
+import { FeedbackComposerModal } from '@/components/feedback/FeedbackComposerModal';
+import { FeedbackFloatingButton } from '@/components/feedback/FeedbackFloatingButton';
 import { EloRatingSummaryCard } from '@/components/elo/EloRatingSummaryCard';
 import { ProgressionModal } from '@/components/progression/ProgressionModal';
 import { ProgressionSummaryCard } from '@/components/progression/ProgressionSummaryCard';
@@ -51,6 +53,7 @@ export default function AuthenticatedHome() {
   const displayedPremiumCurrency = isGuest ? 0 : premiumCurrency;
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const [isProgressionModalOpen, setIsProgressionModalOpen] = React.useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = React.useState(false);
   const [coinAnimateFrom, setCoinAnimateFrom] = React.useState<number | undefined>(undefined);
   const [gemAnimateFrom, setGemAnimateFrom] = React.useState<number | undefined>(undefined);
 
@@ -89,6 +92,8 @@ export default function AuthenticatedHome() {
   const logoPanelHeight = logoPanelWidth / HOME_LOGO_VISIBLE_ASPECT_RATIO;
   const usernameFontFamily = resolveHomeUsernameFontFamily(fontsLoaded);
   const buttonFontFamily = resolveHomeButtonFontFamily(fontsLoaded);
+  const feedbackButtonBottom = insets.bottom + (isDesktopLayout ? 22 : 18);
+  const feedbackButtonRight = horizontalPadding + (isDesktopLayout ? 12 : 6);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -426,10 +431,29 @@ export default function AuthenticatedHome() {
         </ScrollView>
       )}
 
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.feedbackButtonWrap,
+          {
+            bottom: feedbackButtonBottom,
+            right: feedbackButtonRight,
+          },
+        ]}
+      >
+        <FeedbackFloatingButton onPress={() => setIsFeedbackModalOpen(true)} />
+      </View>
+
       <ProgressionModal
         visible={isProgressionModalOpen}
         onClose={() => setIsProgressionModalOpen(false)}
         progression={progression}
+      />
+
+      <FeedbackComposerModal
+        visible={isFeedbackModalOpen}
+        sourcePage="home"
+        onClose={() => setIsFeedbackModalOpen(false)}
       />
     </View>
   );
@@ -499,6 +523,10 @@ const styles = StyleSheet.create({
   },
   utilityActionButton: {
     alignSelf: 'flex-end',
+  },
+  feedbackButtonWrap: {
+    position: 'absolute',
+    zIndex: 15,
   },
   utilitySpacer: {
     width: 88,

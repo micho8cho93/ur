@@ -1,5 +1,6 @@
 import type { AuditLogEntry } from '../types/audit'
 import type { Tournament, TournamentEntry } from '../types/tournament'
+import type { FeedbackSubmission } from '../../../shared/feedback'
 
 export const mockTournaments: Tournament[] = [
   {
@@ -57,7 +58,7 @@ export const mockTournaments: Tournament[] = [
     roundCount: 5,
     startAt: '2026-04-02T18:30:00Z',
     endAt: null,
-    buyIn: '$5 ticket',
+    buyIn: '500 coins',
     region: 'EU / NA',
     prizePool: '$500',
     bots: {
@@ -100,7 +101,7 @@ export const mockTournaments: Tournament[] = [
     roundCount: 4,
     startAt: '2026-02-12T19:00:00Z',
     endAt: '2026-02-12T21:30:00Z',
-    buyIn: '$10 ticket',
+    buyIn: '1200 gems',
     region: 'Global',
     prizePool: '$1,200',
     bots: {
@@ -431,5 +432,61 @@ export const mockAuditLog: AuditLogEntry[] = [
       standingsCount: 16,
       disabledRanks: true,
     },
+  },
+]
+
+export const mockFeedbackSubmissions: FeedbackSubmission[] = [
+  {
+    id: 'feedback-20260418-001',
+    type: 'player_report',
+    message:
+      'The opponent opened the feedback modal by mistake, but the match still completed normally. No action needed.',
+    sourcePage: 'match',
+    submitter: {
+      userId: 'admin-reviewer-1',
+      username: 'operator_ivy',
+      provider: 'google',
+      nakamaUserId: 'nakama-admin-1',
+    },
+    matchContext: {
+      matchId: 'match-88011',
+    },
+    reportedUser: {
+      userId: 'player-7742',
+      username: 'board_breaker',
+    },
+    createdAt: '2026-04-18T11:20:00.000Z',
+  },
+  {
+    id: 'feedback-20260418-002',
+    type: 'feature_request',
+    message:
+      'Add a compact indicator that shows whether the Play Online lobby has a fresh open table without waiting for the poll refresh.',
+    sourcePage: 'play_online',
+    submitter: {
+      userId: 'player-1204',
+      username: 'sunlit_scribe',
+      provider: 'guest',
+      nakamaUserId: 'nakama-player-1204',
+    },
+    matchContext: null,
+    reportedUser: null,
+    createdAt: '2026-04-18T10:58:00.000Z',
+  },
+  {
+    id: 'feedback-20260418-003',
+    type: 'bug',
+    message:
+      'The home screen feedback button overlaps the wallet chip at the narrowest mobile width when the browser zoom is above 110%.',
+    sourcePage: 'home',
+    submitter: {
+      userId: 'player-4011',
+      username: 'quiet_path',
+      provider: 'google',
+      nakamaUserId: 'nakama-player-4011',
+    },
+    matchContext: null,
+    reportedUser: null,
+    createdAt: '2026-04-18T09:12:00.000Z',
   },
 ]

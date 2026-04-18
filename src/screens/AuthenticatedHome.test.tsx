@@ -171,8 +171,8 @@ describe('AuthenticatedHome', () => {
     expect(view.getByText('Michel')).toBeTruthy();
     expect(view.getByLabelText('37 coins')).toBeTruthy();
     expect(view.getByLabelText('Current progression rank badge: Apprentice Scribe')).toBeTruthy();
-    expect(view.getByText('Logout')).toBeTruthy();
-    expect(view.getByText('Inventory')).toBeTruthy();
+    expect(view.getByLabelText('Logout')).toBeTruthy();
+    expect(view.getByLabelText('Open inventory')).toBeTruthy();
     expect(view.getByText('XP & Rank')).toBeTruthy();
     expect(view.getByText('Elo Rating')).toBeTruthy();
     expect(view.getAllByText('Challenges')).toHaveLength(2);
@@ -193,7 +193,7 @@ describe('AuthenticatedHome', () => {
     fireEvent.press(view.getByText('Quick Play'));
     fireEvent.press(view.getByText('Play Online'));
     fireEvent.press(view.getByText('Tutorial'));
-    fireEvent.press(view.getByText('Inventory'));
+    fireEvent.press(view.getByLabelText('Open inventory'));
 
     expect(mockPush).toHaveBeenCalledWith('/leaderboard');
     expect(mockPush).toHaveBeenCalledWith('/challenges');
@@ -202,6 +202,18 @@ describe('AuthenticatedHome', () => {
     expect(mockPush).toHaveBeenCalledWith('/(game)/inventory');
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('/match/local-'));
+    });
+  });
+
+  it('opens the shared feedback composer from the floating button', async () => {
+    const view = render(<AuthenticatedHome />);
+
+    expect(view.getByText('flag')).toBeTruthy();
+    fireEvent.press(view.getByLabelText('Send feedback'));
+
+    await waitFor(() => {
+      expect(view.getByText('Send Feedback')).toBeTruthy();
+      expect(view.getByText('Home')).toBeTruthy();
     });
   });
 

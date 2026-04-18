@@ -67,6 +67,8 @@ describe("InitModule tournament RPC registration", () => {
         "admin_set_limited_time_event",
         "admin_remove_limited_time_event",
         "admin_get_store_stats",
+        "submit_feedback",
+        "admin_list_feedback",
       ]),
     );
     expect(initializer.registerMatch).toHaveBeenCalledWith(
@@ -130,6 +132,7 @@ describe("InitModule tournament RPC registration", () => {
     expect(entrypointSource).toContain(
       "initializer.registerRpc(RPC_ADMIN_GET_STORE_STATS, rpcAdminGetStoreStats);",
     );
+    expect(entrypointSource).toContain("registerFeedbackRpcs(initializer);");
     expect(entrypointSource).toContain(
       "initializer.registerMatch(MATCH_HANDLER, {",
     );

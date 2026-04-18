@@ -29,6 +29,7 @@ import {
   readNumberField,
   readStringField,
 } from './runtime'
+import { formatTournamentEntryFee } from '../tournamentFees'
 
 const RPC_ADMIN_LIST_TOURNAMENTS = 'rpc_admin_list_tournaments'
 const RPC_ADMIN_GET_TOURNAMENT_RUN = 'rpc_admin_get_tournament_run'
@@ -77,7 +78,9 @@ function formatPrizePool(metadata: Record<string, unknown>) {
     return explicitPrizePool
   }
 
-  const buyIn = readStringField(metadata, ['buyIn', 'buy_in']) ?? 'Free'
+  const buyIn = formatTournamentEntryFee(
+    readStringField(metadata, ['buyIn', 'buy_in', 'entryFee', 'entry_fee']) ?? 'Free',
+  )
   return buyIn === 'Free' ? 'Not configured' : `${buyIn} buy-in`
 }
 
@@ -332,7 +335,9 @@ function normalizeTournament(runValue: unknown, nakamaTournamentValue: unknown):
     maxEntrants,
     startAt: startAt ?? createdAt,
     endAt,
-    buyIn: readStringField(metadata, ['buyIn', 'buy_in']) ?? 'Free',
+    buyIn: formatTournamentEntryFee(
+      readStringField(metadata, ['buyIn', 'buy_in', 'entryFee', 'entry_fee']) ?? 'Free',
+    ),
     region: readStringField(metadata, ['region']) ?? 'Global',
     prizePool: formatPrizePool(metadata),
     bots:
@@ -522,7 +527,7 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
       roundCount,
       startAt: input.startAt,
       endAt: null,
-      buyIn: 'Free',
+      buyIn: formatTournamentEntryFee(input.entryFee),
       region: 'Global',
       prizePool: 'Not configured',
       bots: {
@@ -546,6 +551,8 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
         xpPerMatchWin: input.xpPerMatchWin,
         xpForTournamentChampion: input.xpForTournamentChampion,
         gemsForRank1: input.gemsForRank1,
+        entryFee: input.entryFee,
+        buyIn: input.entryFee,
         autoAddBots: input.autoAddBots,
         botDifficulty: input.autoAddBots ? input.botDifficulty ?? DEFAULT_BOT_DIFFICULTY : null,
       },
@@ -576,6 +583,8 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
         xpPerMatchWin: input.xpPerMatchWin,
         xpForTournamentChampion: input.xpForTournamentChampion,
         gemsForRank1: input.gemsForRank1,
+        entryFee: input.entryFee,
+        buyIn: input.entryFee,
         autoAddBots: input.autoAddBots,
         botDifficulty: input.autoAddBots ? input.botDifficulty ?? DEFAULT_BOT_DIFFICULTY : null,
       },

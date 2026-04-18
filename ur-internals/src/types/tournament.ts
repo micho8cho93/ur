@@ -272,6 +272,7 @@ export interface CreateTournamentInput {
   gameMode: string
   entrants: number
   startAt: string
+  entryFee: string
   autoAddBots: boolean
   botDifficulty: BotDifficulty | null
   joinRequired: boolean

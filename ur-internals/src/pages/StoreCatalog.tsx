@@ -204,11 +204,13 @@ async function uploadedAssetFromFile(file: File, type: CosmeticType): Promise<Up
 
 function AssetPreview({
   asset,
+  secondaryAsset,
   item,
   onOpen,
 }: {
   asset?: UploadedCosmeticAsset | null
-  item: Pick<CosmeticDefinition, 'name' | 'assetKey'>
+  secondaryAsset?: UploadedCosmeticAsset | null
+  item: Pick<CosmeticDefinition, 'name' | 'assetKey' | 'type'>
   onOpen?: () => void
 }) {
   if (!asset) {
@@ -221,6 +223,19 @@ function AssetPreview({
   }
 
   const label = `${asset.fileName} (${formatBytes(asset.sizeBytes)})`
+  const secondaryLabel = secondaryAsset ? `${secondaryAsset.fileName} (${formatBytes(secondaryAsset.sizeBytes)})` : null
+
+  if (secondaryAsset && item.type === 'dice_animation') {
+    return (
+      <button className="asset-preview asset-preview__button" type="button" onClick={onOpen}>
+        <div className="asset-preview__dice-stack" aria-hidden="true">
+          <img className="asset-preview__image" src={asset.dataUrl} alt="" />
+          <img className="asset-preview__image" src={secondaryAsset.dataUrl} alt="" />
+        </div>
+        <span className="muted">{`${label} · ${secondaryLabel}`}</span>
+      </button>
+    )
+  }
 
   if (asset.mediaType === 'audio') {
     return (
@@ -289,6 +304,7 @@ export function StoreCatalogPage() {
       render: (item) => (
         <AssetPreview
           asset={item.uploadedAsset}
+          secondaryAsset={item.uploadedAsset2}
           item={item}
           onOpen={() => {
             setPreviewItem(item)
@@ -581,9 +597,11 @@ export function StoreCatalogPage() {
                 <div className="asset-edit-preview">
                   <AssetPreview
                     asset={form.uploadedAsset}
+                    secondaryAsset={form.type === 'dice_animation' ? form.uploadedAsset2 : null}
                     item={{
                       name: form.name || form.uploadedAsset.fileName,
                       assetKey: form.assetKey || form.id || 'uploaded',
+                      type: form.type,
                     }}
                     onOpen={() => {
                       if (form.uploadedAsset) {
@@ -620,6 +638,7 @@ export function StoreCatalogPage() {
                         item={{
                           name: form.name || form.uploadedAsset2.fileName,
                           assetKey: form.assetKey || form.id || 'uploaded',
+                          type: form.type,
                         }}
                         onOpen={() => {
                           if (form.uploadedAsset2) {
@@ -699,7 +718,18 @@ export function StoreCatalogPage() {
                 Close
               </button>
             </div>
-            {previewItem.uploadedAsset.mediaType === 'video' ? (
+            {previewItem.type === 'dice_animation' && previewItem.uploadedAsset2 ? (
+              <div className="asset-modal__dice-grid">
+                <figure className="asset-modal__dice-frame">
+                  <img className="asset-modal__image" src={previewItem.uploadedAsset.dataUrl} alt={`${previewItem.name} frame 1`} />
+                  <figcaption className="muted">{previewItem.uploadedAsset.fileName}</figcaption>
+                </figure>
+                <figure className="asset-modal__dice-frame">
+                  <img className="asset-modal__image" src={previewItem.uploadedAsset2.dataUrl} alt={`${previewItem.name} frame 2`} />
+                  <figcaption className="muted">{previewItem.uploadedAsset2.fileName}</figcaption>
+                </figure>
+              </div>
+            ) : previewItem.uploadedAsset.mediaType === 'video' ? (
               <video className="asset-modal__video" controls autoPlay loop src={previewItem.uploadedAsset.dataUrl} />
             ) : previewItem.uploadedAsset.mediaType === 'audio' ? (
               <audio className="asset-modal__audio" controls autoPlay src={previewItem.uploadedAsset.dataUrl} />

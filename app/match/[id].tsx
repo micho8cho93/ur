@@ -9,9 +9,10 @@ import {
 import { AudioSettingsModal } from '@/components/game/AudioSettingsModal';
 import { AmbientBackgroundEffects } from '@/components/game/AmbientBackgroundEffects';
 import { BoardDropIntro } from '@/components/game/BoardDropIntro';
+import { FeedbackComposerModal } from '@/components/feedback/FeedbackComposerModal';
 import { Dice, DiceStageVisual } from '@/components/game/Dice';
 import { EdgeScore } from '@/components/game/EdgeScore';
-import { EmojiReactionMenu, type EmojiReactionMenuOption } from '@/components/game/EmojiReactionMenu';
+import { EmojiReactionMenu } from '@/components/game/EmojiReactionMenu';
 import {
   FloatingEmojiReactions,
   type FloatingEmojiReactionItem,
@@ -90,6 +91,7 @@ import {
 } from '@/src/tournaments/terminalOutcome';
 import { useTournamentAdvanceFlow } from '@/src/tournaments/useTournamentAdvanceFlow';
 import { useScreenTransition } from '@/src/transitions/ScreenTransitionContext';
+import { useInventory } from '@/src/store/InventoryContext';
 import {
   getBotScoreTitle,
   getHumanScoreTitle,
@@ -98,6 +100,12 @@ import {
 } from '@/src/match/playerTitles';
 import { resolveMatchScoreRankTitles } from '@/src/match/scoreRankTitles';
 import { isTournamentBotUserId } from '@/shared/tournamentBots';
+import type { CosmeticDefinition } from '@/shared/cosmetics';
+import {
+  ALL_EMOJI_REACTION_OPTIONS,
+  DEFAULT_EMOJI_REACTION_OPTIONS,
+  EQUIPPABLE_EMOJI_REACTION_OPTIONS,
+} from '@/shared/emojiReactions';
 import { getAppendedHistoryEntries } from '@/shared/historyWindow';
 import { useGameStore } from '@/store/useGameStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -663,20 +671,7 @@ const MATCH_MOMENT_CUES: Record<MatchMomentCueKind, Omit<MatchMomentIndicatorCue
   },
 };
 
-const EMOJI_REACTION_OPTIONS: readonly EmojiReactionMenuOption[] = [
-  { key: 'laughing', emoji: '😂', label: 'laughing' },
-  { key: 'cool', emoji: '😎', label: 'cool' },
-  { key: 'fire', emoji: '🔥', label: 'fire' },
-  { key: 'omg', emoji: '😱', label: 'omg' },
-  { key: 'skeleton', emoji: '💀', label: 'skeleton' },
-  { key: 'sad', emoji: '😢', label: 'sad face' },
-  { key: 'hugging', emoji: '🫂', label: 'hugging people' },
-  { key: 'angry', emoji: '😠', label: 'angry' },
-  { key: 'eyes', emoji: '👀', label: 'eyes' },
-  { key: 'question', emoji: '❓', label: 'question mark' },
-] as const;
-
-const EMOJI_BY_KEY: Record<EmojiReactionKey, string> = EMOJI_REACTION_OPTIONS.reduce(
+const EMOJI_BY_KEY: Record<EmojiReactionKey, string> = ALL_EMOJI_REACTION_OPTIONS.reduce(
   (entries, option) => ({
     ...entries,
     [option.key]: option.emoji,
@@ -754,6 +749,7 @@ export function GameRoom() {
     [MATCH_CUE_FONT_FAMILY]: require('../../assets/fonts/CinzelDecorative-Bold.ttf'),
   });
   const { user } = useAuth();
+  const { equippedEmoteCosmetics } = useInventory();
 
   const matchId = useMemo(() => (Array.isArray(id) ? id[0] : id), [id]);
   const offlineParam = useMemo(() => (Array.isArray(offline) ? offline[0] : offline), [offline]);
@@ -1034,6 +1030,7 @@ export function GameRoom() {
       }),
     [authenticatedUserId, authoritativePlayers, playerColor],
   );
+  const cosmeticPlayerColor = isOfflineLocalPvPMatch ? null : resolvedPlayerColor;
   const scoreTitles = useMemo<Record<PlayerColor, string>>(() => {
     if (isOffline) {
       if (isOfflineLocalPvPMatch) {
@@ -1213,6 +1210,25 @@ export function GameRoom() {
 
     return null;
   }, [authoritativePlayers, authenticatedUserId]);
+  const opponentFeedbackLabel = useMemo(() => {
+    if (!authoritativePlayers || !opponentUserId) {
+      return null;
+    }
+
+    const opponentColor =
+      authoritativePlayers.light.userId === opponentUserId
+        ? 'light'
+        : authoritativePlayers.dark.userId === opponentUserId
+          ? 'dark'
+          : null;
+
+    if (!opponentColor) {
+      return opponentUserId;
+    }
+
+    const opponent = authoritativePlayers[opponentColor];
+    return opponent.title ?? opponent.rankTitle ?? opponent.userId ?? opponentUserId;
+  }, [authoritativePlayers, opponentUserId]);
   const myRematchDecision = useMemo<RematchDecision>(() => {
     if (!authoritativeRematch || !authenticatedUserId) {
       return 'pending';
@@ -1352,6 +1368,7 @@ export function GameRoom() {
   const [isValidatingTournamentExit, setIsValidatingTournamentExit] = React.useState(false);
   const [tournamentExitValidationFailed, setTournamentExitValidationFailed] = React.useState(false);
   const [showAudioSettings, setShowAudioSettings] = React.useState(false);
+  const [showFeedbackComposer, setShowFeedbackComposer] = React.useState(false);
   const [showTopMenu, setShowTopMenu] = React.useState(false);
   const [showMatchStatusInfo, setShowMatchStatusInfo] = React.useState(false);
   const [showEmojiReactionMenu, setShowEmojiReactionMenu] = React.useState(false);
@@ -1496,6 +1513,30 @@ export function GameRoom() {
   const previousJoinedPlayerCountRef = useRef(0);
   const activeRouteMatchIdRef = useRef<string | null>(matchId ?? null);
   activeRouteMatchIdRef.current = matchId ?? null;
+  const previousGameState = previousStateRef.current.state;
+  const isBotRollVisualPending =
+    isOfflineBotMatch &&
+    previousStateRef.current.matchId === (matchId ?? null) &&
+    previousGameState.currentTurn === 'dark' &&
+    previousGameState.rollValue === null &&
+    gameState.currentTurn === 'dark' &&
+    gameState.rollValue !== null;
+  const isRollingVisualActive = rollingVisual || isBotRollVisualPending;
+  const equippedEmojiReactionOptions = useMemo(() => {
+    const equippedEmotes = equippedEmoteCosmetics
+      .filter((cosmetic): cosmetic is CosmeticDefinition => Boolean(cosmetic))
+      .slice(0, EQUIPPABLE_EMOJI_REACTION_OPTIONS.length);
+
+    return equippedEmotes.map((cosmetic, index) => ({
+      key: EQUIPPABLE_EMOJI_REACTION_OPTIONS[index].key,
+      emoji: EQUIPPABLE_EMOJI_REACTION_OPTIONS[index].emoji,
+      label: cosmetic.name,
+    }));
+  }, [equippedEmoteCosmetics]);
+  const emojiReactionOptions = useMemo(
+    () => [...DEFAULT_EMOJI_REACTION_OPTIONS, ...equippedEmojiReactionOptions],
+    [equippedEmojiReactionOptions],
+  );
 
   const appendFloatingReaction = React.useCallback(
     (payload: EmojiReactionBroadcastPayload) => {
@@ -2310,7 +2351,7 @@ export function GameRoom() {
   }, [clearRollTimer, showHeldRollResult]);
 
   useEffect(() => {
-    if (rollingVisual) {
+    if (isRollingVisualActive) {
       return;
     }
 
@@ -2318,7 +2359,7 @@ export function GameRoom() {
     if (pendingHeldRollDisplay !== null) {
       showHeldRollResult(pendingHeldRollDisplay);
     }
-  }, [rollingVisual, showHeldRollResult]);
+  }, [isRollingVisualActive, showHeldRollResult]);
 
   const applyTutorialSnapshot = React.useCallback(
     (nextState: GameState) => {
@@ -2359,7 +2400,7 @@ export function GameRoom() {
         showRulesIntroModal ||
         gameState.phase !== 'rolling' ||
         gameState.currentTurn !== tutorialPendingStep.player ||
-        rollingVisual
+        isRollingVisualActive
       ) {
         return;
       }
@@ -2452,7 +2493,7 @@ export function GameRoom() {
       gameState,
       introsComplete,
       rollButtonLatchPhase,
-      rollingVisual,
+      isRollingVisualActive,
       scheduleRollVisualFallback,
       setTutorialCoachInterlude,
       serverRevision,
@@ -2461,6 +2502,7 @@ export function GameRoom() {
       showRulesIntroModal,
       tutorialCoachPhase,
       tutorialPendingStep,
+      isRollingVisualActive,
     ],
   );
 
@@ -2549,7 +2591,7 @@ export function GameRoom() {
   }, [clearTutorialProgressTimers, tutorialCoachPhase, tutorialLessonIndex, tutorialOpeningPageIndex]);
 
   const triggerLocalRoll = React.useCallback((options?: { autoTriggered?: boolean }) => {
-    if (showRulesIntroModal || !introsComplete || !canRoll || rollingVisual || rollButtonLatchPhase !== 'idle') {
+    if (showRulesIntroModal || !introsComplete || !canRoll || isRollingVisualActive || rollButtonLatchPhase !== 'idle') {
       return;
     }
 
@@ -2582,10 +2624,10 @@ export function GameRoom() {
     effectiveHistoryCount,
     roll,
     rollButtonLatchPhase,
-    rollingVisual,
     serverRevision,
     showRulesIntroModal,
     introsComplete,
+    isRollingVisualActive,
   ]);
 
   const setLiveMatchCue = React.useCallback((cue: MatchMomentIndicatorCue | null) => {
@@ -2820,7 +2862,7 @@ export function GameRoom() {
     }
 
     if (tutorialPendingActionStep.kind === 'ROLL') {
-      if (gameState.phase !== 'rolling' || gameState.currentTurn !== 'dark' || rollingVisual) {
+      if (gameState.phase !== 'rolling' || gameState.currentTurn !== 'dark' || isRollingVisualActive) {
         return;
       }
 
@@ -2856,7 +2898,7 @@ export function GameRoom() {
     handleTutorialMove,
     introsComplete,
     isPlaythroughTutorialMatch,
-    rollingVisual,
+    isRollingVisualActive,
     scheduleTutorialProgress,
     showAudioSettings,
     showMatchStatusInfo,
@@ -3843,7 +3885,7 @@ export function GameRoom() {
     setRollingVisual(false);
   }, [clearRollTimer, diceAnimationEnabled]);
   useEffect(() => {
-    if (!rollingVisual) {
+    if (!isRollingVisualActive) {
       return;
     }
 
@@ -3857,7 +3899,39 @@ export function GameRoom() {
 
     clearRollTimer();
     setRollingVisual(false);
-  }, [clearRollTimer, gameState.phase, gameState.rollValue, rollButtonLatchPhase, rollingVisual]);
+  }, [clearRollTimer, gameState.phase, gameState.rollValue, rollButtonLatchPhase, isRollingVisualActive]);
+  useEffect(() => {
+    if (
+      !diceAnimationEnabled ||
+      !isOfflineBotMatch ||
+      gameState.currentTurn !== 'dark' ||
+      gameState.rollValue === null ||
+      rollingVisual
+    ) {
+      return;
+    }
+
+    const previousSnapshot = previousStateRef.current;
+    if (
+      previousSnapshot.matchId !== (matchId ?? null) ||
+      previousSnapshot.state.phase !== 'rolling' ||
+      previousSnapshot.state.currentTurn !== 'dark' ||
+      previousSnapshot.state.rollValue !== null
+    ) {
+      return;
+    }
+
+    setRollingVisual(true);
+    scheduleRollVisualFallback();
+  }, [
+    diceAnimationEnabled,
+    gameState.currentTurn,
+    gameState.rollValue,
+    isOfflineBotMatch,
+    matchId,
+    rollingVisual,
+    scheduleRollVisualFallback,
+  ]);
   useEffect(() => {
     if (!cueSystemReady || !matchId || !hasAssignedColor || !introsComplete) {
       return;
@@ -4015,7 +4089,7 @@ export function GameRoom() {
       isOfflineLocalPvPMatch ||
       isScriptedTutorialPhase ||
       !canRoll ||
-      rollingVisual ||
+      isRollingVisualActive ||
       rollButtonLatchPhase !== 'idle' ||
       showRulesIntroModal ||
       showAudioSettings ||
@@ -4044,7 +4118,7 @@ export function GameRoom() {
     isOfflineLocalPvPMatch,
     isScriptedTutorialPhase,
     rollButtonLatchPhase,
-    rollingVisual,
+    isRollingVisualActive,
     showRulesIntroModal,
     showAudioSettings,
     showMatchStatusInfo,
@@ -4646,7 +4720,7 @@ export function GameRoom() {
       localRollAudioPendingRef.current = false;
     }
 
-    if (rollValueChanged && gameState.rollValue !== null && !shouldSkipResolvedRollAudio && !rollingVisual && !isBotRoll) {
+    if (rollValueChanged && gameState.rollValue !== null && !shouldSkipResolvedRollAudio && !isRollingVisualActive && !isBotRoll) {
       void gameAudio.play('roll');
     }
 
@@ -4659,7 +4733,7 @@ export function GameRoom() {
             label: noMoveRollValue > 0 ? 'No Move' : null,
           } satisfies HeldRollDisplay;
 
-          if (rollingVisual) {
+          if (isRollingVisualActive) {
             pendingHeldRollDisplayRef.current = heldDisplay;
           } else {
             showHeldRollResult(heldDisplay);
@@ -4728,7 +4802,7 @@ export function GameRoom() {
     isOffline,
     matchId,
     playerColor,
-    rollingVisual,
+    isRollingVisualActive,
     showHeldRollResult,
     useAuthoritativeRollDisplay,
     validMoves.length,
@@ -5117,12 +5191,14 @@ export function GameRoom() {
   const topChromeHeight = isMobileWebLayout ? Math.round(46 * MOBILE_WEB_TOP_CHROME_SIZE_SCALE) : 36;
   const webTopChromeTopInset = Math.max(insets.top, urTheme.spacing.xs);
   const mobileTopChromeOffset = 0;
+  const mobileWebTopChromeDrop = isMobileWebLayout ? Math.max(10, Math.round(topChromeHeight * 0.18)) : 0;
   const topChromeTop = isWebLayout && boardTargetFrame
     ? Math.round(
       webTopChromeTopInset +
+      mobileWebTopChromeDrop +
       Math.max(0, boardTargetFrame.y - webTopChromeTopInset - topChromeHeight) / 2,
     )
-    : insets.top + mobileTopChromeOffset;
+    : insets.top + mobileTopChromeOffset + mobileWebTopChromeDrop;
   const topChromeBottom = topChromeTop + topChromeHeight;
   const scoreOverlayTop = topChromeBottom + urTheme.spacing.xs;
   const useInlineTopChromeLayout = isMobileLayout || isWebLayout;
@@ -5584,8 +5660,8 @@ export function GameRoom() {
           authoritativeActiveTimedPlayerColor === gameState.currentTurn &&
           authoritativeActiveTimedPhase === gameState.phase);
   const showPersistentDiceVisual = introsComplete && diceAnimationEnabled;
-  const pauseAmbientEffects = rollingVisual || hasActiveBoardMoveAnimation;
-  const showDestinationHighlights = introsComplete && !rollingVisual && gameState.rollValue !== null;
+  const pauseAmbientEffects = isRollingVisualActive || hasActiveBoardMoveAnimation;
+  const showDestinationHighlights = introsComplete && !isRollingVisualActive && gameState.rollValue !== null;
   const displayedValidMoves = useMemo(() => {
     if (isSpectatorMode) {
       return [];
@@ -5636,7 +5712,7 @@ export function GameRoom() {
         : null;
   const displayedRollText = displayedRollLabel ?? (displayedRollValue !== null ? String(displayedRollValue) : null);
   const shouldJackpotGlowRollText =
-    !rollingVisual &&
+    !isRollingVisualActive &&
     displayedRollLabel === null &&
     displayedRollText === JACKPOT_ROLL_VALUE;
 
@@ -5649,9 +5725,9 @@ export function GameRoom() {
   const showMobileRollResult =
     introsComplete &&
     isMobileLayout &&
-    !rollingVisual &&
+    !isRollingVisualActive &&
     displayedRollValue !== null;
-  const showWebRollResult = introsComplete && showWebSideDiceVisual && !rollingVisual && displayedRollValue !== null;
+  const showWebRollResult = introsComplete && showWebSideDiceVisual && !isRollingVisualActive && displayedRollValue !== null;
   const showMobileWebBoardGapRollResult =
     isMobileWebLayout &&
     useMobileWebVerticalDiceReels &&
@@ -5831,6 +5907,7 @@ export function GameRoom() {
           highlightMode="theatrical"
           validMovesOverride={displayedValidMoves}
           playerColorOverride={isOfflineLocalPvPMatch ? gameState.currentTurn : undefined}
+          cosmeticPlayerColor={cosmeticPlayerColor}
           onMakeMoveOverride={handleBoardMove}
           highlightedPieceId={highlightedOpponentPiece?.pieceId ?? null}
           highlightedPieceColor={highlightedOpponentPiece?.color ?? null}
@@ -5855,6 +5932,7 @@ export function GameRoom() {
       highlightMode="theatrical"
       validMovesOverride={displayedValidMoves}
       playerColorOverride={isOfflineLocalPvPMatch ? gameState.currentTurn : undefined}
+      cosmeticPlayerColor={cosmeticPlayerColor}
       highlightedPieceId={highlightedOpponentPiece?.pieceId ?? null}
       highlightedPieceColor={highlightedOpponentPiece?.color ?? null}
       onHighlightedPieceSettled={settleHighlightedOpponentPiece}
@@ -5886,7 +5964,7 @@ export function GameRoom() {
           void sendEmojiReaction(emoji);
         }}
         onToggle={handleToggleEmojiReactionMenu}
-        options={EMOJI_REACTION_OPTIONS}
+        options={emojiReactionOptions}
         remainingCount={emojiReactionsRemaining}
         testID="emoji-reaction-control"
         buttonWidth={buttonWidth}
@@ -6048,7 +6126,7 @@ export function GameRoom() {
           durationMs={diceAnimationDurationMs}
           onResultShown={handleRollResultShown}
           rollValue={displayedRollValue}
-          rolling={rollingVisual}
+          rolling={isRollingVisualActive}
           viewportHeight={viewportHeight}
           viewportWidth={viewportWidth}
           visible={showPersistentDiceVisual}
@@ -6070,7 +6148,7 @@ export function GameRoom() {
           <DiceStageVisual
             animationDurationMs={diceAnimationDurationMs}
             value={displayedRollValue}
-            rolling={rollingVisual}
+            rolling={isRollingVisualActive}
             canRoll={introsComplete && canRoll}
             compact
             onResultShown={handleRollResultShown}
@@ -6099,7 +6177,7 @@ export function GameRoom() {
                     animationDurationMs={diceAnimationDurationMs}
                     value={displayedRollValue}
                     resultLabel={displayedRollLabel}
-                    rolling={rollingVisual}
+                    rolling={isRollingVisualActive}
                     onRoll={handleRoll}
                     onResultShown={handleRollResultShown}
                     canRoll={introsComplete && canRoll}
@@ -6217,7 +6295,7 @@ export function GameRoom() {
               <DiceStageVisual
                 animationDurationMs={diceAnimationDurationMs}
                 value={displayedRollValue}
-                rolling={rollingVisual}
+                rolling={isRollingVisualActive}
                 canRoll={introsComplete && canRoll}
                 compact
                 diceImageScale={mobileBoardGapControlMetrics.diceImageScale}
@@ -6283,7 +6361,7 @@ export function GameRoom() {
                   animationDurationMs={diceAnimationDurationMs}
                   value={displayedRollValue}
                   resultLabel={displayedRollLabel}
-                  rolling={rollingVisual}
+                  rolling={isRollingVisualActive}
                   onRoll={handleRoll}
                   onResultShown={handleRollResultShown}
                   canRoll={introsComplete && canRoll}
@@ -6398,6 +6476,20 @@ export function GameRoom() {
                   <Text style={styles.topMenuLabel}>Copy Code</Text>
                 </Pressable>
               ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Send feedback"
+                onPress={() => {
+                  resumeAnnouncementCuesFromInteraction()
+                  setShowTopMenu(false)
+                  setShowMatchStatusInfo(false)
+                  setShowFeedbackComposer(true)
+                }}
+                style={({ pressed }) => [styles.topMenuItem, pressed && styles.topMenuItemPressed]}
+              >
+                <MaterialIcons name="flag" size={18} color={TOP_CHROME_ACCENT} />
+                <Text style={styles.topMenuLabel}>Send Feedback</Text>
+              </Pressable>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Open audio settings"
@@ -6654,6 +6746,7 @@ export function GameRoom() {
                 <PieceRail
                   label="Light Reserve"
                   color="light"
+                  cosmeticPlayerColor={cosmeticPlayerColor}
                   tokenVariant="light"
                   trayScale={reserveTrayScale}
                   piecePixelSize={scaledReservePiecePixelSize}
@@ -6726,22 +6819,23 @@ export function GameRoom() {
                   },
                 ]}
               >
-                {showWebSideDiceVisual ? (
-                  <View pointerEvents="none" style={[styles.webDiceVisualSlot, { height: webDiceVisualSlotHeight }]}>
-                    <DiceStageVisual
-                      animationDurationMs={diceAnimationDurationMs}
-                      value={displayedRollValue}
-                      rolling={rollingVisual}
-                      canRoll={introsComplete && canRoll}
-                      compact={compactSupportUi || webDiceVisualSlotHeight < 140}
-                      onResultShown={handleRollResultShown}
-                      visible={showPersistentDiceVisual}
-                    />
-                  </View>
-                ) : null}
+              {showWebSideDiceVisual ? (
+                <View pointerEvents="none" style={[styles.webDiceVisualSlot, { height: webDiceVisualSlotHeight }]}>
+                  <DiceStageVisual
+                    animationDurationMs={diceAnimationDurationMs}
+                    value={displayedRollValue}
+                    rolling={isRollingVisualActive}
+                    canRoll={introsComplete && canRoll}
+                    compact={compactSupportUi || webDiceVisualSlotHeight < 140}
+                    onResultShown={handleRollResultShown}
+                    visible={showPersistentDiceVisual}
+                  />
+                </View>
+              ) : null}
                 <PieceRail
                   label="Dark Reserve"
                   color="dark"
+                  cosmeticPlayerColor={cosmeticPlayerColor}
                   tokenVariant="dark"
                   trayScale={reserveTrayScale}
                   piecePixelSize={scaledReservePiecePixelSize}
@@ -6758,7 +6852,7 @@ export function GameRoom() {
                         animationDurationMs={diceAnimationDurationMs}
                         value={displayedRollValue}
                         resultLabel={displayedRollLabel}
-                        rolling={rollingVisual}
+                        rolling={isRollingVisualActive}
                         onRoll={handleRoll}
                         onResultShown={handleRollResultShown}
                         canRoll={introsComplete && canRoll}
@@ -6781,7 +6875,7 @@ export function GameRoom() {
                       animationDurationMs={diceAnimationDurationMs}
                       value={displayedRollValue}
                       resultLabel={displayedRollLabel}
-                      rolling={rollingVisual}
+                      rolling={isRollingVisualActive}
                       onRoll={handleRoll}
                       onResultShown={handleRollResultShown}
                       canRoll={introsComplete && canRoll}
@@ -6825,6 +6919,7 @@ export function GameRoom() {
                     <PieceRail
                       label="Light Reserve"
                       color="light"
+                      cosmeticPlayerColor={cosmeticPlayerColor}
                       tokenVariant="light"
                       orientation="vertical"
                       showTrayArt={!useTraylessMobileWebReserveRails}
@@ -6870,6 +6965,7 @@ export function GameRoom() {
                     <PieceRail
                       label="Dark Reserve"
                       color="dark"
+                      cosmeticPlayerColor={cosmeticPlayerColor}
                       tokenVariant="dark"
                       orientation="vertical"
                       showTrayArt={!useTraylessMobileWebReserveRails}
@@ -6898,7 +6994,7 @@ export function GameRoom() {
                             animationDurationMs={diceAnimationDurationMs}
                             value={displayedRollValue}
                             resultLabel={displayedRollLabel}
-                            rolling={rollingVisual}
+                            rolling={isRollingVisualActive}
                             onRoll={handleRoll}
                             onResultShown={handleRollResultShown}
                             canRoll={introsComplete && canRoll}
@@ -6952,6 +7048,7 @@ export function GameRoom() {
                       <PieceRail
                         label="Light Reserve"
                         color="light"
+                        cosmeticPlayerColor={cosmeticPlayerColor}
                         tokenVariant="light"
                         piecePixelSize={scaledReservePiecePixelSize}
                         reserveCount={lightReserve}
@@ -6966,6 +7063,7 @@ export function GameRoom() {
                       <PieceRail
                         label="Dark Reserve"
                         color="dark"
+                        cosmeticPlayerColor={cosmeticPlayerColor}
                         tokenVariant="dark"
                         piecePixelSize={scaledReservePiecePixelSize}
                         reserveCount={darkReserve}
@@ -6998,7 +7096,7 @@ export function GameRoom() {
                             animationDurationMs={diceAnimationDurationMs}
                             value={displayedRollValue}
                             resultLabel={displayedRollLabel}
-                            rolling={rollingVisual}
+                            rolling={isRollingVisualActive}
                             onRoll={handleRoll}
                             onResultShown={handleRollResultShown}
                             canRoll={introsComplete && canRoll}
@@ -7181,6 +7279,21 @@ export function GameRoom() {
         onToggleTimer={(enabled) => {
           void handleToggleBotTimer(enabled);
         }}
+      />
+      <FeedbackComposerModal
+        visible={showFeedbackComposer}
+        sourcePage="match"
+        initialType={opponentUserId ? 'player_report' : null}
+        matchContext={matchId ? { matchId } : null}
+        reportedUser={
+          opponentUserId
+            ? {
+                userId: opponentUserId,
+                username: opponentFeedbackLabel ?? opponentUserId,
+              }
+            : null
+        }
+        onClose={() => setShowFeedbackComposer(false)}
       />
       <PlayTutorialCoachModal
         visible={tutorialCoachVisible}

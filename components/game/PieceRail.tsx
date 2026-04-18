@@ -1,4 +1,5 @@
 import { urTheme } from '@/constants/urTheme';
+import { PlayerColor } from '@/logic/types';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
@@ -71,6 +72,7 @@ const MOBILE_RAIL_SCALE = 0.62;
 interface PieceRailProps {
   label?: string;
   color: 'light' | 'dark';
+  cosmeticPlayerColor?: PlayerColor | null;
   tokenVariant?: 'light' | 'dark' | 'reserve';
   orientation?: 'horizontal' | 'vertical';
   showTrayArt?: boolean;
@@ -108,6 +110,7 @@ interface RailSize {
 interface ReserveRailPieceProps {
   animateOnMount?: boolean;
   color: 'light' | 'dark';
+  cosmeticPlayerColor?: PlayerColor | null;
   pixelSize: number;
   slotIndex: number;
   variant: 'light' | 'dark' | 'reserve';
@@ -124,6 +127,7 @@ export const getNewlyVisibleReserveSlotIndices = (
 const ReserveRailPiece: React.FC<ReserveRailPieceProps> = ({
   animateOnMount = false,
   color,
+  cosmeticPlayerColor,
   pixelSize,
   slotIndex,
   variant,
@@ -185,6 +189,7 @@ const ReserveRailPiece: React.FC<ReserveRailPieceProps> = ({
     <Animated.View testID={`piece-rail-piece-shell-${slotIndex}`} style={[styles.reservePieceArrival, arrivalStyle]}>
       <Piece
         color={color}
+        cosmeticPlayerColor={cosmeticPlayerColor}
         pixelSize={pixelSize}
         variant={variant}
       />
@@ -194,6 +199,7 @@ const ReserveRailPiece: React.FC<ReserveRailPieceProps> = ({
 
 export const PieceRail: React.FC<PieceRailProps> = ({
   color,
+  cosmeticPlayerColor,
   tokenVariant,
   orientation = 'horizontal',
   showTrayArt = true,
@@ -633,6 +639,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
                 <ReserveRailPiece
                   animateOnMount={arrivingSlotIndices.includes(slotIndex)}
                   color={color}
+                  cosmeticPlayerColor={cosmeticPlayerColor}
                   pixelSize={reservePieceSize}
                   slotIndex={slotIndex}
                   variant={resolvedVariant}

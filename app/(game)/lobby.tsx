@@ -15,8 +15,9 @@ import {
   urTheme,
 } from '@/constants/urTheme';
 import { LobbyMode, useMatchmaking } from '@/hooks/useMatchmaking';
-import { MatchModeId, PRIVATE_MATCH_OPTIONS } from '@/logic/matchConfigs';
+import { MatchModeId, PRIVATE_MATCH_OPTIONS, getMatchConfig } from '@/logic/matchConfigs';
 import { listOpenOnlineMatches, type OpenOnlineMatch } from '@/services/matchmaking';
+import { nakamaService } from '@/services/nakama';
 import { getXpAwardAmount } from '@/shared/progression';
 import {
   PRIVATE_MATCH_CODE_LENGTH,
@@ -31,8 +32,10 @@ import {
   resolveHomeFredokaFontFamily,
   resolveHomeMagicFontFamily,
 } from '@/src/home/homeTheme';
+import { buildMatchRoutePath } from '@/src/match/buildMatchRoutePath';
 import { useTournamentList } from '@/src/tournaments/useTournamentList';
 import { useWallet } from '@/src/wallet/useWallet';
+import { useGameStore } from '@/store/useGameStore';
 import { useFonts } from 'expo-font';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -158,8 +161,10 @@ type OnlineMatchCardProps = {
   titleFontFamily: string;
   bodyFontFamily: string;
   joining: boolean;
+  spectating: boolean;
   disabled: boolean;
   onJoin: (match: OpenOnlineMatch) => void;
+  onSpectate: (match: OpenOnlineMatch) => void;
 };
 
 const OnlineMatchCard: React.FC<OnlineMatchCardProps> = ({
@@ -169,12 +174,16 @@ const OnlineMatchCard: React.FC<OnlineMatchCardProps> = ({
   titleFontFamily,
   bodyFontFamily,
   joining,
+  spectating,
   disabled,
   onJoin,
+  onSpectate,
 }) => {
-  const title = match.isCreator ? 'Your Open Match' : 'Open Wager Match';
-  const statusLabel = match.isCreator ? 'Waiting for opponent' : 'Ready to join';
+  const isLive = match.status === 'matched';
+  const title = isLive ? 'Live Wager Match' : match.isCreator ? 'Your Open Match' : 'Open Wager Match';
+  const statusLabel = isLive ? 'In Progress' : match.isCreator ? 'Waiting for opponent' : 'Ready to join';
   const canJoin = !match.isCreator && match.status === 'open' && !disabled;
+  const canSpectate = isLive && !disabled && !spectating;
 
   return (
     <View style={styles.onlineMatchCard}>
@@ -191,9 +200,11 @@ const OnlineMatchCard: React.FC<OnlineMatchCardProps> = ({
           </Text>
         </View>
         <View style={styles.onlineMatchMetaCell}>
-          <Text style={[styles.onlineMatchMetaLabel, { fontFamily: bodyFontFamily }]}>Open</Text>
+          <Text style={[styles.onlineMatchMetaLabel, { fontFamily: bodyFontFamily }]}>
+            {isLive ? 'State' : 'Open'}
+          </Text>
           <Text style={[styles.onlineMatchMetaValue, { fontFamily: bodyFontFamily }]}>
-            {getOpenMatchRemainingLabel(match, now)}
+            {isLive ? 'Live now' : getOpenMatchRemainingLabel(match, now)}
           </Text>
         </View>
         <View style={styles.onlineMatchMetaCell}>
@@ -205,13 +216,30 @@ const OnlineMatchCard: React.FC<OnlineMatchCardProps> = ({
       </View>
 
       <HomeLightButton
-        label={match.isCreator ? 'Waiting' : joining ? 'Joining...' : 'Join Match'}
+        label={
+          isLive
+            ? spectating
+              ? 'Opening...'
+              : 'Spectate'
+            : match.isCreator
+              ? 'Waiting'
+              : joining
+                ? 'Joining...'
+                : 'Join Match'
+        }
         fontLoaded={fontLoaded}
         size="compact"
-        loading={joining}
-        disabled={!canJoin || joining}
+        loading={joining || spectating}
+        disabled={isLive ? !canSpectate : !canJoin || joining}
         style={styles.onlineMatchButton}
-        onPress={() => onJoin(match)}
+        onPress={() => {
+          if (isLive) {
+            onSpectate(match);
+            return;
+          }
+
+          onJoin(match);
+        }}
       />
     </View>
   );
@@ -235,7 +263,15 @@ export default function Lobby() {
   const [isLoadingOpenMatches, setIsLoadingOpenMatches] = useState(false);
   const [openMatchesError, setOpenMatchesError] = useState<string | null>(null);
   const [joiningOpenMatchId, setJoiningOpenMatchId] = useState<string | null>(null);
+  const [spectatingOpenMatchId, setSpectatingOpenMatchId] = useState<string | null>(null);
   const [openMatchNow, setOpenMatchNow] = useState(() => Date.now());
+  const initGame = useGameStore((state) => state.initGame);
+  const setNakamaSession = useGameStore((state) => state.setNakamaSession);
+  const setUserId = useGameStore((state) => state.setUserId);
+  const setMatchToken = useGameStore((state) => state.setMatchToken);
+  const setOnlineMode = useGameStore((state) => state.setOnlineMode);
+  const setPlayerColor = useGameStore((state) => state.setPlayerColor);
+  const setSocketState = useGameStore((state) => state.setSocketState);
   const {
     createOpenMatch,
     joinOpenMatch,
@@ -292,7 +328,6 @@ export default function Lobby() {
   const titleFontFamily = resolveHomeMagicFontFamily(fontsLoaded);
   const bodyFontFamily = resolveHomeFredokaFontFamily(fontsLoaded);
   const buttonFontFamily = resolveHomeButtonFontFamily(fontsLoaded);
-
   useEffect(() => {
     if (mode === 'bot') {
       router.replace('/(game)/bot');
@@ -401,6 +436,34 @@ export default function Lobby() {
       }
     } finally {
       setJoiningOpenMatchId(null);
+    }
+  };
+
+  const handleSpectateOpenMatch = async (match: OpenOnlineMatch) => {
+    setSpectatingOpenMatchId(match.openMatchId);
+    try {
+      const session = await nakamaService.ensureAuthenticatedDevice();
+      if (!session.user_id) {
+        throw new Error('Authenticated session is missing user ID.');
+      }
+
+      setNakamaSession(session);
+      setUserId(session.user_id);
+      setOnlineMode('nakama');
+      setMatchToken(null);
+      setPlayerColor(null);
+      setSocketState('idle');
+      initGame(match.matchId, { matchConfig: getMatchConfig(match.modeId) });
+      router.push(
+        buildMatchRoutePath({
+          id: match.matchId,
+          modeId: match.modeId,
+          spectator: true,
+        }) as never,
+      );
+    } catch (error) {
+      setOpenMatchesError(error instanceof Error ? error.message : 'Unable to spectate that match.');
+      setSpectatingOpenMatchId(null);
     }
   };
 
@@ -690,16 +753,16 @@ export default function Lobby() {
                     Loading online matches...
                   </Text>
                   <Text style={[styles.featuredStateText, { fontFamily: bodyFontFamily }]}>
-                    Checking the open wager tables.
+                    Checking wager tables and live games.
                   </Text>
                 </View>
               ) : openMatches.length === 0 ? (
                 <View style={styles.featuredStateCard}>
                   <Text style={[styles.featuredStateTitle, { fontFamily: titleFontFamily }]}>
-                    No open online matches
+                    No online matches
                   </Text>
                   <Text style={[styles.featuredStateText, { fontFamily: bodyFontFamily }]}>
-                    Create a wagered match and it will appear here while it waits for an opponent.
+                    Create a wagered match, or check back when a table is live.
                   </Text>
                 </View>
               ) : (
@@ -713,9 +776,13 @@ export default function Lobby() {
                       titleFontFamily={titleFontFamily}
                       bodyFontFamily={bodyFontFamily}
                       joining={joiningOpenMatchId === match.openMatchId}
-                      disabled={isBusy}
+                      spectating={spectatingOpenMatchId === match.openMatchId}
+                      disabled={isBusy || spectatingOpenMatchId !== null}
                       onJoin={(selected) => {
                         void handleJoinOpenMatch(selected);
+                      }}
+                      onSpectate={(selected) => {
+                        void handleSpectateOpenMatch(selected);
                       }}
                     />
                   ))}
@@ -1049,41 +1116,11 @@ export default function Lobby() {
                     />
                   </OnlineActionPanel>
                 </View>
-
-                <View
-                  style={[
-                    styles.actionCell,
-                    isCompactLayout && styles.actionCellCompact,
-                    useFourColumnActionLayout
-                      ? styles.actionCellFourColumn
-                      : useThreeColumnLayout && styles.actionCellThreeColumn,
-                  ]}
-                >
-                  <OnlineActionPanel
-                    title="Spectate Live Match"
-                    subtitle="Watch active public matches without taking a player seat."
-                    titleFontFamily={titleFontFamily}
-                    bodyFontFamily={bodyFontFamily}
-                    compact={isCompactLayout}
-                  >
-                    <Text style={[styles.statusText, { fontFamily: bodyFontFamily }]}>
-                      Public matches only · Read-only
-                    </Text>
-
-                    <HomeLightButton
-                      label="Browse Live Matches"
-                      fontLoaded={fontsLoaded}
-                      size={isCompactLayout ? 'compact' : 'regular'}
-                      disabled={isBusy}
-                      style={styles.primaryActionButton}
-                      onPress={() => router.push('/(game)/spectate' as never)}
-                    />
-                  </OnlineActionPanel>
-                </View>
               </View>
             </View>
           </View>
         </ScrollView>
+
       </View>
     </>
   );

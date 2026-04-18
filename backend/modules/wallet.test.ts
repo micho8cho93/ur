@@ -1,5 +1,11 @@
 import { PREMIUM_CURRENCY_KEY, SOFT_CURRENCY_KEY } from "../../shared/wallet";
-import { addPremiumCurrency, getWalletResponseForUser, rpcGetWallet, spendPremiumCurrency } from "./wallet";
+import {
+  addPremiumCurrency,
+  getWalletResponseForUser,
+  rpcGetWallet,
+  spendPremiumCurrency,
+  spendSoftCurrency,
+} from "./wallet";
 
 describe("wallet RPC helpers", () => {
   it("returns zero Coins when the Nakama wallet is missing", () => {
@@ -153,6 +159,42 @@ describe("spendPremiumCurrency", () => {
     expect(() =>
       spendPremiumCurrency(nk, logger, { userId: "user-1", amount: 50, source: "cosmetic_purchase" }),
     ).toThrow("INSUFFICIENT_GEMS");
+    expect(nk.walletUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("spendSoftCurrency", () => {
+  const buildNk = (walletCoins: number) => ({
+    accountGetId: jest.fn(() => ({ wallet: { [SOFT_CURRENCY_KEY]: walletCoins } })),
+    walletUpdate: jest.fn(),
+  });
+
+  it("deducts coins when balance is sufficient", () => {
+    const nk = buildNk(200);
+    const logger = { info: jest.fn(), warn: jest.fn() };
+
+    const result = spendSoftCurrency(nk, logger, {
+      userId: "user-1",
+      amount: 50,
+      source: "tournament_entry_fee",
+    });
+
+    expect(result).toEqual({ spentSoftCurrency: 50 });
+    expect(nk.walletUpdate).toHaveBeenCalledWith(
+      "user-1",
+      { [SOFT_CURRENCY_KEY]: -50 },
+      expect.objectContaining({ source: "tournament_entry_fee" }),
+      true,
+    );
+  });
+
+  it("throws INSUFFICIENT_COINS when balance is too low", () => {
+    const nk = buildNk(10);
+    const logger = { info: jest.fn(), warn: jest.fn() };
+
+    expect(() =>
+      spendSoftCurrency(nk, logger, { userId: "user-1", amount: 50, source: "tournament_entry_fee" }),
+    ).toThrow("INSUFFICIENT_COINS");
     expect(nk.walletUpdate).not.toHaveBeenCalled();
   });
 });

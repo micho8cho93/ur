@@ -21,6 +21,7 @@ import {
   slugify,
 } from "./definitions";
 import { addPremiumCurrency } from "../wallet";
+import { formatTournamentEntryFee } from "../../../shared/tournamentFees";
 import {
   buildTournamentBotDisplayNames,
   buildTournamentBotSummary,
@@ -563,6 +564,10 @@ const buildRunResponseMetadata = (value: unknown): RuntimeMetadata => {
   const baseMetadata = readMetadataField(value, ["metadata"]);
   const explicitAutoAddBots = readBooleanField(value, ["autoAddBots", "auto_add_bots"]);
   const explicitBotDifficulty = readStringField(value, ["botDifficulty", "bot_difficulty"]);
+  const explicitEntryFee =
+    readStringField(value, ["entryFee", "entry_fee", "buyIn", "buy_in"]) ??
+    readStringField(baseMetadata, ["entryFee", "entry_fee", "buyIn", "buy_in"]);
+  const normalizedEntryFee = formatTournamentEntryFee(explicitEntryFee);
   const normalizedPolicy = normalizeTournamentBotPolicy({
     ...baseMetadata,
     ...(explicitAutoAddBots !== null ? { autoAddBots: explicitAutoAddBots } : {}),
@@ -571,6 +576,8 @@ const buildRunResponseMetadata = (value: unknown): RuntimeMetadata => {
 
   return {
     ...baseMetadata,
+    entryFee: normalizedEntryFee,
+    buyIn: normalizedEntryFee,
     autoAddBots: normalizedPolicy.autoAdd,
     botDifficulty:
       normalizedPolicy.autoAdd

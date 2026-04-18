@@ -150,6 +150,7 @@ import {
   RPC_CLAIM_USERNAME,
   RPC_GET_USERNAME_ONBOARDING_STATUS,
 } from "./usernameOnboarding";
+import { registerFeedbackRpcs } from "./feedback";
 import {
   RPC_ADMIN_CLOSE_TOURNAMENT,
   RPC_ADMIN_CREATE_TOURNAMENT_RUN,
@@ -2539,6 +2540,7 @@ function InitModule(
   initializer.registerRpc(RPC_ADMIN_SET_LIMITED_TIME_EVENT, rpcAdminSetLimitedTimeEvent);
   initializer.registerRpc(RPC_ADMIN_REMOVE_LIMITED_TIME_EVENT, rpcAdminRemoveLimitedTimeEvent);
   initializer.registerRpc(RPC_ADMIN_GET_STORE_STATS, rpcAdminGetStoreStats);
+  registerFeedbackRpcs(initializer);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,
@@ -2912,7 +2914,7 @@ function rpcListOpenOnlineMatches(
       return expireOpenOnlineMatchIfNeeded(logger, nk, record, getStorageObjectVersion(object), nowMs);
     })
     .filter((record): record is OpenOnlineMatchRecord => Boolean(record))
-    .filter((record) => record.status === "open")
+    .filter((record) => record.status === "open" || record.status === "matched")
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
     .map((record) => buildOpenOnlineMatchRpcModel(record, ctx.userId));
 
@@ -3065,7 +3067,7 @@ function rpcGetActiveOpenOnlineMatch(
 
 function rpcListSpectatableMatches(
   ctx: nkruntime.Context,
-  _logger: nkruntime.Logger,
+  logger: nkruntime.Logger,
   nk: nkruntime.Nakama,
   _payload: string
 ): string {
@@ -3075,19 +3077,52 @@ function rpcListSpectatableMatches(
 
   requireCompletedUsernameOnboarding(nk, ctx.userId);
 
-  const matches = listActiveTrackedMatches()
+  const matchesById = new Map<string, { matchId: string; modeId: string; startedAt: string | null; playerLabels: string[] }>();
+
+  listActiveTrackedMatches()
     .filter((match) =>
       !match.classification.private &&
       !match.classification.bot &&
       !match.classification.tournament &&
       match.playerLabels.length >= MAX_PLAYERS
     )
-    .map((match) => ({
-      matchId: match.matchId,
-      modeId: match.modeId,
-      startedAt: match.startedAt,
-      playerLabels: match.playerLabels.slice(0, MAX_PLAYERS),
-    }));
+    .forEach((match) => {
+      matchesById.set(match.matchId, {
+        matchId: match.matchId,
+        modeId: match.modeId,
+        startedAt: match.startedAt,
+        playerLabels: match.playerLabels.slice(0, MAX_PLAYERS),
+      });
+    });
+
+  const nowMs = Date.now();
+  listOpenOnlineMatchStorageObjects(logger, nk)
+    .map((object) => {
+      const record = normalizeOpenOnlineMatchRecord(object.value);
+      if (!record) {
+        return null;
+      }
+
+      return expireOpenOnlineMatchIfNeeded(logger, nk, record, getStorageObjectVersion(object), nowMs);
+    })
+    .filter((record): record is OpenOnlineMatchRecord => Boolean(record))
+    .filter((record) => record.status === "matched")
+    .forEach((record) => {
+      if (matchesById.has(record.matchId)) {
+        return;
+      }
+
+      matchesById.set(record.matchId, {
+        matchId: record.matchId,
+        modeId: record.modeId,
+        startedAt: record.updatedAt,
+        playerLabels: [],
+      });
+    });
+
+  const matches = Array.from(matchesById.values()).sort((left, right) =>
+    (right.startedAt ?? "").localeCompare(left.startedAt ?? "")
+  );
 
   return JSON.stringify({ matches });
 }

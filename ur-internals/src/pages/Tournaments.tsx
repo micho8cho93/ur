@@ -64,6 +64,11 @@ export function TournamentsPage() {
       ),
     },
     {
+      key: 'fee',
+      header: 'Entry fee',
+      render: (tournament) => tournament.buyIn,
+    },
+    {
       key: 'start',
       header: 'Start',
       render: (tournament) => (

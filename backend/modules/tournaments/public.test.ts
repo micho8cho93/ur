@@ -5,6 +5,7 @@ import {
   rpcLaunchTournamentMatch,
   rpcListPublicTournaments,
 } from './public';
+import { PREMIUM_CURRENCY_KEY, SOFT_CURRENCY_KEY } from '../../../shared/wallet';
 import {
   TOURNAMENT_BRACKET_READY_NOTIFICATION_CODE,
   TOURNAMENT_BRACKET_READY_NOTIFICATION_SUBJECT,
@@ -69,10 +70,11 @@ const createLogger = () => ({
   error: jest.fn(),
 });
 
-const createNakama = () => {
-  const storage = new Map<string, StoredObject>();
-  let versionCounter = 1;
-  const entrantCounts = new Map<string, number>();
+  const createNakama = () => {
+    const storage = new Map<string, StoredObject>();
+    let versionCounter = 1;
+    const entrantCounts = new Map<string, number>();
+    const wallets = new Map<string, Record<string, number>>();
   const nakamaTournaments = new Map<
     string,
     {
@@ -139,14 +141,31 @@ const createNakama = () => {
       ),
   );
 
-  return {
-    storage,
-    entrantCounts,
-    nakamaTournaments,
-    storageRead,
-    storageWrite,
-    tournamentsGetId,
-    tournamentRanksDisable: jest.fn(),
+    return {
+      storage,
+      entrantCounts,
+      wallets,
+      nakamaTournaments,
+      storageRead,
+      storageWrite,
+      tournamentsGetId,
+      accountGetId: jest.fn((userId: string) => ({
+        wallet: wallets.get(userId) ?? {
+          [SOFT_CURRENCY_KEY]: 0,
+          [PREMIUM_CURRENCY_KEY]: 0,
+        },
+      })),
+      walletUpdate: jest.fn((userId: string, changes: Record<string, number>) => {
+        const current = wallets.get(userId) ?? {
+          [SOFT_CURRENCY_KEY]: 0,
+          [PREMIUM_CURRENCY_KEY]: 0,
+        };
+        wallets.set(userId, {
+          [SOFT_CURRENCY_KEY]: (current[SOFT_CURRENCY_KEY] ?? 0) + (changes[SOFT_CURRENCY_KEY] ?? 0),
+          [PREMIUM_CURRENCY_KEY]: (current[PREMIUM_CURRENCY_KEY] ?? 0) + (changes[PREMIUM_CURRENCY_KEY] ?? 0),
+        });
+      }),
+      tournamentRanksDisable: jest.fn(),
     tournamentRecordsList: jest.fn(
       (): TournamentRecordsListResponse => ({
       records: [],
@@ -479,6 +498,49 @@ describe('public tournament rpc flow', () => {
         tournamentMatchWinXp: 180,
         tournamentChampionXp: 420,
       }),
+    );
+  });
+
+  it('charges the configured entry fee before allowing a join', () => {
+    const nk = createNakama();
+    const logger = createLogger();
+    nk.wallets.set('user-1', {
+      [SOFT_CURRENCY_KEY]: 500,
+      [PREMIUM_CURRENCY_KEY]: 0,
+    });
+    seedOpenRun(nk, {
+      entrants: 0,
+      maxSize: 2,
+      metadata: {
+        gameMode: 'standard',
+        region: 'Global',
+        buyIn: '250 coins',
+      },
+    });
+
+    const joinResponse = JSON.parse(
+      rpcJoinPublicTournament(
+        { userId: 'user-1', username: 'RoyalPlayer' },
+        logger,
+        nk,
+        JSON.stringify({ runId: 'run-1' }),
+      ),
+    ) as {
+      joined: boolean;
+      tournament: { membership: { isJoined: boolean } };
+    };
+
+    expect(joinResponse.joined).toBe(true);
+    expect(joinResponse.tournament.membership.isJoined).toBe(true);
+    expect(nk.walletUpdate).toHaveBeenCalledWith(
+      'user-1',
+      { [SOFT_CURRENCY_KEY]: -250 },
+      expect.objectContaining({
+        source: 'tournament_entry_fee',
+        currency: 'soft',
+        amount: 250,
+      }),
+      true,
     );
   });
 

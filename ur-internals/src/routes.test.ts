@@ -15,6 +15,7 @@ describe('console routes', () => {
     expect(appRoutes.analytics.home).toBe('/analytics')
     expect(appRoutes.analytics.section('players')).toBe('/analytics/players')
     expect(appRoutes.store.home).toBe('/store')
+    expect(appRoutes.store.overview).toBe('/store/overview')
     expect(appRoutes.store.catalog).toBe('/store/catalog')
     expect(appRoutes.store.rotation).toBe('/store/rotation')
     expect(appRoutes.store.stats).toBe('/store/stats')
@@ -33,6 +34,7 @@ describe('console routes', () => {
       'Analytics',
       'Store',
       'Settings',
+      'User Feedback',
     ])
   })
 
@@ -52,6 +54,7 @@ describe('console routes', () => {
       'Realtime',
     ])
     expect(sectionNavItems.store.map((item) => item.label)).toEqual([
+      'Overview',
       'Catalog',
       'Rotation',
       'Store Stats',
@@ -59,7 +62,10 @@ describe('console routes', () => {
     expect(sectionNavItems.settings.map((item) => item.label)).toEqual([
       'Console Settings',
     ])
-    expect(primaryNavItems).toHaveLength(14)
+    expect(sectionNavItems.feedback.map((item) => item.label)).toEqual([
+      'Inbox',
+    ])
+    expect(primaryNavItems).toHaveLength(16)
   })
 
   it('splits analytics into focused subviews', () => {

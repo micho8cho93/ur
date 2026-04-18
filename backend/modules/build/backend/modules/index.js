@@ -4246,6 +4246,57 @@ var addPremiumCurrency = (nk, logger, params) => {
   );
   return { awardedPremiumCurrency: amount, duplicate: false };
 };
+var spendSoftCurrency = (nk, logger, params) => {
+  var _a;
+  const amount = sanitizeSoftCurrencyAmount(params.amount);
+  if (amount <= 0) {
+    return { spentSoftCurrency: 0 };
+  }
+  const wallet = getWalletForUser(nk, params.userId);
+  if (wallet[SOFT_CURRENCY_KEY] < amount) {
+    throw new Error("INSUFFICIENT_COINS");
+  }
+  nk.walletUpdate(
+    params.userId,
+    { [SOFT_CURRENCY_KEY]: -amount },
+    __spreadValues({
+      source: params.source,
+      currency: SOFT_CURRENCY_KEY,
+      amount
+    }, (_a = params.metadata) != null ? _a : {}),
+    true
+  );
+  logger.info("Spent %d Coins from user %s (source=%s).", amount, params.userId, params.source);
+  return { spentSoftCurrency: amount };
+};
+var spendPremiumCurrency = (nk, logger, params) => {
+  var _a;
+  const amount = sanitizePremiumCurrencyAmount(params.amount);
+  if (amount <= 0) {
+    return { spentPremiumCurrency: 0 };
+  }
+  const wallet = getWalletForUser(nk, params.userId);
+  if (wallet[PREMIUM_CURRENCY_KEY] < amount) {
+    throw new Error("INSUFFICIENT_GEMS");
+  }
+  nk.walletUpdate(
+    params.userId,
+    { [PREMIUM_CURRENCY_KEY]: -amount },
+    __spreadValues({
+      source: params.source,
+      currency: PREMIUM_CURRENCY_KEY,
+      amount
+    }, (_a = params.metadata) != null ? _a : {}),
+    true
+  );
+  logger.info(
+    "Spent %d gems from user %s (source=%s).",
+    amount,
+    params.userId,
+    params.source
+  );
+  return { spentPremiumCurrency: amount };
+};
 var rpcGetWallet = (ctx, _logger, nk, _payload) => {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
@@ -6842,6 +6893,191 @@ var generatePrivateMatchCode = (random = Math.random) => {
   return code;
 };
 
+// shared/feedback.ts
+var FEEDBACK_TYPES = ["bug", "feature_request", "player_report"];
+var FEEDBACK_SOURCE_PAGES = ["home", "play_online", "match"];
+var FEEDBACK_TYPE_LABELS = {
+  bug: "Bug",
+  feature_request: "Feature request",
+  player_report: "Player report"
+};
+var FEEDBACK_SUBMISSION_COLLECTION = "user_feedback_submissions";
+var FEEDBACK_DEFAULT_LIST_LIMIT = 50;
+var FEEDBACK_MAX_LIST_LIMIT = 100;
+
+// backend/modules/feedback.ts
+var RPC_SUBMIT_FEEDBACK = "submit_feedback";
+var RPC_ADMIN_LIST_FEEDBACK = "admin_list_feedback";
+var normalizeFeedbackType = (value) => typeof value === "string" && FEEDBACK_TYPES.includes(value) ? value : null;
+var normalizeFeedbackSourcePage = (value) => typeof value === "string" && FEEDBACK_SOURCE_PAGES.includes(value) ? value : null;
+var normalizeMatchContext = (value) => {
+  const record = asRecord2(value);
+  const matchId = readStringField9(record, ["matchId", "match_id"]);
+  return matchId ? { matchId } : null;
+};
+var normalizeReportedUser = (value) => {
+  const record = asRecord2(value);
+  const userId = readStringField9(record, ["userId", "user_id"]);
+  const username = readStringField9(record, ["username", "displayName", "display_name", "name"]);
+  if (!userId || !username) {
+    return null;
+  }
+  return {
+    userId,
+    username
+  };
+};
+var normalizeSubmitterFromRecord = (value) => {
+  const record = asRecord2(value);
+  const userId = readStringField9(record, ["userId", "user_id"]);
+  const username = readStringField9(record, ["username", "displayName", "display_name", "name"]);
+  const provider = readStringField9(record, ["provider"]);
+  const nakamaUserId = readStringField9(record, ["nakamaUserId", "nakama_user_id"]);
+  if (!userId || !username) {
+    return null;
+  }
+  return {
+    userId,
+    username,
+    provider: provider != null ? provider : "unknown",
+    nakamaUserId
+  };
+};
+var normalizeSubmitterFromRequest = (ctx, payload) => {
+  var _a, _b, _c;
+  const ctxUserId = requireAuthenticatedUserId(ctx);
+  const submitterRecord = asRecord2(payload.submitter);
+  return {
+    userId: (_a = readStringField9(submitterRecord, ["userId", "user_id"])) != null ? _a : ctxUserId,
+    username: (_b = readStringField9(submitterRecord, ["username", "displayName", "display_name", "name"])) != null ? _b : getActorLabel(ctx),
+    provider: (_c = readStringField9(submitterRecord, ["provider"])) != null ? _c : "unknown",
+    nakamaUserId: ctxUserId
+  };
+};
+var buildSubmissionId = () => `feedback-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+var buildStorageKey = (createdAt, submissionId) => {
+  const reverseTimestamp = String(9999999999999 - Date.parse(createdAt)).padStart(13, "0");
+  return `${reverseTimestamp}-${submissionId}`;
+};
+var normalizeStoredSubmission = (value) => {
+  var _a, _b;
+  const record = asRecord2(value);
+  if (!record) {
+    return null;
+  }
+  const id = readStringField9(record, ["id", "submissionId", "submission_id"]);
+  const type = normalizeFeedbackType(readStringField9(record, ["type"]));
+  const message = readStringField9(record, ["message", "body"]);
+  const sourcePage = normalizeFeedbackSourcePage(readStringField9(record, ["sourcePage", "source_page"]));
+  const createdAt = readStringField9(record, ["createdAt", "created_at"]);
+  const submitter = normalizeSubmitterFromRecord(record.submitter);
+  const matchContext = normalizeMatchContext((_a = record.matchContext) != null ? _a : record.match_context);
+  const reportedUser = normalizeReportedUser((_b = record.reportedUser) != null ? _b : record.reported_user);
+  if (!id || !type || !message || !sourcePage || !createdAt || !submitter) {
+    return null;
+  }
+  return {
+    id,
+    type,
+    message: message.trim(),
+    sourcePage,
+    submitter,
+    matchContext,
+    reportedUser,
+    createdAt
+  };
+};
+var normalizeStorageListResult2 = (value) => {
+  const record = asRecord2(value);
+  const objects = Array.isArray(record == null ? void 0 : record.objects) ? record.objects : [];
+  const cursor = readStringField9(record, ["cursor", "nextCursor", "next_cursor"]);
+  return {
+    objects,
+    cursor
+  };
+};
+var normalizeSubmittedMessage = (payload) => {
+  var _a;
+  const message = (_a = readStringField9(payload, ["message", "body", "text"])) != null ? _a : "";
+  if (!message) {
+    throw new Error("Feedback message is required.");
+  }
+  return message;
+};
+var normalizeSubmissionPayload = (ctx, payload) => {
+  const type = normalizeFeedbackType(readStringField9(payload, ["type", "feedbackType", "feedback_type"]));
+  if (!type) {
+    throw new Error(`Feedback category must be one of: ${FEEDBACK_TYPE_LABELS.bug}, ${FEEDBACK_TYPE_LABELS.feature_request}, or ${FEEDBACK_TYPE_LABELS.player_report}.`);
+  }
+  const sourcePage = normalizeFeedbackSourcePage(readStringField9(payload, ["sourcePage", "source_page"]));
+  if (!sourcePage) {
+    throw new Error("Feedback source page must be one of: home, play_online, or match.");
+  }
+  return {
+    id: buildSubmissionId(),
+    type,
+    message: normalizeSubmittedMessage(payload),
+    sourcePage,
+    submitter: normalizeSubmitterFromRequest(ctx, payload),
+    matchContext: normalizeMatchContext(payload.matchContext),
+    reportedUser: normalizeReportedUser(payload.reportedUser),
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+};
+function rpcSubmitFeedback(ctx, logger, nk, payload) {
+  var _a;
+  const request = parseJsonPayload2(payload);
+  const submission = normalizeSubmissionPayload(ctx, request);
+  const storageKey = buildStorageKey(submission.createdAt, submission.id);
+  nk.storageWrite([
+    {
+      collection: FEEDBACK_SUBMISSION_COLLECTION,
+      key: storageKey,
+      userId: GLOBAL_STORAGE_USER_ID,
+      value: submission,
+      permissionRead: STORAGE_PERMISSION_NONE2,
+      permissionWrite: STORAGE_PERMISSION_NONE2
+    }
+  ]);
+  logger.info(
+    "Stored feedback submission %s from %s on %s.",
+    submission.id,
+    (_a = submission.submitter.nakamaUserId) != null ? _a : submission.submitter.userId,
+    submission.sourcePage
+  );
+  return JSON.stringify({ submission });
+}
+function rpcAdminListFeedback(ctx, logger, nk, payload) {
+  assertAdmin(ctx, "viewer", nk);
+  const request = parseJsonPayload2(payload);
+  const requestedLimit = readNumberField6(request, ["limit"]);
+  const limit = Math.max(
+    1,
+    Math.min(FEEDBACK_MAX_LIST_LIMIT, Math.floor(requestedLimit != null ? requestedLimit : FEEDBACK_DEFAULT_LIST_LIMIT))
+  );
+  const rawEntries = [];
+  let cursor = "";
+  for (let page = 0; page < 50; page += 1) {
+    const rawResult = nk.storageList(GLOBAL_STORAGE_USER_ID, FEEDBACK_SUBMISSION_COLLECTION, FEEDBACK_MAX_LIST_LIMIT, cursor);
+    const result = normalizeStorageListResult2(rawResult);
+    rawEntries.push(...result.objects);
+    if (!result.cursor) {
+      break;
+    }
+    cursor = result.cursor;
+  }
+  const submissions = rawEntries.map((entry) => normalizeStoredSubmission(entry.value)).filter((entry) => Boolean(entry)).sort((left, right) => {
+    const byCreatedAt = right.createdAt.localeCompare(left.createdAt);
+    return byCreatedAt !== 0 ? byCreatedAt : right.id.localeCompare(left.id);
+  }).slice(0, limit);
+  logger.info("Loaded %d feedback submissions for admin review.", submissions.length);
+  return JSON.stringify({ submissions });
+}
+var registerFeedbackRpcs = (initializer) => {
+  initializer.registerRpc(RPC_SUBMIT_FEEDBACK, rpcSubmitFeedback);
+  initializer.registerRpc(RPC_ADMIN_LIST_FEEDBACK, rpcAdminListFeedback);
+};
+
 // backend/modules/tournaments/bracket.ts
 var normalizeParticipantState = (value) => {
   if (value === "lobby" || value === "in_match" || value === "waiting_next_round" || value === "eliminated" || value === "runner_up" || value === "champion") {
@@ -7231,6 +7467,51 @@ var completeTournamentBracketMatch = (bracket, params) => {
   return nextBracket;
 };
 var hasTournamentBracketStarted = (bracket) => Boolean(bracket == null ? void 0 : bracket.startedAt);
+
+// shared/tournamentFees.ts
+var FREE_FEE_LABELS = /* @__PURE__ */ new Set(["free", "none", "no fee", "free entry"]);
+var normalizeFeeText = (value) => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase().replace(/,/g, "");
+  return normalized.length > 0 ? normalized : null;
+};
+var parseFeeAmount = (value) => {
+  const match = value.match(/(\d+(?:\.\d+)?)/);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number(match[1]);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return Math.floor(parsed);
+};
+var parseTournamentEntryFee = (value) => {
+  const normalized = normalizeFeeText(value);
+  if (!normalized || FREE_FEE_LABELS.has(normalized)) {
+    return null;
+  }
+  const amount = parseFeeAmount(normalized);
+  if (!amount) {
+    return null;
+  }
+  if (normalized.includes("gem") || normalized.includes("premium") || normalized.startsWith("$") || normalized.startsWith("usd ")) {
+    return { amount, currency: "premium" };
+  }
+  if (normalized.includes("coin") || normalized.includes("soft")) {
+    return { amount, currency: "soft" };
+  }
+  return { amount, currency: "soft" };
+};
+var formatTournamentEntryFee = (value) => {
+  const parsed = parseTournamentEntryFee(value);
+  if (!parsed) {
+    return "Free";
+  }
+  return `${parsed.amount} ${parsed.currency === "soft" ? "coins" : "gems"}`;
+};
 
 // shared/tournamentBots.ts
 var TOURNAMENT_BOT_USER_ID_PREFIX = "tournament-bot:";
@@ -7701,14 +7982,18 @@ var getRunBotUserIds = (run) => {
 };
 var buildRunBotSummary = (run) => buildTournamentBotSummary(run.metadata, getRunBotUserIds(run));
 var buildRunResponseMetadata = (value) => {
-  var _a;
+  var _a, _b;
   const baseMetadata = readMetadataField(value, ["metadata"]);
   const explicitAutoAddBots = readBooleanField6(value, ["autoAddBots", "auto_add_bots"]);
   const explicitBotDifficulty = readStringField9(value, ["botDifficulty", "bot_difficulty"]);
+  const explicitEntryFee = (_a = readStringField9(value, ["entryFee", "entry_fee", "buyIn", "buy_in"])) != null ? _a : readStringField9(baseMetadata, ["entryFee", "entry_fee", "buyIn", "buy_in"]);
+  const normalizedEntryFee = formatTournamentEntryFee(explicitEntryFee);
   const normalizedPolicy = normalizeTournamentBotPolicy(__spreadValues(__spreadValues(__spreadValues({}, baseMetadata), explicitAutoAddBots !== null ? { autoAddBots: explicitAutoAddBots } : {}), explicitBotDifficulty !== null ? { botDifficulty: explicitBotDifficulty } : {}));
   return __spreadProps(__spreadValues({}, baseMetadata), {
+    entryFee: normalizedEntryFee,
+    buyIn: normalizedEntryFee,
     autoAddBots: normalizedPolicy.autoAdd,
-    botDifficulty: normalizedPolicy.autoAdd ? (_a = normalizedPolicy.difficulty) != null ? _a : DEFAULT_BOT_DIFFICULTY : null
+    botDifficulty: normalizedPolicy.autoAdd ? (_b = normalizedPolicy.difficulty) != null ? _b : DEFAULT_BOT_DIFFICULTY : null
   });
 };
 var buildTournamentRunResponse = (run) => __spreadProps(__spreadValues({}, run), {
@@ -10957,8 +11242,12 @@ var formatPrizeLabel = (metadata) => {
   if (explicitPrize) {
     return explicitPrize;
   }
-  const buyIn = (_a = readStringField9(metadata, ["buyIn", "buy_in"])) != null ? _a : "Free";
+  const buyIn = (_a = readStringField9(metadata, ["buyIn", "buy_in", "entryFee", "entry_fee"])) != null ? _a : "Free";
   return buyIn === "Free" ? "No prize listed" : `${buyIn} buy-in`;
+};
+var resolveTournamentEntryFee = (metadata) => {
+  var _a;
+  return parseTournamentEntryFee((_a = readStringField9(metadata, ["buyIn", "buy_in", "entryFee", "entry_fee"])) != null ? _a : "Free");
 };
 var buildMembershipState = (membership) => {
   var _a;
@@ -11312,7 +11601,9 @@ var buildPublicTournamentResponse = (run, nakamaTournament, membership) => {
     maxEntrants: getRunMaxEntrants(run, nakamaTournament),
     gameMode: (_d = readStringField9(metadata, ["gameMode", "game_mode"])) != null ? _d : "standard",
     region: (_e = readStringField9(metadata, ["region"])) != null ? _e : "Global",
-    buyInLabel: (_f = readStringField9(metadata, ["buyIn", "buy_in"])) != null ? _f : "Free",
+    buyInLabel: formatTournamentEntryFee(
+      (_f = readStringField9(metadata, ["buyIn", "buy_in", "entryFee", "entry_fee"])) != null ? _f : "Free"
+    ),
     prizeLabel: formatPrizeLabel(metadata),
     xpPerMatchWin: rewardSettings.xpPerMatchWin,
     xpForTournamentChampion: rewardSettings.xpForTournamentChampion,
@@ -11558,6 +11849,7 @@ var rpcGetPublicTournamentStandings = (ctx, logger, nk, payload) => {
   });
 };
 var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
+  var _a;
   const userId = requireAuthenticatedUserId(ctx);
   requireCompletedUsernameOnboarding(nk, userId);
   const parsed = parseJsonPayload2(payload);
@@ -11577,6 +11869,7 @@ var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
   run = maybeFinalizePublicRun(logger, nk, run);
   const nakamaTournamentBeforeJoin = getNakamaTournamentById(nk, run.tournamentId);
   assertPublicRunVisible(run, nakamaTournamentBeforeJoin);
+  const entryFee = resolveTournamentEntryFee(readMetadata(run));
   const existingMembership = resolveMembershipForRun(run, readMembership(nk, run.runId, userId));
   const displayName = getActorLabel(ctx);
   let joined = false;
@@ -11591,9 +11884,41 @@ var rpcJoinPublicTournament = (ctx, logger, nk, payload) => {
     if (maxEntrants > 0 && entrantsBeforeJoin >= maxEntrants) {
       throw new Error("This tournament is already full.");
     }
+    if (entryFee) {
+      const wallet = getWalletForUser(nk, userId);
+      const balanceKey = entryFee.currency === "soft" ? SOFT_CURRENCY_KEY : PREMIUM_CURRENCY_KEY;
+      const insufficientBalanceError = entryFee.currency === "soft" ? "INSUFFICIENT_COINS" : "INSUFFICIENT_GEMS";
+      const balance = (_a = wallet[balanceKey]) != null ? _a : 0;
+      if (balance < entryFee.amount) {
+        throw new Error(insufficientBalanceError);
+      }
+    }
     nk.tournamentJoin(run.tournamentId, userId, displayName);
     membership = writeMembership(nk, run, userId, displayName);
     setRegisteredTournamentParticipantFlow(nk, run, userId);
+    if (entryFee) {
+      const feeMetadata = {
+        runId: run.runId,
+        tournamentId: run.tournamentId,
+        amount: entryFee.amount,
+        currency: entryFee.currency
+      };
+      if (entryFee.currency === "soft") {
+        spendSoftCurrency(nk, logger, {
+          userId,
+          amount: entryFee.amount,
+          source: "tournament_entry_fee",
+          metadata: feeMetadata
+        });
+      } else {
+        spendPremiumCurrency(nk, logger, {
+          userId,
+          amount: entryFee.amount,
+          source: "tournament_entry_fee",
+          metadata: feeMetadata
+        });
+      }
+    }
     joined = true;
     appendTournamentAuditEntry(ctx, logger, nk, { id: run.runId, name: run.title }, "tournament.public_joined", {
       joinedUserId: userId,
@@ -12202,7 +12527,7 @@ var normalizeEloHistoryRecord = (value) => {
     playerResults
   };
 };
-var normalizeStorageListResult2 = (value) => {
+var normalizeStorageListResult3 = (value) => {
   if (Array.isArray(value)) {
     return {
       objects: value.map((entry) => {
@@ -12235,7 +12560,7 @@ var listAllGlobalObjects = (nk, logger, collection, userId) => {
   for (let page = 0; page < 50; page += 1) {
     try {
       const rawResult = nk.storageList(userId, collection, 100, cursor);
-      const result = normalizeStorageListResult2(rawResult);
+      const result = normalizeStorageListResult3(rawResult);
       objects.push(...result.objects);
       if (!result.cursor) {
         break;
@@ -13899,6 +14224,11 @@ var OPEN_ONLINE_MATCH_MIN_WAGER = 10;
 var OPEN_ONLINE_MATCH_MAX_WAGER = 100;
 var OPEN_ONLINE_MATCH_WAGER_STEP = 10;
 var OPEN_ONLINE_MATCH_DURATIONS_MINUTES = [3, 5, 10];
+var OPEN_ONLINE_MATCH_MODE_IDS = [
+  "gameMode_3_pieces",
+  "gameMode_capture",
+  "gameMode_finkel_rules"
+];
 var USER_CHALLENGE_PROGRESS_COLLECTION2 = "user_challenge_progress";
 var USER_CHALLENGE_PROGRESS_KEY2 = "progress";
 var ELO_PROFILE_COLLECTION2 = "elo_profiles";
@@ -14335,6 +14665,13 @@ var normalizeOpenOnlineMatchDurationMinutes = (value) => {
     throw new Error("Open match duration must be 3, 5, or 10 minutes.");
   }
   return durationMinutes;
+};
+var normalizeOpenOnlineMatchModeId = (value) => {
+  const modeId = resolveMatchModeId(value);
+  if (!OPEN_ONLINE_MATCH_MODE_IDS.includes(modeId)) {
+    throw new Error("Online matches support Race, Capture, or Finkel Rules modes.");
+  }
+  return modeId;
 };
 var generateOpenOnlineMatchId = () => {
   const randomPart = Math.floor(Math.random() * 4294967295).toString(36).padStart(7, "0").slice(0, 7);
@@ -15399,6 +15736,7 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_ADMIN_SET_LIMITED_TIME_EVENT, rpcAdminSetLimitedTimeEvent);
   initializer.registerRpc(RPC_ADMIN_REMOVE_LIMITED_TIME_EVENT, rpcAdminRemoveLimitedTimeEvent);
   initializer.registerRpc(RPC_ADMIN_GET_STORE_STATS, rpcAdminGetStoreStats);
+  registerFeedbackRpcs(initializer);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,
@@ -15572,6 +15910,7 @@ function rpcGetPrivateMatchStatus(ctx, _logger, nk, payload) {
   );
 }
 function rpcCreateOpenOnlineMatch(ctx, logger, nk, payload) {
+  var _a;
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
@@ -15579,7 +15918,7 @@ function rpcCreateOpenOnlineMatch(ctx, logger, nk, payload) {
   const data = parseRpcPayload(payload);
   const wager = normalizeOpenOnlineMatchWager(data.wager);
   const durationMinutes = normalizeOpenOnlineMatchDurationMinutes(data.durationMinutes);
-  const modeId = "standard";
+  const modeId = normalizeOpenOnlineMatchModeId((_a = data.modeId) != null ? _a : data.mode_id);
   const openMatchId = generateOpenOnlineMatchId();
   const now = /* @__PURE__ */ new Date();
   const createdAt = now.toISOString();
@@ -15676,7 +16015,7 @@ function rpcListOpenOnlineMatches(ctx, logger, nk, _payload) {
       return null;
     }
     return expireOpenOnlineMatchIfNeeded(logger, nk, record, getStorageObjectVersion(object), nowMs);
-  }).filter((record) => Boolean(record)).filter((record) => record.status === "open").sort((left, right) => left.createdAt.localeCompare(right.createdAt)).map((record) => buildOpenOnlineMatchRpcModel(record, ctx.userId));
+  }).filter((record) => Boolean(record)).filter((record) => record.status === "open" || record.status === "matched").sort((left, right) => left.createdAt.localeCompare(right.createdAt)).map((record) => buildOpenOnlineMatchRpcModel(record, ctx.userId));
   return JSON.stringify({ matches });
 }
 function rpcJoinOpenOnlineMatch(ctx, logger, nk, payload) {
@@ -15780,19 +16119,46 @@ function rpcGetActiveOpenOnlineMatch(ctx, logger, nk, _payload) {
   ).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]) != null ? _a : null;
   return JSON.stringify({ match: match ? buildOpenOnlineMatchRpcModel(match, ctx.userId) : null });
 }
-function rpcListSpectatableMatches(ctx, _logger, nk, _payload) {
+function rpcListSpectatableMatches(ctx, logger, nk, _payload) {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
   requireCompletedUsernameOnboarding(nk, ctx.userId);
-  const matches = listActiveTrackedMatches().filter(
+  const matchesById = /* @__PURE__ */ new Map();
+  listActiveTrackedMatches().filter(
     (match) => !match.classification.private && !match.classification.bot && !match.classification.tournament && match.playerLabels.length >= MAX_PLAYERS
-  ).map((match) => ({
-    matchId: match.matchId,
-    modeId: match.modeId,
-    startedAt: match.startedAt,
-    playerLabels: match.playerLabels.slice(0, MAX_PLAYERS)
-  }));
+  ).forEach((match) => {
+    matchesById.set(match.matchId, {
+      matchId: match.matchId,
+      modeId: match.modeId,
+      startedAt: match.startedAt,
+      playerLabels: match.playerLabels.slice(0, MAX_PLAYERS)
+    });
+  });
+  const nowMs = Date.now();
+  listOpenOnlineMatchStorageObjects(logger, nk).map((object) => {
+    const record = normalizeOpenOnlineMatchRecord(object.value);
+    if (!record) {
+      return null;
+    }
+    return expireOpenOnlineMatchIfNeeded(logger, nk, record, getStorageObjectVersion(object), nowMs);
+  }).filter((record) => Boolean(record)).filter((record) => record.status === "matched").forEach((record) => {
+    if (matchesById.has(record.matchId)) {
+      return;
+    }
+    matchesById.set(record.matchId, {
+      matchId: record.matchId,
+      modeId: record.modeId,
+      startedAt: record.updatedAt,
+      playerLabels: []
+    });
+  });
+  const matches = Array.from(matchesById.values()).sort(
+    (left, right) => {
+      var _a, _b;
+      return ((_a = right.startedAt) != null ? _a : "").localeCompare((_b = left.startedAt) != null ? _b : "");
+    }
+  );
   return JSON.stringify({ matches });
 }
 function matchmakerMatched(_ctx, logger, nk, matched) {

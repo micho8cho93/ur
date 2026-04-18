@@ -15,6 +15,7 @@ const mockCreateOpenMatch = jest.fn();
 const mockJoinOpenMatch = jest.fn();
 const mockRefreshCreatedOpenMatch = jest.fn();
 const mockListOpenOnlineMatches = jest.fn();
+const mockEnsureAuthenticatedDevice = jest.fn();
 
 jest.mock('@/hooks/useMatchmaking', () => ({
   useMatchmaking: (...args: unknown[]) => mockUseMatchmaking(...args),
@@ -26,6 +27,12 @@ jest.mock('@/src/tournaments/useTournamentList', () => ({
 
 jest.mock('@/services/matchmaking', () => ({
   listOpenOnlineMatches: (...args: unknown[]) => mockListOpenOnlineMatches(...args),
+}));
+
+jest.mock('@/services/nakama', () => ({
+  nakamaService: {
+    ensureAuthenticatedDevice: (...args: unknown[]) => mockEnsureAuthenticatedDevice(...args),
+  },
 }));
 
 jest.mock('@/src/store/StoreProvider', () => ({
@@ -127,6 +134,11 @@ describe('Lobby private game join input', () => {
     });
     mockRefreshCreatedOpenMatch.mockResolvedValue(null);
     mockListOpenOnlineMatches.mockResolvedValue([]);
+    mockEnsureAuthenticatedDevice.mockResolvedValue({
+      user_id: 'viewer-1',
+      token: 'token',
+      refresh_token: 'refresh',
+    });
     mockUseStore.mockReturnValue({
       softCurrency: 1234,
     });
@@ -217,8 +229,7 @@ describe('Lobby private game join input', () => {
 
     expect(view.getByLabelText('See all tournaments')).toBeTruthy();
     expect(view.getByText('Spring Open')).toBeTruthy();
-    expect(view.getAllByText('Create Match').length).toBeGreaterThan(0);
-    expect(view.getByText('Create Private Game')).toBeTruthy();
+    expect(view.getByText('Create Online Match')).toBeTruthy();
     expect(view.getByText('Capture')).toBeTruthy();
     expect(view.getByText('Enter Private Code')).toBeTruthy();
   });
@@ -256,12 +267,15 @@ describe('Lobby private game join input', () => {
 
     const view = render(<Lobby />);
 
+    fireEvent.press(view.getByText('Race'));
     fireEvent.press(view.getByLabelText('Decrease wager'));
-    fireEvent.press(view.getByText('10 min'));
     fireEvent.press(view.getByLabelText('Increase wager'));
+    fireEvent.press(view.getByText('Set'));
+    fireEvent.press(view.getByText('Online'));
+    fireEvent.press(view.getByText('10 min'));
     fireEvent.press(view.getByText('Create Match'));
 
-    expect(mockCreateOpenMatch).toHaveBeenCalledWith(20, 10);
+    expect(mockCreateOpenMatch).toHaveBeenCalledWith(20, 10, 'gameMode_3_pieces');
   });
 
   it('renders open online matches and joins selected matches', async () => {
@@ -312,6 +326,39 @@ describe('Lobby private game join input', () => {
     await waitFor(() => expect(mockJoinOpenMatch).toHaveBeenCalledWith('open-join-1'));
   });
 
+  it('renders live online matches with a direct spectate action', async () => {
+    mockListOpenOnlineMatches.mockResolvedValue([
+      {
+        openMatchId: 'open-live-1',
+        matchId: 'match-live-1',
+        modeId: 'gameMode_capture',
+        creatorUserId: 'creator-1',
+        joinedUserId: 'joiner-1',
+        wager: 40,
+        durationMinutes: 5,
+        status: 'matched',
+        createdAt: '2026-04-18T10:00:00.000Z',
+        expiresAt: '2026-04-18T10:05:00.000Z',
+        updatedAt: '2026-04-18T10:01:00.000Z',
+        entrants: 2,
+        maxEntrants: 2,
+        isCreator: false,
+        isJoiner: false,
+      },
+    ]);
+
+    const view = render(<Lobby />);
+
+    await waitFor(() => expect(view.getByText('Live Wager Match')).toBeTruthy());
+    expect(view.getByText('In Progress')).toBeTruthy();
+
+    fireEvent.press(view.getByText('Spectate'));
+
+    await waitFor(() =>
+      expect(mockPush).toHaveBeenCalledWith('/match/match-live-1?modeId=gameMode_capture&spectator=1'),
+    );
+  });
+
   it('removes the extra create-private copy once a private room has been created', () => {
     mockUseMatchmaking.mockReturnValue({
       startMatch: jest.fn(),
@@ -348,7 +395,7 @@ describe('Lobby private game join input', () => {
     ).toBeNull();
     expect(view.queryByText('Copy Code')).toBeNull();
     expect(view.getByText('Start Game')).toBeTruthy();
-    expect(view.getByText('Pick Another Ruleset')).toBeTruthy();
+    expect(view.getByText('Cancel')).toBeTruthy();
   });
 
   it('renders the tournaments button inside the empty featured state card', () => {

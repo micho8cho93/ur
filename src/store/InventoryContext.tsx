@@ -14,14 +14,30 @@ import { getFullCatalog } from '@/services/cosmetics';
 import { cosmeticDefinitionToTheme } from '@/shared/cosmeticTheme';
 import type { CosmeticDefinition, CosmeticType } from '@/shared/cosmetics';
 import type { CosmeticTheme } from '@/shared/cosmeticTheme';
+import { EQUIPPED_EMOJI_SLOT_COUNT } from '@/shared/emojiReactions';
 import { useAuth } from '@/src/auth/useAuth';
 import { useStore } from '@/src/store/StoreProvider';
 
 type InventoryLoadout = Record<CosmeticType, string | null>;
 
-type StoredInventoryLoadout = {
+type EmoteLoadout = Array<string | null>;
+
+type StoredInventoryLoadoutV1 = {
   version: 1;
   equippedIdsByType: Partial<InventoryLoadout>;
+};
+
+type StoredInventoryLoadoutV2 = {
+  version: 2;
+  equippedIdsByType: Partial<InventoryLoadout>;
+  equippedEmoteIds: EmoteLoadout;
+};
+
+type StoredInventoryLoadout = StoredInventoryLoadoutV1 | StoredInventoryLoadoutV2;
+
+type ResolvedInventoryLoadout = {
+  equippedIdsByType: InventoryLoadout;
+  equippedEmoteIds: EmoteLoadout;
 };
 
 type InventoryCosmeticEntry = CosmeticDefinition & {
@@ -35,16 +51,20 @@ export type InventoryContextValue = {
   ownedCosmeticsByType: Record<CosmeticType, InventoryCosmeticEntry[]>;
   equippedIdsByType: InventoryLoadout;
   equippedCosmeticsByType: Partial<Record<CosmeticType, CosmeticDefinition>>;
+  equippedEmoteIds: EmoteLoadout;
+  equippedEmoteCosmetics: Array<CosmeticDefinition | null>;
   equippedTheme: CosmeticTheme;
   refresh: () => Promise<void>;
   equipCosmetic: (cosmetic: CosmeticDefinition) => Promise<void>;
   unequipCosmetic: (type: CosmeticType) => Promise<void>;
+  unequipEmoteCosmetic: (cosmeticId: string) => Promise<void>;
+  unequipEmoteSlot: (slotIndex: number) => Promise<void>;
   resetLoadout: () => Promise<void>;
   isEquipped: (cosmeticId: string) => boolean;
 };
 
 const INVENTORY_LOADOUT_KEY_PREFIX = 'inventory.loadout.v1';
-const COSMETIC_TYPES: CosmeticType[] = [
+const INVENTORY_COSMETIC_TYPES: CosmeticType[] = [
   'board',
   'pieces',
   'dice_animation',
@@ -53,17 +73,28 @@ const COSMETIC_TYPES: CosmeticType[] = [
   'emote',
 ];
 
+const EMOTE_SLOT_COUNT = EQUIPPED_EMOJI_SLOT_COUNT;
+const EQUIPPABLE_COSMETIC_TYPES: Exclude<CosmeticType, 'emote'>[] = [
+  'board',
+  'pieces',
+  'dice_animation',
+  'music',
+  'sound_effect',
+];
+
 const createEmptyLoadout = (): InventoryLoadout =>
-  COSMETIC_TYPES.reduce((loadout, type) => {
+  INVENTORY_COSMETIC_TYPES.reduce((loadout, type) => {
     loadout[type] = null;
     return loadout;
   }, {} as InventoryLoadout);
 
 const createEmptyCosmeticTypeMap = (): Record<CosmeticType, InventoryCosmeticEntry[]> =>
-  COSMETIC_TYPES.reduce((map, type) => {
+  INVENTORY_COSMETIC_TYPES.reduce((map, type) => {
     map[type] = [];
     return map;
   }, {} as Record<CosmeticType, InventoryCosmeticEntry[]>);
+
+const createEmptyEmoteLoadout = (): EmoteLoadout => Array.from({ length: EMOTE_SLOT_COUNT }, () => null);
 
 const tierRank: Record<CosmeticDefinition['tier'], number> = {
   legendary: 4,
@@ -92,11 +123,16 @@ const mergeCosmeticThemes = (base: CosmeticTheme, override: CosmeticTheme): Cosm
     : {}),
 });
 
-const readStoredLoadout = async (userId: string): Promise<InventoryLoadout> => {
+const createResolvedLoadout = (): ResolvedInventoryLoadout => ({
+  equippedIdsByType: createEmptyLoadout(),
+  equippedEmoteIds: createEmptyEmoteLoadout(),
+});
+
+const readStoredLoadout = async (userId: string): Promise<ResolvedInventoryLoadout> => {
   const rawValue = await AsyncStorage.getItem(`${INVENTORY_LOADOUT_KEY_PREFIX}.${userId}`);
 
   if (!rawValue) {
-    return createEmptyLoadout();
+    return createResolvedLoadout();
   }
 
   try {
@@ -104,41 +140,55 @@ const readStoredLoadout = async (userId: string): Promise<InventoryLoadout> => {
 
     const equippedIdsByType = parsed.equippedIdsByType;
 
-    if (parsed.version !== 1 || !equippedIdsByType || typeof equippedIdsByType !== 'object') {
-      return createEmptyLoadout();
+    if (parsed.version !== 1 && parsed.version !== 2) {
+      return createResolvedLoadout();
     }
 
-    const loadout = createEmptyLoadout();
+    if (!equippedIdsByType || typeof equippedIdsByType !== 'object') {
+      return createResolvedLoadout();
+    }
 
-    COSMETIC_TYPES.forEach((type) => {
+    const loadout = createResolvedLoadout();
+
+    INVENTORY_COSMETIC_TYPES.forEach((type) => {
       const candidate = equippedIdsByType[type];
-      loadout[type] = typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : null;
+      loadout.equippedIdsByType[type] = typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : null;
     });
+
+    if (parsed.version === 2 && Array.isArray(parsed.equippedEmoteIds)) {
+      loadout.equippedEmoteIds = parsed.equippedEmoteIds
+        .slice(0, EMOTE_SLOT_COUNT)
+        .map((candidate) => (typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : null));
+      while (loadout.equippedEmoteIds.length < EMOTE_SLOT_COUNT) {
+        loadout.equippedEmoteIds.push(null);
+      }
+    }
 
     return loadout;
   } catch {
-    return createEmptyLoadout();
+    return createResolvedLoadout();
   }
 };
 
-const saveLoadout = async (userId: string, loadout: InventoryLoadout): Promise<void> => {
+const saveLoadout = async (userId: string, loadout: ResolvedInventoryLoadout): Promise<void> => {
   const payload: StoredInventoryLoadout = {
-    version: 1,
-    equippedIdsByType: loadout,
+    version: 2,
+    equippedIdsByType: loadout.equippedIdsByType,
+    equippedEmoteIds: loadout.equippedEmoteIds,
   };
 
   await AsyncStorage.setItem(`${INVENTORY_LOADOUT_KEY_PREFIX}.${userId}`, JSON.stringify(payload));
 };
 
 const sanitizeLoadout = (
-  loadout: InventoryLoadout,
+  loadout: ResolvedInventoryLoadout,
   ownedIds: Set<string>,
   catalogById: Map<string, CosmeticDefinition>,
-): InventoryLoadout => {
-  const nextLoadout = createEmptyLoadout();
+): ResolvedInventoryLoadout => {
+  const nextLoadout = createResolvedLoadout();
 
-  COSMETIC_TYPES.forEach((type) => {
-    const cosmeticId = loadout[type];
+  EQUIPPABLE_COSMETIC_TYPES.forEach((type) => {
+    const cosmeticId = loadout.equippedIdsByType[type];
     if (!cosmeticId || !ownedIds.has(cosmeticId)) {
       return;
     }
@@ -148,8 +198,30 @@ const sanitizeLoadout = (
       return;
     }
 
-    nextLoadout[type] = cosmeticId;
+    nextLoadout.equippedIdsByType[type] = cosmeticId;
   });
+
+  const emoteCandidates = [...loadout.equippedEmoteIds];
+  if (loadout.equippedIdsByType.emote) {
+    emoteCandidates.unshift(loadout.equippedIdsByType.emote);
+  }
+
+  const seenEmoteIds = new Set<string>();
+  emoteCandidates.slice(0, EMOTE_SLOT_COUNT).forEach((cosmeticId, index) => {
+    if (!cosmeticId || !ownedIds.has(cosmeticId) || seenEmoteIds.has(cosmeticId)) {
+      return;
+    }
+
+    const cosmetic = catalogById.get(cosmeticId);
+    if (!cosmetic || cosmetic.type !== 'emote') {
+      return;
+    }
+
+    seenEmoteIds.add(cosmeticId);
+    nextLoadout.equippedEmoteIds[index] = cosmeticId;
+  });
+
+  nextLoadout.equippedIdsByType.emote = nextLoadout.equippedEmoteIds[0] ?? null;
 
   return nextLoadout;
 };
@@ -166,6 +238,7 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
   } = useStore();
   const [catalogItems, setCatalogItems] = useState<CosmeticDefinition[]>([]);
   const [equippedIdsByType, setEquippedIdsByType] = useState<InventoryLoadout>(createEmptyLoadout());
+  const [equippedEmoteIds, setEquippedEmoteIds] = useState<EmoteLoadout>(createEmptyEmoteLoadout());
   const [isCatalogLoading, setIsCatalogLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeUserIdRef = useRef<string | null>(null);
@@ -177,6 +250,7 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
       requestIdRef.current += 1;
       setCatalogItems([]);
       setEquippedIdsByType(createEmptyLoadout());
+      setEquippedEmoteIds(createEmptyEmoteLoadout());
       setErrorMessage(null);
       setIsCatalogLoading(false);
       return;
@@ -204,7 +278,8 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
       const sanitizedLoadout = sanitizeLoadout(nextLoadout, freshOwnedIds, catalogById);
 
       setCatalogItems(nextCatalogItems.items);
-      setEquippedIdsByType(sanitizedLoadout);
+      setEquippedIdsByType(sanitizedLoadout.equippedIdsByType);
+      setEquippedEmoteIds(sanitizedLoadout.equippedEmoteIds);
     } catch (error) {
       if (requestIdRef.current !== requestId) {
         return;
@@ -228,6 +303,7 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
       requestIdRef.current += 1;
       setCatalogItems([]);
       setEquippedIdsByType(createEmptyLoadout());
+      setEquippedEmoteIds(createEmptyEmoteLoadout());
       setErrorMessage(null);
       setIsCatalogLoading(false);
       return;
@@ -245,15 +321,26 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
 
     const catalogById = new Map(catalogItems.map((item) => [item.id, item]));
     const ownedIds = new Set(storefront?.ownedIds ?? []);
-    const sanitizedLoadout = sanitizeLoadout(equippedIdsByType, ownedIds, catalogById);
+    const sanitizedLoadout = sanitizeLoadout(
+      {
+        equippedIdsByType,
+        equippedEmoteIds,
+      },
+      ownedIds,
+      catalogById,
+    );
 
-    if (COSMETIC_TYPES.every((type) => sanitizedLoadout[type] === equippedIdsByType[type])) {
+    if (
+      INVENTORY_COSMETIC_TYPES.every((type) => sanitizedLoadout.equippedIdsByType[type] === equippedIdsByType[type]) &&
+      sanitizedLoadout.equippedEmoteIds.every((item, index) => item === equippedEmoteIds[index])
+    ) {
       return;
     }
 
-    setEquippedIdsByType(sanitizedLoadout);
+    setEquippedIdsByType(sanitizedLoadout.equippedIdsByType);
+    setEquippedEmoteIds(sanitizedLoadout.equippedEmoteIds);
     void saveLoadout(user.id, sanitizedLoadout);
-  }, [catalogItems, equippedIdsByType, isStoreLoading, storefront, user]);
+  }, [catalogItems, equippedEmoteIds, equippedIdsByType, isStoreLoading, storefront, user]);
 
   const catalogById = useMemo(
     () => new Map(catalogItems.map((item) => [item.id, item])),
@@ -273,21 +360,24 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
     ownedDefinitions.forEach((item) => {
       grouped[item.type].push({
         ...item,
-        isEquipped: equippedIdsByType[item.type] === item.id,
+        isEquipped:
+          item.type === 'emote'
+            ? equippedEmoteIds.includes(item.id)
+            : equippedIdsByType[item.type] === item.id,
       });
     });
 
-    COSMETIC_TYPES.forEach((type) => {
+    INVENTORY_COSMETIC_TYPES.forEach((type) => {
       grouped[type] = sortCosmetics(grouped[type]) as InventoryCosmeticEntry[];
     });
 
     return grouped;
-  }, [equippedIdsByType, ownedDefinitions]);
+  }, [equippedEmoteIds, equippedIdsByType, ownedDefinitions]);
 
   const equippedCosmeticsByType = useMemo(() => {
     const nextEquipped: Partial<Record<CosmeticType, CosmeticDefinition>> = {};
 
-    COSMETIC_TYPES.forEach((type) => {
+    EQUIPPABLE_COSMETIC_TYPES.forEach((type) => {
       const cosmeticId = equippedIdsByType[type];
       if (!cosmeticId || !ownedIds.has(cosmeticId)) {
         return;
@@ -301,12 +391,37 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
       nextEquipped[type] = cosmetic;
     });
 
+    const firstEquippedEmoteId = equippedEmoteIds[0] ?? null;
+    if (firstEquippedEmoteId && ownedIds.has(firstEquippedEmoteId)) {
+      const cosmetic = catalogById.get(firstEquippedEmoteId);
+      if (cosmetic && cosmetic.type === 'emote') {
+        nextEquipped.emote = cosmetic;
+      }
+    }
+
     return nextEquipped;
-  }, [catalogById, equippedIdsByType, ownedIds]);
+  }, [catalogById, equippedEmoteIds, equippedIdsByType, ownedIds]);
+
+  const equippedEmoteCosmetics = useMemo(
+    () =>
+      equippedEmoteIds.map((cosmeticId) => {
+        if (!cosmeticId || !ownedIds.has(cosmeticId)) {
+          return null;
+        }
+
+        const cosmetic = catalogById.get(cosmeticId);
+        if (!cosmetic || cosmetic.type !== 'emote') {
+          return null;
+        }
+
+        return cosmetic;
+      }),
+    [catalogById, equippedEmoteIds, ownedIds],
+  );
 
   const equippedTheme = useMemo(
     () =>
-      COSMETIC_TYPES.reduce((theme, type) => {
+      EQUIPPABLE_COSMETIC_TYPES.reduce((theme, type) => {
         const cosmetic = equippedCosmeticsByType[type];
         if (!cosmetic) {
           return theme;
@@ -318,7 +433,7 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
   );
 
   const persistLoadout = useCallback(
-    async (nextLoadout: InventoryLoadout) => {
+    async (nextLoadout: ResolvedInventoryLoadout) => {
       if (!user) {
         return;
       }
@@ -329,17 +444,23 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
   );
 
   const updateLoadout = useCallback(
-    async (updater: (current: InventoryLoadout) => InventoryLoadout) => {
+    async (
+      updater: (current: ResolvedInventoryLoadout) => ResolvedInventoryLoadout,
+    ) => {
       if (!user) {
         return;
       }
 
-      const nextLoadout = updater(equippedIdsByType);
-      setEquippedIdsByType(nextLoadout);
-
+      const currentLoadout: ResolvedInventoryLoadout = {
+        equippedIdsByType,
+        equippedEmoteIds,
+      };
+      const nextLoadout = updater(currentLoadout);
+      setEquippedIdsByType(nextLoadout.equippedIdsByType);
+      setEquippedEmoteIds(nextLoadout.equippedEmoteIds);
       await persistLoadout(nextLoadout);
     },
-    [equippedIdsByType, persistLoadout, user],
+    [equippedEmoteIds, equippedIdsByType, persistLoadout, user],
   );
 
   const equipCosmetic = useCallback(
@@ -348,9 +469,37 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
         return;
       }
 
+      if (cosmetic.type === 'emote') {
+        await updateLoadout((current) => {
+          if (current.equippedEmoteIds.includes(cosmetic.id)) {
+            return current;
+          }
+
+          const nextEmoteIds = [...current.equippedEmoteIds];
+          const nextEmoteIndex = nextEmoteIds.findIndex((item) => item == null);
+          if (nextEmoteIndex < 0) {
+            return current;
+          }
+
+          nextEmoteIds[nextEmoteIndex] = cosmetic.id;
+
+          return {
+            equippedIdsByType: {
+              ...current.equippedIdsByType,
+              emote: nextEmoteIds[0] ?? null,
+            },
+            equippedEmoteIds: nextEmoteIds,
+          };
+        });
+        return;
+      }
+
       await updateLoadout((current) => ({
-        ...current,
-        [cosmetic.type]: cosmetic.id,
+        equippedIdsByType: {
+          ...current.equippedIdsByType,
+          [cosmetic.type]: cosmetic.id,
+        },
+        equippedEmoteIds: current.equippedEmoteIds,
       }));
     },
     [ownedIds, updateLoadout, user],
@@ -362,10 +511,65 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
         return;
       }
 
+      if (type === 'emote') {
+        await updateLoadout((current) => ({
+          equippedIdsByType: {
+            ...current.equippedIdsByType,
+            emote: null,
+          },
+          equippedEmoteIds: createEmptyEmoteLoadout(),
+        }));
+        return;
+      }
+
       await updateLoadout((current) => ({
-        ...current,
-        [type]: null,
+        equippedIdsByType: {
+          ...current.equippedIdsByType,
+          [type]: null,
+        },
+        equippedEmoteIds: current.equippedEmoteIds,
       }));
+    },
+    [updateLoadout, user],
+  );
+
+  const unequipEmoteCosmetic = useCallback(
+    async (cosmeticId: string) => {
+      if (!user) {
+        return;
+      }
+
+      await updateLoadout((current) => {
+        const nextEmoteIds = current.equippedEmoteIds.map((item) => (item === cosmeticId ? null : item));
+        return {
+          equippedIdsByType: {
+            ...current.equippedIdsByType,
+            emote: nextEmoteIds[0] ?? null,
+          },
+          equippedEmoteIds: nextEmoteIds,
+        };
+      });
+    },
+    [updateLoadout, user],
+  );
+
+  const unequipEmoteSlot = useCallback(
+    async (slotIndex: number) => {
+      if (!user || slotIndex < 0 || slotIndex >= EMOTE_SLOT_COUNT) {
+        return;
+      }
+
+      await updateLoadout((current) => {
+        const nextEmoteIds = [...current.equippedEmoteIds];
+        nextEmoteIds[slotIndex] = null;
+        return {
+          equippedIdsByType: {
+            ...current.equippedIdsByType,
+            emote: nextEmoteIds[0] ?? null,
+          },
+          equippedEmoteIds: nextEmoteIds,
+        };
+      });
     },
     [updateLoadout, user],
   );
@@ -375,14 +579,17 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
       return;
     }
 
-    const nextLoadout = createEmptyLoadout();
-    setEquippedIdsByType(nextLoadout);
+    const nextLoadout = createResolvedLoadout();
+    setEquippedIdsByType(nextLoadout.equippedIdsByType);
+    setEquippedEmoteIds(nextLoadout.equippedEmoteIds);
     await persistLoadout(nextLoadout);
   }, [persistLoadout, user]);
 
   const isEquipped = useCallback(
-    (cosmeticId: string) => COSMETIC_TYPES.some((type) => equippedIdsByType[type] === cosmeticId),
-    [equippedIdsByType],
+    (cosmeticId: string) =>
+      INVENTORY_COSMETIC_TYPES.some((type) => equippedIdsByType[type] === cosmeticId) ||
+      equippedEmoteIds.includes(cosmeticId),
+    [equippedEmoteIds, equippedIdsByType],
   );
 
   const value = useMemo<InventoryContextValue>(
@@ -396,16 +603,22 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
       ownedCosmeticsByType,
       equippedIdsByType,
       equippedCosmeticsByType,
+      equippedEmoteIds,
+      equippedEmoteCosmetics,
       equippedTheme,
       refresh,
       equipCosmetic,
       unequipCosmetic,
+      unequipEmoteCosmetic,
+      unequipEmoteSlot,
       resetLoadout,
       isEquipped,
     }),
     [
       equippedCosmeticsByType,
       equippedIdsByType,
+      equippedEmoteCosmetics,
+      equippedEmoteIds,
       equippedTheme,
       errorMessage,
       equipCosmetic,
@@ -419,6 +632,8 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
       resetLoadout,
       storeErrorMessage,
       unequipCosmetic,
+      unequipEmoteCosmetic,
+      unequipEmoteSlot,
     ],
   );
 

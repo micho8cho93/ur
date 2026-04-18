@@ -7,7 +7,9 @@ import { CreateTournamentPage } from './pages/CreateTournament'
 import { LegacyTournamentDetailRedirect } from './pages/LegacyTournamentDetailRedirect'
 import { LoginPage } from './pages/Login'
 import { OverviewPage } from './pages/Overview'
+import { UserFeedbackPage } from './pages/UserFeedback'
 import { SettingsPage } from './pages/Settings'
+import { StoreOverviewPage } from './pages/StoreOverview'
 import { StoreCatalogPage } from './pages/StoreCatalog'
 import { StoreRotationPage } from './pages/StoreRotation'
 import { StoreStatsPage } from './pages/StoreStats'
@@ -76,7 +78,11 @@ export const router = createBrowserRouter([
         children: [
           {
             path: appRoutes.store.home,
-            element: <Navigate to={appRoutes.store.catalog} replace />,
+            element: <Navigate to={appRoutes.store.overview} replace />,
+          },
+          {
+            path: appRoutes.store.overview,
+            element: <StoreOverviewPage />,
           },
           {
             path: appRoutes.store.catalog,
@@ -98,6 +104,19 @@ export const router = createBrowserRouter([
           {
             path: appRoutes.settings,
             element: <SettingsPage />,
+          },
+        ],
+      },
+      {
+        element: <AppShell section="feedback" />,
+        children: [
+          {
+            path: appRoutes.feedback.home,
+            element: <UserFeedbackPage />,
+          },
+          {
+            path: appRoutes.feedback.detail(':feedbackId'),
+            element: <UserFeedbackPage />,
           },
         ],
       },

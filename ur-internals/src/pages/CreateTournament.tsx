@@ -16,6 +16,7 @@ import {
   getSingleEliminationRoundCount,
   TOURNAMENT_SIZE_OPTIONS,
 } from '../tournamentSizing'
+import { formatTournamentEntryFee, parseTournamentEntryFee } from '../tournamentFees'
 import { BOT_DIFFICULTIES, DEFAULT_BOT_DIFFICULTY, type BotDifficulty } from '../types/bot'
 
 type FormState = {
@@ -24,6 +25,7 @@ type FormState = {
   gameMode: string
   entrants: string
   startAt: string
+  entryFee: string
   autoAddBots: boolean
   botDifficulty: BotDifficulty
   joinRequired: boolean
@@ -40,6 +42,7 @@ const initialState: FormState = {
   gameMode: 'gameMode_3_pieces',
   entrants: '16',
   startAt: '',
+  entryFee: 'Free',
   autoAddBots: false,
   botDifficulty: DEFAULT_BOT_DIFFICULTY,
   joinRequired: true,
@@ -80,6 +83,7 @@ export function CreateTournamentPage() {
     const xpPerMatchWin = Number(form.xpPerMatchWin)
     const xpForTournamentChampion = Number(form.xpForTournamentChampion)
     const gemsForRank1 = Number(form.gemsForRank1)
+    const entryFee = parseTournamentEntryFee(form.entryFee)
     const roundCount = getSingleEliminationRoundCount(entrants)
 
     if (!form.name.trim()) {
@@ -117,6 +121,11 @@ export function CreateTournamentPage() {
       return
     }
 
+    if (form.entryFee.trim().length > 0 && form.entryFee.trim().toLowerCase() !== 'free' && !entryFee) {
+      setError('Entry fee must be Free or a coin/gem amount like "250 coins" or "25 gems".')
+      return
+    }
+
     try {
       setIsSaving(true)
 
@@ -134,6 +143,7 @@ export function CreateTournamentPage() {
         xpPerMatchWin: Math.floor(xpPerMatchWin),
         xpForTournamentChampion: Math.floor(xpForTournamentChampion),
         gemsForRank1: Math.floor(gemsForRank1),
+        entryFee: formatTournamentEntryFee(form.entryFee),
       })
 
       void navigate(appRoutes.tournaments.detail(tournament.id))
@@ -153,6 +163,7 @@ export function CreateTournamentPage() {
   const awardsXp = Number(form.xpPerMatchWin) > 0 || Number(form.xpForTournamentChampion) > 0
   const structureLabel = getTournamentStructureLabel(form.gameMode)
   const botSummary = form.autoAddBots ? `Bot fill enabled · ${form.botDifficulty}` : 'Bots off'
+  const entryFeeLabel = formatTournamentEntryFee(form.entryFee)
 
   return (
     <>
@@ -272,6 +283,27 @@ export function CreateTournamentPage() {
                 </select>
                 <span className="field__hint">
                   Single-elimination only. This field size creates {roundLabel} and finalizes automatically when a winner is decided.
+                </span>
+              </div>
+            </div>
+          </SectionPanel>
+
+          <SectionPanel
+            title="Entry fee"
+            subtitle="Set the currency players spend to enter the tournament."
+          >
+            <div className="form-grid">
+              <div className="field field--full">
+                <label htmlFor="entryFee">Entry fee</label>
+                <input
+                  id="entryFee"
+                  name="entryFee"
+                  value={form.entryFee}
+                  onChange={(event) => updateField('entryFee', event)}
+                  placeholder="250 coins or 25 gems"
+                />
+                <span className="field__hint">
+                  Use `Free`, a coin amount, or a gem amount. Example: `250 coins` or `25 gems`.
                 </span>
               </div>
             </div>
@@ -437,6 +469,11 @@ export function CreateTournamentPage() {
                 label="Rewards"
                 value={awardsXp ? 'XP enabled' : 'No XP rewards'}
                 hint={`${form.xpPerMatchWin} per win / ${form.xpForTournamentChampion} champion`}
+              />
+              <MetaStripItem
+                label="Entry fee"
+                value={entryFeeLabel}
+                hint={entryFeeLabel === 'Free' ? 'Open entry, no wallet deduction.' : 'Charged on the first successful join.'}
               />
               <MetaStripItem label="Bot fill" value={botSummary} hint="Policy applies only if the lobby misses its deadline." />
             </MetaStrip>

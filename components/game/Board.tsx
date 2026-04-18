@@ -53,6 +53,7 @@ interface BoardProps {
   validMovesOverride?: MoveAction[];
   onMakeMoveOverride?: (move: MoveAction) => void;
   playerColorOverride?: PlayerColor | null;
+  cosmeticPlayerColor?: PlayerColor | null;
   allowInteraction?: boolean;
   freezeMotion?: boolean;
   onInteraction?: () => void;
@@ -460,6 +461,7 @@ export const Board: React.FC<BoardProps> = ({
   validMovesOverride,
   onMakeMoveOverride,
   playerColorOverride,
+  cosmeticPlayerColor,
   allowInteraction = true,
   freezeMotion = false,
   onInteraction,
@@ -2010,6 +2012,7 @@ export const Board: React.FC<BoardProps> = ({
             <Animated.View testID="board-captured-piece" style={[styles.capturedPiece, capturedPieceStyle]}>
               <Piece
                 color={animatedMove.capturedPiece.color}
+                cosmeticPlayerColor={cosmeticPlayerColor}
                 pixelSize={boardPiecePixelSize}
                 artScale={boardPieceArtScale}
                 artOffsetY={boardPieceArtOffsetY}
@@ -2020,6 +2023,7 @@ export const Board: React.FC<BoardProps> = ({
           <Animated.View testID="board-moving-piece" style={[styles.movingPiece, movingPieceStyle]}>
             <Piece
               color={animatedMove.color}
+              cosmeticPlayerColor={cosmeticPlayerColor}
               pixelSize={boardPiecePixelSize}
               artScale={boardPieceArtScale}
               artOffsetY={boardPieceArtOffsetY}
@@ -2100,6 +2104,7 @@ export const Board: React.FC<BoardProps> = ({
           >
             <Piece
               color={spawnCueColor}
+              cosmeticPlayerColor={cosmeticPlayerColor}
               pixelSize={boardPiecePixelSize}
               artScale={boardPieceArtScale}
               artOffsetY={boardPieceArtOffsetY}

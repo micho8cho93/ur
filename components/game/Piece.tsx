@@ -1,6 +1,7 @@
 import { urTheme } from '@/constants/urTheme';
 import { PlayerColor } from '@/logic/types';
 import { useCosmeticTheme } from '@/src/store/CosmeticThemeContext';
+import { getPieceImageSources } from '@/src/cosmetics/pieceAssets';
 import React, { useEffect, useMemo } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import Animated, {
@@ -26,6 +27,7 @@ type PieceHighlightTone = 'gold' | 'deepBlue';
 
 interface PieceProps {
   color: PlayerColor;
+  cosmeticPlayerColor?: PlayerColor | null;
   highlight?: boolean;
   highlightTone?: PieceHighlightTone;
   invalidSelectionToken?: number;
@@ -40,6 +42,7 @@ interface PieceProps {
 
 const arePiecePropsEqual = (prev: PieceProps, next: PieceProps): boolean =>
   prev.color === next.color &&
+  prev.cosmeticPlayerColor === next.cosmeticPlayerColor &&
   prev.highlight === next.highlight &&
   prev.highlightTone === next.highlightTone &&
   prev.invalidSelectionToken === next.invalidSelectionToken &&
@@ -73,6 +76,7 @@ const PieceComponent: React.FC<PieceProps> = ({
   invalidSelectionToken = 0,
   size = 'md',
   pixelSize,
+  cosmeticPlayerColor,
   artScale = 1,
   artOffsetX = 0,
   artOffsetY = 0,
@@ -80,6 +84,7 @@ const PieceComponent: React.FC<PieceProps> = ({
   state = 'idle',
 }) => {
   const { pieceImageSources } = useCosmeticTheme();
+  const defaultPieceImageSources = useMemo(() => getPieceImageSources(), []);
   const intro = useSharedValue(0.9);
   const glowPulse = useSharedValue(0);
   const motion = useSharedValue(0);
@@ -87,13 +92,23 @@ const PieceComponent: React.FC<PieceProps> = ({
   const rejectionTwist = useSharedValue(0);
 
   const resolvedVariant: PieceVariant = variant ?? color;
+  const sourcePool = cosmeticPlayerColor == null || cosmeticPlayerColor === color
+    ? pieceImageSources
+    : defaultPieceImageSources;
   const resolvedSource = useMemo(() => {
     if (resolvedVariant === 'reserve') {
-      return color === 'dark' ? pieceImageSources.reserveDark : pieceImageSources.reserveLight;
+      return color === 'dark' ? sourcePool.reserveDark : sourcePool.reserveLight;
     }
 
-    return resolvedVariant === 'dark' ? pieceImageSources.dark : pieceImageSources.light;
-  }, [color, pieceImageSources.dark, pieceImageSources.light, pieceImageSources.reserveDark, pieceImageSources.reserveLight, resolvedVariant]);
+    return resolvedVariant === 'dark' ? sourcePool.dark : sourcePool.light;
+  }, [
+    color,
+    resolvedVariant,
+    sourcePool.dark,
+    sourcePool.light,
+    sourcePool.reserveDark,
+    sourcePool.reserveLight,
+  ]);
 
   useEffect(() => {
     intro.value = withSpring(1, urTheme.motion.spring.game);

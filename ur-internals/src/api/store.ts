@@ -83,6 +83,19 @@ function normalizeCosmetic(value: unknown): CosmeticDefinition | null {
           uploadedAt: readStringField(uploadedAssetRecord, ['uploadedAt']) ?? '',
         }
       : null
+  const uploadedAsset2Record = asRecord(record.uploadedAsset2)
+  const uploadedAsset2MediaType = readStringField(uploadedAsset2Record, ['mediaType'])
+  const uploadedAsset2 =
+    uploadedAsset2Record && assetMediaTypes.includes(uploadedAsset2MediaType as CosmeticAssetMediaType)
+      ? {
+          fileName: readStringField(uploadedAsset2Record, ['fileName']) ?? '',
+          mimeType: readStringField(uploadedAsset2Record, ['mimeType']) ?? '',
+          sizeBytes: readNumberField(uploadedAsset2Record, ['sizeBytes']) ?? 0,
+          mediaType: uploadedAsset2MediaType as CosmeticAssetMediaType,
+          dataUrl: readStringField(uploadedAsset2Record, ['dataUrl']) ?? '',
+          uploadedAt: readStringField(uploadedAsset2Record, ['uploadedAt']) ?? '',
+        }
+      : null
 
   return {
     id,
@@ -102,6 +115,9 @@ function normalizeCosmetic(value: unknown): CosmeticDefinition | null {
     assetKey,
     ...(uploadedAsset?.fileName && uploadedAsset.mimeType && uploadedAsset.dataUrl && uploadedAsset.sizeBytes > 0
       ? { uploadedAsset }
+      : {}),
+    ...(uploadedAsset2?.fileName && uploadedAsset2.mimeType && uploadedAsset2.dataUrl && uploadedAsset2.sizeBytes > 0
+      ? { uploadedAsset2 }
       : {}),
     disabled: readBooleanField(record, ['disabled']) ?? false,
   }

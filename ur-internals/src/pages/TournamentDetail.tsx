@@ -882,6 +882,11 @@ export function TournamentDetailPage() {
             hint={`${tournament.roundCount} rounds configured`}
           />
           <MetaStripItem
+            label="Entry fee"
+            value={tournament.buyIn}
+            hint={tournament.buyIn === 'Free' ? 'No wallet deduction on join.' : 'Charged on the first successful join.'}
+          />
+          <MetaStripItem
             label="Operator"
             value={tournament.operator.toUpperCase()}
             hint={tournament.authoritative ? 'Authoritative tournament run' : 'Non-authoritative tournament run'}

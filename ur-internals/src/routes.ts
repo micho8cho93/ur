@@ -1,6 +1,6 @@
 import type { AnalyticsSectionId } from './types/analytics'
 
-export type InternalsSectionId = 'tournaments' | 'analytics' | 'store' | 'settings'
+export type InternalsSectionId = 'tournaments' | 'analytics' | 'store' | 'settings' | 'feedback'
 
 export interface SidebarNavItem {
   label: string
@@ -45,9 +45,14 @@ export const appRoutes = {
   },
   store: {
     home: '/store',
+    overview: '/store/overview',
     catalog: '/store/catalog',
     rotation: '/store/rotation',
     stats: '/store/stats',
+  },
+  feedback: {
+    home: '/feedback',
+    detail: (feedbackId: string) => `/feedback/${feedbackId}`,
   },
   legacy: {
     auditLog: '/audit-log',
@@ -91,6 +96,14 @@ export const internalsSections: Record<InternalsSectionId, InternalsSection> = {
     description: 'Session, environment, operator identity, and console access controls.',
     to: appRoutes.settings,
   },
+  feedback: {
+    id: 'feedback',
+    label: 'User Feedback',
+    short: 'FB',
+    eyebrow: 'Feedback Internals',
+    description: 'Recent player submissions, reported-user context, and message review.',
+    to: appRoutes.feedback.home,
+  },
 }
 
 export const sectionEntryItems = [
@@ -98,6 +111,7 @@ export const sectionEntryItems = [
   internalsSections.analytics,
   internalsSections.store,
   internalsSections.settings,
+  internalsSections.feedback,
 ]
 
 export const analyticsSectionNavItems: AnalyticsSectionNavItem[] = [
@@ -218,6 +232,13 @@ export const analyticsNavItems: SidebarNavItem[] = [
 
 export const storeNavItems: SidebarNavItem[] = [
   {
+    label: 'Overview',
+    to: appRoutes.store.overview,
+    short: 'OV',
+    section: 'Store',
+    end: true,
+  },
+  {
     label: 'Catalog',
     to: appRoutes.store.catalog,
     short: 'CT',
@@ -250,11 +271,22 @@ export const settingsNavItems: SidebarNavItem[] = [
   },
 ]
 
+export const feedbackNavItems: SidebarNavItem[] = [
+  {
+    label: 'Inbox',
+    to: appRoutes.feedback.home,
+    short: 'IN',
+    section: 'Feedback',
+    matchPrefixes: [appRoutes.feedback.home],
+  },
+]
+
 export const sectionNavItems: Record<InternalsSectionId, SidebarNavItem[]> = {
   tournaments: tournamentNavItems,
   analytics: analyticsNavItems,
   store: storeNavItems,
   settings: settingsNavItems,
+  feedback: feedbackNavItems,
 }
 
 export const primaryNavItems: SidebarNavItem[] = [
@@ -262,4 +294,5 @@ export const primaryNavItems: SidebarNavItem[] = [
   ...analyticsNavItems,
   ...storeNavItems,
   ...settingsNavItems,
+  ...feedbackNavItems,
 ]

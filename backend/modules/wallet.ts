@@ -7,6 +7,7 @@ import {
   calculateChallengeSoftCurrencyReward,
   parseWalletBalances,
   sanitizePremiumCurrencyAmount,
+  sanitizeSoftCurrencyAmount,
 } from "../../shared/wallet";
 
 type RuntimeContext = any;
@@ -350,6 +351,43 @@ export const addPremiumCurrency = (
   );
 
   return { awardedPremiumCurrency: amount, duplicate: false };
+};
+
+export const spendSoftCurrency = (
+  nk: RuntimeNakama,
+  logger: RuntimeLogger,
+  params: {
+    userId: string;
+    amount: number;
+    source: string;
+    metadata?: Record<string, unknown>;
+  },
+): { spentSoftCurrency: number } => {
+  const amount = sanitizeSoftCurrencyAmount(params.amount);
+  if (amount <= 0) {
+    return { spentSoftCurrency: 0 };
+  }
+
+  const wallet = getWalletForUser(nk, params.userId);
+  if (wallet[SOFT_CURRENCY_KEY] < amount) {
+    throw new Error("INSUFFICIENT_COINS");
+  }
+
+  nk.walletUpdate(
+    params.userId,
+    { [SOFT_CURRENCY_KEY]: -amount },
+    {
+      source: params.source,
+      currency: SOFT_CURRENCY_KEY,
+      amount,
+      ...(params.metadata ?? {}),
+    },
+    true,
+  );
+
+  logger.info("Spent %d Coins from user %s (source=%s).", amount, params.userId, params.source);
+
+  return { spentSoftCurrency: amount };
 };
 
 export const spendPremiumCurrency = (
