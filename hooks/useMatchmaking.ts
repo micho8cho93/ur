@@ -3,10 +3,15 @@ import { BotDifficulty, DEFAULT_BOT_DIFFICULTY } from '@/logic/bot/types';
 import { DEFAULT_MATCH_CONFIG, MatchModeId, getMatchConfig, type MatchConfig } from '@/logic/matchConfigs';
 import {
   cancelMatchmaking,
+  createOpenOnlineMatch,
   createPrivateMatch,
   findMatch,
+  getOpenOnlineMatchStatus,
   getPrivateMatchStatus,
+  joinOpenOnlineMatch,
   joinPrivateMatch,
+  type OpenOnlineMatch,
+  type OpenOnlineMatchResult,
   type PrivateMatchResult,
 } from '@/services/matchmaking';
 import { getSitePlayerCount } from '@/services/presence';
@@ -19,7 +24,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export type LobbyMode = 'bot' | 'online';
 
 type MatchmakingStatus = 'idle' | 'connecting' | 'searching' | 'matched' | 'error';
-type ActiveLobbyAction = 'find_opponent' | 'create_private' | 'join_private' | null;
+type ActiveLobbyAction = 'find_opponent' | 'create_private' | 'join_private' | 'create_open' | 'join_open' | null;
 
 type CreatedPrivateMatch = PrivateMatchResult & {
   hasGuestJoined: boolean;
@@ -37,6 +42,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
   const [activeAction, setActiveAction] = useState<ActiveLobbyAction>(null);
   const [pendingPrivateMode, setPendingPrivateMode] = useState<MatchModeId | null>(null);
   const [createdPrivateMatch, setCreatedPrivateMatch] = useState<CreatedPrivateMatch | null>(null);
+  const [createdOpenOnlineMatch, setCreatedOpenOnlineMatch] = useState<OpenOnlineMatch | null>(null);
   const initGame = useGameStore((state) => state.initGame);
   const setNakamaSession = useGameStore((state) => state.setNakamaSession);
   const setUserId = useGameStore((state) => state.setUserId);
@@ -216,6 +222,48 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
     ]
   );
 
+  const openOnlineWagerMatch = useCallback(
+    async (
+      result: OpenOnlineMatchResult,
+      options?: { navigationMode?: 'push' | 'replace'; title?: string; message?: string },
+    ) => {
+      const navigate = options?.navigationMode === 'replace' ? router.replace : router.push;
+
+      await runMatchEntryTransition(
+        {
+          title: options?.title ?? 'Opening Wager Match',
+          message: options?.message ?? 'Seating both players and preparing the wagered board.',
+          variant: 'success',
+        },
+        () => {
+          setNakamaSession(result.session);
+          setUserId(result.userId);
+          setOnlineMode('nakama');
+          setMatchToken(null);
+          setPlayerColor(null);
+          initGame(result.match.matchId, { matchConfig: getMatchConfig(result.match.modeId) });
+          setSocketState('idle');
+          setStatus('matched');
+          setActiveAction(null);
+          setCreatedOpenOnlineMatch(null);
+          navigate(buildMatchRoutePath({ id: result.match.matchId, modeId: result.match.modeId }) as never);
+        },
+      );
+    },
+    [
+      initGame,
+      router.push,
+      router.replace,
+      runMatchEntryTransition,
+      setMatchToken,
+      setNakamaSession,
+      setOnlineMode,
+      setPlayerColor,
+      setSocketState,
+      setUserId,
+    ],
+  );
+
   const startOfflineMatch = useCallback(
     async (
       matchConfig: MatchConfig = DEFAULT_MATCH_CONFIG,
@@ -321,6 +369,102 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
     setSocketState,
     setUserId,
   ]);
+
+  const createOpenMatch = useCallback(
+    async (wager: number, durationMinutes: number, modeId: MatchModeId) => {
+      setErrorMessage(null);
+      setCreatedPrivateMatch(null);
+      setActiveAction('create_open');
+      setPendingPrivateMode(null);
+      setStatus('connecting');
+      setSocketState('connecting');
+      setPlayerColor(null);
+
+      try {
+        await cancelMatchmaking();
+
+        if (!isNakamaEnabled() || !hasNakamaConfig()) {
+          setErrorMessage('Online multiplayer is not configured. Please check your Nakama settings.');
+          setStatus('error');
+          setSocketState('error');
+          setActiveAction(null);
+          return null;
+        }
+
+        setOnlineMode('nakama');
+        const result = await createOpenOnlineMatch(wager, durationMinutes, modeId);
+        setNakamaSession(result.session);
+        setUserId(result.userId);
+        setMatchToken(null);
+        setSocketState('idle');
+        setCreatedOpenOnlineMatch(result.match);
+        setStatus('idle');
+        setActiveAction(null);
+        return result.match;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to create an open match right now.';
+        setErrorMessage(message);
+        setStatus('error');
+        setSocketState('error');
+        setActiveAction(null);
+        return null;
+      }
+    },
+    [setMatchToken, setNakamaSession, setOnlineMode, setPlayerColor, setSocketState, setUserId],
+  );
+
+  const joinOpenMatch = useCallback(
+    async (openMatchId: string) => {
+      setErrorMessage(null);
+      setActiveAction('join_open');
+      setPendingPrivateMode(null);
+      setStatus('connecting');
+      setSocketState('connecting');
+      setPlayerColor(null);
+
+      try {
+        await cancelMatchmaking();
+
+        if (!isNakamaEnabled() || !hasNakamaConfig()) {
+          setErrorMessage('Online multiplayer is not configured. Please check your Nakama settings.');
+          setStatus('error');
+          setSocketState('error');
+          setActiveAction(null);
+          return null;
+        }
+
+        setOnlineMode('nakama');
+        const result = await joinOpenOnlineMatch(openMatchId);
+        await openOnlineWagerMatch(result, {
+          title: 'Joining Wager Match',
+          message: 'Claiming your seat and opening the wagered board.',
+        });
+        return result.match;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to join that open match right now.';
+        setErrorMessage(message);
+        setStatus('error');
+        setSocketState('error');
+        setActiveAction(null);
+        return null;
+      }
+    },
+    [openOnlineWagerMatch, setOnlineMode, setPlayerColor, setSocketState],
+  );
+
+  const refreshCreatedOpenMatch = useCallback(async () => {
+    if (!createdOpenOnlineMatch) {
+      return null;
+    }
+
+    try {
+      const nextMatch = await getOpenOnlineMatchStatus(createdOpenOnlineMatch.openMatchId);
+      setCreatedOpenOnlineMatch(nextMatch.status === 'expired' || nextMatch.status === 'settled' ? null : nextMatch);
+      return nextMatch;
+    } catch {
+      return createdOpenOnlineMatch;
+    }
+  }, [createdOpenOnlineMatch]);
 
   const startPrivateMatch = useCallback(
     async (modeId: MatchModeId = 'standard') => {
@@ -447,6 +591,10 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
     startMatch,
     startOfflineMatch,
     startBotGame,
+    createOpenMatch,
+    joinOpenMatch,
+    refreshCreatedOpenMatch,
+    openOnlineWagerMatch,
     startPrivateMatch,
     startCreatedPrivateMatch,
     joinPrivateMatchByCode,
@@ -458,5 +606,6 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
     activeAction,
     pendingPrivateMode,
     createdPrivateMatch,
+    createdOpenOnlineMatch,
   };
 };

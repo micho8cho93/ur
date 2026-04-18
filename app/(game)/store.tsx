@@ -4,15 +4,19 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  StyleProp,
   StyleSheet,
   Text,
+  TextStyle,
   View,
+  ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 
 import { CosmeticPreviewModal } from '@/components/CosmeticPreviewModal';
 import { Button } from '@/components/ui/Button';
+import { CurrencyAmount, type CurrencyIconVariant } from '@/components/wallet/CurrencyIcon';
 import { getFullCatalog } from '@/services/cosmetics';
 import type { CosmeticDefinition, CosmeticTier } from '@/shared/cosmetics';
 import { useStore } from '@/src/store/StoreProvider';
@@ -24,8 +28,26 @@ const tierColors: Record<CosmeticTier, { bg: string; text: string; thumb: string
   legendary: { bg: '#b45309', text: '#fef3c7', thumb: '#d97706' },
 };
 
-const formatPrice = (item: CosmeticDefinition): string =>
-  `${item.price.amount} ${item.price.currency === 'premium' ? 'Gems' : 'Coins'}`;
+const getCurrencyVariant = (item: CosmeticDefinition): CurrencyIconVariant =>
+  item.price.currency === 'premium' ? 'gem' : 'coin';
+
+const PriceAmount = ({
+  item,
+  style,
+  textStyle,
+}: {
+  item: CosmeticDefinition;
+  style?: StyleProp<ViewStyle>;
+  textStyle?: StyleProp<TextStyle>;
+}) => (
+  <CurrencyAmount
+    amount={item.price.amount}
+    variant={getCurrencyVariant(item)}
+    iconSize={15}
+    style={style}
+    textStyle={textStyle}
+  />
+);
 
 const formatCountdown = (expiresAt: string): string => {
   const remainingMs = Math.max(0, Date.parse(expiresAt) - Date.now());
@@ -37,7 +59,7 @@ const formatCountdown = (expiresAt: string): string => {
 
 const getPurchaseErrorMessage = (error: string): string => {
   if (error === 'INSUFFICIENT_FUNDS') {
-    return 'Not enough coins';
+    return 'Not enough balance';
   }
   if (error === 'ALREADY_OWNED') {
     return 'Already owned';
@@ -47,7 +69,7 @@ const getPurchaseErrorMessage = (error: string): string => {
 
 type StoreTabId = 'featured' | 'board' | 'pieces' | 'dice_animation' | 'emote';
 
-const STORE_TABS: Array<{ id: StoreTabId; label: string }> = [
+const STORE_TABS: { id: StoreTabId; label: string }[] = [
   { id: 'featured', label: 'Featured' },
   { id: 'board', label: 'Boards' },
   { id: 'pieces', label: 'Pieces' },
@@ -105,7 +127,7 @@ const CosmeticCard = ({ item, owned, featured = false, inRotation = false, onPre
       </View>
       <TierBadge tier={item.tier} />
       {inRotation ? <Text style={styles.rotationTag}>In rotation today</Text> : null}
-      <Text style={styles.price}>{formatPrice(item)}</Text>
+      <PriceAmount item={item} style={styles.price} textStyle={styles.priceText} />
       <View style={styles.cardActions}>
         {onPreview ? (
           <Button title="Preview" variant="outline" onPress={onPreview} style={styles.smallButton} />
@@ -243,8 +265,12 @@ export default function StoreScreen() {
           <View style={styles.header}>
             <Text style={styles.title}>Store</Text>
             <View style={styles.walletPill}>
-              <Text style={styles.coinIcon}>●</Text>
-              <Text style={styles.walletText}>{softCurrency} Coins</Text>
+              <CurrencyAmount
+                amount={softCurrency}
+                variant="coin"
+                iconSize={15}
+                textStyle={styles.walletText}
+              />
             </View>
           </View>
 
@@ -372,7 +398,11 @@ export default function StoreScreen() {
                 <>
                   <View style={[styles.sheetThumbnail, { backgroundColor: tierColors[selectedItem.tier].thumb }]} />
                   <Text style={styles.sheetTitle}>{selectedItem.name}</Text>
-                  <Text style={styles.sheetPrice}>{formatPrice(selectedItem)}</Text>
+                  <PriceAmount
+                    item={selectedItem}
+                    style={styles.sheetPrice}
+                    textStyle={styles.sheetPriceText}
+                  />
                   <View style={styles.sheetActions}>
                     <Button title="Cancel" variant="outline" onPress={() => setSelectedItem(null)} style={styles.sheetButton} />
                     <Button
@@ -428,10 +458,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(250, 204, 21, 0.42)',
     paddingHorizontal: 12,
     paddingVertical: 8,
-  },
-  coinIcon: {
-    color: '#facc15',
-    fontSize: 14,
   },
   walletText: {
     color: '#fef3c7',
@@ -584,6 +610,10 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   price: {
+    justifyContent: 'flex-start',
+    alignSelf: 'flex-start',
+  },
+  priceText: {
     color: '#fde68a',
     fontSize: 14,
     fontWeight: '800',
@@ -618,6 +648,10 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   sheetPrice: {
+    justifyContent: 'flex-start',
+    alignSelf: 'flex-start',
+  },
+  sheetPriceText: {
     color: '#fde68a',
     fontSize: 16,
     fontWeight: '800',

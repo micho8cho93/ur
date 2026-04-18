@@ -46,6 +46,10 @@ jest.mock('@/src/challenges/useChallenges', () => ({
 }));
 
 jest.mock('expo-router', () => ({
+  useFocusEffect: (callback: () => void) => {
+    const React = jest.requireActual('react');
+    React.useEffect(callback, [callback]);
+  },
   useRouter: () => ({
     push: mockPush,
     replace: mockReplace,
@@ -116,6 +120,9 @@ describe('AuthenticatedHome', () => {
       wallet: { soft_currency: 37, premium_currency: 0 },
       softCurrency: 37,
       premiumCurrency: 0,
+      prevSoftCurrency: null,
+      prevPremiumCurrency: null,
+      clearWalletDelta: jest.fn(),
       errorMessage: null,
       isLoading: false,
       isRefreshing: false,
@@ -162,7 +169,7 @@ describe('AuthenticatedHome', () => {
     const view = render(<AuthenticatedHome />);
 
     expect(view.getByText('Michel')).toBeTruthy();
-    expect(view.getByText('37 Coins')).toBeTruthy();
+    expect(view.getByLabelText('37 coins')).toBeTruthy();
     expect(view.getByLabelText('Current progression rank badge: Apprentice Scribe')).toBeTruthy();
     expect(view.getByText('Logout')).toBeTruthy();
     expect(view.getByText('Inventory')).toBeTruthy();
@@ -216,7 +223,7 @@ describe('AuthenticatedHome', () => {
     const view = render(<AuthenticatedHome />);
 
     expect(view.getByText('Guest')).toBeTruthy();
-    expect(view.getByText('0 Coins')).toBeTruthy();
+    expect(view.getByLabelText('0 coins')).toBeTruthy();
     expect(view.getByLabelText('Current progression rank badge: Laborer')).toBeTruthy();
     expect(view.getByText('Back')).toBeTruthy();
     expect(view.queryByText('Logout')).toBeNull();
@@ -237,7 +244,7 @@ describe('AuthenticatedHome', () => {
     const view = render(<AuthenticatedHome />);
 
     expect(view.getByText('XP & Rank')).toBeTruthy();
-    expect(view.getByText('37 Coins')).toBeTruthy();
+    expect(view.getByLabelText('37 coins')).toBeTruthy();
     expect(view.getByText('Elo Rating')).toBeTruthy();
     expect(view.getAllByText('Challenges')).toHaveLength(2);
     expect(view.getByText('Status')).toBeTruthy();

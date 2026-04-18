@@ -9,6 +9,11 @@ const RPC_CREATE_PRIVATE_MATCH = "create_private_match";
 const RPC_JOIN_PRIVATE_MATCH = "join_private_match";
 const RPC_GET_PRIVATE_MATCH_STATUS = "get_private_match_status";
 const RPC_LIST_SPECTATABLE_MATCHES = "list_spectatable_matches";
+const RPC_CREATE_OPEN_ONLINE_MATCH = "create_open_online_match";
+const RPC_LIST_OPEN_ONLINE_MATCHES = "list_open_online_matches";
+const RPC_JOIN_OPEN_ONLINE_MATCH = "join_open_online_match";
+const RPC_GET_OPEN_ONLINE_MATCH_STATUS = "get_open_online_match_status";
+const RPC_GET_ACTIVE_OPEN_ONLINE_MATCH = "get_active_open_online_match";
 const CONNECT_TIMEOUT_MS = 10_000;
 const START_MATCHMAKING_TIMEOUT_MS = 10_000;
 const WAIT_FOR_MATCH_TIMEOUT_MS = 20_000;
@@ -187,6 +192,32 @@ export type SpectatableMatch = {
   playerLabels: string[];
 };
 
+export type OpenOnlineMatchStatus = "open" | "matched" | "expired" | "settled";
+
+export type OpenOnlineMatch = {
+  openMatchId: string;
+  matchId: string;
+  modeId: MatchModeId;
+  creatorUserId: string;
+  joinedUserId: string | null;
+  wager: number;
+  durationMinutes: number;
+  status: OpenOnlineMatchStatus;
+  createdAt: string;
+  expiresAt: string;
+  updatedAt: string;
+  entrants: number;
+  maxEntrants: number;
+  isCreator: boolean;
+  isJoiner: boolean;
+};
+
+export type OpenOnlineMatchResult = {
+  match: OpenOnlineMatch;
+  session: Session;
+  userId: string;
+};
+
 export type MatchmakingHandlers = {
   onSearching?: () => void;
 };
@@ -214,6 +245,36 @@ type SpectatableMatchRpcPayload = {
   player_labels?: unknown;
 };
 
+type OpenOnlineMatchRpcPayload = {
+  openMatchId?: unknown;
+  open_match_id?: unknown;
+  matchId?: unknown;
+  match_id?: unknown;
+  modeId?: unknown;
+  mode_id?: unknown;
+  creatorUserId?: unknown;
+  creator_user_id?: unknown;
+  joinedUserId?: unknown;
+  joined_user_id?: unknown;
+  wager?: unknown;
+  durationMinutes?: unknown;
+  duration_minutes?: unknown;
+  status?: unknown;
+  createdAt?: unknown;
+  created_at?: unknown;
+  expiresAt?: unknown;
+  expires_at?: unknown;
+  updatedAt?: unknown;
+  updated_at?: unknown;
+  entrants?: unknown;
+  maxEntrants?: unknown;
+  max_entrants?: unknown;
+  isCreator?: unknown;
+  is_creator?: unknown;
+  isJoiner?: unknown;
+  is_joiner?: unknown;
+};
+
 const normalizeRpcPayload = (payload: unknown): unknown => {
   if (typeof payload !== "string") {
     return payload;
@@ -224,6 +285,24 @@ const normalizeRpcPayload = (payload: unknown): unknown => {
   } catch {
     return payload;
   }
+};
+
+const readString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+
+const readNumber = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
 };
 
 const parsePrivateMatchPayload = (
@@ -322,6 +401,127 @@ const parseSpectatableMatchesPayload = (payload: unknown): SpectatableMatch[] =>
   return matches
     .map((entry) => parseSpectatableMatchEntry(entry))
     .filter((entry): entry is SpectatableMatch => Boolean(entry));
+};
+
+const normalizeOpenOnlineMatchStatus = (value: unknown): OpenOnlineMatchStatus | null => {
+  if (value === "open" || value === "matched" || value === "expired" || value === "settled") {
+    return value;
+  }
+
+  return null;
+};
+
+const parseOpenOnlineMatchEntry = (entry: unknown): OpenOnlineMatch | null => {
+  const rpcPayload = entry as OpenOnlineMatchRpcPayload | undefined;
+  const openMatchId = readString(rpcPayload?.openMatchId) ?? readString(rpcPayload?.open_match_id);
+  const matchId = readString(rpcPayload?.matchId) ?? readString(rpcPayload?.match_id);
+  const modeId = rpcPayload?.modeId ?? rpcPayload?.mode_id;
+  const creatorUserId = readString(rpcPayload?.creatorUserId) ?? readString(rpcPayload?.creator_user_id);
+  const joinedUserId = readString(rpcPayload?.joinedUserId) ?? readString(rpcPayload?.joined_user_id);
+  const wager = readNumber(rpcPayload?.wager);
+  const durationMinutes = readNumber(rpcPayload?.durationMinutes) ?? readNumber(rpcPayload?.duration_minutes);
+  const status = normalizeOpenOnlineMatchStatus(rpcPayload?.status);
+  const createdAt = readString(rpcPayload?.createdAt) ?? readString(rpcPayload?.created_at);
+  const expiresAt = readString(rpcPayload?.expiresAt) ?? readString(rpcPayload?.expires_at);
+  const updatedAt = readString(rpcPayload?.updatedAt) ?? readString(rpcPayload?.updated_at);
+  const entrants = readNumber(rpcPayload?.entrants);
+  const maxEntrants = readNumber(rpcPayload?.maxEntrants) ?? readNumber(rpcPayload?.max_entrants);
+  const isCreator =
+    typeof rpcPayload?.isCreator === "boolean"
+      ? rpcPayload.isCreator
+      : typeof rpcPayload?.is_creator === "boolean"
+        ? rpcPayload.is_creator
+        : false;
+  const isJoiner =
+    typeof rpcPayload?.isJoiner === "boolean"
+      ? rpcPayload.isJoiner
+      : typeof rpcPayload?.is_joiner === "boolean"
+        ? rpcPayload.is_joiner
+        : false;
+
+  if (
+    !openMatchId ||
+    !matchId ||
+    !isMatchModeId(modeId) ||
+    !creatorUserId ||
+    wager === null ||
+    durationMinutes === null ||
+    !status ||
+    !createdAt ||
+    !expiresAt ||
+    !updatedAt
+  ) {
+    return null;
+  }
+
+  return {
+    openMatchId,
+    matchId,
+    modeId,
+    creatorUserId,
+    joinedUserId,
+    wager: Math.max(0, Math.floor(wager)),
+    durationMinutes: Math.max(0, Math.floor(durationMinutes)),
+    status,
+    createdAt,
+    expiresAt,
+    updatedAt,
+    entrants: entrants === null ? (joinedUserId ? 2 : 1) : Math.max(0, Math.floor(entrants)),
+    maxEntrants: maxEntrants === null ? 2 : Math.max(1, Math.floor(maxEntrants)),
+    isCreator,
+    isJoiner,
+  };
+};
+
+const parseOpenOnlineMatchPayload = (payload: unknown): OpenOnlineMatch => {
+  const rpcPayload = normalizeRpcPayload(payload);
+  const matchPayload =
+    typeof rpcPayload === "object" && rpcPayload !== null && "match" in rpcPayload
+      ? (rpcPayload as { match?: unknown }).match
+      : rpcPayload;
+  const match = parseOpenOnlineMatchEntry(matchPayload);
+
+  if (!match) {
+    throw new Error("Open online match returned an invalid payload.");
+  }
+
+  return match;
+};
+
+const parseOpenOnlineMatchesPayload = (payload: unknown): OpenOnlineMatch[] => {
+  const rpcPayload = normalizeRpcPayload(payload);
+  const matches = Array.isArray(rpcPayload)
+    ? rpcPayload
+    : typeof rpcPayload === "object" && rpcPayload !== null && Array.isArray((rpcPayload as { matches?: unknown }).matches)
+      ? (rpcPayload as { matches: unknown[] }).matches
+      : null;
+
+  if (!matches) {
+    throw new Error("Open online matches returned an invalid payload.");
+  }
+
+  return matches
+    .map((entry) => parseOpenOnlineMatchEntry(entry))
+    .filter((entry): entry is OpenOnlineMatch => Boolean(entry));
+};
+
+const parseNullableOpenOnlineMatchPayload = (payload: unknown): OpenOnlineMatch | null => {
+  const rpcPayload = normalizeRpcPayload(payload);
+  const matchPayload =
+    typeof rpcPayload === "object" && rpcPayload !== null && "match" in rpcPayload
+      ? (rpcPayload as { match?: unknown }).match
+      : rpcPayload;
+
+  if (matchPayload === null || matchPayload === undefined) {
+    return null;
+  }
+
+  const match = parseOpenOnlineMatchEntry(matchPayload);
+  if (!match) {
+    throw new Error("Open online match returned an invalid payload.");
+  }
+
+  return match;
 };
 
 export const cancelMatchmaking = async (): Promise<void> => {
@@ -471,6 +671,90 @@ export const listSpectatableMatches = async (): Promise<SpectatableMatch[]> => {
   try {
     const response = await client.rpc(session, RPC_LIST_SPECTATABLE_MATCHES, {});
     return parseSpectatableMatchesPayload(response.payload);
+  } catch (error) {
+    throw await normalizeMatchmakingError(error);
+  }
+};
+
+export const createOpenOnlineMatch = async (
+  wager: number,
+  durationMinutes: number,
+  modeId: MatchModeId
+): Promise<OpenOnlineMatchResult> => {
+  const session = await ensureAuthenticated();
+  const client = nakamaService.getClient();
+
+  try {
+    const response = await client.rpc(session, RPC_CREATE_OPEN_ONLINE_MATCH, { wager, durationMinutes, modeId });
+    const match = parseOpenOnlineMatchPayload(response.payload);
+
+    if (!session.user_id) {
+      throw new Error("Authenticated session is missing user ID.");
+    }
+
+    return {
+      match,
+      session,
+      userId: session.user_id,
+    };
+  } catch (error) {
+    throw await normalizeMatchmakingError(error);
+  }
+};
+
+export const listOpenOnlineMatches = async (): Promise<OpenOnlineMatch[]> => {
+  const session = await ensureAuthenticated();
+  const client = nakamaService.getClient();
+
+  try {
+    const response = await client.rpc(session, RPC_LIST_OPEN_ONLINE_MATCHES, {});
+    return parseOpenOnlineMatchesPayload(response.payload);
+  } catch (error) {
+    throw await normalizeMatchmakingError(error);
+  }
+};
+
+export const joinOpenOnlineMatch = async (openMatchId: string): Promise<OpenOnlineMatchResult> => {
+  const session = await ensureAuthenticated();
+  const client = nakamaService.getClient();
+
+  try {
+    const response = await client.rpc(session, RPC_JOIN_OPEN_ONLINE_MATCH, { openMatchId });
+    const match = parseOpenOnlineMatchPayload(response.payload);
+
+    if (!session.user_id) {
+      throw new Error("Authenticated session is missing user ID.");
+    }
+
+    return {
+      match,
+      session,
+      userId: session.user_id,
+    };
+  } catch (error) {
+    throw await normalizeMatchmakingError(error);
+  }
+};
+
+export const getOpenOnlineMatchStatus = async (openMatchId: string): Promise<OpenOnlineMatch> => {
+  const session = await ensureAuthenticated();
+  const client = nakamaService.getClient();
+
+  try {
+    const response = await client.rpc(session, RPC_GET_OPEN_ONLINE_MATCH_STATUS, { openMatchId });
+    return parseOpenOnlineMatchPayload(response.payload);
+  } catch (error) {
+    throw await normalizeMatchmakingError(error);
+  }
+};
+
+export const getActiveOpenOnlineMatch = async (): Promise<OpenOnlineMatch | null> => {
+  const session = await ensureAuthenticated();
+  const client = nakamaService.getClient();
+
+  try {
+    const response = await client.rpc(session, RPC_GET_ACTIVE_OPEN_ONLINE_MATCH, {});
+    return parseNullableOpenOnlineMatchPayload(response.payload);
   } catch (error) {
     throw await normalizeMatchmakingError(error);
   }

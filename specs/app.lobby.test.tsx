@@ -1,15 +1,20 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import React from 'react';
 import Lobby from '@/app/(game)/lobby';
 
 const mockUseMatchmaking = jest.fn();
 const mockUseTournamentList = jest.fn();
 const mockUseStore = jest.fn();
+const mockUseWallet = jest.fn();
 const mockReplace = jest.fn();
 const mockPush = jest.fn();
 const mockBack = jest.fn();
 const mockCanGoBack = jest.fn();
 const mockJoinPrivateMatchByCode = jest.fn();
+const mockCreateOpenMatch = jest.fn();
+const mockJoinOpenMatch = jest.fn();
+const mockRefreshCreatedOpenMatch = jest.fn();
+const mockListOpenOnlineMatches = jest.fn();
 
 jest.mock('@/hooks/useMatchmaking', () => ({
   useMatchmaking: (...args: unknown[]) => mockUseMatchmaking(...args),
@@ -19,8 +24,16 @@ jest.mock('@/src/tournaments/useTournamentList', () => ({
   useTournamentList: (...args: unknown[]) => mockUseTournamentList(...args),
 }));
 
+jest.mock('@/services/matchmaking', () => ({
+  listOpenOnlineMatches: (...args: unknown[]) => mockListOpenOnlineMatches(...args),
+}));
+
 jest.mock('@/src/store/StoreProvider', () => ({
   useStore: () => mockUseStore(),
+}));
+
+jest.mock('@/src/wallet/useWallet', () => ({
+  useWallet: () => mockUseWallet(),
 }));
 
 jest.mock('expo-router', () => ({
@@ -97,6 +110,9 @@ describe('Lobby private game join input', () => {
     mockCanGoBack.mockReturnValue(true);
     mockUseMatchmaking.mockReturnValue({
       startMatch: jest.fn(),
+      createOpenMatch: mockCreateOpenMatch,
+      joinOpenMatch: mockJoinOpenMatch,
+      refreshCreatedOpenMatch: mockRefreshCreatedOpenMatch,
       startPrivateMatch: jest.fn(),
       startCreatedPrivateMatch: jest.fn(),
       joinPrivateMatchByCode: mockJoinPrivateMatchByCode,
@@ -107,9 +123,17 @@ describe('Lobby private game join input', () => {
       activeAction: null,
       pendingPrivateMode: null,
       createdPrivateMatch: null,
+      createdOpenOnlineMatch: null,
     });
+    mockRefreshCreatedOpenMatch.mockResolvedValue(null);
+    mockListOpenOnlineMatches.mockResolvedValue([]);
     mockUseStore.mockReturnValue({
       softCurrency: 1234,
+    });
+    mockUseWallet.mockReturnValue({
+      softCurrency: 1234,
+      premiumCurrency: 9,
+      refresh: jest.fn(),
     });
     mockUseTournamentList.mockReturnValue({
       tournaments: [
@@ -193,7 +217,7 @@ describe('Lobby private game join input', () => {
 
     expect(view.getByLabelText('See all tournaments')).toBeTruthy();
     expect(view.getByText('Spring Open')).toBeTruthy();
-    expect(view.getAllByText('Find Opponent').length).toBeGreaterThan(0);
+    expect(view.getAllByText('Create Match').length).toBeGreaterThan(0);
     expect(view.getByText('Create Private Game')).toBeTruthy();
     expect(view.getByText('Capture')).toBeTruthy();
     expect(view.getByText('Enter Private Code')).toBeTruthy();
@@ -203,16 +227,97 @@ describe('Lobby private game join input', () => {
     const view = render(<Lobby />);
 
     expect(view.getByText('shopping-cart')).toBeTruthy();
-    expect(view.getByText('1234 Coins')).toBeTruthy();
+    expect(view.getByLabelText('1,234 coins')).toBeTruthy();
+    expect(view.getByLabelText('9 gems')).toBeTruthy();
 
     fireEvent.press(view.getByLabelText('Store'));
 
     expect(mockPush).toHaveBeenCalledWith('/store');
   });
 
+  it('clamps wager controls and creates an open match with the selected duration', () => {
+    mockCreateOpenMatch.mockResolvedValue({
+      openMatchId: 'open-1',
+      matchId: 'match-open-1',
+      modeId: 'standard',
+      creatorUserId: 'user-1',
+      joinedUserId: null,
+      wager: 20,
+      durationMinutes: 10,
+      status: 'open',
+      createdAt: '2026-04-18T10:00:00.000Z',
+      expiresAt: '2026-04-18T10:10:00.000Z',
+      updatedAt: '2026-04-18T10:00:00.000Z',
+      entrants: 1,
+      maxEntrants: 2,
+      isCreator: true,
+      isJoiner: false,
+    });
+
+    const view = render(<Lobby />);
+
+    fireEvent.press(view.getByLabelText('Decrease wager'));
+    fireEvent.press(view.getByText('10 min'));
+    fireEvent.press(view.getByLabelText('Increase wager'));
+    fireEvent.press(view.getByText('Create Match'));
+
+    expect(mockCreateOpenMatch).toHaveBeenCalledWith(20, 10);
+  });
+
+  it('renders open online matches and joins selected matches', async () => {
+    mockListOpenOnlineMatches.mockResolvedValue([
+      {
+        openMatchId: 'open-join-1',
+        matchId: 'match-open-join-1',
+        modeId: 'standard',
+        creatorUserId: 'creator-1',
+        joinedUserId: null,
+        wager: 40,
+        durationMinutes: 5,
+        status: 'open',
+        createdAt: '2026-04-18T10:00:00.000Z',
+        expiresAt: '2026-04-18T10:05:00.000Z',
+        updatedAt: '2026-04-18T10:00:00.000Z',
+        entrants: 1,
+        maxEntrants: 2,
+        isCreator: false,
+        isJoiner: false,
+      },
+    ]);
+    mockJoinOpenMatch.mockResolvedValue({
+      openMatchId: 'open-join-1',
+      matchId: 'match-open-join-1',
+      modeId: 'standard',
+      creatorUserId: 'creator-1',
+      joinedUserId: 'joiner-1',
+      wager: 40,
+      durationMinutes: 5,
+      status: 'matched',
+      createdAt: '2026-04-18T10:00:00.000Z',
+      expiresAt: '2026-04-18T10:05:00.000Z',
+      updatedAt: '2026-04-18T10:01:00.000Z',
+      entrants: 2,
+      maxEntrants: 2,
+      isCreator: false,
+      isJoiner: true,
+    });
+
+    const view = render(<Lobby />);
+
+    await waitFor(() => expect(view.getByText('Open Wager Match')).toBeTruthy());
+    expect(view.getByText('40 coins')).toBeTruthy();
+
+    fireEvent.press(view.getByText('Join Match'));
+
+    await waitFor(() => expect(mockJoinOpenMatch).toHaveBeenCalledWith('open-join-1'));
+  });
+
   it('removes the extra create-private copy once a private room has been created', () => {
     mockUseMatchmaking.mockReturnValue({
       startMatch: jest.fn(),
+      createOpenMatch: mockCreateOpenMatch,
+      joinOpenMatch: mockJoinOpenMatch,
+      refreshCreatedOpenMatch: mockRefreshCreatedOpenMatch,
       startPrivateMatch: jest.fn(),
       startCreatedPrivateMatch: jest.fn(),
       joinPrivateMatchByCode: mockJoinPrivateMatchByCode,
@@ -222,6 +327,7 @@ describe('Lobby private game join input', () => {
       onlineCount: 2,
       activeAction: null,
       pendingPrivateMode: null,
+      createdOpenOnlineMatch: null,
       createdPrivateMatch: {
         matchId: 'private-1',
         modeId: 'gameMode_capture',

@@ -51,6 +51,11 @@ describe("InitModule tournament RPC registration", () => {
         "get_full_catalog",
         "purchase_item",
         "get_owned_cosmetics",
+        "create_open_online_match",
+        "list_open_online_matches",
+        "join_open_online_match",
+        "get_open_online_match_status",
+        "get_active_open_online_match",
         "admin_get_full_catalog",
         "admin_upsert_cosmetic",
         "admin_disable_cosmetic",
@@ -109,6 +114,15 @@ describe("InitModule tournament RPC registration", () => {
     );
     expect(entrypointSource).toContain(
       "initializer.registerRpc(RPC_GET_OWNED_COSMETICS, rpcGetOwnedCosmetics);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_CREATE_OPEN_ONLINE_MATCH, rpcCreateOpenOnlineMatch);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_LIST_OPEN_ONLINE_MATCHES, rpcListOpenOnlineMatches);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_JOIN_OPEN_ONLINE_MATCH, rpcJoinOpenOnlineMatch);",
     );
     expect(entrypointSource).toContain(
       "initializer.registerRpc(RPC_ADMIN_DELETE_COSMETIC, rpcAdminDeleteCosmetic);",

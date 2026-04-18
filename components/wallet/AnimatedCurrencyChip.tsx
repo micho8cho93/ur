@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
+import { CurrencyAmount } from '@/components/wallet/CurrencyIcon';
+
 type Props = {
   value: number;
   animateFrom?: number;
-  label: string;
   variant: 'coin' | 'gem';
   isDesktopLayout: boolean;
   fontFamily?: string;
@@ -15,7 +16,6 @@ type Props = {
 export function AnimatedCurrencyChip({
   value,
   animateFrom,
-  label,
   variant,
   isDesktopLayout,
   fontFamily,
@@ -110,13 +110,13 @@ export function AnimatedCurrencyChip({
 
   const chipHeight = isDesktopLayout ? 34 : 30;
   const isCoin = variant === 'coin';
+  const currencyName = isCoin ? 'coins' : 'gems';
   const deltaText = delta > 0 ? `+${delta.toLocaleString()}` : delta.toLocaleString();
   const deltaColor = isIncrease ? '#4ADE80' : '#F87171';
 
   return (
     <View style={styles.wrapper}>
       <Animated.View
-        accessibilityLabel={`${displayValue} ${label}`}
         style={[
           styles.chip,
           isCoin ? styles.coinChip : styles.gemChip,
@@ -124,19 +124,18 @@ export function AnimatedCurrencyChip({
           { transform: [{ scale: chipScale }] },
         ]}
       >
-        <Text
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.72}
-          style={[
+        <CurrencyAmount
+          amount={displayValue}
+          variant={variant}
+          fontFamily={fontFamily}
+          iconSize={isDesktopLayout ? 17 : 15}
+          accessibilityLabel={`${displayValue.toLocaleString()} ${currencyName}`}
+          textStyle={[
             styles.chipText,
             isCoin ? styles.coinText : styles.gemText,
             isDesktopLayout ? styles.chipTextDesktop : styles.chipTextCompact,
-            fontFamily ? { fontFamily } : undefined,
           ]}
-        >
-          {displayValue.toLocaleString()} {label}
-        </Text>
+        />
       </Animated.View>
 
       {hasAnimation && (
@@ -189,13 +188,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(14, 38, 68, 0.72)',
   },
   chipDesktop: {
-    minWidth: 92,
+    minWidth: 76,
     height: 34,
     borderRadius: 8,
     paddingHorizontal: 12,
   },
   chipCompact: {
-    minWidth: 82,
+    minWidth: 68,
     height: 30,
     borderRadius: 8,
     paddingHorizontal: 10,

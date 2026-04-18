@@ -31,6 +31,19 @@ jest.mock('@/components/game/Board', () => ({
   },
 }));
 
+jest.mock('@/components/cosmetics/BoardCosmeticPreview', () => ({
+  BoardCosmeticPreview: ({ testID }: { testID?: string }) => {
+    const React = jest.requireActual('react');
+    const { Text, View } = jest.requireActual('react-native');
+
+    return (
+      <View testID={testID}>
+        <Text testID="mock-preview-board">5,8,12,-1,-1,-1,-1</Text>
+      </View>
+    );
+  },
+}));
+
 jest.mock('@/components/game/Dice', () => ({
   Dice: ({ value, onRoll }: { value: number | null; onRoll: () => void }) => {
     const React = jest.requireActual('react');

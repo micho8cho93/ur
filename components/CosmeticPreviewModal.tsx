@@ -11,11 +11,15 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  StyleProp,
   StyleSheet,
   Text,
+  TextStyle,
   View,
+  ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { CurrencyAmount, type CurrencyIconVariant } from '@/components/wallet/CurrencyIcon';
 
 type CosmeticPreviewModalProps = {
   visible: boolean;
@@ -33,8 +37,26 @@ const tierColors: Record<CosmeticTier, { bg: string; text: string; accent: strin
   legendary: { bg: '#b45309', text: '#fef3c7', accent: '#fbbf24' },
 };
 
-const formatPrice = (item: CosmeticDefinition): string =>
-  `${item.price.amount} ${item.price.currency === 'premium' ? 'Gems' : 'Coins'}`;
+const getCurrencyVariant = (item: CosmeticDefinition): CurrencyIconVariant =>
+  item.price.currency === 'premium' ? 'gem' : 'coin';
+
+const PriceAmount = ({
+  item,
+  style,
+  textStyle,
+}: {
+  item: CosmeticDefinition;
+  style?: StyleProp<ViewStyle>;
+  textStyle?: StyleProp<TextStyle>;
+}) => (
+  <CurrencyAmount
+    amount={item.price.amount}
+    variant={getCurrencyVariant(item)}
+    iconSize={15}
+    style={style}
+    textStyle={textStyle}
+  />
+);
 
 const randomDiceValue = (): number => Math.floor(Math.random() * 5);
 
@@ -308,7 +330,11 @@ export const CosmeticPreviewModal = ({
                 {activeIsOwned ? (
                   <Text style={styles.ownedBadge}>Owned</Text>
                 ) : (
-                  <Text style={styles.priceText}>{formatPrice(activeCosmetic)}</Text>
+                  <PriceAmount
+                    item={activeCosmetic}
+                    style={styles.priceAmount}
+                    textStyle={styles.priceText}
+                  />
                 )}
               </View>
             ) : null}
@@ -320,7 +346,7 @@ export const CosmeticPreviewModal = ({
                 activeCosmetic
                   ? activeIsOwned
                     ? 'Owned'
-                    : `Buy for ${formatPrice(activeCosmetic)}`
+                    : 'Buy'
                   : 'Buy'
               }
               disabled={!activeCosmetic || activeIsOwned}
@@ -564,6 +590,9 @@ const styles = StyleSheet.create({
     color: '#fde68a',
     fontSize: 14,
     fontWeight: '900',
+  },
+  priceAmount: {
+    justifyContent: 'flex-end',
   },
   actionBar: {
     padding: 16,

@@ -13878,14 +13878,27 @@ var RPC_CREATE_PRIVATE_MATCH = "create_private_match";
 var RPC_JOIN_PRIVATE_MATCH = "join_private_match";
 var RPC_GET_PRIVATE_MATCH_STATUS = "get_private_match_status";
 var RPC_LIST_SPECTATABLE_MATCHES = "list_spectatable_matches";
+var RPC_CREATE_OPEN_ONLINE_MATCH = "create_open_online_match";
+var RPC_LIST_OPEN_ONLINE_MATCHES = "list_open_online_matches";
+var RPC_JOIN_OPEN_ONLINE_MATCH = "join_open_online_match";
+var RPC_GET_OPEN_ONLINE_MATCH_STATUS = "get_open_online_match_status";
+var RPC_GET_ACTIVE_OPEN_ONLINE_MATCH = "get_active_open_online_match";
 var RPC_PRESENCE_HEARTBEAT = "presence_heartbeat";
 var RPC_PRESENCE_COUNT = "presence_count";
 var RPC_GET_USERNAME_ONBOARDING_STATUS_NAME = RPC_GET_USERNAME_ONBOARDING_STATUS;
 var RPC_CLAIM_USERNAME_NAME = RPC_CLAIM_USERNAME;
 var MATCH_HANDLER = "authoritative_match";
 var PRIVATE_MATCH_CODE_COLLECTION = "private_match_codes";
+var OPEN_ONLINE_MATCH_COLLECTION = "open_online_matches";
 var PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS = 12;
 var PRIVATE_MATCH_CODE_WRITE_ATTEMPTS = 4;
+var OPEN_ONLINE_MATCH_WRITE_ATTEMPTS = 4;
+var OPEN_ONLINE_MATCH_PAGE_SIZE = 100;
+var OPEN_ONLINE_MATCH_MAX_PAGES = 10;
+var OPEN_ONLINE_MATCH_MIN_WAGER = 10;
+var OPEN_ONLINE_MATCH_MAX_WAGER = 100;
+var OPEN_ONLINE_MATCH_WAGER_STEP = 10;
+var OPEN_ONLINE_MATCH_DURATIONS_MINUTES = [3, 5, 10];
 var USER_CHALLENGE_PROGRESS_COLLECTION2 = "user_challenge_progress";
 var USER_CHALLENGE_PROGRESS_KEY2 = "progress";
 var ELO_PROFILE_COLLECTION2 = "elo_profiles";
@@ -14307,6 +14320,230 @@ var deletePrivateMatchCodeRecord = (nk, code) => {
       userId: SYSTEM_USER_ID5
     }
   ]);
+};
+var isOpenOnlineMatchDurationMinutes = (value) => OPEN_ONLINE_MATCH_DURATIONS_MINUTES.includes(value);
+var normalizeOpenOnlineMatchWager = (value) => {
+  const wager = readNumberField9({ value }, ["value"]);
+  if (wager === null || !Number.isInteger(wager) || wager < OPEN_ONLINE_MATCH_MIN_WAGER || wager > OPEN_ONLINE_MATCH_MAX_WAGER || wager % OPEN_ONLINE_MATCH_WAGER_STEP !== 0) {
+    throw new Error("Wager must be between 10 and 100 coins in increments of 10.");
+  }
+  return wager;
+};
+var normalizeOpenOnlineMatchDurationMinutes = (value) => {
+  const durationMinutes = readNumberField9({ value }, ["value"]);
+  if (durationMinutes === null || !Number.isInteger(durationMinutes) || !isOpenOnlineMatchDurationMinutes(durationMinutes)) {
+    throw new Error("Open match duration must be 3, 5, or 10 minutes.");
+  }
+  return durationMinutes;
+};
+var generateOpenOnlineMatchId = () => {
+  const randomPart = Math.floor(Math.random() * 4294967295).toString(36).padStart(7, "0").slice(0, 7);
+  return `open-${Date.now().toString(36)}-${randomPart}`;
+};
+var normalizeOpenOnlineMatchStatus = (value) => {
+  if (value === "matched" || value === "expired" || value === "settled") {
+    return value;
+  }
+  return "open";
+};
+var normalizeOpenOnlineMatchRecord = (value) => {
+  var _a;
+  const record = asRecord10(value);
+  if (!record) {
+    return null;
+  }
+  const openMatchId = readStringField14(record, ["openMatchId", "open_match_id"]);
+  const matchId = readStringField14(record, ["matchId", "match_id"]);
+  const modeId = (_a = record.modeId) != null ? _a : record.mode_id;
+  const creatorUserId = readStringField14(record, ["creatorUserId", "creator_user_id"]);
+  const joinedUserId = readStringField14(record, ["joinedUserId", "joined_user_id"]);
+  const wager = readNumberField9(record, ["wager"]);
+  const durationMinutes = readNumberField9(record, ["durationMinutes", "duration_minutes"]);
+  const createdAt = readStringField14(record, ["createdAt", "created_at"]);
+  const expiresAt = readStringField14(record, ["expiresAt", "expires_at"]);
+  const updatedAt = readStringField14(record, ["updatedAt", "updated_at"]);
+  if (!openMatchId || !matchId || !isMatchModeId(modeId) || !creatorUserId || wager === null || durationMinutes === null || !Number.isInteger(wager) || !Number.isInteger(durationMinutes) || !createdAt || !expiresAt || !updatedAt) {
+    return null;
+  }
+  return {
+    openMatchId,
+    matchId,
+    modeId,
+    creatorUserId,
+    joinedUserId: joinedUserId != null ? joinedUserId : null,
+    wager,
+    durationMinutes,
+    status: normalizeOpenOnlineMatchStatus(record.status),
+    creatorEscrowRefunded: record.creatorEscrowRefunded === true || record.creator_escrow_refunded === true,
+    potPaidOut: record.potPaidOut === true || record.pot_paid_out === true,
+    createdAt,
+    expiresAt,
+    updatedAt
+  };
+};
+var readOpenOnlineMatchObject = (nk, openMatchId) => {
+  if (!openMatchId) {
+    return { object: null, record: null };
+  }
+  const objects = nk.storageRead([
+    {
+      collection: OPEN_ONLINE_MATCH_COLLECTION,
+      key: openMatchId,
+      userId: SYSTEM_USER_ID5
+    }
+  ]);
+  const object = findStorageObject(objects, OPEN_ONLINE_MATCH_COLLECTION, openMatchId, SYSTEM_USER_ID5);
+  return {
+    object,
+    record: normalizeOpenOnlineMatchRecord(object == null ? void 0 : object.value)
+  };
+};
+var writeOpenOnlineMatchRecord = (nk, record, version) => {
+  const write = {
+    collection: OPEN_ONLINE_MATCH_COLLECTION,
+    key: record.openMatchId,
+    userId: SYSTEM_USER_ID5,
+    value: record,
+    permissionRead: STORAGE_PERMISSION_NONE2,
+    permissionWrite: STORAGE_PERMISSION_NONE2
+  };
+  if (typeof version === "string") {
+    write.version = version;
+  }
+  nk.storageWrite([write]);
+};
+var isOpenOnlineMatchStorageConflict = (error) => isPrivateMatchCodeReservationConflict(error);
+var spendOpenOnlineMatchWager = (nk, userId, wager, metadata) => {
+  const wallet = getWalletForUser(nk, userId);
+  if (wallet[SOFT_CURRENCY_KEY] < wager) {
+    throw new Error("INSUFFICIENT_FUNDS");
+  }
+  nk.walletUpdate(
+    userId,
+    { [SOFT_CURRENCY_KEY]: -wager },
+    __spreadValues({
+      source: "open_online_match_wager",
+      currency: SOFT_CURRENCY_KEY,
+      amount: wager
+    }, metadata),
+    true
+  );
+};
+var refundOpenOnlineMatchCreator = (logger, nk, record) => {
+  if (record.creatorEscrowRefunded || record.status === "matched" || record.status === "settled") {
+    return record;
+  }
+  nk.walletUpdate(
+    record.creatorUserId,
+    { [SOFT_CURRENCY_KEY]: record.wager },
+    {
+      source: "open_online_match_refund",
+      currency: SOFT_CURRENCY_KEY,
+      amount: record.wager,
+      openMatchId: record.openMatchId,
+      matchId: record.matchId
+    },
+    true
+  );
+  logger.info("Refunded expired open online match wager", {
+    userId: record.creatorUserId,
+    openMatchId: record.openMatchId,
+    wager: record.wager
+  });
+  return __spreadProps(__spreadValues({}, record), {
+    status: "expired",
+    creatorEscrowRefunded: true,
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  });
+};
+var expireOpenOnlineMatchIfNeeded = (logger, nk, record, version, nowMs = Date.now()) => {
+  if (record.status !== "open" || Date.parse(record.expiresAt) > nowMs) {
+    return record;
+  }
+  const expiredRecord = refundOpenOnlineMatchCreator(logger, nk, record);
+  try {
+    writeOpenOnlineMatchRecord(nk, expiredRecord, version != null ? version : void 0);
+  } catch (error) {
+    logger.warn(
+      "Expired open online match %s but failed to persist refund state: %s",
+      record.openMatchId,
+      getErrorMessage6(error)
+    );
+  }
+  return expiredRecord;
+};
+var normalizeStorageListResultForOpenMatches = (result) => {
+  if (Array.isArray(result)) {
+    return {
+      objects: result.filter((object) => asRecord10(object) !== null),
+      cursor: null
+    };
+  }
+  const record = asRecord10(result);
+  if (!record) {
+    return { objects: [], cursor: null };
+  }
+  const rawObjects = Array.isArray(record.objects) ? record.objects : Array.isArray(record.storageObjects) ? record.storageObjects : Array.isArray(record.runtimeObjects) ? record.runtimeObjects : [];
+  return {
+    objects: rawObjects.filter((object) => asRecord10(object) !== null),
+    cursor: readStringField14(record, ["cursor"])
+  };
+};
+var listOpenOnlineMatchStorageObjects = (logger, nk) => {
+  if (typeof nk.storageList !== "function") {
+    logger.warn("Open online match listing is not supported by this Nakama runtime.");
+    return [];
+  }
+  const objects = [];
+  let cursor = "";
+  for (let page = 0; page < OPEN_ONLINE_MATCH_MAX_PAGES; page += 1) {
+    const rawResult = nk.storageList(SYSTEM_USER_ID5, OPEN_ONLINE_MATCH_COLLECTION, OPEN_ONLINE_MATCH_PAGE_SIZE, cursor);
+    const result = normalizeStorageListResultForOpenMatches(rawResult);
+    objects.push(...result.objects);
+    if (!result.cursor) {
+      break;
+    }
+    cursor = result.cursor;
+  }
+  return objects;
+};
+var buildOpenOnlineMatchRpcModel = (record, viewerUserId) => ({
+  openMatchId: record.openMatchId,
+  matchId: record.matchId,
+  modeId: record.modeId,
+  creatorUserId: record.creatorUserId,
+  joinedUserId: record.joinedUserId,
+  wager: record.wager,
+  durationMinutes: record.durationMinutes,
+  status: record.status,
+  createdAt: record.createdAt,
+  expiresAt: record.expiresAt,
+  updatedAt: record.updatedAt,
+  entrants: record.joinedUserId ? 2 : 1,
+  maxEntrants: MAX_PLAYERS,
+  isCreator: Boolean(viewerUserId && viewerUserId === record.creatorUserId),
+  isJoiner: Boolean(viewerUserId && viewerUserId === record.joinedUserId)
+});
+var syncOpenOnlineMatchReservation = (logger, nk, state) => {
+  if (!state.openOnlineMatchId) {
+    return;
+  }
+  const { object, record } = readOpenOnlineMatchObject(nk, state.openOnlineMatchId);
+  if (!record) {
+    return;
+  }
+  const nextRecord = expireOpenOnlineMatchIfNeeded(logger, nk, record, getStorageObjectVersion(object));
+  state.openOnlineMatchCreatorUserId = nextRecord.creatorUserId;
+  state.openOnlineMatchJoinerUserId = nextRecord.joinedUserId;
+};
+var canUserJoinOpenOnlineMatch = (state, userId) => {
+  if (!state.openOnlineMatchId) {
+    return true;
+  }
+  if (state.openOnlineMatchCreatorUserId === userId) {
+    return true;
+  }
+  return Boolean(state.openOnlineMatchJoinerUserId && state.openOnlineMatchJoinerUserId === userId);
 };
 var claimPrivateMatchCode = (nk, code, userId) => {
   var _a;
@@ -14865,6 +15102,7 @@ var finalizeCompletedMatch = (logger, nk, dispatcher, state, matchId) => {
     syncCompletedMatchEnd(state);
     const ratingProcessingResult = processCompletedMatchRatings(logger, nk, dispatcher, state, matchId);
     const winnerProgressionAward = awardWinnerProgression(logger, nk, dispatcher, state, matchId, analyticsWriteBuffer);
+    awardOpenOnlineMatchPot(logger, nk, state, matchId);
     const tournamentProcessingResult = processCompletedTournamentMatch(logger, nk, state, matchId);
     const challengeProcessingResults = processCompletedMatchSummaries(logger, nk, state, matchId);
     if (state.tournamentContext && (!tournamentProcessingResult || tournamentProcessingResult.retryableFailure)) {
@@ -15115,6 +15353,11 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_JOIN_PRIVATE_MATCH, rpcJoinPrivateMatch);
   initializer.registerRpc(RPC_GET_PRIVATE_MATCH_STATUS, rpcGetPrivateMatchStatus);
   initializer.registerRpc(RPC_LIST_SPECTATABLE_MATCHES, rpcListSpectatableMatches);
+  initializer.registerRpc(RPC_CREATE_OPEN_ONLINE_MATCH, rpcCreateOpenOnlineMatch);
+  initializer.registerRpc(RPC_LIST_OPEN_ONLINE_MATCHES, rpcListOpenOnlineMatches);
+  initializer.registerRpc(RPC_JOIN_OPEN_ONLINE_MATCH, rpcJoinOpenOnlineMatch);
+  initializer.registerRpc(RPC_GET_OPEN_ONLINE_MATCH_STATUS, rpcGetOpenOnlineMatchStatus);
+  initializer.registerRpc(RPC_GET_ACTIVE_OPEN_ONLINE_MATCH, rpcGetActiveOpenOnlineMatch);
   initializer.registerRpc(RPC_PRESENCE_HEARTBEAT, rpcPresenceHeartbeat);
   initializer.registerRpc(RPC_PRESENCE_COUNT, rpcPresenceCount);
   initializer.registerRpc(RPC_GET_USERNAME_ONBOARDING_STATUS_NAME, rpcGetUsernameOnboardingStatus);
@@ -15328,6 +15571,215 @@ function rpcGetPrivateMatchStatus(ctx, _logger, nk, payload) {
     Boolean(record.joinedUserId)
   );
 }
+function rpcCreateOpenOnlineMatch(ctx, logger, nk, payload) {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  requireCompletedUsernameOnboarding(nk, ctx.userId);
+  const data = parseRpcPayload(payload);
+  const wager = normalizeOpenOnlineMatchWager(data.wager);
+  const durationMinutes = normalizeOpenOnlineMatchDurationMinutes(data.durationMinutes);
+  const modeId = "standard";
+  const openMatchId = generateOpenOnlineMatchId();
+  const now = /* @__PURE__ */ new Date();
+  const createdAt = now.toISOString();
+  const expiresAt = new Date(now.getTime() + durationMinutes * 6e4).toISOString();
+  spendOpenOnlineMatchWager(nk, ctx.userId, wager, { openMatchId });
+  let matchId;
+  try {
+    matchId = nk.matchCreate(MATCH_HANDLER, {
+      playerIds: [ctx.userId],
+      modeId,
+      rankedMatch: true,
+      casualMatch: false,
+      botMatch: false,
+      privateMatch: false,
+      openOnlineMatchId: openMatchId,
+      openOnlineMatchWager: wager,
+      openOnlineMatchCreatorUserId: ctx.userId,
+      winRewardSource: "pvp_win",
+      allowsChallengeRewards: true
+    });
+  } catch (error) {
+    try {
+      nk.walletUpdate(
+        ctx.userId,
+        { [SOFT_CURRENCY_KEY]: wager },
+        {
+          source: "open_online_match_create_refund",
+          currency: SOFT_CURRENCY_KEY,
+          amount: wager,
+          openMatchId
+        },
+        true
+      );
+    } catch (refundError) {
+      logger.warn(
+        "Failed to refund open online match wager after matchCreate error for %s: %s",
+        openMatchId,
+        getErrorMessage6(refundError)
+      );
+    }
+    throw error;
+  }
+  const record = {
+    openMatchId,
+    matchId,
+    modeId,
+    creatorUserId: ctx.userId,
+    joinedUserId: null,
+    wager,
+    durationMinutes,
+    status: "open",
+    creatorEscrowRefunded: false,
+    potPaidOut: false,
+    createdAt,
+    expiresAt,
+    updatedAt: createdAt
+  };
+  try {
+    writeOpenOnlineMatchRecord(nk, record, "*");
+  } catch (error) {
+    try {
+      nk.walletUpdate(
+        ctx.userId,
+        { [SOFT_CURRENCY_KEY]: wager },
+        {
+          source: "open_online_match_publish_refund",
+          currency: SOFT_CURRENCY_KEY,
+          amount: wager,
+          openMatchId,
+          matchId
+        },
+        true
+      );
+    } catch (refundError) {
+      logger.warn(
+        "Failed to refund open online match wager after publish error for %s: %s",
+        openMatchId,
+        getErrorMessage6(refundError)
+      );
+    }
+    throw new Error("Open match was created but could not be published. Please create a new match.");
+  }
+  return JSON.stringify({ match: buildOpenOnlineMatchRpcModel(record, ctx.userId) });
+}
+function rpcListOpenOnlineMatches(ctx, logger, nk, _payload) {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  requireCompletedUsernameOnboarding(nk, ctx.userId);
+  const nowMs = Date.now();
+  const matches = listOpenOnlineMatchStorageObjects(logger, nk).map((object) => {
+    const record = normalizeOpenOnlineMatchRecord(object.value);
+    if (!record) {
+      return null;
+    }
+    return expireOpenOnlineMatchIfNeeded(logger, nk, record, getStorageObjectVersion(object), nowMs);
+  }).filter((record) => Boolean(record)).filter((record) => record.status === "open").sort((left, right) => left.createdAt.localeCompare(right.createdAt)).map((record) => buildOpenOnlineMatchRpcModel(record, ctx.userId));
+  return JSON.stringify({ matches });
+}
+function rpcJoinOpenOnlineMatch(ctx, logger, nk, payload) {
+  var _a;
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  requireCompletedUsernameOnboarding(nk, ctx.userId);
+  const data = parseRpcPayload(payload);
+  const openMatchId = readStringField14(data, ["openMatchId", "open_match_id"]);
+  if (!openMatchId) {
+    throw new Error("Open match id is required.");
+  }
+  for (let attempt = 0; attempt < OPEN_ONLINE_MATCH_WRITE_ATTEMPTS; attempt += 1) {
+    const { object, record } = readOpenOnlineMatchObject(nk, openMatchId);
+    if (!record) {
+      throw new Error("Open match not found.");
+    }
+    const currentRecord = expireOpenOnlineMatchIfNeeded(logger, nk, record, getStorageObjectVersion(object));
+    if (currentRecord.status !== "open") {
+      throw new Error("Open match is no longer available.");
+    }
+    if (currentRecord.creatorUserId === ctx.userId) {
+      throw new Error("You cannot join your own open match.");
+    }
+    spendOpenOnlineMatchWager(nk, ctx.userId, currentRecord.wager, {
+      openMatchId: currentRecord.openMatchId,
+      matchId: currentRecord.matchId
+    });
+    const nextRecord = __spreadProps(__spreadValues({}, currentRecord), {
+      joinedUserId: ctx.userId,
+      status: "matched",
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    try {
+      writeOpenOnlineMatchRecord(nk, nextRecord, (_a = getStorageObjectVersion(object)) != null ? _a : "");
+      return JSON.stringify({ match: buildOpenOnlineMatchRpcModel(nextRecord, ctx.userId) });
+    } catch (error) {
+      try {
+        nk.walletUpdate(
+          ctx.userId,
+          { [SOFT_CURRENCY_KEY]: currentRecord.wager },
+          {
+            source: "open_online_match_join_refund",
+            currency: SOFT_CURRENCY_KEY,
+            amount: currentRecord.wager,
+            openMatchId: currentRecord.openMatchId,
+            matchId: currentRecord.matchId
+          },
+          true
+        );
+      } catch (refundError) {
+        logger.warn(
+          "Failed to refund joiner wager after open match claim conflict for %s: %s",
+          currentRecord.openMatchId,
+          getErrorMessage6(refundError)
+        );
+      }
+      if (!isOpenOnlineMatchStorageConflict(error)) {
+        throw new Error("Unable to join this open match right now.");
+      }
+    }
+  }
+  throw new Error("Unable to join this open match right now.");
+}
+function rpcGetOpenOnlineMatchStatus(ctx, logger, nk, payload) {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  requireCompletedUsernameOnboarding(nk, ctx.userId);
+  const data = parseRpcPayload(payload);
+  const openMatchId = readStringField14(data, ["openMatchId", "open_match_id"]);
+  if (!openMatchId) {
+    throw new Error("Open match id is required.");
+  }
+  const { object, record } = readOpenOnlineMatchObject(nk, openMatchId);
+  if (!record) {
+    throw new Error("Open match not found.");
+  }
+  const nextRecord = expireOpenOnlineMatchIfNeeded(logger, nk, record, getStorageObjectVersion(object));
+  if (nextRecord.creatorUserId !== ctx.userId && nextRecord.joinedUserId !== ctx.userId) {
+    throw new Error("You do not have access to this open match.");
+  }
+  return JSON.stringify({ match: buildOpenOnlineMatchRpcModel(nextRecord, ctx.userId) });
+}
+function rpcGetActiveOpenOnlineMatch(ctx, logger, nk, _payload) {
+  var _a;
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  requireCompletedUsernameOnboarding(nk, ctx.userId);
+  const nowMs = Date.now();
+  const match = (_a = listOpenOnlineMatchStorageObjects(logger, nk).map((object) => {
+    const record = normalizeOpenOnlineMatchRecord(object.value);
+    if (!record) {
+      return null;
+    }
+    return expireOpenOnlineMatchIfNeeded(logger, nk, record, getStorageObjectVersion(object), nowMs);
+  }).filter((record) => Boolean(record)).filter(
+    (record) => record.creatorUserId === ctx.userId && (record.status === "open" || record.status === "matched")
+  ).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]) != null ? _a : null;
+  return JSON.stringify({ match: match ? buildOpenOnlineMatchRpcModel(match, ctx.userId) : null });
+}
 function rpcListSpectatableMatches(ctx, _logger, nk, _payload) {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
@@ -15367,6 +15819,16 @@ function matchInit(_ctx, logger, nk, params) {
   const privateCode = typeof params.privateCode === "string" ? normalizePrivateMatchCodeInput(params.privateCode) : "";
   const privateCreatorUserId = typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
   const privateGuestUserId = typeof params.privateGuestUserId === "string" ? params.privateGuestUserId : null;
+  const openOnlineMatchId = readStringField14(params, ["openOnlineMatchId", "open_online_match_id"]);
+  const openOnlineMatchWager = readNumberField9(params, ["openOnlineMatchWager", "open_online_match_wager"]);
+  const openOnlineMatchCreatorUserId = readStringField14(params, [
+    "openOnlineMatchCreatorUserId",
+    "open_online_match_creator_user_id"
+  ]);
+  const openOnlineMatchJoinerUserId = readStringField14(params, [
+    "openOnlineMatchJoinerUserId",
+    "open_online_match_joiner_user_id"
+  ]);
   const botUserId = readStringField14(params, ["botUserId", "bot_user_id"]);
   const botDifficultyValue = readStringField14(params, ["botDifficulty", "bot_difficulty"]);
   const botDifficulty = botDifficultyValue && isBotDifficulty(botDifficultyValue) ? botDifficultyValue : DEFAULT_BOT_DIFFICULTY;
@@ -15421,6 +15883,10 @@ function matchInit(_ctx, logger, nk, params) {
     privateCode: isPrivateMatchCode(privateCode) ? privateCode : null,
     privateCreatorUserId,
     privateGuestUserId,
+    openOnlineMatchId,
+    openOnlineMatchWager: typeof openOnlineMatchWager === "number" && Number.isFinite(openOnlineMatchWager) ? Math.max(0, Math.floor(openOnlineMatchWager)) : null,
+    openOnlineMatchCreatorUserId,
+    openOnlineMatchJoinerUserId,
     winRewardSource,
     allowsChallengeRewards,
     tournamentContext: resolveTournamentMatchContextFromParams(params),
@@ -15463,6 +15929,12 @@ function matchJoinAttempt(_ctx, logger, nk, _dispatcher, _tick, state, presence)
     syncPrivateMatchReservation(nk, state);
     if (!canUserJoinPrivateMatch(state, userId)) {
       return { state, accept: false, rejectMessage: "Enter the private game code before joining this table." };
+    }
+  }
+  if (state.openOnlineMatchId) {
+    syncOpenOnlineMatchReservation(logger, nk, state);
+    if (!canUserJoinOpenOnlineMatch(state, userId)) {
+      return { state, accept: false, rejectMessage: "Join this open match before entering the table." };
     }
   }
   if (isSpectatorPresenceRequest(presence)) {
@@ -16344,6 +16816,56 @@ function awardMatchCompletionSoftCurrency(logger, nk, state, matchId) {
     );
   }
 }
+function awardOpenOnlineMatchPot(logger, nk, state, matchId) {
+  var _a, _b;
+  if (!state.openOnlineMatchId || !((_a = state.matchEnd) == null ? void 0 : _a.winnerUserId)) {
+    return;
+  }
+  const { object, record } = readOpenOnlineMatchObject(nk, state.openOnlineMatchId);
+  if (!record || record.potPaidOut) {
+    return;
+  }
+  if (record.matchId !== matchId || !record.joinedUserId || record.status === "expired") {
+    return;
+  }
+  const potAmount = record.wager * MAX_PLAYERS;
+  try {
+    nk.walletUpdate(
+      state.matchEnd.winnerUserId,
+      { [SOFT_CURRENCY_KEY]: potAmount },
+      {
+        source: "open_online_match_pot",
+        currency: SOFT_CURRENCY_KEY,
+        amount: potAmount,
+        wager: record.wager,
+        openMatchId: record.openMatchId,
+        matchId
+      },
+      true
+    );
+    writeOpenOnlineMatchRecord(
+      nk,
+      __spreadProps(__spreadValues({}, record), {
+        status: "settled",
+        potPaidOut: true,
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      }),
+      (_b = getStorageObjectVersion(object)) != null ? _b : void 0
+    );
+    logger.info("Awarded open online match pot", {
+      userId: state.matchEnd.winnerUserId,
+      openMatchId: record.openMatchId,
+      matchId,
+      amount: potAmount
+    });
+  } catch (error) {
+    logger.error(
+      "Failed to award open online match pot for match %s: %s",
+      matchId,
+      getErrorMessage6(error)
+    );
+  }
+}
 function processCompletedMatchSummaries(logger, nk, state, matchId) {
   var _a, _b;
   const results = {};
@@ -16753,6 +17275,11 @@ var runtimeGlobals = {
   rpcJoinPrivateMatch,
   rpcGetPrivateMatchStatus,
   rpcListSpectatableMatches,
+  rpcCreateOpenOnlineMatch,
+  rpcListOpenOnlineMatches,
+  rpcJoinOpenOnlineMatch,
+  rpcGetOpenOnlineMatchStatus,
+  rpcGetActiveOpenOnlineMatch,
   rpcPresenceHeartbeat,
   rpcPresenceCount,
   matchmakerMatched,

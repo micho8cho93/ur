@@ -3,6 +3,7 @@ import { XpRewardBadge } from '@/components/progression/XpRewardBadge';
 import { TournamentCard } from '@/components/tournaments/TournamentCard';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
 import { SketchButton } from '@/components/ui/SketchButton';
+import { AnimatedCurrencyChip } from '@/components/wallet/AnimatedCurrencyChip';
 import {
   MIN_WIDE_WEB_BACKGROUND_WIDTH,
   WideScreenBackground,
@@ -14,7 +15,8 @@ import {
   urTheme,
 } from '@/constants/urTheme';
 import { LobbyMode, useMatchmaking } from '@/hooks/useMatchmaking';
-import { PRIVATE_MATCH_OPTIONS } from '@/logic/matchConfigs';
+import { MatchModeId, PRIVATE_MATCH_OPTIONS } from '@/logic/matchConfigs';
+import { listOpenOnlineMatches, type OpenOnlineMatch } from '@/services/matchmaking';
 import { getXpAwardAmount } from '@/shared/progression';
 import {
   PRIVATE_MATCH_CODE_LENGTH,
@@ -29,8 +31,8 @@ import {
   resolveHomeFredokaFontFamily,
   resolveHomeMagicFontFamily,
 } from '@/src/home/homeTheme';
-import { useStore } from '@/src/store/StoreProvider';
 import { useTournamentList } from '@/src/tournaments/useTournamentList';
+import { useWallet } from '@/src/wallet/useWallet';
 import { useFonts } from 'expo-font';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -52,6 +54,12 @@ const homeWideBackground = require('../../assets/images/bg_online.png');
 const homeMobileBackground = require('../../assets/images/bg_online_mobile.png');
 const onlineActionCard = require('../../assets/images/home_stat_card.png');
 const ONLINE_ACTION_CARD_ASPECT_RATIO = 626 / 732;
+const WAGER_MIN = 10;
+const WAGER_MAX = 100;
+const WAGER_STEP = 10;
+const OPEN_MATCH_DURATIONS = [3, 5, 10] as const;
+type CreateMatchStage = 'game_mode' | 'wager' | 'match_style' | 'wait_time' | 'ready';
+type CreateMatchStyle = 'online' | 'private';
 
 type OnlineActionPanelProps = {
   title: string;
@@ -60,6 +68,7 @@ type OnlineActionPanelProps = {
   bodyFontFamily: string;
   compact: boolean;
   rewardAmount?: number;
+  flexible?: boolean;
   style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
 };
@@ -71,13 +80,14 @@ function OnlineActionPanel({
   bodyFontFamily,
   compact,
   rewardAmount,
+  flexible,
   style,
   children,
 }: OnlineActionPanelProps) {
   return (
     <View
       style={[
-        styles.modePanel,
+        flexible ? styles.modePanelFlexible : styles.modePanel,
         compact ? styles.modePanelCompact : styles.modePanelDesktop,
         style,
       ]}
@@ -128,17 +138,108 @@ function OnlineActionPanel({
   );
 }
 
+const getOpenMatchRemainingLabel = (match: OpenOnlineMatch, now: number) => {
+  const remainingMs = Math.max(0, Date.parse(match.expiresAt) - now);
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+
+  if (remainingSeconds <= 0) {
+    return 'Closing now';
+  }
+
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
+type OnlineMatchCardProps = {
+  match: OpenOnlineMatch;
+  now: number;
+  fontLoaded: boolean;
+  titleFontFamily: string;
+  bodyFontFamily: string;
+  joining: boolean;
+  disabled: boolean;
+  onJoin: (match: OpenOnlineMatch) => void;
+};
+
+const OnlineMatchCard: React.FC<OnlineMatchCardProps> = ({
+  match,
+  now,
+  fontLoaded,
+  titleFontFamily,
+  bodyFontFamily,
+  joining,
+  disabled,
+  onJoin,
+}) => {
+  const title = match.isCreator ? 'Your Open Match' : 'Open Wager Match';
+  const statusLabel = match.isCreator ? 'Waiting for opponent' : 'Ready to join';
+  const canJoin = !match.isCreator && match.status === 'open' && !disabled;
+
+  return (
+    <View style={styles.onlineMatchCard}>
+      <View style={styles.onlineMatchHeader}>
+        <Text style={[styles.onlineMatchTitle, { fontFamily: titleFontFamily }]}>{title}</Text>
+        <Text style={[styles.onlineMatchStatus, { fontFamily: bodyFontFamily }]}>{statusLabel}</Text>
+      </View>
+
+      <View style={styles.onlineMatchMetaGrid}>
+        <View style={styles.onlineMatchMetaCell}>
+          <Text style={[styles.onlineMatchMetaLabel, { fontFamily: bodyFontFamily }]}>Wager</Text>
+          <Text style={[styles.onlineMatchMetaValue, { fontFamily: bodyFontFamily }]}>
+            {match.wager} coins
+          </Text>
+        </View>
+        <View style={styles.onlineMatchMetaCell}>
+          <Text style={[styles.onlineMatchMetaLabel, { fontFamily: bodyFontFamily }]}>Open</Text>
+          <Text style={[styles.onlineMatchMetaValue, { fontFamily: bodyFontFamily }]}>
+            {getOpenMatchRemainingLabel(match, now)}
+          </Text>
+        </View>
+        <View style={styles.onlineMatchMetaCell}>
+          <Text style={[styles.onlineMatchMetaLabel, { fontFamily: bodyFontFamily }]}>Entrants</Text>
+          <Text style={[styles.onlineMatchMetaValue, { fontFamily: bodyFontFamily }]}>
+            {match.entrants}/{match.maxEntrants}
+          </Text>
+        </View>
+      </View>
+
+      <HomeLightButton
+        label={match.isCreator ? 'Waiting' : joining ? 'Joining...' : 'Join Match'}
+        fontLoaded={fontLoaded}
+        size="compact"
+        loading={joining}
+        disabled={!canJoin || joining}
+        style={styles.onlineMatchButton}
+        onPress={() => onJoin(match)}
+      />
+    </View>
+  );
+};
+
 export default function Lobby() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { mode: rawMode } = useLocalSearchParams<{ mode?: string }>();
   const mode: LobbyMode = useMemo(() => (rawMode === 'online' ? 'online' : 'bot'), [rawMode]);
   const router = useRouter();
-  const { softCurrency } = useStore();
+  const { softCurrency, premiumCurrency, refresh: refreshWallet } = useWallet();
   const [confirmJoinRunId, setConfirmJoinRunId] = useState<string | null>(null);
   const [privateCodeInput, setPrivateCodeInput] = useState('');
+  const [wager, setWager] = useState(WAGER_MIN);
+  const [durationMinutes, setDurationMinutes] = useState<(typeof OPEN_MATCH_DURATIONS)[number]>(5);
+  const [createMatchStage, setCreateMatchStage] = useState<CreateMatchStage>('game_mode');
+  const [selectedGameMode, setSelectedGameMode] = useState<MatchModeId | null>(null);
+  const [selectedMatchStyle, setSelectedMatchStyle] = useState<CreateMatchStyle | null>(null);
+  const [openMatches, setOpenMatches] = useState<OpenOnlineMatch[]>([]);
+  const [isLoadingOpenMatches, setIsLoadingOpenMatches] = useState(false);
+  const [openMatchesError, setOpenMatchesError] = useState<string | null>(null);
+  const [joiningOpenMatchId, setJoiningOpenMatchId] = useState<string | null>(null);
+  const [openMatchNow, setOpenMatchNow] = useState(() => Date.now());
   const {
-    startMatch,
+    createOpenMatch,
+    joinOpenMatch,
+    refreshCreatedOpenMatch,
     startPrivateMatch,
     startCreatedPrivateMatch,
     joinPrivateMatchByCode,
@@ -149,6 +250,7 @@ export default function Lobby() {
     activeAction,
     pendingPrivateMode,
     createdPrivateMatch,
+    createdOpenOnlineMatch,
   } = useMatchmaking(mode);
   const {
     tournaments: featuredTournaments,
@@ -197,6 +299,56 @@ export default function Lobby() {
     }
   }, [mode, router]);
 
+  useEffect(() => {
+    if (mode !== 'online') {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const loadOpenMatches = async (options?: { silent?: boolean }) => {
+      if (!options?.silent) {
+        setIsLoadingOpenMatches(true);
+      }
+      try {
+        const matches = await listOpenOnlineMatches();
+        if (!cancelled) {
+          setOpenMatches(matches);
+          setOpenMatchesError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setOpenMatchesError(error instanceof Error ? error.message : 'Unable to load online matches.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingOpenMatches(false);
+        }
+      }
+    };
+
+    void loadOpenMatches();
+    const intervalId = setInterval(() => {
+      setOpenMatchNow(Date.now());
+      void loadOpenMatches({ silent: true });
+      void refreshCreatedOpenMatch().then((match) => {
+        if (match?.status === 'expired') {
+          void refreshWallet({ silent: true });
+        }
+      });
+    }, 5_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [mode, refreshCreatedOpenMatch, refreshWallet]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => setOpenMatchNow(Date.now()), 1_000);
+    return () => clearInterval(intervalId);
+  }, []);
+
   if (mode === 'bot') {
     return null;
   }
@@ -210,8 +362,46 @@ export default function Lobby() {
     router.replace('/');
   };
 
-  const handleStart = async () => {
-    await startMatch();
+  const resetCreateMatch = () => {
+    setCreateMatchStage('game_mode');
+    setSelectedGameMode(null);
+    setSelectedMatchStyle(null);
+    setWager(WAGER_MIN);
+    setDurationMinutes(5);
+  };
+
+  const handleCreateMatch = async () => {
+    if (!selectedGameMode) {
+      return;
+    }
+
+    if (selectedMatchStyle === 'online') {
+      const match = await createOpenMatch(wager, durationMinutes, selectedGameMode);
+      if (match) {
+        setOpenMatches((current) => {
+          const withoutMatch = current.filter((entry) => entry.openMatchId !== match.openMatchId);
+          return [match, ...withoutMatch];
+        });
+        void refreshWallet({ silent: true });
+      }
+    } else if (selectedMatchStyle === 'private') {
+      await startPrivateMatch(selectedGameMode);
+    }
+  };
+
+  const handleJoinOpenMatch = async (match: OpenOnlineMatch) => {
+    setJoiningOpenMatchId(match.openMatchId);
+    try {
+      const joined = await joinOpenMatch(match.openMatchId);
+      if (joined) {
+        setOpenMatches((current) =>
+          current.filter((entry) => entry.openMatchId !== match.openMatchId),
+        );
+        void refreshWallet({ silent: true });
+      }
+    } finally {
+      setJoiningOpenMatchId(null);
+    }
   };
 
   const handleJoinPrivateGame = async () => {
@@ -219,7 +409,8 @@ export default function Lobby() {
   };
 
   const isBusy = status === 'connecting' || status === 'searching';
-  const isFindingOpponent = isBusy && activeAction === 'find_opponent';
+  const isCreatingOpenMatch = isBusy && activeAction === 'create_open';
+  const isJoiningOpenMatch = isBusy && activeAction === 'join_open';
   const isCreatingPrivateGame = isBusy && activeAction === 'create_private';
   const isJoiningPrivateGame = isBusy && activeAction === 'join_private';
   const pendingPrivateOption =
@@ -231,41 +422,43 @@ export default function Lobby() {
   const publicWinRewardXp = getXpAwardAmount('pvp_win');
   const privateWinRewardXp = getXpAwardAmount('private_pvp_win');
 
-  const buttonTitle = (() => {
-    if (status === 'error' && activeAction !== 'create_private' && activeAction !== 'join_private') {
-      return 'Retry Matchmaking';
-    }
+  const canAffordWager = softCurrency >= wager;
 
-    if (isFindingOpponent) {
-      return 'Searching...';
+  const createMatchButtonTitle = (() => {
+    if (status === 'error' && activeAction === 'create_open') {
+      return 'Retry Create';
     }
-
-    return 'Find Opponent';
+    if (isCreatingOpenMatch) {
+      return 'Creating...';
+    }
+    if (isCreatingPrivateGame) {
+      return 'Creating...';
+    }
+    return 'Create Match';
   })();
-  const findOpponentButtonMaxWidth = Math.min(
-    164,
-    Math.max(144, 96 + buttonTitle.length * 7),
-  );
 
-  const statusLabel = (() => {
-    if (status === 'connecting' && activeAction === 'find_opponent') {
-      return 'Connecting to the royal court...';
+  const openWaitingLabel = (() => {
+    if (status === 'connecting' && activeAction === 'create_open') {
+      return 'Opening your wagered table...';
     }
-
-    if (status === 'searching' && activeAction === 'find_opponent') {
-      return 'Searching for an opponent...';
+    if (createdOpenOnlineMatch?.status === 'open') {
+      return `Waiting for an opponent · ${createdOpenOnlineMatch.wager} coins`;
     }
-
     return null;
   })();
 
-  const privateStatusLabel = (() => {
+  const createMatchStatusLabel = (() => {
     if (isCreatingPrivateGame) {
       return pendingPrivateOption
         ? `Preparing a ${pendingPrivateOption.label.toLowerCase()} private table...`
         : 'Preparing your private table...';
     }
-
+    if (openWaitingLabel) {
+      return openWaitingLabel;
+    }
+    if (selectedMatchStyle === 'online' && !canAffordWager) {
+      return 'Not enough coins for this wager.';
+    }
     return null;
   })();
 
@@ -307,28 +500,37 @@ export default function Lobby() {
           bounces={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.topBar}>
-            <SketchButton
-              label="Back"
-              accessibilityLabel="Back"
-              onPress={handleBack}
-              iconName="arrow-back"
-              fontFamily={buttonFontFamily}
-            />
-            <View style={styles.storeActionGroup}>
-              <View style={styles.storeBalancePill}>
-                <Text style={[styles.storeBalanceText, { fontFamily: bodyFontFamily }]}>
-                  {softCurrency} Coins
-                </Text>
-              </View>
+          <View style={[styles.topBar, isCompactLayout ? styles.topBarCompact : null]}>
+            <View style={[styles.topBarLeft, isCompactLayout ? styles.topBarLeftCompact : null]}>
               <SketchButton
-                label="Store"
-                accessibilityLabel="Store"
-                onPress={() => router.push('/store' as never)}
-                iconName="shopping-cart"
+                label="Back"
+                accessibilityLabel="Back"
+                onPress={handleBack}
+                iconName="arrow-back"
+                iconOnly={isCompactLayout}
                 fontFamily={buttonFontFamily}
               />
+              <AnimatedCurrencyChip
+                value={softCurrency}
+                variant="coin"
+                isDesktopLayout={isDesktopViewport}
+                fontFamily={bodyFontFamily}
+              />
+              <AnimatedCurrencyChip
+                value={premiumCurrency}
+                variant="gem"
+                isDesktopLayout={isDesktopViewport}
+                fontFamily={bodyFontFamily}
+              />
             </View>
+            <SketchButton
+              label="Store"
+              accessibilityLabel="Store"
+              onPress={() => router.push('/store' as never)}
+              iconName="shopping-cart"
+              iconOnly={isCompactLayout}
+              fontFamily={buttonFontFamily}
+            />
           </View>
 
           <View style={[styles.stage, { width: stageWidth }]}>
@@ -469,6 +671,58 @@ export default function Lobby() {
               )}
             </View>
 
+            <View style={[styles.onlineMatchesSection, { maxWidth: actionsStageWidth }]}>
+              <Text style={[styles.onlineMatchesSectionTitle, { fontFamily: titleFontFamily }]}>
+                Online Matches
+              </Text>
+
+              {openMatchesError ? (
+                <View style={styles.errorBanner}>
+                  <Text style={[styles.errorBannerText, { fontFamily: bodyFontFamily }]}>
+                    {openMatchesError}
+                  </Text>
+                </View>
+              ) : null}
+
+              {isLoadingOpenMatches && openMatches.length === 0 ? (
+                <View style={styles.featuredStateCard}>
+                  <Text style={[styles.featuredStateTitle, { fontFamily: titleFontFamily }]}>
+                    Loading online matches...
+                  </Text>
+                  <Text style={[styles.featuredStateText, { fontFamily: bodyFontFamily }]}>
+                    Checking the open wager tables.
+                  </Text>
+                </View>
+              ) : openMatches.length === 0 ? (
+                <View style={styles.featuredStateCard}>
+                  <Text style={[styles.featuredStateTitle, { fontFamily: titleFontFamily }]}>
+                    No open online matches
+                  </Text>
+                  <Text style={[styles.featuredStateText, { fontFamily: bodyFontFamily }]}>
+                    Create a wagered match and it will appear here while it waits for an opponent.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.onlineMatchesList}>
+                  {openMatches.map((match) => (
+                    <OnlineMatchCard
+                      key={match.openMatchId}
+                      match={match}
+                      now={openMatchNow}
+                      fontLoaded={fontsLoaded}
+                      titleFontFamily={titleFontFamily}
+                      bodyFontFamily={bodyFontFamily}
+                      joining={joiningOpenMatchId === match.openMatchId}
+                      disabled={isBusy}
+                      onJoin={(selected) => {
+                        void handleJoinOpenMatch(selected);
+                      }}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+
             <View style={[styles.actionsSection, { maxWidth: actionsStageWidth }]}>
               <Text style={[styles.actionsTitle, { fontFamily: titleFontFamily }]}>
                 Choose how you want to enter the court
@@ -485,65 +739,56 @@ export default function Lobby() {
                   style={[
                     styles.actionCell,
                     isCompactLayout && styles.actionCellCompact,
-                    useFourColumnActionLayout
-                      ? styles.actionCellFourColumn
-                      : useThreeColumnLayout && styles.actionCellThreeColumn,
+                    useThreeColumnLayout && styles.actionCellThreeColumn,
                   ]}
                 >
                   <OnlineActionPanel
-                    title="Find Opponent"
-                    subtitle="Jump into public matchmaking and get paired with the next available player."
+                    title="Create Online Match"
+                    subtitle={(() => {
+                      if (createdOpenOnlineMatch?.status === 'open' || createdPrivateMatch) return '';
+                      if (createMatchStage === 'game_mode') return 'Choose your game mode.';
+                      if (createMatchStage === 'wager') return 'Set your coin wager.';
+                      if (createMatchStage === 'match_style') return 'Online or private match?';
+                      if (createMatchStage === 'wait_time') return 'How long to wait for an opponent?';
+                      return selectedMatchStyle === 'private' ? 'Ready to create your private table.' : 'Ready to go live.';
+                    })()}
                     titleFontFamily={titleFontFamily}
                     bodyFontFamily={bodyFontFamily}
                     compact={isCompactLayout}
-                    rewardAmount={publicWinRewardXp}
+                    rewardAmount={selectedMatchStyle === 'private' ? privateWinRewardXp : publicWinRewardXp}
+                    flexible
                   >
-                    {statusLabel ? (
-                      <Text style={[styles.statusText, { fontFamily: bodyFontFamily }]}>
-                        {statusLabel}
-                      </Text>
-                    ) : null}
-
-                    <HomeLightButton
-                      label={buttonTitle}
-                      fontLoaded={fontsLoaded}
-                      size={isCompactLayout ? 'compact' : 'regular'}
-                      loading={isFindingOpponent}
-                      disabled={isCreatingPrivateGame || isJoiningPrivateGame}
-                      style={[
-                        styles.primaryActionButton,
-                        { maxWidth: findOpponentButtonMaxWidth },
-                      ]}
-                      onPress={handleStart}
-                    />
-                  </OnlineActionPanel>
-                </View>
-
-                <View
-                  style={[
-                    styles.actionCell,
-                    isCompactLayout && styles.actionCellCompact,
-                    useFourColumnActionLayout
-                      ? styles.actionCellFourColumn
-                      : useThreeColumnLayout && styles.actionCellThreeColumn,
-                  ]}
-                >
-                  <OnlineActionPanel
-                    title="Create Private Game"
-                    subtitle={createdPrivateMatch ? '' : 'Make a shareable room code for a friend.'}
-                    titleFontFamily={titleFontFamily}
-                    bodyFontFamily={bodyFontFamily}
-                    compact={isCompactLayout}
-                    rewardAmount={privateWinRewardXp}
-                  >
-                    {privateStatusLabel ? (
-                      <Text style={[styles.statusText, { fontFamily: bodyFontFamily }]}>
-                        {privateStatusLabel}
-                      </Text>
-                    ) : null}
-
-                    {createdPrivateMatch ? (
+                    {createdOpenOnlineMatch?.status === 'open' ? (
                       <>
+                        <Text style={[styles.statusText, { fontFamily: bodyFontFamily }]}>
+                          {openWaitingLabel}
+                        </Text>
+                        <View style={styles.waitingActionRow}>
+                          <HomeLightButton
+                            label="Play Bot"
+                            accessibilityLabel="Play bot while waiting"
+                            fontLoaded={fontsLoaded}
+                            size="compact"
+                            style={styles.waitingActionButton}
+                            onPress={() => router.push('/(game)/bot' as never)}
+                          />
+                          <HomeLightButton
+                            label="Store"
+                            accessibilityLabel="Go to store while waiting"
+                            fontLoaded={fontsLoaded}
+                            size="compact"
+                            style={styles.waitingActionButton}
+                            onPress={() => router.push('/store' as never)}
+                          />
+                        </View>
+                      </>
+                    ) : createdPrivateMatch ? (
+                      <>
+                        {createMatchStatusLabel ? (
+                          <Text style={[styles.statusText, { fontFamily: bodyFontFamily }]}>
+                            {createMatchStatusLabel}
+                          </Text>
+                        ) : null}
                         <View style={styles.privateCodePanel}>
                           <Text style={[styles.privateCodeEyebrow, { fontFamily: bodyFontFamily }]}>
                             {createdPrivateOption
@@ -554,22 +799,17 @@ export default function Lobby() {
                             {createdPrivateMatch.code}
                           </Text>
                           <View style={styles.privatePresenceRow}>
-                          <View
-                            style={[
-                              styles.privatePresenceDot,
-                              createdPrivateMatch.hasGuestJoined
-                                ? styles.privatePresenceDotReady
-                                  : null,
+                            <View
+                              style={[
+                                styles.privatePresenceDot,
+                                createdPrivateMatch.hasGuestJoined ? styles.privatePresenceDotReady : null,
                               ]}
                             />
                             <Text style={[styles.privatePresenceText, { fontFamily: bodyFontFamily }]}>
-                              {createdPrivateMatch.hasGuestJoined
-                                ? 'Friend has arrived'
-                                : 'Waiting for friend'}
+                              {createdPrivateMatch.hasGuestJoined ? 'Friend has arrived' : 'Waiting for friend'}
                             </Text>
                           </View>
                         </View>
-
                         <View style={styles.actionRow}>
                           <View style={styles.actionRowCell}>
                             <HomeLightButton
@@ -581,12 +821,11 @@ export default function Lobby() {
                             />
                           </View>
                         </View>
-
                         <View style={styles.secondaryActionWrap}>
                           <HomeLightButton
-                            label="Pick Another Ruleset"
-                            accessibilityLabel="Pick another ruleset"
-                            onPress={clearCreatedPrivateMatch}
+                            label="Cancel"
+                            accessibilityLabel="Cancel and start over"
+                            onPress={() => { clearCreatedPrivateMatch(); resetCreateMatch(); }}
                             fontLoaded={fontsLoaded}
                             size="compact"
                             style={styles.secondaryActionButton}
@@ -594,26 +833,164 @@ export default function Lobby() {
                         </View>
                       </>
                     ) : (
-                      <View style={styles.optionGrid}>
-                        {PRIVATE_MATCH_OPTIONS.map((option) => (
-                          <View key={option.modeId} style={styles.optionCell}>
+                      <>
+                        {createMatchStage === 'game_mode' ? (
+                          <View style={styles.optionGrid}>
+                            {PRIVATE_MATCH_OPTIONS.map((option) => (
+                              <View key={option.modeId} style={styles.optionCell}>
+                                <HomeLightButton
+                                  label={option.label}
+                                  fontLoaded={fontsLoaded}
+                                  size={isCompactLayout ? 'compact' : 'regular'}
+                                  style={styles.primaryActionButton}
+                                  onPress={() => {
+                                    setSelectedGameMode(option.modeId);
+                                    setCreateMatchStage('wager');
+                                  }}
+                                />
+                              </View>
+                            ))}
+                          </View>
+                        ) : createMatchStage === 'wager' ? (
+                          <>
+                            <View style={styles.wagerStepper}>
+                              <HomeLightButton
+                                label="-"
+                                accessibilityLabel="Decrease wager"
+                                fontLoaded={fontsLoaded}
+                                size="compact"
+                                disabled={wager <= WAGER_MIN}
+                                style={styles.wagerStepButton}
+                                onPress={() => setWager((current) => Math.max(WAGER_MIN, current - WAGER_STEP))}
+                              />
+                              <View style={styles.wagerValuePill}>
+                                <Text style={[styles.wagerValue, { fontFamily: titleFontFamily }]}>
+                                  {wager}
+                                </Text>
+                                <Text style={[styles.wagerLabel, { fontFamily: bodyFontFamily }]}>coins</Text>
+                              </View>
+                              <HomeLightButton
+                                label="+"
+                                accessibilityLabel="Increase wager"
+                                fontLoaded={fontsLoaded}
+                                size="compact"
+                                disabled={wager >= WAGER_MAX}
+                                style={styles.wagerStepButton}
+                                onPress={() => setWager((current) => Math.min(WAGER_MAX, current + WAGER_STEP))}
+                              />
+                            </View>
                             <HomeLightButton
-                              label={option.label}
+                              label="Set"
                               fontLoaded={fontsLoaded}
                               size={isCompactLayout ? 'compact' : 'regular'}
                               style={styles.primaryActionButton}
-                              loading={
-                                isCreatingPrivateGame &&
-                                pendingPrivateMode === option.modeId
-                              }
-                              disabled={isBusy && pendingPrivateMode !== option.modeId}
-                              onPress={() => {
-                                void startPrivateMatch(option.modeId);
-                              }}
+                              onPress={() => setCreateMatchStage('match_style')}
                             />
-                          </View>
-                        ))}
-                      </View>
+                            <HomeLightButton
+                              label="Cancel"
+                              fontLoaded={fontsLoaded}
+                              size="compact"
+                              style={styles.cancelStageButton}
+                              onPress={resetCreateMatch}
+                            />
+                          </>
+                        ) : createMatchStage === 'match_style' ? (
+                          <>
+                            <View style={styles.optionGrid}>
+                              <View style={styles.optionCell}>
+                                <HomeLightButton
+                                  label="Online"
+                                  fontLoaded={fontsLoaded}
+                                  size={isCompactLayout ? 'compact' : 'regular'}
+                                  style={styles.primaryActionButton}
+                                  onPress={() => {
+                                    setSelectedMatchStyle('online');
+                                    setCreateMatchStage('wait_time');
+                                  }}
+                                />
+                              </View>
+                              <View style={styles.optionCell}>
+                                <HomeLightButton
+                                  label="Private"
+                                  fontLoaded={fontsLoaded}
+                                  size={isCompactLayout ? 'compact' : 'regular'}
+                                  style={styles.primaryActionButton}
+                                  onPress={() => {
+                                    setSelectedMatchStyle('private');
+                                    setCreateMatchStage('ready');
+                                  }}
+                                />
+                              </View>
+                            </View>
+                            <HomeLightButton
+                              label="Cancel"
+                              fontLoaded={fontsLoaded}
+                              size="compact"
+                              style={styles.cancelStageButton}
+                              onPress={resetCreateMatch}
+                            />
+                          </>
+                        ) : createMatchStage === 'wait_time' ? (
+                          <>
+                            <View style={styles.durationRow}>
+                              {OPEN_MATCH_DURATIONS.map((option) => {
+                                const selected = durationMinutes === option;
+                                return (
+                                  <HomeLightButton
+                                    key={option}
+                                    label={`${option} min`}
+                                    accessibilityLabel={`${option} minute open match`}
+                                    fontLoaded={fontsLoaded}
+                                    size="compact"
+                                    style={[
+                                      styles.durationButton,
+                                      selected ? styles.durationButtonSelected : null,
+                                    ]}
+                                    onPress={() => {
+                                      setDurationMinutes(option);
+                                      setCreateMatchStage('ready');
+                                    }}
+                                  />
+                                );
+                              })}
+                            </View>
+                            <HomeLightButton
+                              label="Cancel"
+                              fontLoaded={fontsLoaded}
+                              size="compact"
+                              style={styles.cancelStageButton}
+                              onPress={resetCreateMatch}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            {createMatchStatusLabel ? (
+                              <Text style={[styles.statusText, { fontFamily: bodyFontFamily }]}>
+                                {createMatchStatusLabel}
+                              </Text>
+                            ) : null}
+                            <HomeLightButton
+                              label={createMatchButtonTitle}
+                              fontLoaded={fontsLoaded}
+                              size={isCompactLayout ? 'compact' : 'regular'}
+                              loading={isCreatingOpenMatch || isCreatingPrivateGame}
+                              disabled={
+                                isBusy ||
+                                (selectedMatchStyle === 'online' && (!canAffordWager || isJoiningOpenMatch))
+                              }
+                              style={styles.primaryActionButton}
+                              onPress={() => void handleCreateMatch()}
+                            />
+                            <HomeLightButton
+                              label="Cancel"
+                              fontLoaded={fontsLoaded}
+                              size="compact"
+                              style={styles.cancelStageButton}
+                              onPress={resetCreateMatch}
+                            />
+                          </>
+                        )}
+                      </>
                     )}
                   </OnlineActionPanel>
                 </View>
@@ -734,30 +1111,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: urTheme.spacing.sm,
+    gap: 12,
     marginBottom: urTheme.spacing.sm,
   },
-  storeActionGroup: {
+  topBarCompact: {
+    gap: 8,
+  },
+  topBarLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: urTheme.spacing.sm,
+    gap: 12,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 42,
   },
-  storeBalancePill: {
-    minHeight: 36,
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: urPanelColors.parchmentBorder,
-    backgroundColor: urPanelColors.parchmentSurface,
-  },
-  storeBalanceText: {
-    color: urTextColors.titleOnPanel,
-    fontSize: 13,
-    lineHeight: 15,
-    textAlign: 'center',
-    ...urTextVariants.body,
+  topBarLeftCompact: {
+    gap: 8,
   },
   hero: {
     width: '100%',
@@ -872,6 +1241,87 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: 14,
   },
+  onlineMatchesSection: {
+    width: '100%',
+    gap: urTheme.spacing.md,
+  },
+  onlineMatchesSectionTitle: {
+    color: urTextColors.titleOnScene,
+    fontSize: 30,
+    lineHeight: 34,
+    textAlign: 'center',
+    ...urTextVariants.displayTitle,
+  },
+  onlineMatchesList: {
+    width: '100%',
+    gap: 12,
+  },
+  onlineMatchCard: {
+    width: '100%',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: urPanelColors.parchmentBorder,
+    backgroundColor: urPanelColors.parchmentSurface,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+    alignItems: 'center',
+  },
+  onlineMatchHeader: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 4,
+  },
+  onlineMatchTitle: {
+    color: urTextColors.titleOnPanel,
+    fontSize: 22,
+    lineHeight: 25,
+    textAlign: 'center',
+    ...urTextVariants.cardTitle,
+  },
+  onlineMatchStatus: {
+    color: urTextColors.bodyOnPanel,
+    fontSize: 13,
+    lineHeight: 17,
+    textAlign: 'center',
+    ...urTextVariants.body,
+  },
+  onlineMatchMetaGrid: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  onlineMatchMetaCell: {
+    minWidth: 104,
+    flexGrow: 1,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: urPanelColors.parchmentBorder,
+    backgroundColor: urPanelColors.parchmentSurfaceStrong,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  onlineMatchMetaLabel: {
+    color: urTextColors.captionOnPanel,
+    fontSize: 10,
+    lineHeight: 12,
+    textAlign: 'center',
+    ...urTextVariants.caption,
+    marginBottom: 3,
+  },
+  onlineMatchMetaValue: {
+    color: urTextColors.bodyOnPanel,
+    fontSize: 13,
+    lineHeight: 16,
+    textAlign: 'center',
+    ...urTextVariants.body,
+  },
+  onlineMatchButton: {
+    width: '100%',
+    maxWidth: 164,
+  },
   actionsSection: {
     width: '100%',
     alignItems: 'center',
@@ -917,14 +1367,20 @@ const styles = StyleSheet.create({
     overflow: 'visible',
     justifyContent: 'center',
   },
+  modePanelFlexible: {
+    width: '100%',
+    position: 'relative',
+    overflow: 'visible',
+    justifyContent: 'center',
+  },
   modePanelDesktop: {
     maxWidth: 320,
-    minHeight: 380,
+    minHeight: 420,
     alignSelf: 'center',
   },
   modePanelCompact: {
     maxWidth: 300,
-    minHeight: 292,
+    minHeight: 390,
     alignSelf: 'center',
   },
   modePanelFrame: {
@@ -1017,6 +1473,64 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     ...urTextVariants.body,
   },
+  wagerStepper: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  wagerStepButton: {
+    flex: 1,
+  },
+  wagerValuePill: {
+    minWidth: 72,
+    minHeight: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: urPanelColors.parchmentBorder,
+    backgroundColor: urPanelColors.parchmentSurfaceStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  wagerValue: {
+    color: urTextColors.titleOnPanel,
+    fontSize: 18,
+    lineHeight: 20,
+    textAlign: 'center',
+    ...urTextVariants.cardTitle,
+  },
+  wagerLabel: {
+    color: urTextColors.captionOnPanel,
+    fontSize: 9,
+    lineHeight: 11,
+    textAlign: 'center',
+    ...urTextVariants.caption,
+  },
+  durationRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  durationButton: {
+    flex: 1,
+  },
+  durationButtonSelected: {
+    transform: [{ translateY: 1 }],
+  },
+  waitingActionRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  waitingActionButton: {
+    flex: 1,
+    maxWidth: 82,
+  },
   privateCodePanel: {
     width: '100%',
     paddingHorizontal: 12,
@@ -1087,6 +1601,12 @@ const styles = StyleSheet.create({
   },
   secondaryActionButton: {
     width: '100%',
+  },
+  cancelStageButton: {
+    width: '100%',
+    maxWidth: 120,
+    alignSelf: 'center',
+    opacity: 0.72,
   },
   actionRowButton: {
     width: '100%',

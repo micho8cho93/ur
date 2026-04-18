@@ -131,6 +131,7 @@ export default function AuthenticatedHome() {
     accessibilityLabel,
     onPress,
     iconName,
+    iconOnly = false,
     disabled = false,
     style,
   }: {
@@ -138,6 +139,7 @@ export default function AuthenticatedHome() {
     accessibilityLabel: string;
     onPress: () => void;
     iconName?: React.ComponentProps<typeof SketchButton>['iconName'];
+    iconOnly?: boolean;
     disabled?: boolean;
     style?: React.ComponentProps<typeof SketchButton>['style'];
   }) => (
@@ -146,6 +148,8 @@ export default function AuthenticatedHome() {
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       iconName={iconName}
+      iconOnly={iconOnly}
+      iconSize={22}
       disabled={disabled}
       style={style}
       fontFamily={buttonFontFamily}
@@ -189,13 +193,14 @@ export default function AuthenticatedHome() {
     }
 
     return renderUtilitySketchButton({
-      label: isLoggingOut ? 'Logging out' : 'Logout',
+      label: '',
       accessibilityLabel: 'Logout',
       onPress: () => {
         void handleLogout();
       },
+      iconName: 'logout',
+      iconOnly: true,
       disabled: isLoggingOut,
-      style: styles.utilityActionButton,
     });
   };
 
@@ -205,10 +210,11 @@ export default function AuthenticatedHome() {
     }
 
     return renderUtilitySketchButton({
-      label: 'Inventory',
+      label: '',
       accessibilityLabel: 'Open inventory',
       onPress: handleInventoryPress,
-      style: styles.utilityActionButton,
+      iconName: 'inventory-2',
+      iconOnly: true,
     });
   };
 
@@ -230,7 +236,6 @@ export default function AuthenticatedHome() {
       key={coinAnimateFrom !== undefined ? `coin-from-${coinAnimateFrom}` : 'coin'}
       value={displayedSoftCurrency}
       animateFrom={coinAnimateFrom}
-      label="Coins"
       variant="coin"
       isDesktopLayout={isDesktopLayout}
       fontFamily={usernameFontFamily}
@@ -244,7 +249,6 @@ export default function AuthenticatedHome() {
       key={gemAnimateFrom !== undefined ? `gem-from-${gemAnimateFrom}` : 'gem'}
       value={displayedPremiumCurrency}
       animateFrom={gemAnimateFrom}
-      label="Gems"
       variant="gem"
       isDesktopLayout={isDesktopLayout}
       fontFamily={usernameFontFamily}
@@ -266,8 +270,8 @@ export default function AuthenticatedHome() {
           renderUtilityAction()
         ) : (
           <View style={styles.utilityActions}>
-            {renderUtilityAction()}
             {renderInventoryAction()}
+            {renderUtilityAction()}
           </View>
         )}
       </View>
@@ -489,7 +493,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   utilityActions: {
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   utilityActionButton: {

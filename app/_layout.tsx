@@ -8,6 +8,7 @@ import { StoreProvider } from '@/src/store/StoreProvider';
 import { CosmeticThemeProvider } from '@/src/store/CosmeticThemeContext';
 import { ScreenTransitionProvider } from '@/src/transitions/ScreenTransitionContext';
 import { TournamentFlowMonitor } from '@/src/tournaments/TournamentFlowMonitor';
+import { OpenOnlineMatchMonitor } from '@/src/openMatches/OpenOnlineMatchMonitor';
 import { WalletProvider } from '@/src/wallet/WalletContext';
 import {
   HOME_FREDOKA_FONT_FAMILY,
@@ -103,6 +104,7 @@ export default function Layout() {
                   <InventoryProvider>
                     <ScreenTransitionProvider>
                       <TournamentFlowMonitor />
+                      <OpenOnlineMatchMonitor />
                       <AppThemeShell />
                     </ScreenTransitionProvider>
                   </InventoryProvider>
