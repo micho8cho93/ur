@@ -17,9 +17,10 @@ import {
   resolveHomeButtonFontFamily,
   resolveHomeUsernameFontFamily,
 } from '@/src/home/homeTheme';
+import { AnimatedCurrencyChip } from '@/components/wallet/AnimatedCurrencyChip';
 import { useScreenTransition } from '@/src/transitions/ScreenTransitionContext';
 import { useFonts } from 'expo-font';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React from 'react';
 import {
   Image,
@@ -44,11 +45,27 @@ export default function AuthenticatedHome() {
   const runScreenTransition = useScreenTransition();
   const { user, logout } = useAuth();
   const { progression } = useProgression();
-  const { softCurrency, premiumCurrency } = useWallet();
-  const displayedSoftCurrency = user?.provider === 'guest' ? 0 : softCurrency;
-  const displayedPremiumCurrency = user?.provider === 'guest' ? 0 : premiumCurrency;
+  const { softCurrency, premiumCurrency, prevSoftCurrency, prevPremiumCurrency, clearWalletDelta } = useWallet();
+  const isGuest = user?.provider === 'guest';
+  const displayedSoftCurrency = isGuest ? 0 : softCurrency;
+  const displayedPremiumCurrency = isGuest ? 0 : premiumCurrency;
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const [isProgressionModalOpen, setIsProgressionModalOpen] = React.useState(false);
+  const [coinAnimateFrom, setCoinAnimateFrom] = React.useState<number | undefined>(undefined);
+  const [gemAnimateFrom, setGemAnimateFrom] = React.useState<number | undefined>(undefined);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (isGuest) return;
+      const hasCoinDelta = prevSoftCurrency !== null && prevSoftCurrency !== softCurrency;
+      const hasGemDelta = prevPremiumCurrency !== null && prevPremiumCurrency !== premiumCurrency;
+      if (hasCoinDelta || hasGemDelta) {
+        if (hasCoinDelta) setCoinAnimateFrom(prevSoftCurrency!);
+        if (hasGemDelta) setGemAnimateFrom(prevPremiumCurrency!);
+        clearWalletDelta();
+      }
+    }, [isGuest, prevSoftCurrency, prevPremiumCurrency, softCurrency, premiumCurrency, clearWalletDelta]),
+  );
   const [fontsLoaded] = useFonts({
     [HOME_FREDOKA_FONT_FAMILY]: require('../../assets/fonts/LilitaOne-Regular.ttf'),
     [HOME_GROBOLD_FONT_FAMILY]: require('../../assets/fonts/LilitaOne-Regular.ttf'),
@@ -209,51 +226,31 @@ export default function AuthenticatedHome() {
   );
 
   const renderWalletBalance = () => (
-    <View
-      accessibilityLabel={`${displayedSoftCurrency} Coins`}
-      style={[
-        styles.walletChip,
-        isDesktopLayout ? styles.walletChipDesktop : styles.walletChipCompact,
-      ]}
-    >
-      <Text
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.72}
-        style={[
-          styles.walletChipText,
-          isDesktopLayout ? styles.walletChipTextDesktop : styles.walletChipTextCompact,
-          { fontFamily: usernameFontFamily },
-        ]}
-      >
-        {displayedSoftCurrency.toLocaleString()} Coins
-      </Text>
-    </View>
+    <AnimatedCurrencyChip
+      key={coinAnimateFrom !== undefined ? `coin-from-${coinAnimateFrom}` : 'coin'}
+      value={displayedSoftCurrency}
+      animateFrom={coinAnimateFrom}
+      label="Coins"
+      variant="coin"
+      isDesktopLayout={isDesktopLayout}
+      fontFamily={usernameFontFamily}
+      delayMs={500}
+      onDone={() => setCoinAnimateFrom(undefined)}
+    />
   );
 
   const renderGemBalance = () => (
-    <View
-      accessibilityLabel={`${displayedPremiumCurrency} Gems`}
-      style={[
-        styles.walletChip,
-        styles.gemChip,
-        isDesktopLayout ? styles.walletChipDesktop : styles.walletChipCompact,
-      ]}
-    >
-      <Text
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.72}
-        style={[
-          styles.walletChipText,
-          styles.gemChipText,
-          isDesktopLayout ? styles.walletChipTextDesktop : styles.walletChipTextCompact,
-          { fontFamily: usernameFontFamily },
-        ]}
-      >
-        {displayedPremiumCurrency.toLocaleString()} Gems
-      </Text>
-    </View>
+    <AnimatedCurrencyChip
+      key={gemAnimateFrom !== undefined ? `gem-from-${gemAnimateFrom}` : 'gem'}
+      value={displayedPremiumCurrency}
+      animateFrom={gemAnimateFrom}
+      label="Gems"
+      variant="gem"
+      isDesktopLayout={isDesktopLayout}
+      fontFamily={usernameFontFamily}
+      delayMs={500}
+      onDone={() => setGemAnimateFrom(undefined)}
+    />
   );
 
   const utilityBarContent = (
@@ -516,52 +513,6 @@ const styles = StyleSheet.create({
   utilityUsernameCompact: {
     fontSize: 22,
     lineHeight: 26,
-  },
-  walletChip: {
-    flexShrink: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 226, 150, 0.62)',
-    backgroundColor: 'rgba(67, 37, 15, 0.66)',
-    shadowColor: '#2D1607',
-    shadowOpacity: 0.28,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  walletChipDesktop: {
-    minWidth: 92,
-    height: 34,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-  },
-  walletChipCompact: {
-    minWidth: 82,
-    height: 30,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-  },
-  walletChipText: {
-    color: '#FFE296',
-    textShadowColor: 'rgba(72, 31, 10, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
-  },
-  walletChipTextDesktop: {
-    fontSize: 16,
-    lineHeight: 19,
-  },
-  walletChipTextCompact: {
-    fontSize: 14,
-    lineHeight: 17,
-  },
-  gemChip: {
-    borderColor: 'rgba(120, 200, 255, 0.62)',
-    backgroundColor: 'rgba(14, 38, 68, 0.72)',
-  },
-  gemChipText: {
-    color: '#82DEFF',
-    textShadowColor: 'rgba(10, 40, 90, 0.5)',
   },
   header: {
     alignItems: 'center',

@@ -10,6 +10,9 @@ export type WalletContextValue = {
   wallet: WalletRpcResponse['wallet'] | null;
   softCurrency: number;
   premiumCurrency: number;
+  prevSoftCurrency: number | null;
+  prevPremiumCurrency: number | null;
+  clearWalletDelta: () => void;
   status: WalletStatus;
   errorMessage: string | null;
   isLoading: boolean;
@@ -27,11 +30,19 @@ export const WalletProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const [wallet, setWallet] = useState<WalletRpcResponse['wallet'] | null>(null);
   const [softCurrency, setSoftCurrency] = useState(0);
   const [premiumCurrency, setPremiumCurrency] = useState(0);
+  const [prevSoftCurrency, setPrevSoftCurrency] = useState<number | null>(null);
+  const [prevPremiumCurrency, setPrevPremiumCurrency] = useState<number | null>(null);
   const [status, setStatus] = useState<WalletStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeUserIdRef = useRef<string | null>(null);
   const requestIdRef = useRef(0);
   const canAccessWallet = Boolean(user) && user?.provider !== 'guest';
+
+  // Refs so refresh() can read current values without stale closure
+  const softCurrencyRef = useRef(softCurrency);
+  softCurrencyRef.current = softCurrency;
+  const premiumCurrencyRef = useRef(premiumCurrency);
+  premiumCurrencyRef.current = premiumCurrency;
 
   const resetState = useCallback(() => {
     requestIdRef.current += 1;
@@ -39,8 +50,15 @@ export const WalletProvider: React.FC<PropsWithChildren> = ({ children }) => {
     setWallet(null);
     setSoftCurrency(0);
     setPremiumCurrency(0);
+    setPrevSoftCurrency(null);
+    setPrevPremiumCurrency(null);
     setStatus('idle');
     setErrorMessage(null);
+  }, []);
+
+  const clearWalletDelta = useCallback(() => {
+    setPrevSoftCurrency(null);
+    setPrevPremiumCurrency(null);
   }, []);
 
   const refresh = useCallback(
@@ -66,6 +84,17 @@ export const WalletProvider: React.FC<PropsWithChildren> = ({ children }) => {
         }
 
         activeUserIdRef.current = user.id;
+
+        // Capture deltas before overwriting (only when wallet is already loaded)
+        if (wallet !== null) {
+          if (nextWallet.softCurrency !== softCurrencyRef.current) {
+            setPrevSoftCurrency(softCurrencyRef.current);
+          }
+          if (nextWallet.premiumCurrency !== premiumCurrencyRef.current) {
+            setPrevPremiumCurrency(premiumCurrencyRef.current);
+          }
+        }
+
         setWallet(nextWallet.wallet);
         setSoftCurrency(nextWallet.softCurrency);
         setPremiumCurrency(nextWallet.premiumCurrency);
@@ -104,13 +133,16 @@ export const WalletProvider: React.FC<PropsWithChildren> = ({ children }) => {
       wallet,
       softCurrency,
       premiumCurrency,
+      prevSoftCurrency,
+      prevPremiumCurrency,
+      clearWalletDelta,
       status,
       errorMessage,
       isLoading: status === 'loading' && !wallet,
       isRefreshing: status === 'loading' && Boolean(wallet),
       refresh,
     }),
-    [errorMessage, premiumCurrency, refresh, softCurrency, status, wallet],
+    [clearWalletDelta, errorMessage, premiumCurrency, prevPremiumCurrency, prevSoftCurrency, refresh, softCurrency, status, wallet],
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
