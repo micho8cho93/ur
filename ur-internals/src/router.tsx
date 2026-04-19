@@ -7,6 +7,7 @@ import { CreateTournamentPage } from './pages/CreateTournament'
 import { LegacyTournamentDetailRedirect } from './pages/LegacyTournamentDetailRedirect'
 import { LoginPage } from './pages/Login'
 import { OverviewPage } from './pages/Overview'
+import { GameModesPage } from './pages/GameModes'
 import { UserFeedbackPage } from './pages/UserFeedback'
 import { SettingsPage } from './pages/Settings'
 import { StoreOverviewPage } from './pages/StoreOverview'
@@ -95,6 +96,23 @@ export const router = createBrowserRouter([
           {
             path: appRoutes.store.stats,
             element: <StoreStatsPage />,
+          },
+        ],
+      },
+      {
+        element: <AppShell section="gameModes" />,
+        children: [
+          {
+            path: appRoutes.gameModes.home,
+            element: <GameModesPage />,
+          },
+          {
+            path: appRoutes.gameModes.new,
+            element: <GameModesPage />,
+          },
+          {
+            path: appRoutes.gameModes.edit(':modeId'),
+            element: <GameModesPage />,
           },
         ],
       },

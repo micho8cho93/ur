@@ -1,6 +1,6 @@
 import type { AnalyticsSectionId } from './types/analytics'
 
-export type InternalsSectionId = 'tournaments' | 'analytics' | 'store' | 'settings' | 'feedback'
+export type InternalsSectionId = 'tournaments' | 'analytics' | 'store' | 'gameModes' | 'settings' | 'feedback'
 
 export interface SidebarNavItem {
   label: string
@@ -50,6 +50,11 @@ export const appRoutes = {
     rotation: '/store/rotation',
     stats: '/store/stats',
   },
+  gameModes: {
+    home: '/game-modes',
+    new: '/game-modes/new',
+    edit: (modeId: string) => `/game-modes/${modeId}`,
+  },
   feedback: {
     home: '/feedback',
     detail: (feedbackId: string) => `/feedback/${feedbackId}`,
@@ -88,6 +93,14 @@ export const internalsSections: Record<InternalsSectionId, InternalsSection> = {
     description: 'Catalog control, rotation management, events, and purchase reporting.',
     to: appRoutes.store.home,
   },
+  gameModes: {
+    id: 'gameModes',
+    label: 'Game Modes',
+    short: 'GM',
+    eyebrow: 'Game Mode Internals',
+    description: 'Create, feature, activate, and audit custom gameplay modes.',
+    to: appRoutes.gameModes.home,
+  },
   settings: {
     id: 'settings',
     label: 'Settings',
@@ -110,6 +123,7 @@ export const sectionEntryItems = [
   internalsSections.tournaments,
   internalsSections.analytics,
   internalsSections.store,
+  internalsSections.gameModes,
   internalsSections.settings,
   internalsSections.feedback,
 ]
@@ -261,6 +275,23 @@ export const storeNavItems: SidebarNavItem[] = [
   },
 ]
 
+export const gameModesNavItems: SidebarNavItem[] = [
+  {
+    label: 'Saved Modes',
+    to: appRoutes.gameModes.home,
+    short: 'SV',
+    section: 'Game Modes',
+    end: true,
+  },
+  {
+    label: 'Create Mode',
+    to: appRoutes.gameModes.new,
+    short: 'CR',
+    section: 'Game Modes',
+    end: true,
+  },
+]
+
 export const settingsNavItems: SidebarNavItem[] = [
   {
     label: 'Console Settings',
@@ -285,6 +316,7 @@ export const sectionNavItems: Record<InternalsSectionId, SidebarNavItem[]> = {
   tournaments: tournamentNavItems,
   analytics: analyticsNavItems,
   store: storeNavItems,
+  gameModes: gameModesNavItems,
   settings: settingsNavItems,
   feedback: feedbackNavItems,
 }
@@ -293,6 +325,7 @@ export const primaryNavItems: SidebarNavItem[] = [
   ...tournamentNavItems,
   ...analyticsNavItems,
   ...storeNavItems,
+  ...gameModesNavItems,
   ...settingsNavItems,
   ...feedbackNavItems,
 ]

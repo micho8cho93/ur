@@ -1,6 +1,7 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import React from 'react';
 import Lobby from '@/app/(game)/lobby';
+import { getMatchConfig } from '@/logic/matchConfigs';
 
 const mockUseMatchmaking = jest.fn();
 const mockUseTournamentList = jest.fn();
@@ -16,6 +17,8 @@ const mockJoinOpenMatch = jest.fn();
 const mockRefreshCreatedOpenMatch = jest.fn();
 const mockListOpenOnlineMatches = jest.fn();
 const mockEnsureAuthenticatedDevice = jest.fn();
+const mockGetPublicGameModes = jest.fn();
+const mockResolveGameModeMatchConfig = jest.fn();
 
 jest.mock('@/hooks/useMatchmaking', () => ({
   useMatchmaking: (...args: unknown[]) => mockUseMatchmaking(...args),
@@ -27,6 +30,11 @@ jest.mock('@/src/tournaments/useTournamentList', () => ({
 
 jest.mock('@/services/matchmaking', () => ({
   listOpenOnlineMatches: (...args: unknown[]) => mockListOpenOnlineMatches(...args),
+}));
+
+jest.mock('@/services/gameModes', () => ({
+  getPublicGameModes: (...args: unknown[]) => mockGetPublicGameModes(...args),
+  resolveGameModeMatchConfig: (...args: unknown[]) => mockResolveGameModeMatchConfig(...args),
 }));
 
 jest.mock('@/services/nakama', () => ({
@@ -139,6 +147,13 @@ describe('Lobby private game join input', () => {
       token: 'token',
       refresh_token: 'refresh',
     });
+    mockGetPublicGameModes.mockResolvedValue({
+      featuredMode: null,
+      activeModes: [],
+    });
+    mockResolveGameModeMatchConfig.mockImplementation(async (modeId?: string | null) =>
+      getMatchConfig(modeId ?? 'standard'),
+    );
     mockUseStore.mockReturnValue({
       softCurrency: 1234,
     });
@@ -230,7 +245,7 @@ describe('Lobby private game join input', () => {
     expect(view.getByLabelText('See all tournaments')).toBeTruthy();
     expect(view.getByText('Spring Open')).toBeTruthy();
     expect(view.getByText('Create Online Match')).toBeTruthy();
-    expect(view.getByText('Capture')).toBeTruthy();
+    expect(view.getByText('Finkel Rules')).toBeTruthy();
     expect(view.getByText('Enter Private Code')).toBeTruthy();
   });
 
@@ -320,6 +335,14 @@ describe('Lobby private game join input', () => {
 
     await waitFor(() => expect(view.getByText('Open Wager Match')).toBeTruthy());
     expect(view.getByText('40 coins')).toBeTruthy();
+    expect(view.getByLabelText('Open economy details for Open Wager Match')).toBeTruthy();
+
+    fireEvent.press(view.getByLabelText('Open economy details for Open Wager Match'));
+    expect(view.getByText('Open Wager Match Economy')).toBeTruthy();
+    expect(view.getByText('Spend 40 coins to join')).toBeTruthy();
+    expect(view.getByText('XP on win')).toBeTruthy();
+    expect(view.getAllByText('+100 XP').length).toBeGreaterThan(0);
+    fireEvent.press(view.getByText('Close'));
 
     fireEvent.press(view.getByText('Join Match'));
 
@@ -331,7 +354,7 @@ describe('Lobby private game join input', () => {
       {
         openMatchId: 'open-live-1',
         matchId: 'match-live-1',
-        modeId: 'gameMode_capture',
+        modeId: 'gameMode_3_pieces',
         creatorUserId: 'creator-1',
         joinedUserId: 'joiner-1',
         wager: 40,
@@ -351,11 +374,22 @@ describe('Lobby private game join input', () => {
 
     await waitFor(() => expect(view.getByText('Live Wager Match')).toBeTruthy());
     expect(view.getByText('In Progress')).toBeTruthy();
+    expect(view.getByLabelText('Open economy details for Live Wager Match')).toBeTruthy();
 
-    fireEvent.press(view.getByText('Spectate'));
+    fireEvent.press(view.getByLabelText('Open economy details for Live Wager Match'));
+    expect(view.getByText('Live Wager Match Economy')).toBeTruthy();
+    expect(view.getByText('Spend 40 coins to join')).toBeTruthy();
+    expect(view.getByText('XP on win')).toBeTruthy();
+    expect(view.getAllByText('+100 XP').length).toBeGreaterThan(0);
+    fireEvent.press(view.getByText('Close'));
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Spectate'));
+      await Promise.resolve();
+    });
 
     await waitFor(() =>
-      expect(mockPush).toHaveBeenCalledWith('/match/match-live-1?modeId=gameMode_capture&spectator=1'),
+      expect(mockPush).toHaveBeenCalledWith('/match/match-live-1?modeId=gameMode_3_pieces&spectator=1'),
     );
   });
 
@@ -377,7 +411,7 @@ describe('Lobby private game join input', () => {
       createdOpenOnlineMatch: null,
       createdPrivateMatch: {
         matchId: 'private-1',
-        modeId: 'gameMode_capture',
+        modeId: 'gameMode_3_pieces',
         code: 'CAPTURE1',
         session: { user_id: 'host-1' },
         userId: 'host-1',
@@ -396,6 +430,22 @@ describe('Lobby private game join input', () => {
     expect(view.queryByText('Copy Code')).toBeNull();
     expect(view.getByText('Start Game')).toBeTruthy();
     expect(view.getByText('Cancel')).toBeTruthy();
+  });
+
+  it('shows the game mode of the month under Finkel Rules when one is featured', async () => {
+    mockGetPublicGameModes.mockResolvedValueOnce({
+      featuredMode: {
+        id: 'gameMode_monthly',
+        name: 'Game Mode of the Month',
+        description: 'This month\'s featured rules.',
+      },
+      activeModes: [],
+    });
+
+    const view = render(<Lobby />);
+
+    await waitFor(() => expect(view.getByText('Game Mode of the Month')).toBeTruthy());
+    expect(view.getByText('Finkel Rules')).toBeTruthy();
   });
 
   it('renders the tournaments button inside the empty featured state card', () => {

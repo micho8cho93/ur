@@ -127,7 +127,7 @@ describe('useMatchmaking', () => {
   it('reapplies the host private match session before opening a created private table', async () => {
     mockCreatePrivateMatch.mockResolvedValue({
       matchId: 'match-private-host-1',
-      modeId: 'gameMode_capture',
+      modeId: 'gameMode_3_pieces',
       code: 'CAPTURE1',
       session: { user_id: 'host-1' },
       userId: 'host-1',
@@ -140,13 +140,13 @@ describe('useMatchmaking', () => {
     });
 
     await act(async () => {
-      await result.current.startPrivateMatch('gameMode_capture');
+      await result.current.startPrivateMatch('gameMode_3_pieces');
     });
 
     expect(result.current.createdPrivateMatch).toEqual(
       expect.objectContaining({
         matchId: 'match-private-host-1',
-        modeId: 'gameMode_capture',
+        modeId: 'gameMode_3_pieces',
         code: 'CAPTURE1',
         hasGuestJoined: false,
       }),
@@ -173,12 +173,12 @@ describe('useMatchmaking', () => {
     expect(useGameStore.getState().nakamaSession).toEqual(expect.objectContaining({ user_id: 'host-1' }));
     expect(useGameStore.getState().userId).toBe('host-1');
     expect(mockPush).toHaveBeenCalledWith(
-      '/match/match-private-host-1?modeId=gameMode_capture&privateMatch=1&privateHost=1&privateCode=CAPTURE1',
+      '/match/match-private-host-1?modeId=gameMode_3_pieces&privateMatch=1&privateHost=1&privateCode=CAPTURE1',
     );
     expect(result.current.createdPrivateMatch).toEqual(
       expect.objectContaining({
         matchId: 'match-private-host-1',
-        modeId: 'gameMode_capture',
+        modeId: 'gameMode_3_pieces',
         code: 'CAPTURE1',
         hasGuestJoined: false,
       }),

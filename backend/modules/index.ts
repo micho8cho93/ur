@@ -6,7 +6,7 @@
 import { getBotMove } from "../../logic/bot/bot";
 import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty, type BotDifficulty } from "../../logic/bot/types";
 import { applyMove, createInitialState, getValidMoves, rollDice } from "../../logic/engine";
-import { MatchModeId, getMatchConfig, isMatchModeId } from "../../logic/matchConfigs";
+import { getMatchConfig, isMatchModeId, type MatchConfig } from "../../logic/matchConfigs";
 import { getPathCoord as getVariantPathCoord, getPathLength } from "../../logic/pathVariants";
 import { GameState, PlayerColor } from "../../logic/types";
 import {
@@ -90,6 +90,25 @@ import {
   rpcGetStorefront,
   rpcPurchaseItem,
 } from "./cosmeticStore";
+import {
+  RPC_ADMIN_DISABLE_GAME_MODE,
+  RPC_ADMIN_ENABLE_GAME_MODE,
+  RPC_ADMIN_FEATURE_GAME_MODE,
+  RPC_ADMIN_GET_GAME_MODE,
+  RPC_ADMIN_LIST_GAME_MODES,
+  RPC_ADMIN_UNFEATURE_GAME_MODE,
+  RPC_ADMIN_UPSERT_GAME_MODE,
+  RPC_GET_GAME_MODES,
+  rpcAdminDisableGameMode,
+  rpcAdminEnableGameMode,
+  rpcAdminFeatureGameMode,
+  rpcAdminGetGameMode,
+  rpcAdminListGameModes,
+  rpcAdminUnfeatureGameMode,
+  rpcAdminUpsertGameMode,
+  rpcGetGameModes,
+  getPublicGameModes,
+} from "./gameModes";
 import { normalizeChallengeProgressSnapshot } from "./challengeProgress";
 import {
   EmojiReactionBroadcastPayload,
@@ -115,6 +134,7 @@ import {
   isRematchResponsePayload,
   isRollRequestPayload,
 } from "../../shared/urMatchProtocol";
+import { buildGameModeMatchConfig } from "../../shared/gameModes";
 import {
   CHALLENGE_THRESHOLDS,
   CompletedMatchSummary,
@@ -255,7 +275,7 @@ type MatchState = {
   revision: number;
   started: boolean;
   opponentType: OpponentType;
-  modeId: MatchModeId;
+  modeId: string;
   classification: MatchClassification;
   privateMatch: boolean;
   privateCode: string | null;
@@ -308,7 +328,7 @@ type RuntimeStorageObject = RuntimeRecord & {
 type PrivateMatchCodeRecord = {
   code: string;
   matchId: string | null;
-  modeId: MatchModeId;
+  modeId: string;
   creatorUserId: string;
   joinedUserId: string | null;
   createdAt: string;
@@ -320,7 +340,7 @@ type OpenOnlineMatchStatus = "open" | "matched" | "expired" | "settled";
 type OpenOnlineMatchRecord = {
   openMatchId: string;
   matchId: string;
-  modeId: MatchModeId;
+  modeId: string;
   creatorUserId: string;
   joinedUserId: string | null;
   wager: number;
@@ -473,10 +493,10 @@ const OPEN_ONLINE_MATCH_MIN_WAGER = 10;
 const OPEN_ONLINE_MATCH_MAX_WAGER = 100;
 const OPEN_ONLINE_MATCH_WAGER_STEP = 10;
 const OPEN_ONLINE_MATCH_DURATIONS_MINUTES = [3, 5, 10] as const;
-const OPEN_ONLINE_MATCH_MODE_IDS: readonly MatchModeId[] = [
+const OPEN_ONLINE_MATCH_MODE_IDS: readonly string[] = [
   "gameMode_3_pieces",
-  "gameMode_capture",
   "gameMode_finkel_rules",
+  "standard",
 ];
 const USER_CHALLENGE_PROGRESS_COLLECTION = "user_challenge_progress";
 const USER_CHALLENGE_PROGRESS_KEY = "progress";
@@ -635,8 +655,44 @@ const getMessageOpCode = (message: nkruntime.MatchMessage): number | null =>
 const getContextUserId = (ctx: nkruntime.Context): string | null =>
   readStringField(ctx, ["userId", "user_id"]);
 
-const resolveMatchModeId = (value: unknown): MatchModeId =>
-  isMatchModeId(value) ? value : "standard";
+const resolveMatchModeId = (value: unknown): string =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : "standard";
+
+const resolveMatchConfigForModeId = (
+  nk: nkruntime.Nakama,
+  params: Record<string, unknown>,
+  modeId: string,
+): MatchConfig | null => {
+  const restrictedOnlineMatch =
+    Boolean(readStringField(params, ["openOnlineMatchId", "open_online_match_id"])) ||
+    params.privateMatch === true ||
+    Boolean(resolveTournamentMatchContextFromParams(params));
+
+  if (isMatchModeId(modeId)) {
+    if (restrictedOnlineMatch && !OPEN_ONLINE_MATCH_MODE_IDS.includes(modeId)) {
+      return null;
+    }
+
+    return getMatchConfig(modeId);
+  }
+
+  const isOpenOnlineMatch = Boolean(readStringField(params, ["openOnlineMatchId", "open_online_match_id"]));
+  const isTournamentMatch = Boolean(resolveTournamentMatchContextFromParams(params));
+  const featuredMode = getPublicGameModes(nk).featuredMode;
+  if (!featuredMode || featuredMode.id !== modeId) {
+    return null;
+  }
+
+  return buildGameModeMatchConfig(featuredMode, {
+    allowsXp: true,
+    allowsChallenges: true,
+    allowsCoins: isOpenOnlineMatch,
+    allowsOnline: true,
+    allowsRankedStats: isOpenOnlineMatch || isTournamentMatch,
+    isPracticeMode: false,
+    displayName: featuredMode.name,
+  });
+};
 
 const resolveConfiguredRewardXp = (value: unknown): number | null => {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -646,13 +702,12 @@ const resolveConfiguredRewardXp = (value: unknown): number | null => {
   return Math.max(0, Math.floor(value));
 };
 
-const buildMatchClassification = (params: Record<string, unknown>, modeId: MatchModeId): MatchClassification => {
-  const config = getMatchConfig(modeId);
+const buildMatchClassification = (params: Record<string, unknown>, matchConfig: MatchConfig): MatchClassification => {
   const tournamentMatch = Boolean(resolveTournamentMatchContextFromParams(params));
   const privateMatch = params.privateMatch === true;
   const botMatch = params.botMatch === true;
   const casualMatch = params.casualMatch === true;
-  const experimental = !config.allowsRankedStats && !tournamentMatch;
+  const experimental = !matchConfig.allowsRankedStats && !tournamentMatch;
   const ranked =
     params.rankedMatch === true ||
     (!privateMatch && !botMatch && !casualMatch && !experimental && params.rankedMatch !== false);
@@ -875,13 +930,13 @@ const normalizePrivateMatchCodeRecord = (value: unknown): PrivateMatchCodeRecord
 
   const code = normalizePrivateMatchCodeInput(readStringField(record, ["code"]) ?? "");
   const matchId = readStringField(record, ["matchId", "match_id"]);
-  const modeId = record.modeId;
+  const modeId = readStringField(record, ["modeId", "mode_id"]);
   const creatorUserId = readStringField(record, ["creatorUserId", "creator_user_id"]);
   const joinedUserId = readStringField(record, ["joinedUserId", "joined_user_id"]);
   const createdAt = readStringField(record, ["createdAt", "created_at"]);
   const updatedAt = readStringField(record, ["updatedAt", "updated_at"]);
 
-  if (!isPrivateMatchCode(code) || !isMatchModeId(modeId) || !creatorUserId || !createdAt || !updatedAt) {
+  if (!isPrivateMatchCode(code) || !modeId || !creatorUserId || !createdAt || !updatedAt) {
     return null;
   }
 
@@ -965,7 +1020,7 @@ const isPrivateMatchCodeReservationConflict = (error: unknown): boolean => {
 
 const reservePrivateMatchCodeRecord = (
   nk: nkruntime.Nakama,
-  modeId: MatchModeId,
+  modeId: string,
   creatorUserId: string
 ): PrivateMatchCodeRecord => {
   for (let attempt = 0; attempt < PRIVATE_MATCH_CODE_MAX_GENERATION_ATTEMPTS; attempt += 1) {
@@ -1051,10 +1106,11 @@ const normalizeOpenOnlineMatchDurationMinutes = (value: unknown): number => {
   return durationMinutes;
 };
 
-const normalizeOpenOnlineMatchModeId = (value: unknown): MatchModeId => {
+const normalizeOpenOnlineMatchModeId = (nk: nkruntime.Nakama, value: unknown): string => {
   const modeId = resolveMatchModeId(value);
-  if (!OPEN_ONLINE_MATCH_MODE_IDS.includes(modeId)) {
-    throw new Error("Online matches support Race, Capture, or Finkel Rules modes.");
+  const featuredMode = getPublicGameModes(nk).featuredMode;
+  if (!OPEN_ONLINE_MATCH_MODE_IDS.includes(modeId) && featuredMode?.id !== modeId) {
+    throw new Error("Online matches support Race, Finkel Rules, or the current Game Mode of the Month.");
   }
   return modeId;
 };
@@ -1083,7 +1139,7 @@ const normalizeOpenOnlineMatchRecord = (value: unknown): OpenOnlineMatchRecord |
 
   const openMatchId = readStringField(record, ["openMatchId", "open_match_id"]);
   const matchId = readStringField(record, ["matchId", "match_id"]);
-  const modeId = record.modeId ?? record.mode_id;
+  const modeId = readStringField(record, ["modeId", "mode_id"]);
   const creatorUserId = readStringField(record, ["creatorUserId", "creator_user_id"]);
   const joinedUserId = readStringField(record, ["joinedUserId", "joined_user_id"]);
   const wager = readNumberField(record, ["wager"]);
@@ -1095,7 +1151,7 @@ const normalizeOpenOnlineMatchRecord = (value: unknown): OpenOnlineMatchRecord |
   if (
     !openMatchId ||
     !matchId ||
-    !isMatchModeId(modeId) ||
+    !modeId ||
     !creatorUserId ||
     wager === null ||
     durationMinutes === null ||
@@ -2295,7 +2351,7 @@ const isPrivateMatchReady = (state: MatchState): boolean =>
 
 const buildPrivateMatchRpcResponse = (
   matchId: string,
-  modeId: MatchModeId,
+  modeId: string,
   privateCode: string,
   hasGuestJoined?: boolean
 ): string =>
@@ -2545,6 +2601,14 @@ function InitModule(
   initializer.registerRpc(RPC_ADMIN_SET_LIMITED_TIME_EVENT, rpcAdminSetLimitedTimeEvent);
   initializer.registerRpc(RPC_ADMIN_REMOVE_LIMITED_TIME_EVENT, rpcAdminRemoveLimitedTimeEvent);
   initializer.registerRpc(RPC_ADMIN_GET_STORE_STATS, rpcAdminGetStoreStats);
+  initializer.registerRpc(RPC_GET_GAME_MODES, rpcGetGameModes);
+  initializer.registerRpc(RPC_ADMIN_LIST_GAME_MODES, rpcAdminListGameModes);
+  initializer.registerRpc(RPC_ADMIN_GET_GAME_MODE, rpcAdminGetGameMode);
+  initializer.registerRpc(RPC_ADMIN_UPSERT_GAME_MODE, rpcAdminUpsertGameMode);
+  initializer.registerRpc(RPC_ADMIN_DISABLE_GAME_MODE, rpcAdminDisableGameMode);
+  initializer.registerRpc(RPC_ADMIN_ENABLE_GAME_MODE, rpcAdminEnableGameMode);
+  initializer.registerRpc(RPC_ADMIN_FEATURE_GAME_MODE, rpcAdminFeatureGameMode);
+  initializer.registerRpc(RPC_ADMIN_UNFEATURE_GAME_MODE, rpcAdminUnfeatureGameMode);
   initializer.registerRpc(RPC_SUBMIT_FEEDBACK, rpcSubmitFeedback);
   initializer.registerRpc(RPC_ADMIN_LIST_FEEDBACK, rpcAdminListFeedback);
   initializer.registerMatch(MATCH_HANDLER, {
@@ -2679,7 +2743,10 @@ function rpcCreatePrivateMatch(
 
   const data = parseRpcPayload(payload);
   const modeId = resolveMatchModeId(data.modeId);
-  const matchConfig = getMatchConfig(modeId);
+  const matchConfig = resolveMatchConfigForModeId(nk, { privateMatch: true }, modeId);
+  if (!matchConfig) {
+    throw new Error("Private matches support Race, Finkel Rules, or the current Game Mode of the Month.");
+  }
   const reservation = reservePrivateMatchCodeRecord(nk, modeId, ctx.userId);
   const privateCode = reservation.code;
   let matchId: string;
@@ -2804,7 +2871,15 @@ function rpcCreateOpenOnlineMatch(
   const data = parseRpcPayload(payload);
   const wager = normalizeOpenOnlineMatchWager(data.wager);
   const durationMinutes = normalizeOpenOnlineMatchDurationMinutes(data.durationMinutes);
-  const modeId = normalizeOpenOnlineMatchModeId(data.modeId ?? data.mode_id);
+  const modeId = normalizeOpenOnlineMatchModeId(nk, data.modeId ?? data.mode_id);
+  const matchConfig = resolveMatchConfigForModeId(
+    nk,
+    { openOnlineMatchId: "pending" },
+    modeId,
+  );
+  if (!matchConfig) {
+    throw new Error("Open matches support Race, Finkel Rules, or the current Game Mode of the Month.");
+  }
   const openMatchId = generateOpenOnlineMatchId();
   const now = new Date();
   const createdAt = now.toISOString();
@@ -3166,7 +3241,11 @@ function matchInit(
 ): { state: MatchState; tickRate: number; label: string } {
   const playerIds = Array.isArray(params.playerIds) ? (params.playerIds as string[]) : [];
   const modeId = resolveMatchModeId(params.modeId);
-  const classification = buildMatchClassification(params, modeId);
+  const matchConfig = resolveMatchConfigForModeId(nk, params, modeId);
+  if (!matchConfig) {
+    throw new Error(`Unsupported game mode: ${modeId}`);
+  }
+  const classification = buildMatchClassification(params, matchConfig);
   const privateMatch = classification.private;
   const privateCode = typeof params.privateCode === "string" ? normalizePrivateMatchCodeInput(params.privateCode) : "";
   const privateCreatorUserId =
@@ -3243,7 +3322,7 @@ function matchInit(
     playerTitles,
     playerRankTitles,
     bot,
-    gameState: createInitialState(getMatchConfig(modeId)),
+    gameState: createInitialState(matchConfig),
     revision: 0,
     started: false,
     opponentType: bot ? getBotOpponentType(bot.difficulty) : "human",
@@ -5098,6 +5177,14 @@ type RuntimeGlobalBindings = {
   rpcGetStorefront: typeof rpcGetStorefront;
   rpcPurchaseItem: typeof rpcPurchaseItem;
   rpcGetOwnedCosmetics: typeof rpcGetOwnedCosmetics;
+  rpcGetGameModes: typeof rpcGetGameModes;
+  rpcAdminListGameModes: typeof rpcAdminListGameModes;
+  rpcAdminGetGameMode: typeof rpcAdminGetGameMode;
+  rpcAdminUpsertGameMode: typeof rpcAdminUpsertGameMode;
+  rpcAdminDisableGameMode: typeof rpcAdminDisableGameMode;
+  rpcAdminEnableGameMode: typeof rpcAdminEnableGameMode;
+  rpcAdminFeatureGameMode: typeof rpcAdminFeatureGameMode;
+  rpcAdminUnfeatureGameMode: typeof rpcAdminUnfeatureGameMode;
   rpcMatchmakerAdd: typeof rpcMatchmakerAdd;
   rpcCreatePrivateMatch: typeof rpcCreatePrivateMatch;
   rpcJoinPrivateMatch: typeof rpcJoinPrivateMatch;
@@ -5131,6 +5218,14 @@ const runtimeGlobals: RuntimeGlobalBindings = {
   rpcGetStorefront,
   rpcPurchaseItem,
   rpcGetOwnedCosmetics,
+  rpcGetGameModes,
+  rpcAdminListGameModes,
+  rpcAdminGetGameMode,
+  rpcAdminUpsertGameMode,
+  rpcAdminDisableGameMode,
+  rpcAdminEnableGameMode,
+  rpcAdminFeatureGameMode,
+  rpcAdminUnfeatureGameMode,
   rpcMatchmakerAdd,
   rpcCreatePrivateMatch,
   rpcJoinPrivateMatch,

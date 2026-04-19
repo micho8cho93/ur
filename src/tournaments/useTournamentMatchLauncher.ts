@@ -2,8 +2,8 @@ import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Session } from '@heroiclabs/nakama-js';
 
-import { getMatchConfig } from '@/logic/matchConfigs';
 import { launchTournamentMatch } from '@/services/tournaments';
+import { resolveGameModeMatchConfig } from '@/services/gameModes';
 import { useScreenTransition } from '@/src/transitions/ScreenTransitionContext';
 import type { PublicTournamentSummary, TournamentMatchLaunchResult } from '@/src/tournaments/types';
 import { useGameStore } from '@/store/useGameStore';
@@ -43,14 +43,21 @@ export const useTournamentMatchLauncher = () => {
     ) => {
       const navigationMode = options?.navigationMode ?? 'push';
       const navigate = navigationMode === 'replace' ? router.replace : router.push;
-      const completeLaunch = () => {
+      const completeLaunch = async () => {
         setNakamaSession(result.session);
         setUserId(result.userId);
         setMatchToken(result.matchToken ?? null);
         setOnlineMode('nakama');
         setPlayerColor(null);
         initGame(result.matchId, {
-          matchConfig: getMatchConfig(tournament.gameMode),
+          matchConfig: await resolveGameModeMatchConfig(tournament.gameMode, {
+            allowsXp: true,
+            allowsChallenges: true,
+            allowsCoins: false,
+            allowsOnline: true,
+            allowsRankedStats: true,
+            isPracticeMode: false,
+          }),
         });
         setSocketState('idle');
 
@@ -79,7 +86,7 @@ export const useTournamentMatchLauncher = () => {
       });
 
       if (!didStart) {
-        completeLaunch();
+        await completeLaunch();
       }
     },
     [

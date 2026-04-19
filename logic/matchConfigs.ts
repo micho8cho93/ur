@@ -1,5 +1,12 @@
 import type { PathVariant } from './pathVariants';
 import { getXpAwardAmount, type BotMatchXpSource } from '../shared/progression';
+import type {
+  GameModeBaseRulesetPreset,
+  GameModeBoardAssetKey,
+  GameModeEliminationMode,
+  GameModeExitStyle,
+  GameModeRosetteSafetyMode,
+} from '../shared/gameModes';
 
 export type RulesVariant = 'standard' | 'capture' | 'no-capture';
 export type MatchOpponentType = 'bot' | 'human';
@@ -19,13 +26,19 @@ export type MatchConfig = {
   allowsOnline: boolean;
   allowsRankedStats: boolean;
   allowsXp: boolean;
+  baseRulesetPreset: GameModeBaseRulesetPreset;
+  boardAssetKey?: GameModeBoardAssetKey | null;
   displayName: string;
+  eliminationMode: GameModeEliminationMode;
+  exitStyle: GameModeExitStyle;
+  fogOfWar: boolean;
   isPracticeMode: boolean;
-  modeId: MatchModeId;
+  modeId: string;
   offlineWinRewardSource: BotMatchXpSource;
   opponentType: MatchOpponentType;
   pathVariant: PathVariant;
   pieceCountPerSide: number;
+  rosetteSafetyMode: GameModeRosetteSafetyMode;
   rulesVariant: RulesVariant;
   rulesIntro?: MatchRulesIntro | null;
   selectionSubtitle?: string;
@@ -47,8 +60,13 @@ export type MatchRulesIntro = {
 const STANDARD_MATCH_CONFIG: MatchConfig = {
   modeId: 'standard',
   displayName: 'Quick Play',
+  baseRulesetPreset: 'quick_play',
   pieceCountPerSide: 7,
   rulesVariant: 'standard',
+  rosetteSafetyMode: 'standard',
+  exitStyle: 'standard',
+  eliminationMode: 'return_to_start',
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: true,
   allowsChallenges: true,
@@ -65,8 +83,13 @@ const STANDARD_MATCH_CONFIG: MatchConfig = {
 const PURE_LUCK_MATCH_CONFIG: MatchConfig = {
   modeId: 'gameMode_1_piece',
   displayName: 'Pure Luck',
+  baseRulesetPreset: 'custom',
   pieceCountPerSide: 3,
   rulesVariant: 'no-capture',
+  rosetteSafetyMode: 'open',
+  exitStyle: 'standard',
+  eliminationMode: 'return_to_start',
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: false,
   allowsChallenges: true,
@@ -87,8 +110,13 @@ const PURE_LUCK_MATCH_CONFIG: MatchConfig = {
 const RACE_MATCH_CONFIG: MatchConfig = {
   modeId: 'gameMode_3_pieces',
   displayName: 'Race',
+  baseRulesetPreset: 'race',
   pieceCountPerSide: 3,
   rulesVariant: 'standard',
+  rosetteSafetyMode: 'standard',
+  exitStyle: 'standard',
+  eliminationMode: 'return_to_start',
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: false,
   allowsChallenges: true,
@@ -109,8 +137,13 @@ const RACE_MATCH_CONFIG: MatchConfig = {
 const LEGACY_FIVE_PIECE_MATCH_CONFIG: MatchConfig = {
   modeId: 'gameMode_5_pieces',
   displayName: '5 Pieces',
+  baseRulesetPreset: 'custom',
   pieceCountPerSide: 5,
   rulesVariant: 'standard',
+  rosetteSafetyMode: 'standard',
+  exitStyle: 'standard',
+  eliminationMode: 'return_to_start',
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: false,
   allowsChallenges: true,
@@ -131,8 +164,13 @@ const LEGACY_FIVE_PIECE_MATCH_CONFIG: MatchConfig = {
 const FINKEL_RULES_MATCH_CONFIG: MatchConfig = {
   modeId: 'gameMode_finkel_rules',
   displayName: 'Finkel Rules',
+  baseRulesetPreset: 'finkel_rules',
   pieceCountPerSide: 7,
   rulesVariant: 'standard',
+  rosetteSafetyMode: 'standard',
+  exitStyle: 'standard',
+  eliminationMode: 'return_to_start',
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: false,
   allowsChallenges: true,
@@ -153,8 +191,13 @@ const FINKEL_RULES_MATCH_CONFIG: MatchConfig = {
 const LOCAL_PVP_MATCH_CONFIG: MatchConfig = {
   modeId: 'gameMode_pvp',
   displayName: 'PvP',
+  baseRulesetPreset: 'custom',
   pieceCountPerSide: 7,
   rulesVariant: 'standard',
+  rosetteSafetyMode: 'standard',
+  exitStyle: 'standard',
+  eliminationMode: 'return_to_start',
+  fogOfWar: false,
   allowsXp: false,
   allowsOnline: false,
   allowsChallenges: false,
@@ -175,8 +218,13 @@ const LOCAL_PVP_MATCH_CONFIG: MatchConfig = {
 const CAPTURE_MATCH_CONFIG: MatchConfig = {
   modeId: 'gameMode_capture',
   displayName: 'Capture',
+  baseRulesetPreset: 'capture',
   pieceCountPerSide: 5,
   rulesVariant: 'capture',
+  rosetteSafetyMode: 'open',
+  exitStyle: 'standard',
+  eliminationMode: 'return_to_start',
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: false,
   allowsChallenges: true,
@@ -197,8 +245,13 @@ const CAPTURE_MATCH_CONFIG: MatchConfig = {
 const EXTENDED_PATH_MATCH_CONFIG: MatchConfig = {
   modeId: 'gameMode_full_path',
   displayName: 'Extended Path',
+  baseRulesetPreset: 'custom',
   pieceCountPerSide: 7,
   rulesVariant: 'standard',
+  rosetteSafetyMode: 'standard',
+  exitStyle: 'single_exit',
+  eliminationMode: 'return_to_start',
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: false,
   allowsChallenges: true,
@@ -239,7 +292,6 @@ export const GAME_MODE_CONFIGS = GAME_MODE_MATCH_CONFIGS;
 const MATCH_MODE_SELECTION_IDS: readonly MatchModeId[] = [
   'standard',
   'gameMode_3_pieces',
-  'gameMode_capture',
   'gameMode_finkel_rules',
   'gameMode_pvp',
 ] as const;
@@ -256,7 +308,6 @@ export const MATCH_MODE_SELECTION_OPTIONS: readonly MatchModeOption[] = MATCH_MO
 
 const PRIVATE_MATCH_SELECTION_IDS: readonly MatchModeId[] = [
   'gameMode_3_pieces',
-  'gameMode_capture',
   'gameMode_finkel_rules',
 ] as const;
 

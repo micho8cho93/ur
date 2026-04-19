@@ -1,6 +1,6 @@
 import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
 import { BotDifficulty, DEFAULT_BOT_DIFFICULTY } from '@/logic/bot/types';
-import { DEFAULT_MATCH_CONFIG, MatchModeId, getMatchConfig, type MatchConfig } from '@/logic/matchConfigs';
+import { DEFAULT_MATCH_CONFIG, type MatchConfig } from '@/logic/matchConfigs';
 import {
   cancelMatchmaking,
   createOpenOnlineMatch,
@@ -14,6 +14,7 @@ import {
   type OpenOnlineMatchResult,
   type PrivateMatchResult,
 } from '@/services/matchmaking';
+import { resolveGameModeMatchConfig } from '@/services/gameModes';
 import { getSitePlayerCount } from '@/services/presence';
 import { useGameStore } from '@/store/useGameStore';
 import { buildMatchRoutePath } from '@/src/match/buildMatchRoutePath';
@@ -40,7 +41,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [onlineCount, setOnlineCount] = useState<number | null>(null);
   const [activeAction, setActiveAction] = useState<ActiveLobbyAction>(null);
-  const [pendingPrivateMode, setPendingPrivateMode] = useState<MatchModeId | null>(null);
+  const [pendingPrivateMode, setPendingPrivateMode] = useState<string | null>(null);
   const [createdPrivateMatch, setCreatedPrivateMatch] = useState<CreatedPrivateMatch | null>(null);
   const [createdOpenOnlineMatch, setCreatedOpenOnlineMatch] = useState<OpenOnlineMatch | null>(null);
   const initGame = useGameStore((state) => state.initGame);
@@ -182,7 +183,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
             : 'Connecting your code and opening the private board.',
           variant: 'success',
         },
-        () => {
+        async () => {
           if (result.session) {
             setNakamaSession(result.session);
           }
@@ -192,7 +193,16 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
           setOnlineMode('nakama');
           setMatchToken(null);
           setPlayerColor(null);
-          initGame(result.matchId, { matchConfig: getMatchConfig(result.modeId) });
+          initGame(result.matchId, {
+            matchConfig: await resolveGameModeMatchConfig(result.modeId, {
+              allowsXp: true,
+              allowsChallenges: true,
+              allowsCoins: false,
+              allowsOnline: true,
+              allowsRankedStats: false,
+              isPracticeMode: false,
+            }),
+          });
           router.push(
             buildMatchRoutePath({
               id: result.matchId,
@@ -235,13 +245,22 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
           message: options?.message ?? 'Seating both players and preparing the wagered board.',
           variant: 'success',
         },
-        () => {
+        async () => {
           setNakamaSession(result.session);
           setUserId(result.userId);
           setOnlineMode('nakama');
           setMatchToken(null);
           setPlayerColor(null);
-          initGame(result.match.matchId, { matchConfig: getMatchConfig(result.match.modeId) });
+          initGame(result.match.matchId, {
+            matchConfig: await resolveGameModeMatchConfig(result.match.modeId, {
+              allowsXp: true,
+              allowsChallenges: true,
+              allowsCoins: true,
+              allowsOnline: true,
+              allowsRankedStats: true,
+              isPracticeMode: false,
+            }),
+          });
           setSocketState('idle');
           setStatus('matched');
           setActiveAction(null);
@@ -371,7 +390,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
   ]);
 
   const createOpenMatch = useCallback(
-    async (wager: number, durationMinutes: number, modeId: MatchModeId) => {
+    async (wager: number, durationMinutes: number, modeId: string) => {
       setErrorMessage(null);
       setCreatedPrivateMatch(null);
       setActiveAction('create_open');
@@ -467,7 +486,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
   }, [createdOpenOnlineMatch]);
 
   const startPrivateMatch = useCallback(
-    async (modeId: MatchModeId = 'standard') => {
+    async (modeId: string = 'standard') => {
       setErrorMessage(null);
       setActiveAction('create_private');
       setPendingPrivateMode(modeId);

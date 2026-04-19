@@ -3,7 +3,7 @@ import { urTheme } from '@/constants/urTheme';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import { getPathVariantDefinition } from '@/logic/pathVariants';
 import { Coordinates, GameState, MoveAction, PlayerColor } from '@/logic/types';
-import { DEFAULT_BOARD_IMAGE_SOURCE } from '@/src/cosmetics/boardAssets';
+import { DEFAULT_BOARD_IMAGE_SOURCE, getBoardImageSource } from '@/src/cosmetics/boardAssets';
 import { useCosmeticTheme } from '@/src/store/CosmeticThemeContext';
 import { getAppendedHistoryEntries } from '@/shared/historyWindow';
 import { useGameStore } from '@/store/useGameStore';
@@ -537,6 +537,14 @@ export const Board: React.FC<BoardProps> = ({
     () => getPathVariantDefinition(gameState.matchConfig.pathVariant),
     [gameState.matchConfig.pathVariant],
   );
+  const resolvedBoardImageSource = useMemo(
+    () =>
+      gameState.matchConfig.boardAssetKey
+        ? getBoardImageSource(gameState.matchConfig.boardAssetKey)
+        : boardImageSource,
+    [boardImageSource, gameState.matchConfig.boardAssetKey],
+  );
+  const fogOfWarEnabled = gameState.matchConfig.fogOfWar === true;
   const pathLength = pathDefinition.pathLength;
   const previousGameStateRef = React.useRef<GameState | null>(null);
   const previousHistoryCountRef = React.useRef<number>(historyEntryCount);
@@ -1788,6 +1796,9 @@ export const Board: React.FC<BoardProps> = ({
           highlightedPieceId === piece?.id;
         const isFocusedPiece = isSelectedPiece || isHintedPiece;
         const isOwnTurnPiece = !!piece && piece.color === assignedPlayerColor;
+        const pieceOpacity = fogOfWarEnabled && !!piece && assignedPlayerColor !== null && piece.color !== assignedPlayerColor
+          ? 0.38
+          : 1;
 
         const isValidTarget = previewTone === 'valid' && isPreviewDestination;
         const isInteractable = isInteractiveTurn && (isDestination || !!moveFromTile || isFocusedPiece || isOwnTurnPiece);
@@ -1829,6 +1840,7 @@ export const Board: React.FC<BoardProps> = ({
                   ? invalidPieceFeedback.token
                   : 0
               }
+              pieceOpacity={pieceOpacity}
               isValidTarget={isValidTarget}
               isSelectedPiece={isFocusedPiece}
               isInteractive={isInteractable}
@@ -1880,7 +1892,7 @@ export const Board: React.FC<BoardProps> = ({
     >
       <View pointerEvents="none" style={styles.boardArtLayer}>
         <Image
-          source={boardImageSource}
+          source={resolvedBoardImageSource}
           onLayout={handleBoardImageLayout}
           resizeMode="stretch"
           style={[

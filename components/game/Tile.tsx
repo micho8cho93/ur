@@ -35,6 +35,7 @@ interface TileProps {
   pieceArtOffsetX?: number;
   pieceArtOffsetY?: number;
   piece?: { id: string; color: PlayerColor };
+  pieceOpacity?: number;
   pieceHighlight?: boolean;
   pieceHighlightTone?: 'gold' | 'deepBlue';
   pieceInvalidSelectionToken?: number;
@@ -74,6 +75,7 @@ const areTilePropsEqual = (prev: TileProps, next: TileProps): boolean =>
   prev.pieceArtScale === next.pieceArtScale &&
   prev.pieceArtOffsetX === next.pieceArtOffsetX &&
   prev.pieceArtOffsetY === next.pieceArtOffsetY &&
+  prev.pieceOpacity === next.pieceOpacity &&
   areTilePiecesEqual(prev.piece, next.piece) &&
   prev.pieceHighlight === next.pieceHighlight &&
   prev.pieceHighlightTone === next.pieceHighlightTone &&
@@ -194,6 +196,7 @@ const TileComponent: React.FC<TileProps> = ({
   pieceArtOffsetX = 0,
   pieceArtOffsetY = 0,
   piece,
+  pieceOpacity = 1,
   pieceHighlight = false,
   pieceHighlightTone = 'gold',
   pieceInvalidSelectionToken = 0,
@@ -444,11 +447,13 @@ const TileComponent: React.FC<TileProps> = ({
                 { translateX: pieceOffsetX },
                 { translateY: pieceOffsetY },
               ],
+              opacity: pieceOpacity,
             },
           ]}
         >
           <Piece
             color={piece.color}
+            opacity={pieceOpacity}
             pixelSize={piecePixelSize}
             artScale={pieceArtScale}
             artOffsetX={pieceArtOffsetX}

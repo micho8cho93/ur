@@ -2,9 +2,11 @@ import {
   MATCH_CONFIGS,
   isMatchModeId,
   type MatchModeId,
+  type MatchConfig,
 } from '../../logic/matchConfigs'
+import type { GameModeDefinition } from '../../shared/gameModes'
 
-export type TournamentStructureId = MatchModeId
+export type TournamentStructureId = string
 
 export type TournamentStructureOption = {
   value: TournamentStructureId
@@ -12,25 +14,43 @@ export type TournamentStructureOption = {
   description: string
 }
 
-const TOURNAMENT_STRUCTURE_IDS: readonly TournamentStructureId[] = [
+const TOURNAMENT_STRUCTURE_IDS: readonly MatchModeId[] = [
   'gameMode_3_pieces',
-  'gameMode_capture',
   'gameMode_finkel_rules',
 ] as const
 
-export const TOURNAMENT_STRUCTURE_OPTIONS: readonly TournamentStructureOption[] =
-  TOURNAMENT_STRUCTURE_IDS.map((modeId) => {
-    const config = MATCH_CONFIGS[modeId]
+const buildTournamentStructureOption = (modeId: TournamentStructureId, config: MatchConfig): TournamentStructureOption => ({
+  value: modeId,
+  label: config.displayName,
+  description: config.selectionSubtitle ?? config.displayName,
+})
 
-    return {
-      value: modeId,
-      label: config.displayName,
-      description: config.selectionSubtitle ?? config.displayName,
-    }
-  })
+export const buildTournamentStructureOptions = (
+  featuredMode: GameModeDefinition | null = null,
+): readonly TournamentStructureOption[] => {
+  const builtInOptions = TOURNAMENT_STRUCTURE_IDS.map((modeId) =>
+    buildTournamentStructureOption(modeId, MATCH_CONFIGS[modeId]),
+  )
 
-export function getTournamentStructureLabel(value: string | null | undefined) {
-  const match = TOURNAMENT_STRUCTURE_OPTIONS.find((option) => option.value === value)
+  if (!featuredMode) {
+    return builtInOptions
+  }
+
+  return [
+    ...builtInOptions,
+    {
+      value: featuredMode.id,
+      label: featuredMode.name,
+      description: featuredMode.description,
+    },
+  ]
+}
+
+export function getTournamentStructureLabel(
+  value: string | null | undefined,
+  featuredMode: GameModeDefinition | null = null,
+) {
+  const match = buildTournamentStructureOptions(featuredMode).find((option) => option.value === value)
   if (match) {
     return match.label
   }
@@ -42,8 +62,11 @@ export function getTournamentStructureLabel(value: string | null | undefined) {
   return value?.trim() || 'Quick Play'
 }
 
-export function getTournamentStructureDescription(value: string | null | undefined) {
-  const match = TOURNAMENT_STRUCTURE_OPTIONS.find((option) => option.value === value)
+export function getTournamentStructureDescription(
+  value: string | null | undefined,
+  featuredMode: GameModeDefinition | null = null,
+) {
+  const match = buildTournamentStructureOptions(featuredMode).find((option) => option.value === value)
   if (match) {
     return match.description
   }

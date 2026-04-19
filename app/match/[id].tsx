@@ -45,7 +45,7 @@ import { useGameLoop } from '@/hooks/useGameLoop';
 import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty } from '@/logic/bot/types';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import { applyMove as applyEngineMove, getValidMoves } from '@/logic/engine';
-import { getMatchConfig, getMatchRulesIntro } from '@/logic/matchConfigs';
+import { getMatchConfig, getMatchRulesIntro, isMatchModeId } from '@/logic/matchConfigs';
 import type { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { gameAudio } from '@/services/audio';
 import { submitCompletedBotMatchResult } from '@/services/botMatchRewards';
@@ -1012,7 +1012,10 @@ export function GameRoom() {
   const tournamentDisplayName = tournamentNameParam ?? 'Tournament Match';
   const pieceCountPerSide = effectiveMatchConfig.pieceCountPerSide;
   const isPracticeModeMatch = effectiveMatchConfig.isPracticeMode;
-  const rulesIntro = useMemo(() => getMatchRulesIntro(effectiveMatchConfig.modeId), [effectiveMatchConfig.modeId]);
+  const rulesIntro = useMemo(
+    () => (isMatchModeId(effectiveMatchConfig.modeId) ? getMatchRulesIntro(effectiveMatchConfig.modeId) : null),
+    [effectiveMatchConfig.modeId],
+  );
   const offlineBotRewardMode: CompletedBotMatchRewardMode | undefined =
     isPlaythroughTutorialMatch ? 'base_win_only' : undefined;
   const authenticatedUserId = userId ?? user?.nakamaUserId ?? user?.id ?? null;

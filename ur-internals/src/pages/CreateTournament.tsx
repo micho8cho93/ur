@@ -1,5 +1,6 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { getPublicGameModes } from '../api/gameModes'
 import { createTournament } from '../api/tournaments'
 import { ActionToolbar } from '../components/ActionToolbar'
 import { useTopbarActions } from '../layout/TopbarActionsContext'
@@ -8,9 +9,9 @@ import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
 import { appRoutes } from '../routes'
 import {
+  buildTournamentStructureOptions,
   getTournamentStructureDescription,
   getTournamentStructureLabel,
-  TOURNAMENT_STRUCTURE_OPTIONS,
 } from '../tournamentStructure'
 import {
   formatSingleEliminationRoundLabel,
@@ -63,6 +64,42 @@ export function CreateTournamentPage() {
   const [form, setForm] = useState<FormState>(initialState)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [featuredMode, setFeaturedMode] = useState<Awaited<ReturnType<typeof getPublicGameModes>>['featuredMode'] | null>(null)
+  const [isLoadingFeaturedMode, setIsLoadingFeaturedMode] = useState(true)
+
+  useEffect(() => {
+    let active = true
+
+    const loadFeaturedMode = async () => {
+      setIsLoadingFeaturedMode(true)
+
+      try {
+        const response = await getPublicGameModes()
+        if (active) {
+          setFeaturedMode(response.featuredMode)
+        }
+      } catch {
+        if (active) {
+          setFeaturedMode(null)
+        }
+      } finally {
+        if (active) {
+          setIsLoadingFeaturedMode(false)
+        }
+      }
+    }
+
+    void loadFeaturedMode()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const tournamentStructureOptions = useMemo(
+    () => buildTournamentStructureOptions(featuredMode),
+    [featuredMode],
+  )
 
   function updateField(
     field: keyof FormState,
@@ -170,7 +207,7 @@ export function CreateTournamentPage() {
   const roundLabel =
     roundCount > 0 ? formatSingleEliminationRoundLabel(roundCount) : 'Unsupported bracket size'
   const awardsXp = Number(form.xpPerMatchWin) > 0 || Number(form.xpForTournamentChampion) > 0
-  const structureLabel = getTournamentStructureLabel(form.gameMode)
+  const structureLabel = getTournamentStructureLabel(form.gameMode, featuredMode)
   const botSummary = form.autoAddBots ? `Bot fill enabled · ${form.botDifficulty}` : 'Bots off'
   const entryFeeString =
     form.entryFeeCurrency === 'none' ? 'Free' : `${form.entryFeeAmount} ${form.entryFeeCurrency}`
@@ -264,13 +301,17 @@ export function CreateTournamentPage() {
                   value={form.gameMode}
                   onChange={(event) => updateField('gameMode', event)}
                 >
-                  {TOURNAMENT_STRUCTURE_OPTIONS.map((option) => (
+                  {tournamentStructureOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
                 </select>
-                <span className="field__hint">{getTournamentStructureDescription(form.gameMode)}</span>
+                <span className="field__hint">
+                  {isLoadingFeaturedMode
+                    ? 'Loading the current Game Mode of the Month...'
+                    : getTournamentStructureDescription(form.gameMode, featuredMode)}
+                </span>
               </div>
 
               <div className="field">

@@ -109,7 +109,7 @@ describe('private match RPC payloads', () => {
         expect(initialized.label).toBe('authoritative_match');
         expect(initialized.state).toEqual(
           expect.objectContaining({
-            modeId: 'gameMode_capture',
+            modeId: 'gameMode_3_pieces',
             privateMatch: true,
           }),
         );
@@ -121,13 +121,13 @@ describe('private match RPC payloads', () => {
       { userId: 'host-1' },
       logger,
       nk,
-      JSON.stringify({ modeId: 'gameMode_capture' }),
+      JSON.stringify({ modeId: 'gameMode_3_pieces' }),
     );
 
     expect(JSON.parse(response)).toEqual(
       expect.objectContaining({
         matchId: 'match-1',
-        modeId: 'gameMode_capture',
+        modeId: 'gameMode_3_pieces',
         code: 'AAAAAAAA',
       }),
     );
@@ -158,7 +158,7 @@ describe('private match RPC payloads', () => {
       { userId: 'user-1' },
       logger,
       nk,
-      JSON.stringify({ modeId: 'gameMode_1_piece' })
+      JSON.stringify({ modeId: 'gameMode_3_pieces' })
     );
 
     expect(nk.matchCreate).toHaveBeenNthCalledWith(
@@ -176,7 +176,7 @@ describe('private match RPC payloads', () => {
       2,
       'authoritative_match',
       expect.objectContaining({
-        modeId: 'gameMode_1_piece',
+        modeId: 'gameMode_3_pieces',
         privateMatch: true,
         rankedMatch: false,
         winRewardSource: 'private_pvp_win',

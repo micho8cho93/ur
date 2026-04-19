@@ -1,6 +1,5 @@
 import { Session, Socket } from "@heroiclabs/nakama-js";
 
-import { MatchModeId, isMatchModeId } from "@/logic/matchConfigs";
 import { PlayerColor } from "@/logic/types";
 import { isPrivateMatchCode, normalizePrivateMatchCodeInput } from "@/shared/privateMatchCode";
 import { nakamaService } from "./nakama";
@@ -172,7 +171,7 @@ export type MatchResult = {
 
 export type PrivateMatchResult = {
   matchId: string;
-  modeId: MatchModeId;
+  modeId: string;
   code: string;
   session: Session;
   userId: string;
@@ -180,14 +179,14 @@ export type PrivateMatchResult = {
 
 export type PrivateMatchStatusResult = {
   matchId: string;
-  modeId: MatchModeId;
+  modeId: string;
   code: string;
   hasGuestJoined: boolean;
 };
 
 export type SpectatableMatch = {
   matchId: string;
-  modeId: MatchModeId;
+  modeId: string;
   startedAt: string | null;
   playerLabels: string[];
 };
@@ -197,7 +196,7 @@ export type OpenOnlineMatchStatus = "open" | "matched" | "expired" | "settled";
 export type OpenOnlineMatch = {
   openMatchId: string;
   matchId: string;
-  modeId: MatchModeId;
+  modeId: string;
   creatorUserId: string;
   joinedUserId: string | null;
   wager: number;
@@ -308,7 +307,7 @@ const readNumber = (value: unknown): number | null => {
 const parsePrivateMatchPayload = (
   payload: unknown,
   options?: { requireGuestFlag?: boolean }
-): { matchId: string; modeId: MatchModeId; code: string; hasGuestJoined?: boolean } => {
+): { matchId: string; modeId: string; code: string; hasGuestJoined?: boolean } => {
   const rpcPayload = normalizeRpcPayload(payload) as CreatePrivateMatchRpcPayload | undefined;
   const matchId =
     typeof rpcPayload?.matchId === "string"
@@ -316,7 +315,7 @@ const parsePrivateMatchPayload = (
       : typeof rpcPayload?.match_id === "string"
         ? rpcPayload.match_id
         : null;
-  const modeId = rpcPayload?.modeId ?? rpcPayload?.mode_id;
+  const modeId = readString(rpcPayload?.modeId) ?? readString(rpcPayload?.mode_id);
   const rawCode =
     typeof rpcPayload?.code === "string"
       ? rpcPayload.code
@@ -333,7 +332,7 @@ const parsePrivateMatchPayload = (
         ? rpcPayload.has_guest_joined
         : undefined;
 
-  if (!matchId || !isMatchModeId(modeId) || !isPrivateMatchCode(code)) {
+  if (!matchId || !modeId || !isPrivateMatchCode(code)) {
     throw new Error("Private match returned an invalid payload.");
   }
 
@@ -357,7 +356,7 @@ const parseSpectatableMatchEntry = (entry: unknown): SpectatableMatch | null => 
       : typeof rpcPayload?.match_id === "string"
         ? rpcPayload.match_id
         : null;
-  const modeId = rpcPayload?.modeId ?? rpcPayload?.mode_id;
+  const modeId = readString(rpcPayload?.modeId) ?? readString(rpcPayload?.mode_id);
   const startedAt =
     typeof rpcPayload?.startedAt === "string"
       ? rpcPayload.startedAt
@@ -374,7 +373,7 @@ const parseSpectatableMatchEntry = (entry: unknown): SpectatableMatch | null => 
     .map((label) => label.trim())
     .slice(0, 2);
 
-  if (!matchId || !isMatchModeId(modeId)) {
+  if (!matchId || !modeId) {
     return null;
   }
 
@@ -415,7 +414,7 @@ const parseOpenOnlineMatchEntry = (entry: unknown): OpenOnlineMatch | null => {
   const rpcPayload = entry as OpenOnlineMatchRpcPayload | undefined;
   const openMatchId = readString(rpcPayload?.openMatchId) ?? readString(rpcPayload?.open_match_id);
   const matchId = readString(rpcPayload?.matchId) ?? readString(rpcPayload?.match_id);
-  const modeId = rpcPayload?.modeId ?? rpcPayload?.mode_id;
+  const modeId = readString(rpcPayload?.modeId) ?? readString(rpcPayload?.mode_id);
   const creatorUserId = readString(rpcPayload?.creatorUserId) ?? readString(rpcPayload?.creator_user_id);
   const joinedUserId = readString(rpcPayload?.joinedUserId) ?? readString(rpcPayload?.joined_user_id);
   const wager = readNumber(rpcPayload?.wager);
@@ -442,7 +441,7 @@ const parseOpenOnlineMatchEntry = (entry: unknown): OpenOnlineMatch | null => {
   if (
     !openMatchId ||
     !matchId ||
-    !isMatchModeId(modeId) ||
+    !modeId ||
     !creatorUserId ||
     wager === null ||
     durationMinutes === null ||
@@ -587,7 +586,7 @@ export const findMatch = async (handlers?: MatchmakingHandlers): Promise<MatchRe
   }
 };
 
-export const createPrivateMatch = async (modeId: MatchModeId = "standard"): Promise<PrivateMatchResult> => {
+export const createPrivateMatch = async (modeId: string = "standard"): Promise<PrivateMatchResult> => {
   const session = await ensureAuthenticated();
   const client = nakamaService.getClient();
 
@@ -679,7 +678,7 @@ export const listSpectatableMatches = async (): Promise<SpectatableMatch[]> => {
 export const createOpenOnlineMatch = async (
   wager: number,
   durationMinutes: number,
-  modeId: MatchModeId
+  modeId: string
 ): Promise<OpenOnlineMatchResult> => {
   const session = await ensureAuthenticated();
   const client = nakamaService.getClient();

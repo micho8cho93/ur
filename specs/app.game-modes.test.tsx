@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import React from 'react';
 import * as ReactNative from 'react-native';
 
@@ -6,6 +6,7 @@ import GameModesScreen from '@/app/(game)/game-modes';
 
 const mockBack = jest.fn();
 const mockPush = jest.fn();
+const mockGetPublicGameModes = jest.fn();
 
 const originalPlatform = ReactNative.Platform.OS;
 
@@ -36,6 +37,10 @@ jest.mock('@expo/vector-icons/MaterialIcons', () => {
   };
 });
 
+jest.mock('@/services/gameModes', () => ({
+  getPublicGameModes: (...args: unknown[]) => mockGetPublicGameModes(...args),
+}));
+
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({
     top: 0,
@@ -53,6 +58,49 @@ describe('GameModesScreen', () => {
     setPlatform('web');
     useWindowDimensionsSpy = jest.spyOn(ReactNative, 'useWindowDimensions');
     useWindowDimensionsSpy.mockReturnValue({ width: 430, height: 932, scale: 1, fontScale: 1 });
+    mockGetPublicGameModes.mockResolvedValue({
+      featuredMode: {
+        id: 'moonlight_sprint',
+        name: 'Moonlight Sprint',
+        description: 'Seven pieces, fog of war, and a single-exit board.',
+        baseRulesetPreset: 'custom',
+        pieceCountPerSide: 7,
+        rulesVariant: 'standard',
+        rosetteSafetyMode: 'standard',
+        exitStyle: 'single_exit',
+        eliminationMode: 'return_to_start',
+        fogOfWar: true,
+        boardAssetKey: 'board_single_exit',
+      },
+      activeModes: [
+        {
+          id: 'moonlight_sprint',
+          name: 'Moonlight Sprint',
+          description: 'Seven pieces, fog of war, and a single-exit board.',
+          baseRulesetPreset: 'custom',
+          pieceCountPerSide: 7,
+          rulesVariant: 'standard',
+          rosetteSafetyMode: 'standard',
+          exitStyle: 'single_exit',
+          eliminationMode: 'return_to_start',
+          fogOfWar: true,
+          boardAssetKey: 'board_single_exit',
+        },
+        {
+          id: 'ember_trial',
+          name: 'Ember Trial',
+          description: 'Capture-focused custom mode with an open rosette.',
+          baseRulesetPreset: 'capture',
+          pieceCountPerSide: 5,
+          rulesVariant: 'capture',
+          rosetteSafetyMode: 'open',
+          exitStyle: 'standard',
+          eliminationMode: 'eliminated',
+          fogOfWar: false,
+          boardAssetKey: 'board_design',
+        },
+      ],
+    });
   });
 
   afterEach(() => {
@@ -63,14 +111,40 @@ describe('GameModesScreen', () => {
     setPlatform(originalPlatform);
   });
 
-  it('renders the vertical compact layout on narrow mobile web', () => {
+  it('renders the fixed built-ins and backend-managed featured modes', async () => {
     const view = render(<GameModesScreen />);
+
+    await waitFor(() => expect(view.getByText('Game Mode of the Month')).toBeTruthy());
 
     expect(view.getByText('Offline Games')).toBeTruthy();
     expect(view.getByText('Back')).toBeTruthy();
     expect(view.getByText('Race')).toBeTruthy();
-    expect(view.getByText('Capture')).toBeTruthy();
     expect(view.getByText('Finkel Rules')).toBeTruthy();
     expect(view.getByText('PvP')).toBeTruthy();
+    expect(view.queryByText('Capture')).toBeNull();
+    expect(view.queryByText('Win XP')).toBeNull();
+    expect(view.getByLabelText('Open economy details for Race')).toBeTruthy();
+    expect(view.queryByLabelText('Open economy details for PvP')).toBeNull();
+    expect(view.queryByLabelText('Open economy details for Moonlight Sprint')).toBeNull();
+    expect(view.getByText('Moonlight Sprint')).toBeTruthy();
+    expect(view.getByText('Ember Trial')).toBeTruthy();
+
+    fireEvent.press(view.getByLabelText('Open economy details for Race'));
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(view.getByText('Race Economy')).toBeTruthy();
+    expect(view.getByText('This mode awards XP on a win.')).toBeTruthy();
+    expect(view.getByText('XP on win')).toBeTruthy();
+    expect(view.getAllByText('+20 XP').length).toBeGreaterThan(0);
+    expect(view.queryByText('Coins on win')).toBeNull();
+    expect(view.queryByText('Coins on loss')).toBeNull();
+    expect(view.queryByText('Join cost')).toBeNull();
+    expect(view.queryByText('Gems')).toBeNull();
+    fireEvent.press(view.getByText('Close'));
+
+    fireEvent.press(view.getByLabelText('Choose Race'));
+    expect(mockPush).toHaveBeenCalledWith('/(game)/bot?modeId=gameMode_3_pieces');
+
+    fireEvent.press(view.getByLabelText('Play featured mode Moonlight Sprint'));
+    expect(mockPush).toHaveBeenCalledWith('/(game)/bot?modeId=moonlight_sprint');
   });
 });

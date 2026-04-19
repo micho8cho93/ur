@@ -119,8 +119,14 @@ export const applyMove = (state: GameState, move: MoveAction): GameState => {
             return opCoord.row === targetCoord.row && opCoord.col === targetCoord.col;
         });
 
-        if (opponentPiece && isContestedWarTile(newState.matchConfig, targetCoord)) {
-            opponentPiece.position = -1;
+    if (opponentPiece && isContestedWarTile(newState.matchConfig, targetCoord)) {
+            if (newState.matchConfig.eliminationMode === 'eliminated') {
+                opponentPiece.position = pathLength;
+                opponentPiece.isFinished = true;
+                opponent.finishedCount++;
+            } else {
+                opponentPiece.position = -1;
+            }
             player.capturedCount++;
             didCapture = true;
             newState.history.push(`${player.color} captured ${opponent.color}`);

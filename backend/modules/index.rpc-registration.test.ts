@@ -67,6 +67,14 @@ describe("InitModule tournament RPC registration", () => {
         "admin_set_limited_time_event",
         "admin_remove_limited_time_event",
         "admin_get_store_stats",
+        "get_game_modes",
+        "admin_list_game_modes",
+        "admin_get_game_mode",
+        "admin_upsert_game_mode",
+        "admin_disable_game_mode",
+        "admin_enable_game_mode",
+        "admin_feature_game_mode",
+        "admin_unfeature_game_mode",
         "submit_feedback",
         "admin_list_feedback",
       ]),
@@ -116,6 +124,30 @@ describe("InitModule tournament RPC registration", () => {
     );
     expect(entrypointSource).toContain(
       "initializer.registerRpc(RPC_GET_OWNED_COSMETICS, rpcGetOwnedCosmetics);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_GET_GAME_MODES, rpcGetGameModes);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_LIST_GAME_MODES, rpcAdminListGameModes);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_GET_GAME_MODE, rpcAdminGetGameMode);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_UPSERT_GAME_MODE, rpcAdminUpsertGameMode);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_DISABLE_GAME_MODE, rpcAdminDisableGameMode);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_ENABLE_GAME_MODE, rpcAdminEnableGameMode);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_FEATURE_GAME_MODE, rpcAdminFeatureGameMode);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_UNFEATURE_GAME_MODE, rpcAdminUnfeatureGameMode);",
     );
     expect(entrypointSource).toContain(
       "initializer.registerRpc(RPC_CREATE_OPEN_ONLINE_MATCH, rpcCreateOpenOnlineMatch);",

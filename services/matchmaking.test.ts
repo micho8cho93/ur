@@ -179,7 +179,7 @@ describe('matchmaking private RPC parsing', () => {
       }),
     });
 
-    await expect(createPrivateMatch('gameMode_capture')).rejects.toThrow(
+    await expect(createPrivateMatch('gameMode_finkel_rules')).rejects.toThrow(
       'Authoritative match handler failed to start.',
     );
   });
@@ -202,7 +202,7 @@ describe('matchmaking private RPC parsing', () => {
           },
           {
             matchId: 'broken-mode',
-            modeId: 'not-a-mode',
+            modeId: '',
             playerLabels: ['A', 'B'],
           },
           {
@@ -314,6 +314,6 @@ describe('matchmaking private RPC parsing', () => {
       payload: JSON.stringify({ match: { openMatchId: 'open-1' } }),
     });
 
-    await expect(createOpenOnlineMatch(20, 5, 'gameMode_capture')).rejects.toThrow('Open online match returned an invalid payload.');
+    await expect(createOpenOnlineMatch(20, 5, 'gameMode_3_pieces')).rejects.toThrow('Open online match returned an invalid payload.');
   });
 });

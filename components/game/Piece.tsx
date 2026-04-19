@@ -31,6 +31,7 @@ interface PieceProps {
   highlight?: boolean;
   highlightTone?: PieceHighlightTone;
   invalidSelectionToken?: number;
+  opacity?: number;
   size?: 'sm' | 'md' | 'lg';
   pixelSize?: number;
   artScale?: number;
@@ -46,6 +47,7 @@ const arePiecePropsEqual = (prev: PieceProps, next: PieceProps): boolean =>
   prev.highlight === next.highlight &&
   prev.highlightTone === next.highlightTone &&
   prev.invalidSelectionToken === next.invalidSelectionToken &&
+  prev.opacity === next.opacity &&
   prev.size === next.size &&
   prev.pixelSize === next.pixelSize &&
   prev.artScale === next.artScale &&
@@ -74,6 +76,7 @@ const PieceComponent: React.FC<PieceProps> = ({
   highlight = false,
   highlightTone = 'gold',
   invalidSelectionToken = 0,
+  opacity = 1,
   size = 'md',
   pixelSize,
   cosmeticPlayerColor,
@@ -255,7 +258,7 @@ const PieceComponent: React.FC<PieceProps> = ({
   );
 
   return (
-    <Animated.View style={[styles.wrap, { width: sizePx, height: sizePx }, pieceStyle]}>
+    <Animated.View style={[styles.wrap, { width: sizePx, height: sizePx, opacity }, pieceStyle]}>
       {highlight && (
         <>
           <Animated.View

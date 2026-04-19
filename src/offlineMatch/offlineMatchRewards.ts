@@ -1,4 +1,5 @@
 import { BotDifficulty } from '@/logic/bot/types';
+import { isMatchModeId } from '@/logic/matchConfigs';
 import { GameState, PlayerColor } from '@/logic/types';
 import {
   CHALLENGE_THRESHOLDS,
@@ -417,7 +418,7 @@ export const buildOfflineCompletedMatchSummary = (params: {
     momentumShiftAchieved: playerTelemetry.momentumShiftAchieved,
     momentumShiftTurnSpan: playerTelemetry.momentumShiftTurnSpan,
     maxActivePiecesOnBoard: playerTelemetry.maxActivePiecesOnBoard,
-    modeId: params.finalState.matchConfig.modeId,
+    modeId: isMatchModeId(params.finalState.matchConfig.modeId) ? params.finalState.matchConfig.modeId : null,
     pieceCountPerSide: params.finalState.matchConfig.pieceCountPerSide,
     isPrivateMatch: false,
     isFriendMatch: false,

@@ -19,6 +19,9 @@ describe('console routes', () => {
     expect(appRoutes.store.catalog).toBe('/store/catalog')
     expect(appRoutes.store.rotation).toBe('/store/rotation')
     expect(appRoutes.store.stats).toBe('/store/stats')
+    expect(appRoutes.gameModes.home).toBe('/game-modes')
+    expect(appRoutes.gameModes.new).toBe('/game-modes/new')
+    expect(appRoutes.gameModes.edit('moonlight')).toBe('/game-modes/moonlight')
     expect(appRoutes.settings).toBe('/settings')
   })
 
@@ -33,6 +36,7 @@ describe('console routes', () => {
       'Tournaments',
       'Analytics',
       'Store',
+      'Game Modes',
       'Settings',
       'User Feedback',
     ])
@@ -59,13 +63,17 @@ describe('console routes', () => {
       'Rotation',
       'Store Stats',
     ])
+    expect(sectionNavItems.gameModes.map((item) => item.label)).toEqual([
+      'Saved Modes',
+      'Create Mode',
+    ])
     expect(sectionNavItems.settings.map((item) => item.label)).toEqual([
       'Console Settings',
     ])
     expect(sectionNavItems.feedback.map((item) => item.label)).toEqual([
       'Inbox',
     ])
-    expect(primaryNavItems).toHaveLength(16)
+    expect(primaryNavItems).toHaveLength(18)
   })
 
   it('splits analytics into focused subviews', () => {

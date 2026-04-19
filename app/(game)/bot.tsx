@@ -10,7 +10,9 @@ import {
 } from '@/constants/urTheme';
 import { useMatchmaking } from '@/hooks/useMatchmaking';
 import { BotDifficulty } from '@/logic/bot/types';
-import { getMatchConfig } from '@/logic/matchConfigs';
+import { getMatchConfig, isMatchModeId, type MatchConfig } from '@/logic/matchConfigs';
+import { buildGameModeMatchConfig } from '@/shared/gameModes';
+import { getCustomGameModeDefinition } from '@/services/gameModes';
 import {
   HOME_FREDOKA_FONT_FAMILY,
   HOME_GROBOLD_FONT_FAMILY,
@@ -101,22 +103,88 @@ export default function BotSelection() {
   const bodyFontFamily = resolveHomeFredokaFontFamily(fontsLoaded);
   const buttonFontFamily = resolveHomeButtonFontFamily(fontsLoaded);
   const resolvedModeId = Array.isArray(rawModeId) ? rawModeId[0] : rawModeId;
-  const matchConfig = React.useMemo(() => getMatchConfig(resolvedModeId), [resolvedModeId]);
-  const isPracticeMode = matchConfig.isPracticeMode;
-  const isLocalPvPMode = matchConfig.opponentType === 'human';
-  const heroTitle = isLocalPvPMode ? `${matchConfig.displayName} Local Match` : `${matchConfig.displayName} Difficulty`;
-  const heroSubtitle = isLocalPvPMode
-    ? `${matchConfig.selectionSubtitle}. Launch a same-device match where both sides are controlled locally.`
-    : isPracticeMode
-      ? `${matchConfig.selectionSubtitle}. Choose a bot difficulty for this offline practice match.`
-      : 'Choose how sharp your local opponent should be, then jump straight into the board.';
+  const builtInMatchConfig = React.useMemo(
+    () => (resolvedModeId && isMatchModeId(resolvedModeId) ? getMatchConfig(resolvedModeId) : null),
+    [resolvedModeId],
+  );
+  const [customMatchConfig, setCustomMatchConfig] = React.useState<MatchConfig | null>(null);
+  const [isResolvingMode, setIsResolvingMode] = React.useState(false);
+  const [modeResolutionError, setModeResolutionError] = React.useState<string | null>(null);
+  const matchConfig = builtInMatchConfig ?? customMatchConfig;
+  const isPracticeMode = matchConfig?.isPracticeMode ?? true;
+  const isLocalPvPMode = matchConfig?.opponentType === 'human';
+  const heroTitle = matchConfig
+    ? isLocalPvPMode
+      ? `${matchConfig.displayName} Local Match`
+      : `${matchConfig.displayName} Difficulty`
+    : modeResolutionError
+      ? 'Mode unavailable'
+      : 'Loading mode...';
+  const heroSubtitle = matchConfig
+    ? isLocalPvPMode
+      ? `${matchConfig.selectionSubtitle}. Launch a same-device match where both sides are controlled locally.`
+      : isPracticeMode
+        ? `${matchConfig.selectionSubtitle}. Choose a bot difficulty for this offline practice match.`
+        : 'Choose how sharp your local opponent should be, then jump straight into the board.'
+    : modeResolutionError ?? 'Resolving the selected game mode.';
+
+  React.useEffect(() => {
+    if (!resolvedModeId || isMatchModeId(resolvedModeId)) {
+      setCustomMatchConfig(null);
+      setModeResolutionError(null);
+      setIsResolvingMode(false);
+      return;
+    }
+
+    let active = true;
+    setIsResolvingMode(true);
+    setModeResolutionError(null);
+    setCustomMatchConfig(null);
+
+    void getCustomGameModeDefinition(resolvedModeId)
+      .then((mode) => {
+        if (!active) {
+          return;
+        }
+
+        if (!mode) {
+          setModeResolutionError(`Game mode "${resolvedModeId}" was not found.`);
+          setCustomMatchConfig(null);
+          return;
+        }
+
+        setCustomMatchConfig(buildGameModeMatchConfig(mode));
+      })
+      .catch((error) => {
+        if (!active) {
+          return;
+        }
+
+        setModeResolutionError(error instanceof Error ? error.message : 'Unable to load that game mode.');
+      })
+      .finally(() => {
+        if (active) {
+          setIsResolvingMode(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [resolvedModeId]);
 
   const handleSelect = (difficulty: BotDifficulty) => {
+    if (!matchConfig) {
+      return;
+    }
     setPendingDifficulty(difficulty);
     startBotGame(difficulty, matchConfig);
   };
 
   const handleStartLocalPvP = () => {
+    if (!matchConfig) {
+      return;
+    }
     setIsPreparingLocalPvP(true);
     void startOfflineMatch(matchConfig).finally(() => {
       setIsPreparingLocalPvP(false);
@@ -279,12 +347,29 @@ export default function BotSelection() {
             <View
               style={[
                 styles.gridList,
-                isLocalPvPMode && styles.gridListSingle,
                 isCompactLayout && styles.gridListCompact,
                 isDesktopViewport && styles.gridListDesktop,
               ]}
             >
-              {isLocalPvPMode ? renderLocalPvPCard() : BOT_LEVELS.map(renderBotCard)}
+              {!matchConfig || isResolvingMode ? (
+                <View style={[styles.loadingCard, styles.loadingCardWide]}>
+                  <Text style={[styles.loadingTitle, { fontFamily: titleFontFamily }]}>Loading game mode...</Text>
+                  <Text style={[styles.loadingText, { fontFamily: bodyFontFamily }]}>
+                    Resolving the stored rules, board, and fog settings before we open the board.
+                  </Text>
+                </View>
+              ) : modeResolutionError ? (
+                <View style={[styles.loadingCard, styles.loadingCardWide]}>
+                  <Text style={[styles.loadingTitle, { fontFamily: titleFontFamily }]}>Mode unavailable</Text>
+                  <Text style={[styles.loadingText, { fontFamily: bodyFontFamily }]}>
+                    {modeResolutionError}
+                  </Text>
+                </View>
+              ) : isLocalPvPMode ? (
+                renderLocalPvPCard()
+              ) : (
+                BOT_LEVELS.map(renderBotCard)
+              )}
             </View>
           </View>
         </ScrollView>
@@ -378,6 +463,35 @@ const styles = StyleSheet.create({
   },
   gridListDesktop: {
     rowGap: urTheme.spacing.sm,
+  },
+  loadingCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: urTheme.spacing.xl,
+    paddingHorizontal: urTheme.spacing.lg,
+    borderRadius: 20,
+    backgroundColor: 'rgba(26, 18, 8, 0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(246, 214, 151, 0.24)',
+    width: '100%',
+  },
+  loadingCardWide: {
+    minHeight: 190,
+  },
+  loadingTitle: {
+    color: urTextColors.titleOnScene,
+    fontSize: 20,
+    lineHeight: 24,
+    textAlign: 'center',
+    marginBottom: 6,
+    ...urTextVariants.displayTitle,
+  },
+  loadingText: {
+    color: urTextColors.bodyOnPanel,
+    textAlign: 'center',
+    fontSize: 14,
+    lineHeight: 18,
+    ...urTextVariants.body,
   },
   cardShell: {
     width: '48.5%',

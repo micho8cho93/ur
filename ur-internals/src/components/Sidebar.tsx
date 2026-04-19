@@ -8,6 +8,7 @@ const navItems = [
   { label: 'Create Tournament', to: '/tournaments/new', short: '03' },
   { label: 'Audit Log', to: '/audit-log', short: '04' },
   { label: 'Analytics', to: '/analytics', short: '05' },
+  { label: 'Game Modes', to: '/game-modes', short: '06' },
 ]
 
 function getLinkClassName({ isActive }: NavLinkRenderProps) {

@@ -4,6 +4,8 @@ import { TournamentCard } from '@/components/tournaments/TournamentCard';
 import { MobileBackground, useMobileBackground } from '@/components/ui/MobileBackground';
 import { SketchButton } from '@/components/ui/SketchButton';
 import { AnimatedCurrencyChip } from '@/components/wallet/AnimatedCurrencyChip';
+import { MatchEconomyInfoButton } from '@/components/match/MatchEconomyInfoButton';
+import { MatchEconomyInfoModal } from '@/components/match/MatchEconomyInfoModal';
 import {
   MIN_WIDE_WEB_BACKGROUND_WIDTH,
   WideScreenBackground,
@@ -15,9 +17,11 @@ import {
   urTheme,
 } from '@/constants/urTheme';
 import { LobbyMode, useMatchmaking } from '@/hooks/useMatchmaking';
-import { MatchModeId, PRIVATE_MATCH_OPTIONS, getMatchConfig } from '@/logic/matchConfigs';
+import { PRIVATE_MATCH_OPTIONS } from '@/logic/matchConfigs';
+import { getPublicGameModes, resolveGameModeMatchConfig } from '@/services/gameModes';
 import { listOpenOnlineMatches, type OpenOnlineMatch } from '@/services/matchmaking';
 import { nakamaService } from '@/services/nakama';
+import { buildOpenOnlineMatchEconomyDetails, type MatchEconomyDetails } from '@/shared/matchEconomy';
 import { getXpAwardAmount } from '@/shared/progression';
 import {
   PRIVATE_MATCH_CODE_LENGTH,
@@ -63,6 +67,11 @@ const WAGER_STEP = 10;
 const OPEN_MATCH_DURATIONS = [3, 5, 10] as const;
 type CreateMatchStage = 'game_mode' | 'wager' | 'match_style' | 'wait_time' | 'ready';
 type CreateMatchStyle = 'online' | 'private';
+type FeaturedGameMode = Awaited<ReturnType<typeof getPublicGameModes>>['featuredMode'];
+type MatchEconomyModalState = {
+  title: string;
+  details: MatchEconomyDetails;
+};
 
 type OnlineActionPanelProps = {
   title: string;
@@ -165,6 +174,7 @@ type OnlineMatchCardProps = {
   disabled: boolean;
   onJoin: (match: OpenOnlineMatch) => void;
   onSpectate: (match: OpenOnlineMatch) => void;
+  onInfoPress: () => void;
 };
 
 const OnlineMatchCard: React.FC<OnlineMatchCardProps> = ({
@@ -178,6 +188,7 @@ const OnlineMatchCard: React.FC<OnlineMatchCardProps> = ({
   disabled,
   onJoin,
   onSpectate,
+  onInfoPress,
 }) => {
   const isLive = match.status === 'matched';
   const title = isLive ? 'Live Wager Match' : match.isCreator ? 'Your Open Match' : 'Open Wager Match';
@@ -186,61 +197,71 @@ const OnlineMatchCard: React.FC<OnlineMatchCardProps> = ({
   const canSpectate = isLive && !disabled && !spectating;
 
   return (
-    <View style={styles.onlineMatchCard}>
-      <View style={styles.onlineMatchHeader}>
-        <Text style={[styles.onlineMatchTitle, { fontFamily: titleFontFamily }]}>{title}</Text>
-        <Text style={[styles.onlineMatchStatus, { fontFamily: bodyFontFamily }]}>{statusLabel}</Text>
-      </View>
+    <View style={styles.onlineMatchCardFrame}>
+      <View style={styles.onlineMatchCard}>
+        <View style={styles.onlineMatchHeader}>
+          <Text style={[styles.onlineMatchTitle, { fontFamily: titleFontFamily }]}>{title}</Text>
+          <Text style={[styles.onlineMatchStatus, { fontFamily: bodyFontFamily }]}>{statusLabel}</Text>
+        </View>
 
-      <View style={styles.onlineMatchMetaGrid}>
-        <View style={styles.onlineMatchMetaCell}>
-          <Text style={[styles.onlineMatchMetaLabel, { fontFamily: bodyFontFamily }]}>Wager</Text>
-          <Text style={[styles.onlineMatchMetaValue, { fontFamily: bodyFontFamily }]}>
-            {match.wager} coins
-          </Text>
+        <View style={styles.onlineMatchMetaGrid}>
+          <View style={styles.onlineMatchMetaCell}>
+            <Text style={[styles.onlineMatchMetaLabel, { fontFamily: bodyFontFamily }]}>Wager</Text>
+            <Text style={[styles.onlineMatchMetaValue, { fontFamily: bodyFontFamily }]}>
+              {match.wager} coins
+            </Text>
+          </View>
+          <View style={styles.onlineMatchMetaCell}>
+            <Text style={[styles.onlineMatchMetaLabel, { fontFamily: bodyFontFamily }]}>
+              {isLive ? 'State' : 'Open'}
+            </Text>
+            <Text style={[styles.onlineMatchMetaValue, { fontFamily: bodyFontFamily }]}>
+              {isLive ? 'Live now' : getOpenMatchRemainingLabel(match, now)}
+            </Text>
+          </View>
+          <View style={styles.onlineMatchMetaCell}>
+            <Text style={[styles.onlineMatchMetaLabel, { fontFamily: bodyFontFamily }]}>Entrants</Text>
+            <Text style={[styles.onlineMatchMetaValue, { fontFamily: bodyFontFamily }]}>
+              {match.entrants}/{match.maxEntrants}
+            </Text>
+          </View>
         </View>
-        <View style={styles.onlineMatchMetaCell}>
-          <Text style={[styles.onlineMatchMetaLabel, { fontFamily: bodyFontFamily }]}>
-            {isLive ? 'State' : 'Open'}
-          </Text>
-          <Text style={[styles.onlineMatchMetaValue, { fontFamily: bodyFontFamily }]}>
-            {isLive ? 'Live now' : getOpenMatchRemainingLabel(match, now)}
-          </Text>
-        </View>
-        <View style={styles.onlineMatchMetaCell}>
-          <Text style={[styles.onlineMatchMetaLabel, { fontFamily: bodyFontFamily }]}>Entrants</Text>
-          <Text style={[styles.onlineMatchMetaValue, { fontFamily: bodyFontFamily }]}>
-            {match.entrants}/{match.maxEntrants}
-          </Text>
-        </View>
-      </View>
 
-      <HomeLightButton
-        label={
-          isLive
-            ? spectating
-              ? 'Opening...'
-              : 'Spectate'
-            : match.isCreator
-              ? 'Waiting'
-              : joining
-                ? 'Joining...'
-                : 'Join Match'
-        }
-        fontLoaded={fontLoaded}
-        size="compact"
-        loading={joining || spectating}
-        disabled={isLive ? !canSpectate : !canJoin || joining}
-        style={styles.onlineMatchButton}
-        onPress={() => {
-          if (isLive) {
-            onSpectate(match);
-            return;
+        <HomeLightButton
+          label={
+            isLive
+              ? spectating
+                ? 'Opening...'
+                : 'Spectate'
+              : match.isCreator
+                ? 'Waiting'
+                : joining
+                  ? 'Joining...'
+                  : 'Join Match'
           }
+          fontLoaded={fontLoaded}
+          size="compact"
+          loading={joining || spectating}
+          disabled={isLive ? !canSpectate : !canJoin || joining}
+          style={styles.onlineMatchButton}
+          onPress={() => {
+            if (isLive) {
+              onSpectate(match);
+              return;
+            }
 
-          onJoin(match);
-        }}
-      />
+            onJoin(match);
+          }}
+        />
+      </View>
+
+      <View pointerEvents="box-none" style={styles.onlineMatchHeaderActions}>
+        <View style={styles.onlineMatchHeaderSpacer} />
+        <MatchEconomyInfoButton
+          accessibilityLabel={`Open economy details for ${title}`}
+          onPress={onInfoPress}
+        />
+      </View>
     </View>
   );
 };
@@ -257,8 +278,9 @@ export default function Lobby() {
   const [wager, setWager] = useState(WAGER_MIN);
   const [durationMinutes, setDurationMinutes] = useState<(typeof OPEN_MATCH_DURATIONS)[number]>(5);
   const [createMatchStage, setCreateMatchStage] = useState<CreateMatchStage>('game_mode');
-  const [selectedGameMode, setSelectedGameMode] = useState<MatchModeId | null>(null);
+  const [selectedGameMode, setSelectedGameMode] = useState<string | null>(null);
   const [selectedMatchStyle, setSelectedMatchStyle] = useState<CreateMatchStyle | null>(null);
+  const [featuredGameMode, setFeaturedGameMode] = useState<FeaturedGameMode | null>(null);
   const [openMatches, setOpenMatches] = useState<OpenOnlineMatch[]>([]);
   const [isLoadingOpenMatches, setIsLoadingOpenMatches] = useState(false);
   const [openMatchesError, setOpenMatchesError] = useState<string | null>(null);
@@ -328,6 +350,7 @@ export default function Lobby() {
   const titleFontFamily = resolveHomeMagicFontFamily(fontsLoaded);
   const bodyFontFamily = resolveHomeFredokaFontFamily(fontsLoaded);
   const buttonFontFamily = resolveHomeButtonFontFamily(fontsLoaded);
+  const [economyModal, setEconomyModal] = useState<MatchEconomyModalState | null>(null);
   useEffect(() => {
     if (mode === 'bot') {
       router.replace('/(game)/bot');
@@ -378,6 +401,33 @@ export default function Lobby() {
       clearInterval(intervalId);
     };
   }, [mode, refreshCreatedOpenMatch, refreshWallet]);
+
+  useEffect(() => {
+    if (mode !== 'online') {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const loadFeaturedGameMode = async () => {
+      try {
+        const response = await getPublicGameModes();
+        if (!cancelled) {
+          setFeaturedGameMode(response.featuredMode);
+        }
+      } catch {
+        if (!cancelled) {
+          setFeaturedGameMode(null);
+        }
+      }
+    };
+
+    void loadFeaturedGameMode();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode]);
 
   useEffect(() => {
     const intervalId = setInterval(() => setOpenMatchNow(Date.now()), 1_000);
@@ -453,7 +503,16 @@ export default function Lobby() {
       setMatchToken(null);
       setPlayerColor(null);
       setSocketState('idle');
-      initGame(match.matchId, { matchConfig: getMatchConfig(match.modeId) });
+      initGame(match.matchId, {
+        matchConfig: await resolveGameModeMatchConfig(match.modeId, {
+          allowsXp: true,
+          allowsChallenges: true,
+          allowsCoins: true,
+          allowsOnline: true,
+          allowsRankedStats: true,
+          isPracticeMode: false,
+        }),
+      });
       router.push(
         buildMatchRoutePath({
           id: match.matchId,
@@ -476,16 +535,24 @@ export default function Lobby() {
   const isJoiningOpenMatch = isBusy && activeAction === 'join_open';
   const isCreatingPrivateGame = isBusy && activeAction === 'create_private';
   const isJoiningPrivateGame = isBusy && activeAction === 'join_private';
-  const pendingPrivateOption =
-    PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === pendingPrivateMode) ?? null;
-  const createdPrivateOption =
-    PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === createdPrivateMatch?.modeId) ?? null;
   const normalizedPrivateCodeInput = normalizePrivateMatchCodeInput(privateCodeInput);
   const canJoinPrivateGame = isPrivateMatchCode(normalizedPrivateCodeInput) && !isBusy;
   const publicWinRewardXp = getXpAwardAmount('pvp_win');
   const privateWinRewardXp = getXpAwardAmount('private_pvp_win');
 
   const canAffordWager = softCurrency >= wager;
+  const featuredGameModeOption = featuredGameMode
+    ? {
+        modeId: featuredGameMode.id,
+        label: featuredGameMode.name,
+        description: featuredGameMode.description,
+      }
+    : null;
+  const resolveMatchModeOption = (modeId: string | null | undefined) =>
+    PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === modeId) ??
+    (featuredGameModeOption?.modeId === modeId ? featuredGameModeOption : null);
+  const pendingPrivateOption = resolveMatchModeOption(pendingPrivateMode);
+  const createdPrivateOption = resolveMatchModeOption(createdPrivateMatch?.modeId ?? null);
 
   const createMatchButtonTitle = (() => {
     if (status === 'error' && activeAction === 'create_open') {
@@ -784,6 +851,12 @@ export default function Lobby() {
                       onSpectate={(selected) => {
                         void handleSpectateOpenMatch(selected);
                       }}
+                      onInfoPress={() => {
+                        setEconomyModal({
+                          title: `${match.status === 'matched' ? 'Live Wager Match' : 'Open Wager Match'} Economy`,
+                          details: buildOpenOnlineMatchEconomyDetails(match.wager),
+                        });
+                      }}
                     />
                   ))}
                 </View>
@@ -915,6 +988,21 @@ export default function Lobby() {
                                     setCreateMatchStage('wager');
                                   }}
                                 />
+                                {option.modeId === 'gameMode_finkel_rules' && featuredGameModeOption ? (
+                                  <View style={styles.featuredOptionWrap}>
+                                    <HomeLightButton
+                                      label={featuredGameModeOption.label}
+                                      accessibilityLabel={`Play Game Mode of the Month ${featuredGameModeOption.label}`}
+                                      fontLoaded={fontsLoaded}
+                                      size={isCompactLayout ? 'compact' : 'regular'}
+                                      style={styles.primaryActionButton}
+                                      onPress={() => {
+                                        setSelectedGameMode(featuredGameModeOption.modeId);
+                                        setCreateMatchStage('wager');
+                                      }}
+                                    />
+                                  </View>
+                                ) : null}
                               </View>
                             ))}
                           </View>
@@ -1120,7 +1208,12 @@ export default function Lobby() {
             </View>
           </View>
         </ScrollView>
-
+        <MatchEconomyInfoModal
+          visible={Boolean(economyModal)}
+          title={economyModal?.title ?? 'Match Economy'}
+          details={economyModal?.details ?? null}
+          onClose={() => setEconomyModal(null)}
+        />
       </View>
     </>
   );
@@ -1293,6 +1386,11 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: 12,
   },
+  onlineMatchCardFrame: {
+    width: '100%',
+    position: 'relative',
+    overflow: 'visible',
+  },
   onlineMatchCard: {
     width: '100%',
     borderRadius: 8,
@@ -1303,6 +1401,20 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 12,
     alignItems: 'center',
+  },
+  onlineMatchHeaderActions: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    zIndex: 3,
+  },
+  onlineMatchHeaderSpacer: {
+    width: 1,
+    height: 1,
   },
   onlineMatchHeader: {
     width: '100%',
@@ -1657,6 +1769,10 @@ const styles = StyleSheet.create({
   },
   optionCell: {
     width: '100%',
+  },
+  featuredOptionWrap: {
+    width: '100%',
+    marginTop: 8,
   },
   codeInput: {
     width: '100%',

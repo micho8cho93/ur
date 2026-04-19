@@ -1,4 +1,3 @@
-import { MatchModeId, isMatchModeId } from "../logic/matchConfigs";
 import { getPathCoord, getPathForColor, getPathLength } from "../logic/pathVariants";
 import { isContestedWarTile } from "../logic/rules";
 import { GameState, Player, PlayerColor } from "../logic/types";
@@ -106,7 +105,7 @@ export type CompletedMatchSummary = {
   momentumShiftAchieved: boolean;
   momentumShiftTurnSpan: number | null;
   maxActivePiecesOnBoard: number;
-  modeId: MatchModeId | null;
+  modeId: string | null;
   pieceCountPerSide: number;
   isPrivateMatch: boolean;
   isFriendMatch: boolean;
@@ -163,7 +162,7 @@ export type CompletedBotMatchRewardMode = "standard" | "base_win_only";
 export type SubmitCompletedBotMatchRpcRequest = {
   summary: CompletedMatchSummary;
   tutorialId?: string | null;
-  modeId?: MatchModeId | null;
+  modeId?: string | null;
   rewardMode?: CompletedBotMatchRewardMode;
 };
 
@@ -777,7 +776,7 @@ export const isCompletedMatchSummary = (value: unknown): value is CompletedMatch
       summary.momentumShiftTurnSpan === null ||
       (typeof summary.momentumShiftTurnSpan === "number" && summary.momentumShiftTurnSpan >= 0)) &&
     isOptionalNonNegativeNumber(summary.maxActivePiecesOnBoard) &&
-    (typeof summary.modeId === "undefined" || summary.modeId === null || isMatchModeId(summary.modeId)) &&
+    (typeof summary.modeId === "undefined" || summary.modeId === null || typeof summary.modeId === "string") &&
     isOptionalNonNegativeNumber(summary.pieceCountPerSide) &&
     isOptionalBoolean(summary.isPrivateMatch) &&
     isOptionalBoolean(summary.isFriendMatch) &&
@@ -801,7 +800,7 @@ export const isSubmitCompletedBotMatchRpcRequest = (
   return (
     isCompletedMatchSummary(payload.summary) &&
     (typeof payload.tutorialId === "string" || payload.tutorialId === null || typeof payload.tutorialId === "undefined") &&
-    (typeof payload.modeId === "undefined" || payload.modeId === null || isMatchModeId(payload.modeId)) &&
+    (typeof payload.modeId === "undefined" || payload.modeId === null || typeof payload.modeId === "string") &&
     (typeof payload.rewardMode === "undefined" || isCompletedBotMatchRewardMode(payload.rewardMode))
   );
 };

@@ -1,5 +1,3 @@
-import type { MatchModeId } from "../../../logic/matchConfigs";
-import { isMatchModeId } from "../../../logic/matchConfigs";
 import type { PlayerColor } from "../../../logic/types";
 import { buildTournamentBotDisplayNames, isTournamentBotUserId, normalizeTournamentBotPolicy } from "../../../shared/tournamentBots";
 import {
@@ -72,7 +70,7 @@ export type TournamentMatchPlayerSummary = {
 
 export type AuthoritativeTournamentMatchCompletion = {
   matchId: string;
-  modeId: MatchModeId;
+  modeId: string;
   context: TournamentMatchContext | null;
   completedAt: string;
   totalMoves: number;
@@ -95,7 +93,7 @@ export type TournamentMatchResultRecord = {
   counted: boolean;
   invalidReason: string | null;
   summary: {
-    modeId: MatchModeId;
+    modeId: string;
     totalMoves: number;
     revision: number;
     completedAt: string;
@@ -540,9 +538,9 @@ const readTournamentEntrantCount = (value: unknown): number => {
   return typeof entrants === "number" && Number.isFinite(entrants) ? Math.max(0, Math.floor(entrants)) : 0;
 };
 
-const resolveTournamentRunModeId = (run: TournamentRunRecord): MatchModeId => {
+const resolveTournamentRunModeId = (run: TournamentRunRecord): string => {
   const modeId = readStringField(run.metadata, ["gameMode", "game_mode"]);
-  return isMatchModeId(modeId) ? modeId : "standard";
+  return modeId ?? "standard";
 };
 
 const buildBotOnlyTournamentCompletion = (
