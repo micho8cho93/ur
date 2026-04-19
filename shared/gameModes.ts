@@ -1,11 +1,24 @@
 import type { MatchConfig, RulesVariant } from '../logic/matchConfigs';
+import type { PathVariant } from '../logic/pathVariants';
 
 export type GameModeBaseRulesetPreset =
+  // Compatibility-only aliases for older stored configs and legacy match modes.
   | 'quick_play'
   | 'race'
-  | 'finkel_rules'
   | 'capture'
+  | 'finkel_rules'
+  | 'hjr_murray'
+  | 'rc_bell'
+  | 'masters'
+  | 'skiryuk'
   | 'custom';
+
+export type GameModeLegacyBaseRulesetPreset =
+  | 'quick_play'
+  | 'race'
+  | 'capture';
+
+export type GameModeThrowProfile = 'standard' | 'bell' | 'masters';
 
 export type GameModeRosetteSafetyMode = 'standard' | 'open';
 export type GameModeExitStyle = 'standard' | 'single_exit';
@@ -21,6 +34,10 @@ export type GameModePresetDefaults = {
   eliminationMode: GameModeEliminationMode;
   fogOfWar: boolean;
   boardAssetKey: GameModeBoardAssetKey;
+  pathVariant: PathVariant;
+  throwProfile: GameModeThrowProfile;
+  bonusTurnOnRosette: boolean;
+  bonusTurnOnCapture: boolean;
 };
 
 export type GameModePresetOption = GameModePresetDefaults & {
@@ -74,6 +91,11 @@ export interface GameModeToggleResponse {
   modeId: string;
 }
 
+export interface GameModeDeleteResponse {
+  success: true;
+  modeId: string;
+}
+
 export interface GameModeFeatureResponse {
   success: true;
   featuredModeId: string | null;
@@ -83,35 +105,9 @@ export interface GameModeListItem extends AdminGameMode {}
 
 export const GAME_MODE_PRESET_OPTIONS: readonly GameModePresetOption[] = [
   {
-    id: 'quick_play',
-    label: 'Quick Play',
-    description: 'Seven pieces, standard rules, and the default board.',
-    baseRulesetPreset: 'quick_play',
-    pieceCountPerSide: 7,
-    rulesVariant: 'standard',
-    rosetteSafetyMode: 'standard',
-    exitStyle: 'standard',
-    eliminationMode: 'return_to_start',
-    fogOfWar: false,
-    boardAssetKey: 'board_design',
-  },
-  {
-    id: 'race',
-    label: 'Race',
-    description: 'Three pieces, standard captures, and a faster finish.',
-    baseRulesetPreset: 'race',
-    pieceCountPerSide: 3,
-    rulesVariant: 'standard',
-    rosetteSafetyMode: 'standard',
-    exitStyle: 'standard',
-    eliminationMode: 'return_to_start',
-    fogOfWar: false,
-    boardAssetKey: 'board_design',
-  },
-  {
     id: 'finkel_rules',
-    label: 'Finkel Rules',
-    description: 'Seven pieces with the protected shared rosette.',
+    label: 'Finkel',
+    description: 'Seven pieces on the classic protected-rosette route.',
     baseRulesetPreset: 'finkel_rules',
     pieceCountPerSide: 7,
     rulesVariant: 'standard',
@@ -120,19 +116,78 @@ export const GAME_MODE_PRESET_OPTIONS: readonly GameModePresetOption[] = [
     eliminationMode: 'return_to_start',
     fogOfWar: false,
     boardAssetKey: 'board_design',
+    pathVariant: 'default',
+    throwProfile: 'standard',
+    bonusTurnOnRosette: true,
+    bonusTurnOnCapture: false,
   },
   {
-    id: 'capture',
-    label: 'Capture',
-    description: 'Five pieces and extra rolls after captures.',
-    baseRulesetPreset: 'capture',
-    pieceCountPerSide: 5,
-    rulesVariant: 'capture',
+    id: 'hjr_murray',
+    label: 'HJR Murray',
+    description: 'Seven pieces on the longer looped reconstruction.',
+    baseRulesetPreset: 'hjr_murray',
+    pieceCountPerSide: 7,
+    rulesVariant: 'standard',
+    rosetteSafetyMode: 'standard',
+    exitStyle: 'standard',
+    eliminationMode: 'return_to_start',
+    fogOfWar: false,
+    boardAssetKey: 'board_design',
+    pathVariant: 'murray',
+    throwProfile: 'standard',
+    bonusTurnOnRosette: true,
+    bonusTurnOnCapture: false,
+  },
+  {
+    id: 'rc_bell',
+    label: 'RC Bell',
+    description: 'Seven pieces with Bell throws and rosette fines.',
+    baseRulesetPreset: 'rc_bell',
+    pieceCountPerSide: 7,
+    rulesVariant: 'standard',
     rosetteSafetyMode: 'open',
     exitStyle: 'standard',
     eliminationMode: 'return_to_start',
     fogOfWar: false,
     boardAssetKey: 'board_design',
+    pathVariant: 'default',
+    throwProfile: 'bell',
+    bonusTurnOnRosette: false,
+    bonusTurnOnCapture: false,
+  },
+  {
+    id: 'masters',
+    label: 'Masters',
+    description: 'Seven pieces on the compromise looped route.',
+    baseRulesetPreset: 'masters',
+    pieceCountPerSide: 7,
+    rulesVariant: 'standard',
+    rosetteSafetyMode: 'standard',
+    exitStyle: 'standard',
+    eliminationMode: 'return_to_start',
+    fogOfWar: false,
+    boardAssetKey: 'board_design',
+    pathVariant: 'masters',
+    throwProfile: 'masters',
+    bonusTurnOnRosette: true,
+    bonusTurnOnCapture: false,
+  },
+  {
+    id: 'skiryuk',
+    label: 'Skiryuk',
+    description: 'Seven pieces on the alternate middle-left exit route.',
+    baseRulesetPreset: 'skiryuk',
+    pieceCountPerSide: 7,
+    rulesVariant: 'standard',
+    rosetteSafetyMode: 'standard',
+    exitStyle: 'standard',
+    eliminationMode: 'return_to_start',
+    fogOfWar: false,
+    boardAssetKey: 'board_design',
+    pathVariant: 'skiryuk',
+    throwProfile: 'standard',
+    bonusTurnOnRosette: true,
+    bonusTurnOnCapture: false,
   },
   {
     id: 'custom',
@@ -146,6 +201,10 @@ export const GAME_MODE_PRESET_OPTIONS: readonly GameModePresetOption[] = [
     eliminationMode: 'return_to_start',
     fogOfWar: false,
     boardAssetKey: 'board_design',
+    pathVariant: 'default',
+    throwProfile: 'standard',
+    bonusTurnOnRosette: true,
+    bonusTurnOnCapture: false,
   },
 ] as const;
 
@@ -153,10 +212,33 @@ export const GAME_MODE_PRESET_BY_ID = Object.fromEntries(
   GAME_MODE_PRESET_OPTIONS.map((option) => [option.id, option]),
 ) as Record<GameModeBaseRulesetPreset, GameModePresetOption>;
 
+const LEGACY_GAME_MODE_PRESET_IDS: readonly GameModeLegacyBaseRulesetPreset[] = [
+  'quick_play',
+  'race',
+  'capture',
+] as const;
+
+const LEGACY_GAME_MODE_PRESET_IDS_SET = new Set<string>(LEGACY_GAME_MODE_PRESET_IDS);
+
+export const normalizeGameModeBaseRulesetPreset = (
+  preset: string | null | undefined,
+): GameModeBaseRulesetPreset => {
+  if (preset && preset in GAME_MODE_PRESET_BY_ID) {
+    return preset as GameModeBaseRulesetPreset;
+  }
+
+  return 'custom';
+};
+
+export const isLegacyGameModeBaseRulesetPreset = (
+  preset: string | null | undefined,
+): preset is GameModeLegacyBaseRulesetPreset => Boolean(preset && LEGACY_GAME_MODE_PRESET_IDS_SET.has(preset));
+
 export const getGameModePresetDefaults = (
-  preset: GameModeBaseRulesetPreset,
+  preset: string | null | undefined,
 ): GameModePresetDefaults => {
-  const option = GAME_MODE_PRESET_BY_ID[preset] ?? GAME_MODE_PRESET_BY_ID.custom;
+  const normalizedPreset = normalizeGameModeBaseRulesetPreset(preset);
+  const option = GAME_MODE_PRESET_BY_ID[normalizedPreset] ?? GAME_MODE_PRESET_BY_ID.custom;
   return {
     baseRulesetPreset: option.baseRulesetPreset,
     pieceCountPerSide: option.pieceCountPerSide,
@@ -166,6 +248,10 @@ export const getGameModePresetDefaults = (
     eliminationMode: option.eliminationMode,
     fogOfWar: option.fogOfWar,
     boardAssetKey: option.boardAssetKey,
+    pathVariant: option.pathVariant,
+    throwProfile: option.throwProfile,
+    bonusTurnOnRosette: option.bonusTurnOnRosette,
+    bonusTurnOnCapture: option.bonusTurnOnCapture,
   };
 };
 
@@ -238,6 +324,9 @@ export const buildGameModeMatchConfig = (
     opponentType?: MatchConfig['opponentType'];
     offlineWinRewardSource?: MatchConfig['offlineWinRewardSource'];
     pathVariant?: MatchConfig['pathVariant'];
+    throwProfile?: MatchConfig['throwProfile'];
+    bonusTurnOnRosette?: MatchConfig['bonusTurnOnRosette'];
+    bonusTurnOnCapture?: MatchConfig['bonusTurnOnCapture'];
   } = {},
 ): MatchConfig => ({
   modeId: mode.id,
@@ -258,7 +347,12 @@ export const buildGameModeMatchConfig = (
   isPracticeMode: options.isPracticeMode ?? true,
   offlineWinRewardSource: options.offlineWinRewardSource ?? 'practice_finkel_rules_win',
   opponentType: options.opponentType ?? 'bot',
-  pathVariant: options.pathVariant ?? 'default',
+  pathVariant: options.pathVariant ?? getGameModePresetDefaults(mode.baseRulesetPreset).pathVariant,
+  throwProfile: options.throwProfile ?? getGameModePresetDefaults(mode.baseRulesetPreset).throwProfile,
+  bonusTurnOnRosette:
+    options.bonusTurnOnRosette ?? getGameModePresetDefaults(mode.baseRulesetPreset).bonusTurnOnRosette,
+  bonusTurnOnCapture:
+    options.bonusTurnOnCapture ?? getGameModePresetDefaults(mode.baseRulesetPreset).bonusTurnOnCapture,
   selectionSubtitle: resolveGameModeSummary(mode),
   rulesIntro: null,
 });

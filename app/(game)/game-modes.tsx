@@ -175,16 +175,16 @@ export default function GameModesScreen() {
     setEconomyModal({ title, details })
   }
 
+  const activeAdminModes = publicModes?.activeModes ?? []
   const featuredMode = publicModes?.featuredMode ?? null
-  const featuredEconomyDetails = featuredMode
-    ? buildOfflineMatchEconomyDetails(buildGameModeMatchConfig(featuredMode))
+  const activeFeaturedMode =
+    featuredMode && activeAdminModes.some((mode) => mode.id === featuredMode.id) ? featuredMode : null
+  const featuredEconomyDetails = activeFeaturedMode
+    ? buildOfflineMatchEconomyDetails(buildGameModeMatchConfig(activeFeaturedMode))
     : null
   const showFeaturedEconomyInfo = Boolean(featuredEconomyDetails && hasVisibleMatchEconomyRows(featuredEconomyDetails))
-  const activeAdminModes = publicModes?.activeModes ?? []
-  const activeModeIds = new Set(activeAdminModes.map((mode) => mode.id))
-  const isFeaturedPlayable = featuredMode ? activeModeIds.has(featuredMode.id) : false
-  const additionalModes = featuredMode
-    ? activeAdminModes.filter((mode) => mode.id !== featuredMode.id)
+  const additionalModes = activeFeaturedMode
+    ? activeAdminModes.filter((mode) => mode.id !== activeFeaturedMode.id)
     : activeAdminModes
 
   React.useEffect(() => {
@@ -339,7 +339,7 @@ export default function GameModesScreen() {
                 { fontFamily: bodyFontFamily },
               ]}
             >
-              Choose a built-in mode, then explore the current featured admin mode and any other active custom variants.
+              Choose a built-in mode, then explore the active featured admin mode and any other active custom variants.
             </Text>
           </View>
 
@@ -391,9 +391,9 @@ export default function GameModesScreen() {
                 <Text style={[styles.sectionSubtitle, { fontFamily: bodyFontFamily }]}>
                   {isLoadingModes
                     ? 'Loading featured catalog content.'
-                    : featuredMode
-                      ? featuredMode.description
-                      : 'No featured admin mode is currently configured.'}
+                    : activeFeaturedMode
+                      ? activeFeaturedMode.description
+                      : 'No active featured admin mode is currently configured.'}
                 </Text>
               </View>
             </View>
@@ -405,14 +405,12 @@ export default function GameModesScreen() {
                   Checking the Nakama-backed mode catalog for a featured pick.
                 </Text>
               </View>
-            ) : featuredMode ? (
+            ) : activeFeaturedMode ? (
               <View style={styles.featuredShell}>
                 <View style={styles.cardFrame}>
                   <PressablePanelCard
-                    accessibilityLabel={`Play featured mode ${featuredMode.name}`}
-                    onPress={() => router.push(`/(game)/bot?modeId=${featuredMode.id}`)}
-                    disabled={!isFeaturedPlayable}
-                    dimmed={!isFeaturedPlayable}
+                    accessibilityLabel={`Play featured mode ${activeFeaturedMode.name}`}
+                    onPress={() => router.push(`/(game)/bot?modeId=${activeFeaturedMode.id}`)}
                     panelStyle={styles.featuredPanel}
                     source={quickPlayModePanel}
                     imageStyle={styles.cardPanelImage}
@@ -425,21 +423,22 @@ export default function GameModesScreen() {
                         <Text style={[styles.featuredLabel, { fontFamily: buttonFontFamily }]}>Game Mode of the Month</Text>
                       </View>
                       <View style={styles.featuredTitleRow}>
-                        <Text style={[styles.featuredTitle, { fontFamily: titleFontFamily }]}>{featuredMode.name}</Text>
+                        <Text style={[styles.featuredTitle, { fontFamily: titleFontFamily }]}>{activeFeaturedMode.name}</Text>
                         {showFeaturedEconomyInfo && featuredEconomyDetails ? (
                           <MatchEconomyInfoButton
-                            accessibilityLabel={`Open economy details for ${featuredMode.name}`}
-                            onPress={() => openEconomyDetails(`${featuredMode.name} Economy`, featuredEconomyDetails)}
+                            accessibilityLabel={`Open economy details for ${activeFeaturedMode.name}`}
+                            onPress={() =>
+                              openEconomyDetails(`${activeFeaturedMode.name} Economy`, featuredEconomyDetails)
+                            }
                             style={styles.cardInfoButton}
                           />
                         ) : null}
                       </View>
                       <Text style={[styles.featuredSubtitle, { fontFamily: bodyFontFamily }]}>
-                        {resolveGameModeSummary(featuredMode)}
+                        {resolveGameModeSummary(activeFeaturedMode)}
                       </Text>
                       <Text style={[styles.featuredMeta, { fontFamily: bodyFontFamily }]}>
-                        {resolveGameModeBoardLabel(featuredMode.boardAssetKey)}
-                        {isFeaturedPlayable ? ' · Featured and playable' : ' · Currently inactive'}
+                        {resolveGameModeBoardLabel(activeFeaturedMode.boardAssetKey)} · Featured and playable
                       </Text>
                     </View>
                   </PressablePanelCard>
@@ -447,9 +446,9 @@ export default function GameModesScreen() {
               </View>
             ) : (
               <View style={styles.loadingCard}>
-                <Text style={[styles.loadingTitle, { fontFamily: titleFontFamily }]}>No featured mode</Text>
+                <Text style={[styles.loadingTitle, { fontFamily: titleFontFamily }]}>No active featured mode</Text>
                 <Text style={[styles.loadingText, { fontFamily: bodyFontFamily }]}>
-                  Feature a saved mode in the internals app to surface it here.
+                  Feature an active saved mode in the internals app to surface it here.
                 </Text>
               </View>
             )}

@@ -6,7 +6,7 @@ import { UserChallengeProgressRpcResponse } from '@/shared/challenges';
 import { EloRatingChangeNotificationPayload, EloRatingProfileRpcResponse } from '@/shared/elo';
 import { ProgressionAwardResponse, ProgressionSnapshot } from '@/shared/progression';
 import { MatchEndPayload, StateSnapshotPayload, StateSnapshotPlayers, StateSnapshotRematch } from '@/shared/urMatchProtocol';
-import { createInitialState, getValidMoves, applyMove, rollDice } from '@/logic/engine';
+import { createInitialState, getValidMoves, applyMove, rollThrowFace } from '@/logic/engine';
 import { MatchPresenceEvent, Session } from '@heroiclabs/nakama-js';
 
 type OnlineMode = 'offline' | 'nakama';
@@ -334,7 +334,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
 
-    const rollValue = rollDice();
+    const rollValue = rollThrowFace(gameState.matchConfig);
     const nextState: GameState = {
       ...gameState,
       rollValue,

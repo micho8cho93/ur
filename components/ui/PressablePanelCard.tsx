@@ -60,7 +60,7 @@ export function PressablePanelCard({
     () =>
       pressProgress.interpolate({
         inputRange: [0, 1],
-        outputRange: [0, 8],
+        outputRange: [0, 12],
       }),
     [pressProgress]
   );
@@ -68,7 +68,7 @@ export function PressablePanelCard({
     () =>
       pressProgress.interpolate({
         inputRange: [0, 1],
-        outputRange: [1, 0.992],
+        outputRange: [1, 0.986],
       }),
     [pressProgress]
   );
@@ -76,7 +76,7 @@ export function PressablePanelCard({
     () =>
       pressProgress.interpolate({
         inputRange: [0, 1],
-        outputRange: [1, 0.978],
+        outputRange: [1, 0.968],
       }),
     [pressProgress]
   );

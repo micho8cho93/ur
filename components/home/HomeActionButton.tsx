@@ -2,7 +2,6 @@ import React from 'react';
 import {
   ActivityIndicator,
   ImageBackground,
-  ImageStyle,
   Platform,
   Pressable,
   StyleProp,
@@ -47,38 +46,14 @@ type HomeActionWebStyle = ViewStyle & {
   willChange?: string;
 };
 
-type HomeActionImageWebStyle = ImageStyle & {
-  filter?: string;
-  willChange?: string;
-};
-
 const ACTION_BUTTON_WEB_STYLE: HomeActionWebStyle =
   Platform.select<HomeActionWebStyle>({
     web: {
       cursor: 'pointer',
-      transitionDuration: '150ms',
+      transitionDuration: '180ms',
       transitionProperty: 'transform, opacity',
       userSelect: 'none',
       willChange: 'transform',
-    },
-    default: {},
-  }) ?? {};
-
-const ACTION_BUTTON_IMAGE_SHADOW_STYLE =
-  Platform.select<HomeActionImageWebStyle>({
-    web: {
-      filter:
-        'drop-shadow(0px 4px 0px rgba(86, 42, 0, 0.36)) drop-shadow(0px 12px 14px rgba(54, 22, 0, 0.18))',
-      willChange: 'filter, opacity',
-    },
-    default: {},
-  }) ?? {};
-
-const ACTION_BUTTON_IMAGE_SHADOW_PRESSED_STYLE =
-  Platform.select<HomeActionImageWebStyle>({
-    web: {
-      filter:
-        'drop-shadow(0px 2px 0px rgba(86, 42, 0, 0.3)) drop-shadow(0px 6px 8px rgba(54, 22, 0, 0.12))',
     },
     default: {},
   }) ?? {};
@@ -160,8 +135,6 @@ export function HomeActionButton({
             {
               borderRadius: actionButtonCornerRadius,
             },
-            ACTION_BUTTON_IMAGE_SHADOW_STYLE,
-            pressed ? ACTION_BUTTON_IMAGE_SHADOW_PRESSED_STYLE : null,
             pressed ? styles.imageStylePressed : null,
             isDisabled ? styles.imageStyleDisabled : null,
           ]}
@@ -251,7 +224,7 @@ const styles = StyleSheet.create({
     ...CTA_BUTTON_VISIBLE_IMAGE_STYLE,
   },
   imageStylePressed: {
-    opacity: 0.97,
+    opacity: 0.94,
   },
   imageStyleDisabled: {
     opacity: 0.62,
@@ -295,7 +268,7 @@ const styles = StyleSheet.create({
     opacity: 0,
   },
   pressed: {
-    transform: [{ translateY: 3 }],
+    transform: [{ translateY: 4 }, { scale: 0.96 }],
   },
   hovered: {
     transform: [{ translateY: -2 }],

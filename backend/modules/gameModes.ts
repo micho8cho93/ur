@@ -14,10 +14,13 @@ import type { AdminRole } from './tournaments/types';
 import { isMatchModeId } from '../../logic/matchConfigs';
 import {
   GAME_MODE_PRESET_BY_ID,
+  isLegacyGameModeBaseRulesetPreset,
+  normalizeGameModeBaseRulesetPreset,
   type AdminGameMode,
   type AdminGameModeDraft,
   type AdminGameModesResponse,
   type GameModeBoardAssetKey,
+  type GameModeDeleteResponse,
   type GameModeFeatureResponse,
   type GameModeMutationResponse,
   type GameModeToggleResponse,
@@ -50,6 +53,7 @@ export const RPC_ADMIN_GET_GAME_MODE = 'admin_get_game_mode';
 export const RPC_ADMIN_UPSERT_GAME_MODE = 'admin_upsert_game_mode';
 export const RPC_ADMIN_DISABLE_GAME_MODE = 'admin_disable_game_mode';
 export const RPC_ADMIN_ENABLE_GAME_MODE = 'admin_enable_game_mode';
+export const RPC_ADMIN_DELETE_GAME_MODE = 'admin_delete_game_mode';
 export const RPC_ADMIN_FEATURE_GAME_MODE = 'admin_feature_game_mode';
 export const RPC_ADMIN_UNFEATURE_GAME_MODE = 'admin_unfeature_game_mode';
 
@@ -159,7 +163,7 @@ const normalizeAdminGameMode = (value: unknown): AdminGameMode | null => {
     !name ||
     !description ||
     !baseRulesetPreset ||
-    !(baseRulesetPreset in GAME_MODE_PRESET_BY_ID) ||
+    (!isLegacyGameModeBaseRulesetPreset(baseRulesetPreset) && !(baseRulesetPreset in GAME_MODE_PRESET_BY_ID)) ||
     typeof pieceCountPerSide !== 'number' ||
     !Number.isInteger(pieceCountPerSide) ||
     pieceCountPerSide <= 0 ||
@@ -183,7 +187,7 @@ const normalizeAdminGameMode = (value: unknown): AdminGameMode | null => {
     id,
     name,
     description,
-    baseRulesetPreset: baseRulesetPreset as AdminGameMode['baseRulesetPreset'],
+    baseRulesetPreset: normalizeGameModeBaseRulesetPreset(baseRulesetPreset),
     pieceCountPerSide,
     rulesVariant: rulesVariant as AdminGameMode['rulesVariant'],
     rosetteSafetyMode: rosetteSafetyMode as AdminGameMode['rosetteSafetyMode'],
@@ -387,7 +391,7 @@ const normalizeDraft = (value: unknown): AdminGameModeDraft => {
     !name ||
     !description ||
     !baseRulesetPreset ||
-    !(baseRulesetPreset in GAME_MODE_PRESET_BY_ID) ||
+    (!isLegacyGameModeBaseRulesetPreset(baseRulesetPreset) && !(baseRulesetPreset in GAME_MODE_PRESET_BY_ID)) ||
     typeof pieceCountPerSide !== 'number' ||
     !Number.isInteger(pieceCountPerSide) ||
     pieceCountPerSide <= 0 ||
@@ -408,7 +412,7 @@ const normalizeDraft = (value: unknown): AdminGameModeDraft => {
     id,
     name,
     description,
-    baseRulesetPreset: baseRulesetPreset as AdminGameModeDraft['baseRulesetPreset'],
+    baseRulesetPreset: normalizeGameModeBaseRulesetPreset(baseRulesetPreset),
     pieceCountPerSide,
     rulesVariant: rulesVariant as AdminGameModeDraft['rulesVariant'],
     rosetteSafetyMode: rosetteSafetyMode as AdminGameModeDraft['rosetteSafetyMode'],
@@ -436,6 +440,11 @@ const buildGameModeResponse = (mode: AdminGameMode): GameModeMutationResponse =>
 });
 
 const buildToggleResponse = (modeId: string): GameModeToggleResponse => ({
+  success: true,
+  modeId,
+});
+
+const buildDeleteResponse = (modeId: string): GameModeDeleteResponse => ({
   success: true,
   modeId,
 });
@@ -633,6 +642,32 @@ export const rpcAdminEnableGameMode = (
   }
 
   return JSON.stringify(buildToggleResponse(modeId));
+};
+
+export const rpcAdminDeleteGameMode = (
+  ctx: RuntimeContext,
+  logger: RuntimeLogger,
+  nk: RuntimeNakama,
+  payload: string,
+): string => {
+  requireAdminRole(ctx, nk, 'operator');
+  const { modeId } = parseModeIdRequest(payload);
+
+  updateCatalogWithRetry(nk, logger, (catalog) => {
+    const currentMode = catalog.modes.find((mode) => mode.id === modeId);
+    if (!currentMode) {
+      throw new Error('MODE_NOT_FOUND');
+    }
+
+    const now = new Date().toISOString();
+    return {
+      ...catalog,
+      modes: catalog.modes.filter((mode) => mode.id !== modeId),
+      updatedAt: now,
+    };
+  });
+
+  return JSON.stringify(buildDeleteResponse(modeId));
 };
 
 export const rpcAdminFeatureGameMode = (

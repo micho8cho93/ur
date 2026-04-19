@@ -147,4 +147,46 @@ describe('GameModesScreen', () => {
     fireEvent.press(view.getByLabelText('Play featured mode Moonlight Sprint'));
     expect(mockPush).toHaveBeenCalledWith('/(game)/bot?modeId=moonlight_sprint');
   });
+
+  it('hides inactive featured modes from the quick play catalog', async () => {
+    mockGetPublicGameModes.mockResolvedValueOnce({
+      featuredMode: {
+        id: 'moonlight_sprint',
+        name: 'Moonlight Sprint',
+        description: 'Seven pieces, fog of war, and a single-exit board.',
+        baseRulesetPreset: 'custom',
+        pieceCountPerSide: 7,
+        rulesVariant: 'standard',
+        rosetteSafetyMode: 'standard',
+        exitStyle: 'single_exit',
+        eliminationMode: 'return_to_start',
+        fogOfWar: true,
+        boardAssetKey: 'board_single_exit',
+      },
+      activeModes: [
+        {
+          id: 'ember_trial',
+          name: 'Ember Trial',
+          description: 'Capture-focused custom mode with an open rosette.',
+          baseRulesetPreset: 'capture',
+          pieceCountPerSide: 5,
+          rulesVariant: 'capture',
+          rosetteSafetyMode: 'open',
+          exitStyle: 'standard',
+          eliminationMode: 'eliminated',
+          fogOfWar: false,
+          boardAssetKey: 'board_design',
+        },
+      ],
+    });
+
+    const view = render(<GameModesScreen />);
+
+    await waitFor(() => expect(view.getByText('Game Mode of the Month')).toBeTruthy());
+
+    expect(view.getByText('No active featured mode')).toBeTruthy();
+    expect(view.queryByText('Moonlight Sprint')).toBeNull();
+    expect(view.getByText('Ember Trial')).toBeTruthy();
+    expect(view.queryByLabelText('Play featured mode Moonlight Sprint')).toBeNull();
+  });
 });

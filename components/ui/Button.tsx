@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     borderRadius: urTheme.radii.pill,
   },
   pressablePressed: {
-    transform: [{ translateY: 1 }],
+    transform: [{ translateY: 3 }],
   },
   shell: {
     minHeight: 54,
@@ -223,13 +223,13 @@ const styles = StyleSheet.create({
     }),
   },
   shellPressed: {
-    paddingBottom: 3,
+    paddingBottom: 1,
     ...boxShadow({
       color: urTheme.colors.deepShadow,
-      opacity: 0.18,
-      offset: { width: 0, height: 4 },
-      blurRadius: 8,
-      elevation: 3,
+      opacity: 0.14,
+      offset: { width: 0, height: 2 },
+      blurRadius: 6,
+      elevation: 2,
     }),
   },
   face: {
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     minHeight: 54,
   },
   facePressed: {
-    transform: [{ translateY: 1 }],
+    transform: [{ translateY: 2 }],
   },
   glossOverlay: {
     position: 'absolute',

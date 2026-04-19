@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
     transform: [{ translateY: 0 }],
   },
   triggerImageFrameSunken: {
-    transform: [{ translateY: 3 }, { scale: 0.985 }],
+    transform: [{ translateY: 5 }, { scale: 0.97 }],
   },
   triggerImage: {
     maxWidth: '100%',
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.01)',
   },
   triggerImageOverlaySunken: {
-    backgroundColor: 'rgba(10, 7, 5, 0.16)',
+    backgroundColor: 'rgba(10, 7, 5, 0.24)',
   },
   triggerImageOverlayDisabled: {
     backgroundColor: 'rgba(8, 6, 4, 0.28)',

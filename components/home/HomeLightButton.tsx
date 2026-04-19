@@ -2,7 +2,6 @@ import React from 'react';
 import {
   ActivityIndicator,
   ImageBackground,
-  ImageStyle,
   Platform,
   Pressable,
   StyleProp,
@@ -49,16 +48,11 @@ type HomeLightButtonWebStyle = ViewStyle & {
   willChange?: string;
 };
 
-type HomeLightButtonImageWebStyle = ImageStyle & {
-  filter?: string;
-  willChange?: string;
-};
-
 const HOME_LIGHT_BUTTON_WEB_STYLE: HomeLightButtonWebStyle =
   Platform.select<HomeLightButtonWebStyle>({
     web: {
       cursor: 'pointer',
-      transitionDuration: '160ms',
+      transitionDuration: '180ms',
       transitionProperty: 'transform, opacity',
       userSelect: 'none',
       willChange: 'transform',
@@ -66,35 +60,16 @@ const HOME_LIGHT_BUTTON_WEB_STYLE: HomeLightButtonWebStyle =
     default: {},
   }) ?? {};
 
-const HOME_LIGHT_BUTTON_IMAGE_SHADOW_STYLE =
-  Platform.select<HomeLightButtonImageWebStyle>({
-    web: {
-      filter:
-        'drop-shadow(0px 2px 0px rgba(54, 64, 74, 0.82)) drop-shadow(0px 8px 10px rgba(19, 24, 29, 0.34))',
-      willChange: 'filter, opacity',
-    },
-    default: {},
-  }) ?? {};
-
-const HOME_LIGHT_BUTTON_IMAGE_SHADOW_PRESSED_STYLE =
-  Platform.select<HomeLightButtonImageWebStyle>({
-    web: {
-      filter:
-        'drop-shadow(0px 1px 0px rgba(54, 64, 74, 0.68)) drop-shadow(0px 4px 6px rgba(19, 24, 29, 0.2))',
-    },
-    default: {},
-  }) ?? {};
-
 const HOME_LIGHT_BUTTON_DEFAULT_STYLE = {} satisfies ViewStyle;
 
 const HOME_LIGHT_BUTTON_HOVER_STYLE = {
-  transform: [{ translateY: -1 }],
+  transform: [{ translateY: -2 }],
 } satisfies ViewStyle;
 
 const HOME_LIGHT_BUTTON_FOCUS_STYLE = {} satisfies ViewStyle;
 
 const HOME_LIGHT_BUTTON_ACTIVE_STYLE = {
-  transform: [{ translateY: 2 }],
+  transform: [{ translateY: 4 }, { scale: 0.96 }],
 } satisfies ViewStyle;
 
 const getInteractionStyle = ({
@@ -162,8 +137,6 @@ export function HomeLightButton({
             {
               borderRadius: buttonCornerRadius,
             },
-            HOME_LIGHT_BUTTON_IMAGE_SHADOW_STYLE,
-            pressed ? HOME_LIGHT_BUTTON_IMAGE_SHADOW_PRESSED_STYLE : null,
             pressed ? styles.imageStylePressed : null,
             isDisabled ? styles.imageStyleDisabled : null,
           ]}
@@ -241,7 +214,7 @@ const styles = StyleSheet.create({
     top: BUTTON_LIGHT_VISIBLE_TOP_PERCENT,
   },
   imageStylePressed: {
-    opacity: 0.96,
+    opacity: 0.94,
   },
   imageStyleDisabled: {
     opacity: 0.6,

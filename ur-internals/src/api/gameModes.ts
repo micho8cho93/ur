@@ -5,6 +5,7 @@ import type {
   AdminGameModeDraft,
   AdminGameModesResponse,
   GameModeDefinition,
+  GameModeDeleteResponse,
   GameModeFeatureResponse,
   GameModeMutationResponse,
   GameModeToggleResponse,
@@ -17,6 +18,7 @@ const RPC_ADMIN_GET_GAME_MODE = 'admin_get_game_mode'
 const RPC_ADMIN_UPSERT_GAME_MODE = 'admin_upsert_game_mode'
 const RPC_ADMIN_DISABLE_GAME_MODE = 'admin_disable_game_mode'
 const RPC_ADMIN_ENABLE_GAME_MODE = 'admin_enable_game_mode'
+const RPC_ADMIN_DELETE_GAME_MODE = 'admin_delete_game_mode'
 const RPC_ADMIN_FEATURE_GAME_MODE = 'admin_feature_game_mode'
 const RPC_ADMIN_UNFEATURE_GAME_MODE = 'admin_unfeature_game_mode'
 
@@ -114,6 +116,19 @@ function normalizeToggle(value: unknown): GameModeToggleResponse {
   }
 }
 
+function normalizeDelete(value: unknown): GameModeDeleteResponse {
+  const record = asRecord(value)
+  const modeId = readStringField(record, ['modeId', 'mode_id'])
+  if (!modeId) {
+    throw new Error('Game mode delete returned an invalid payload.')
+  }
+
+  return {
+    success: true,
+    modeId,
+  }
+}
+
 function normalizeFeature(value: unknown): GameModeFeatureResponse {
   const record = asRecord(value)
   const featuredModeId = readStringField(record, ['featuredModeId', 'featured_mode_id'])
@@ -146,6 +161,10 @@ export async function disableGameMode(modeId: string): Promise<GameModeToggleRes
 
 export async function enableGameMode(modeId: string): Promise<GameModeToggleResponse> {
   return normalizeToggle(await callRpc<unknown>(RPC_ADMIN_ENABLE_GAME_MODE, { modeId }))
+}
+
+export async function deleteGameMode(modeId: string): Promise<GameModeDeleteResponse> {
+  return normalizeDelete(await callRpc<unknown>(RPC_ADMIN_DELETE_GAME_MODE, { modeId }))
 }
 
 export async function featureGameMode(modeId: string): Promise<GameModeFeatureResponse> {

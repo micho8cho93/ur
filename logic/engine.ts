@@ -3,6 +3,7 @@ import { GameState, PlayerColor, Piece, Player, MoveAction } from './types';
 import { isRosette, isWarZone } from './constants';
 import { DEFAULT_MATCH_CONFIG, type MatchConfig } from './matchConfigs';
 import { getPathCoord, getPathLength } from './pathVariants';
+import { resolveThrowOutcome } from './matchConfigs';
 import { isContestedWarTile, isProtectedFromCapture, shouldGrantExtraTurn } from './rules';
 
 export const INITIAL_PIECE_COUNT = DEFAULT_MATCH_CONFIG.pieceCountPerSide;
@@ -41,14 +42,32 @@ export const rollDice = (randomSource: DiceRandomSource = Math.random): number =
     return sum;
 };
 
-export const getValidMoves = (state: GameState, roll: number): MoveAction[] => {
-    if (roll === 0) return [];
+export const rollThrowFace = (
+    matchConfig: Pick<MatchConfig, 'throwProfile'> = DEFAULT_MATCH_CONFIG,
+    randomSource: DiceRandomSource = Math.random,
+): number => {
+    let sum = 0;
+    const throwProfile = matchConfig.throwProfile ?? 'standard';
+    const binaryLotCount = throwProfile === 'standard' ? 4 : 3;
 
+    for (let i = 0; i < binaryLotCount; i++) {
+        if (randomSource() >= 0.5) sum++;
+    }
+
+    return sum;
+};
+
+export const getValidMoves = (state: GameState, roll: number): MoveAction[] => {
     const player = state[state.currentTurn];
     const opponent = state[state.currentTurn === 'light' ? 'dark' : 'light'];
     const moves: MoveAction[] = [];
     const processedPositions = new Set<number>();
     const pathLength = getPathLength(state.matchConfig.pathVariant);
+    const moveDistance = resolveThrowOutcome(state.matchConfig.throwProfile ?? 'standard', roll).moveDistance;
+
+    if (moveDistance === 0) {
+        return [];
+    }
 
     for (const piece of player.pieces) {
         if (piece.isFinished) continue;
@@ -56,7 +75,7 @@ export const getValidMoves = (state: GameState, roll: number): MoveAction[] => {
         if (piece.position === -1 && processedPositions.has(-1)) continue;
         if (piece.position === -1) processedPositions.add(-1);
 
-        const targetIndex = piece.position + roll;
+        const targetIndex = piece.position + moveDistance;
 
         if (targetIndex > pathLength) continue;
 
@@ -143,7 +162,15 @@ export const applyMove = (state: GameState, move: MoveAction): GameState => {
 
     newState.history.push(`${player.color} moved to ${move.toIndex}. Rosette: ${isRosetteLanding}`);
 
-    if (shouldGrantExtraTurn(newState.matchConfig, { didCapture, landedOnRosette: isRosetteLanding })) {
+    const throwOutcome = resolveThrowOutcome(newState.matchConfig.throwProfile ?? 'standard', state.rollValue ?? 0);
+
+    if (
+        shouldGrantExtraTurn(newState.matchConfig, {
+            didCapture,
+            landedOnRosette: isRosetteLanding,
+            bonusThrow: throwOutcome.grantsBonusThrow,
+        })
+    ) {
         newState.phase = 'rolling';
         newState.rollValue = null;
     } else {

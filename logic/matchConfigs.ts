@@ -9,6 +9,7 @@ import type {
 } from '../shared/gameModes';
 
 export type RulesVariant = 'standard' | 'capture' | 'no-capture';
+export type ThrowProfile = 'standard' | 'bell' | 'masters';
 export type MatchOpponentType = 'bot' | 'human';
 export type MatchModeId =
   | 'standard'
@@ -37,6 +38,9 @@ export type MatchConfig = {
   offlineWinRewardSource: BotMatchXpSource;
   opponentType: MatchOpponentType;
   pathVariant: PathVariant;
+  throwProfile?: ThrowProfile;
+  bonusTurnOnRosette?: boolean;
+  bonusTurnOnCapture?: boolean;
   pieceCountPerSide: number;
   rosetteSafetyMode: GameModeRosetteSafetyMode;
   rulesVariant: RulesVariant;
@@ -75,6 +79,9 @@ const STANDARD_MATCH_CONFIG: MatchConfig = {
   offlineWinRewardSource: 'bot_win',
   opponentType: 'bot',
   pathVariant: 'default',
+  throwProfile: 'standard',
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: false,
   selectionSubtitle: 'Classic seven-piece rules.',
   rulesIntro: null,
@@ -98,6 +105,9 @@ const PURE_LUCK_MATCH_CONFIG: MatchConfig = {
   offlineWinRewardSource: 'practice_1_piece_win',
   opponentType: 'bot',
   pathVariant: 'default',
+  throwProfile: 'standard',
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: true,
   selectionSubtitle: 'Three pieces per side with captures disabled everywhere.',
   rulesIntro: {
@@ -125,6 +135,9 @@ const RACE_MATCH_CONFIG: MatchConfig = {
   offlineWinRewardSource: 'practice_3_pieces_win',
   opponentType: 'bot',
   pathVariant: 'default',
+  throwProfile: 'standard',
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: true,
   selectionSubtitle: 'Three pieces per side with the standard capture rules.',
   rulesIntro: {
@@ -152,6 +165,9 @@ const LEGACY_FIVE_PIECE_MATCH_CONFIG: MatchConfig = {
   offlineWinRewardSource: 'practice_5_pieces_win',
   opponentType: 'bot',
   pathVariant: 'default',
+  throwProfile: 'standard',
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: true,
   selectionSubtitle: 'Legacy five-piece practice rules.',
   rulesIntro: {
@@ -179,6 +195,9 @@ const FINKEL_RULES_MATCH_CONFIG: MatchConfig = {
   offlineWinRewardSource: 'practice_finkel_rules_win',
   opponentType: 'bot',
   pathVariant: 'default',
+  throwProfile: 'standard',
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: true,
   selectionSubtitle: 'Seven pieces per side using the classic protected-rosette rules.',
   rulesIntro: {
@@ -206,6 +225,9 @@ const LOCAL_PVP_MATCH_CONFIG: MatchConfig = {
   offlineWinRewardSource: 'practice_finkel_rules_win',
   opponentType: 'human',
   pathVariant: 'default',
+  throwProfile: 'standard',
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: true,
   selectionSubtitle: 'Two human players on one device using seven-piece Finkel rules offline.',
   rulesIntro: {
@@ -233,6 +255,9 @@ const CAPTURE_MATCH_CONFIG: MatchConfig = {
   offlineWinRewardSource: 'practice_capture_win',
   opponentType: 'bot',
   pathVariant: 'default',
+  throwProfile: 'standard',
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: true,
   isPracticeMode: true,
   selectionSubtitle: 'Five pieces per side where captures can chain extra rolls.',
   rulesIntro: {
@@ -260,6 +285,9 @@ const EXTENDED_PATH_MATCH_CONFIG: MatchConfig = {
   offlineWinRewardSource: 'practice_extended_path_win',
   opponentType: 'bot',
   pathVariant: 'full-path',
+  throwProfile: 'standard',
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: true,
   selectionSubtitle: 'Seven pieces each using the longer extended-path route.',
   rulesIntro: {
@@ -323,6 +351,59 @@ export const PRIVATE_MATCH_OPTIONS: readonly PrivateMatchOption[] = PRIVATE_MATC
 
 export const getPracticeModeRewardLabel = (config: MatchConfig): string | null =>
   config.allowsXp ? `Practice Mode Win Reward: +${getXpAwardAmount(config.offlineWinRewardSource)} XP` : null;
+
+export type ThrowOutcome = {
+  moveDistance: number;
+  grantsBonusThrow: boolean;
+  rawThrowFace: number;
+};
+
+const STANDARD_THROW_OUTCOMES: readonly ThrowOutcome[] = [
+  { rawThrowFace: 0, moveDistance: 0, grantsBonusThrow: false },
+  { rawThrowFace: 1, moveDistance: 1, grantsBonusThrow: false },
+  { rawThrowFace: 2, moveDistance: 2, grantsBonusThrow: false },
+  { rawThrowFace: 3, moveDistance: 3, grantsBonusThrow: false },
+  { rawThrowFace: 4, moveDistance: 4, grantsBonusThrow: false },
+] as const;
+
+const HISTORICAL_THROW_OUTCOMES: readonly ThrowOutcome[] = [
+  { rawThrowFace: 0, moveDistance: 4, grantsBonusThrow: true },
+  { rawThrowFace: 1, moveDistance: 0, grantsBonusThrow: false },
+  { rawThrowFace: 2, moveDistance: 1, grantsBonusThrow: true },
+  { rawThrowFace: 3, moveDistance: 5, grantsBonusThrow: true },
+] as const;
+
+export const resolveThrowOutcome = (
+  throwProfile: ThrowProfile | Pick<MatchConfig, 'throwProfile'>,
+  rawThrowFace: number,
+): ThrowOutcome => {
+  const profile = typeof throwProfile === 'string' ? throwProfile : throwProfile.throwProfile ?? 'standard';
+  const table = profile === 'standard' ? STANDARD_THROW_OUTCOMES : HISTORICAL_THROW_OUTCOMES;
+
+  return table.find((entry) => entry.rawThrowFace === rawThrowFace) ?? {
+    rawThrowFace,
+    moveDistance: rawThrowFace,
+    grantsBonusThrow: false,
+  };
+};
+
+export const getThrowOutcomeDistribution = (
+  throwProfile: ThrowProfile,
+): readonly { rawThrowFace: number; probability: number }[] =>
+  throwProfile === 'standard'
+    ? [
+        { rawThrowFace: 0, probability: 1 / 16 },
+        { rawThrowFace: 1, probability: 4 / 16 },
+        { rawThrowFace: 2, probability: 6 / 16 },
+        { rawThrowFace: 3, probability: 4 / 16 },
+        { rawThrowFace: 4, probability: 1 / 16 },
+      ]
+    : [
+        { rawThrowFace: 0, probability: 1 / 8 },
+        { rawThrowFace: 1, probability: 3 / 8 },
+        { rawThrowFace: 2, probability: 3 / 8 },
+        { rawThrowFace: 3, probability: 1 / 8 },
+      ];
 
 export const isMatchModeId = (value: unknown): value is MatchModeId =>
   typeof value === 'string' && value in MATCH_CONFIGS;

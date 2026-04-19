@@ -86,18 +86,22 @@ const ROYAL_DISABLED_SHADOW = {
       spreadDistance: -3,
     },
   ],
+  transform: [{ translateY: 0 }],
 } satisfies ViewStyle;
 
 const ROYAL_RAISED_SHADOW = {
   boxShadow: [ROYAL_CONTACT_SHADOW, ROYAL_LIFT_SHADOW],
+  transform: [{ translateY: 0 }],
 } satisfies ViewStyle;
 
 const ROYAL_HOVER_SHADOW = {
   boxShadow: [ROYAL_HOVER_CONTACT_SHADOW, ROYAL_HOVER_LIFT_SHADOW],
+  transform: [{ translateY: -1 }],
 } satisfies ViewStyle;
 
 const ROYAL_PRESSED_SHADOW = {
   boxShadow: [ROYAL_PRESSED_CONTACT_SHADOW, ROYAL_PRESSED_LIFT_SHADOW],
+  transform: [{ translateY: 3 }],
 } satisfies ViewStyle;
 
 const getRoyalFocusShadow = () =>
@@ -113,6 +117,7 @@ const getRoyalFocusShadow = () =>
       ROYAL_CONTACT_SHADOW,
       ROYAL_LIFT_SHADOW,
     ],
+    transform: [{ translateY: 0 }],
   }) satisfies ViewStyle;
 
 const getShellInteractionStyle = ({

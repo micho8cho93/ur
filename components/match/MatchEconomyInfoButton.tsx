@@ -47,6 +47,6 @@ const styles = StyleSheet.create({
       : {}),
   },
   buttonPressed: {
-    transform: [{ scale: 0.96 }],
+    transform: [{ translateY: 2 }, { scale: 0.9 }],
   },
 });

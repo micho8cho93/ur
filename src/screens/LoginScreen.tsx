@@ -64,7 +64,7 @@ function LoginActionButton({
   variant,
 }: LoginActionButtonProps) {
   const labelColor = variant === 'light' ? urTextColors.buttonOnStone : urTheme.colors.ivory;
-  const actionButtonHeight = mobileWeb ? 45 : compact ? 56 : 66;
+  const actionButtonHeight = mobileWeb ? 38 : compact ? 46 : 54;
   const actionButtonCornerRadius = Math.max(12, Math.round(actionButtonHeight * 0.34));
   const textStyle = [
     styles.actionLabel,
@@ -145,8 +145,8 @@ export default function LoginScreen() {
   const isDesktopWeb = isWeb && !isCompactLayout;
   const isMobileWeb = isWeb && isCompactLayout;
   const buttonPanelWidth = Math.min(width - (isCompactLayout ? 28 : 72), isCompactLayout ? 392 : 600);
-  const baseButtonWidth = Math.min(buttonPanelWidth * (isCompactLayout ? 0.72 : 0.68), isCompactLayout ? 280 : 420);
-  const buttonWidth = isMobileWeb ? Math.round(baseButtonWidth * 0.8) : baseButtonWidth;
+  const baseButtonWidth = Math.min(buttonPanelWidth * (isCompactLayout ? 0.6 : 0.54), isCompactLayout ? 236 : 320);
+  const buttonWidth = isMobileWeb ? Math.round(baseButtonWidth * 0.78) : baseButtonWidth;
   const logoWidth = showWideBackground
     ? Math.min(width * 0.27, height * 0.43, 420)
     : Math.min(width * (isCompactLayout ? 0.62 : 0.28), isCompactLayout ? 250 : 340);
@@ -381,13 +381,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionButtonRegular: {
-    height: 66,
+    height: 54,
   },
   actionButtonCompact: {
-    height: 56,
+    height: 46,
   },
   actionButtonMobileWeb: {
-    height: 45,
+    height: 38,
   },
   actionButtonPressed: {
     transform: [{ scale: 0.985 }],
@@ -402,12 +402,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionButtonFrameLight: {
-    paddingHorizontal: urTheme.spacing.md,
+    paddingHorizontal: urTheme.spacing.sm,
   },
   actionButtonFrameCta: {
-    paddingHorizontal: urTheme.spacing.md,
-    paddingTop: 6,
-    paddingBottom: 8,
+    paddingHorizontal: urTheme.spacing.sm,
+    paddingTop: 3,
+    paddingBottom: 5,
   },
   actionButtonImage: {
     width: '100%',
@@ -426,14 +426,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    width: '96%',
+    gap: 4,
+    width: '92%',
   },
   actionLabel: {
     textAlign: 'center',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 1,
-    width: '96%',
+    width: '92%',
   },
   actionLabelLight: {
     textShadowColor: 'rgba(255, 255, 255, 0.3)',
@@ -442,13 +442,13 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(86, 42, 0, 0.42)',
   },
   actionLabelRegular: {
-    fontSize: 18,
+    fontSize: 16,
   },
   actionLabelCompact: {
-    fontSize: 13,
+    fontSize: 11,
   },
   actionLabelMobileWeb: {
-    fontSize: 11,
+    fontSize: 9,
   },
   actionLabelGrobold: {
     fontFamily: HOME_GROBOLD_FONT_FAMILY,

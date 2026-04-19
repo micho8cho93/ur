@@ -2,6 +2,7 @@ import { applyMove, getValidMoves } from '../engine';
 import { isRosette } from '../constants';
 import { GameState, MoveAction, Player, PlayerColor } from '../types';
 import { getPathCoord, getPathLength } from '../pathVariants';
+import { getThrowOutcomeDistribution, resolveThrowOutcome } from '../matchConfigs';
 import { BotDifficulty, DEFAULT_BOT_DIFFICULTY } from './types';
 import { isContestedWarTile } from '../rules';
 
@@ -9,14 +10,6 @@ type SearchContext = {
   rootColor: PlayerColor;
   cache: Map<string, number>;
 };
-
-const ROLL_OUTCOMES = [
-  { roll: 0, probability: 1 / 16 },
-  { roll: 1, probability: 4 / 16 },
-  { roll: 2, probability: 6 / 16 },
-  { roll: 3, probability: 4 / 16 },
-  { roll: 4, probability: 1 / 16 },
-] as const;
 
 const EPSILON = 1e-6;
 const otherColor = (color: PlayerColor): PlayerColor => (color === 'light' ? 'dark' : 'light');
@@ -79,14 +72,20 @@ const countRosetteOccupancyForState = (state: GameState, player: Player): number
 const canReachCoordOnNextRoll = (state: GameState, attackerColor: PlayerColor, row: number, col: number): boolean => {
   const attacker = state[attackerColor];
   const pathLength = getPathLength(state.matchConfig.pathVariant);
+  const throwProfile = state.matchConfig.throwProfile ?? 'standard';
+  const reachableDistances = new Set(
+    getThrowOutcomeDistribution(throwProfile)
+      .map((outcome) => resolveThrowOutcome(throwProfile, outcome.rawThrowFace).moveDistance)
+      .filter((moveDistance) => moveDistance > 0),
+  );
 
   return attacker.pieces.some((piece) => {
     if (piece.isFinished) {
       return false;
     }
 
-    for (let roll = 1; roll <= 4; roll += 1) {
-      const targetIndex = piece.position + roll;
+    for (const moveDistance of reachableDistances) {
+      const targetIndex = piece.position + moveDistance;
       if (targetIndex < 0 || targetIndex >= pathLength) {
         continue;
       }
@@ -242,6 +241,8 @@ const simulateRollState = (state: GameState, roll: number): GameState => {
   });
 };
 
+const getRollOutcomes = (state: GameState) => getThrowOutcomeDistribution(state.matchConfig.throwProfile ?? 'standard');
+
 const evaluateSearch = (state: GameState, depth: number, context: SearchContext): number => {
   if (state.winner) {
     return state.winner === context.rootColor ? 1 : 0;
@@ -286,8 +287,8 @@ const evaluateSearch = (state: GameState, depth: number, context: SearchContext)
       }
     }
   } else {
-    value = ROLL_OUTCOMES.reduce((total, outcome) => {
-      const nextState = simulateRollState(state, outcome.roll);
+    value = getRollOutcomes(state).reduce((total, outcome) => {
+      const nextState = simulateRollState(state, outcome.rawThrowFace);
       return total + outcome.probability * evaluateSearch(nextState, depth - 1, context);
     }, 0);
   }

@@ -4,6 +4,7 @@ export type {
   AdminGameModesResponse,
   GameModeBaseRulesetPreset,
   GameModeBoardAssetKey,
+  GameModeDeleteResponse,
   GameModeDefinition,
   GameModeEliminationMode,
   GameModeExitStyle,

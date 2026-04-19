@@ -1,6 +1,7 @@
 import { getMatchConfig } from '@/logic/matchConfigs';
 import { applyMove, createInitialState, getValidMoves } from '@/logic/engine';
 import { getPathLength } from '@/logic/pathVariants';
+import { getGameModePresetDefaults } from '@/shared/gameModes';
 
 describe('engine variants', () => {
   it('configures Pure Luck as a three-piece no-capture variant', () => {
@@ -75,5 +76,61 @@ describe('engine variants', () => {
     expect(state.matchConfig.pathVariant).toBe('default');
     expect(state.light.pieces).toHaveLength(5);
     expect(state.dark.pieces).toHaveLength(5);
+  });
+
+  it('maps the historical presets to the expected routes and throw profiles', () => {
+    expect(getGameModePresetDefaults('finkel_rules')).toEqual(
+      expect.objectContaining({
+        rulesVariant: 'standard',
+        pathVariant: 'default',
+        throwProfile: 'standard',
+        bonusTurnOnRosette: true,
+        bonusTurnOnCapture: false,
+      }),
+    );
+    expect(getGameModePresetDefaults('hjr_murray')).toEqual(
+      expect.objectContaining({
+        rulesVariant: 'standard',
+        pathVariant: 'murray',
+        throwProfile: 'standard',
+        bonusTurnOnRosette: true,
+        bonusTurnOnCapture: false,
+      }),
+    );
+    expect(getGameModePresetDefaults('rc_bell')).toEqual(
+      expect.objectContaining({
+        rulesVariant: 'standard',
+        pathVariant: 'default',
+        throwProfile: 'bell',
+        bonusTurnOnRosette: false,
+        bonusTurnOnCapture: false,
+      }),
+    );
+    expect(getGameModePresetDefaults('masters')).toEqual(
+      expect.objectContaining({
+        rulesVariant: 'standard',
+        pathVariant: 'masters',
+        throwProfile: 'masters',
+        bonusTurnOnRosette: true,
+        bonusTurnOnCapture: false,
+      }),
+    );
+    expect(getGameModePresetDefaults('skiryuk')).toEqual(
+      expect.objectContaining({
+        rulesVariant: 'standard',
+        pathVariant: 'skiryuk',
+        throwProfile: 'standard',
+        bonusTurnOnRosette: true,
+        bonusTurnOnCapture: false,
+      }),
+    );
+  });
+
+  it('exposes the route lengths for the historical variants', () => {
+    expect(getPathLength('default')).toBe(14);
+    expect(getPathLength('masters')).toBe(16);
+    expect(getPathLength('full-path')).toBe(16);
+    expect(getPathLength('murray')).toBe(27);
+    expect(getPathLength('skiryuk')).toBe(23);
   });
 });

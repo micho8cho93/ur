@@ -2,12 +2,12 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React from 'react';
 import {
   ImageBackground,
-  ImageStyle,
   Platform,
   Pressable,
   StyleProp,
   StyleSheet,
   Text,
+  ImageStyle,
   ViewStyle,
 } from 'react-native';
 
@@ -17,6 +17,25 @@ import { CTA_BUTTON_VISIBLE_IMAGE_STYLE } from '@/components/ui/buttonArt';
 
 const ctaButtonArt = require('../../assets/buttons/cta_button.png');
 const settingsButtonArt = require('../../assets/buttons/settings_button_square.png');
+
+const SKETCH_BUTTON_IMAGE_SHADOW_STYLE: ImageStyle = Platform.select<ImageStyle>({
+  web: {},
+  default: {
+    shadowColor: 'rgba(0, 0, 0, 0.24)',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.35,
+    shadowRadius: 1.5,
+    elevation: 2,
+  },
+}) ?? {};
+
+const SKETCH_BUTTON_IMAGE_SHADOW_PRESSED_STYLE: ImageStyle = Platform.select<ImageStyle>({
+  web: {},
+  default: {
+    shadowOpacity: 0.2,
+    elevation: 1,
+  },
+}) ?? {};
 
 type SketchButtonProps = {
   label: string;
@@ -31,30 +50,6 @@ type SketchButtonProps = {
   sizeScale?: number;
   style?: StyleProp<ViewStyle>;
 };
-
-type SketchButtonImageWebStyle = ImageStyle & {
-  filter?: string;
-  willChange?: string;
-};
-
-const SKETCH_BUTTON_IMAGE_SHADOW_STYLE =
-  Platform.select<SketchButtonImageWebStyle>({
-    web: {
-      filter:
-        'drop-shadow(0px 4px 0px rgba(86, 42, 0, 0.34)) drop-shadow(0px 10px 12px rgba(54, 22, 0, 0.18))',
-      willChange: 'filter, opacity',
-    },
-    default: {},
-  }) ?? {};
-
-const SKETCH_BUTTON_IMAGE_SHADOW_PRESSED_STYLE =
-  Platform.select<SketchButtonImageWebStyle>({
-    web: {
-      filter:
-        'drop-shadow(0px 2px 0px rgba(86, 42, 0, 0.28)) drop-shadow(0px 5px 6px rgba(54, 22, 0, 0.12))',
-    },
-    default: {},
-  }) ?? {};
 
 export function SketchButton({
   label,
@@ -199,7 +194,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web'
       ? {
           cursor: 'pointer',
-          transitionDuration: '160ms',
+          transitionDuration: '180ms',
           transitionProperty: 'transform, opacity',
           userSelect: 'none',
           willChange: 'transform',
@@ -219,10 +214,10 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   pressableHovered: {
-    transform: [{ translateY: -1 }],
+    transform: [{ translateY: -2 }],
   },
   pressablePressed: {
-    transform: [{ translateY: 2 }],
+    transform: [{ translateY: 4 }, { scale: 0.95 }],
   },
   pressableDisabled: {
     opacity: 0.54,
@@ -255,7 +250,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   surfaceImagePressed: {
-    opacity: 0.97,
+    opacity: 0.94,
   },
   surfaceImageDisabled: {
     opacity: 0.62,

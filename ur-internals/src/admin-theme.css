@@ -549,6 +549,32 @@ textarea:focus {
   gap: 6px;
 }
 
+.field--inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+
+.field--inline .field__label {
+  margin: 0;
+}
+
+.field--inline input[type='checkbox'] {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
 .field label,
 .field__label {
   font-size: 0.8rem;

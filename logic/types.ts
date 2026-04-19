@@ -22,7 +22,7 @@ export type GamePhase = 'rolling' | 'moving' | 'ended';
 export interface GameState {
     // Turn State
     currentTurn: PlayerColor;
-    rollValue: number | null; // 0-4
+    rollValue: number | null; // raw throw face
     phase: GamePhase;
     matchConfig: MatchConfig;
 

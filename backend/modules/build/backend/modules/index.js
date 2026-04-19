@@ -17,6 +17,18 @@ var __spreadValues = (a, b) => {
   return a;
 };
 var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
+var __objRest = (source, exclude) => {
+  var target = {};
+  for (var prop in source)
+    if (__hasOwnProp.call(source, prop) && exclude.indexOf(prop) < 0)
+      target[prop] = source[prop];
+  if (source != null && __getOwnPropSymbols)
+    for (var prop of __getOwnPropSymbols(source)) {
+      if (exclude.indexOf(prop) < 0 && __propIsEnum.call(source, prop))
+        target[prop] = source[prop];
+    }
+  return target;
+};
 
 // logic/pathVariants.ts
 var DEFAULT_PATH_LIGHT = [
@@ -51,7 +63,7 @@ var DEFAULT_PATH_DARK = [
   { row: 0, col: 7 },
   { row: 0, col: 6 }
 ];
-var FULL_PATH_LIGHT = [
+var MASTERS_PATH_LIGHT = [
   { row: 2, col: 3 },
   { row: 2, col: 2 },
   { row: 2, col: 1 },
@@ -69,7 +81,7 @@ var FULL_PATH_LIGHT = [
   { row: 2, col: 7 },
   { row: 2, col: 6 }
 ];
-var FULL_PATH_DARK = [
+var MASTERS_PATH_DARK = [
   { row: 0, col: 3 },
   { row: 0, col: 2 },
   { row: 0, col: 1 },
@@ -87,6 +99,114 @@ var FULL_PATH_DARK = [
   { row: 0, col: 7 },
   { row: 0, col: 6 }
 ];
+var MURRAY_PATH_LIGHT = [
+  { row: 2, col: 3 },
+  { row: 2, col: 2 },
+  { row: 2, col: 1 },
+  { row: 2, col: 0 },
+  { row: 1, col: 0 },
+  { row: 1, col: 1 },
+  { row: 1, col: 2 },
+  { row: 1, col: 3 },
+  { row: 1, col: 4 },
+  { row: 1, col: 5 },
+  { row: 1, col: 6 },
+  { row: 0, col: 6 },
+  { row: 0, col: 7 },
+  { row: 1, col: 7 },
+  { row: 2, col: 7 },
+  { row: 2, col: 6 },
+  { row: 1, col: 6 },
+  { row: 1, col: 5 },
+  { row: 1, col: 4 },
+  { row: 1, col: 3 },
+  { row: 1, col: 2 },
+  { row: 1, col: 1 },
+  { row: 1, col: 0 },
+  { row: 2, col: 0 },
+  { row: 2, col: 1 },
+  { row: 2, col: 2 },
+  { row: 2, col: 3 }
+];
+var MURRAY_PATH_DARK = [
+  { row: 0, col: 3 },
+  { row: 0, col: 2 },
+  { row: 0, col: 1 },
+  { row: 0, col: 0 },
+  { row: 1, col: 0 },
+  { row: 1, col: 1 },
+  { row: 1, col: 2 },
+  { row: 1, col: 3 },
+  { row: 1, col: 4 },
+  { row: 1, col: 5 },
+  { row: 1, col: 6 },
+  { row: 2, col: 6 },
+  { row: 2, col: 7 },
+  { row: 1, col: 7 },
+  { row: 0, col: 7 },
+  { row: 0, col: 6 },
+  { row: 1, col: 6 },
+  { row: 1, col: 5 },
+  { row: 1, col: 4 },
+  { row: 1, col: 3 },
+  { row: 1, col: 2 },
+  { row: 1, col: 1 },
+  { row: 1, col: 0 },
+  { row: 0, col: 0 },
+  { row: 0, col: 1 },
+  { row: 0, col: 2 },
+  { row: 0, col: 3 }
+];
+var SKYRIUK_PATH_LIGHT = [
+  { row: 2, col: 3 },
+  { row: 2, col: 2 },
+  { row: 2, col: 1 },
+  { row: 2, col: 0 },
+  { row: 1, col: 0 },
+  { row: 1, col: 1 },
+  { row: 1, col: 2 },
+  { row: 1, col: 3 },
+  { row: 1, col: 4 },
+  { row: 1, col: 5 },
+  { row: 1, col: 6 },
+  { row: 0, col: 6 },
+  { row: 0, col: 7 },
+  { row: 1, col: 7 },
+  { row: 2, col: 7 },
+  { row: 2, col: 6 },
+  { row: 1, col: 6 },
+  { row: 1, col: 5 },
+  { row: 1, col: 4 },
+  { row: 1, col: 3 },
+  { row: 1, col: 2 },
+  { row: 1, col: 1 },
+  { row: 1, col: 0 }
+];
+var SKYRIUK_PATH_DARK = [
+  { row: 0, col: 3 },
+  { row: 0, col: 2 },
+  { row: 0, col: 1 },
+  { row: 0, col: 0 },
+  { row: 1, col: 0 },
+  { row: 1, col: 1 },
+  { row: 1, col: 2 },
+  { row: 1, col: 3 },
+  { row: 1, col: 4 },
+  { row: 1, col: 5 },
+  { row: 1, col: 6 },
+  { row: 2, col: 6 },
+  { row: 2, col: 7 },
+  { row: 1, col: 7 },
+  { row: 0, col: 7 },
+  { row: 0, col: 6 },
+  { row: 1, col: 6 },
+  { row: 1, col: 5 },
+  { row: 1, col: 4 },
+  { row: 1, col: 3 },
+  { row: 1, col: 2 },
+  { row: 1, col: 1 },
+  { row: 1, col: 0 }
+];
 var DEFAULT_PATH_VARIANT = "default";
 var PATH_VARIANT_DEFINITIONS = {
   default: {
@@ -95,11 +215,29 @@ var PATH_VARIANT_DEFINITIONS = {
     dark: DEFAULT_PATH_DARK,
     pathLength: DEFAULT_PATH_LIGHT.length
   },
+  masters: {
+    id: "masters",
+    light: MASTERS_PATH_LIGHT,
+    dark: MASTERS_PATH_DARK,
+    pathLength: MASTERS_PATH_LIGHT.length
+  },
+  murray: {
+    id: "murray",
+    light: MURRAY_PATH_LIGHT,
+    dark: MURRAY_PATH_DARK,
+    pathLength: MURRAY_PATH_LIGHT.length
+  },
+  skiryuk: {
+    id: "skiryuk",
+    light: SKYRIUK_PATH_LIGHT,
+    dark: SKYRIUK_PATH_DARK,
+    pathLength: SKYRIUK_PATH_LIGHT.length
+  },
   "full-path": {
     id: "full-path",
-    light: FULL_PATH_LIGHT,
-    dark: FULL_PATH_DARK,
-    pathLength: FULL_PATH_LIGHT.length
+    light: MASTERS_PATH_LIGHT,
+    dark: MASTERS_PATH_DARK,
+    pathLength: MASTERS_PATH_LIGHT.length
   }
 };
 var getPathVariantDefinition = (variant = DEFAULT_PATH_VARIANT) => PATH_VARIANT_DEFINITIONS[variant];
@@ -274,8 +412,13 @@ var MAX_PROGRESSION_RANK = MAX_RANK;
 var STANDARD_MATCH_CONFIG = {
   modeId: "standard",
   displayName: "Quick Play",
+  baseRulesetPreset: "quick_play",
   pieceCountPerSide: 7,
   rulesVariant: "standard",
+  rosetteSafetyMode: "standard",
+  exitStyle: "standard",
+  eliminationMode: "return_to_start",
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: true,
   allowsChallenges: true,
@@ -284,6 +427,9 @@ var STANDARD_MATCH_CONFIG = {
   offlineWinRewardSource: "bot_win",
   opponentType: "bot",
   pathVariant: "default",
+  throwProfile: "standard",
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: false,
   selectionSubtitle: "Classic seven-piece rules.",
   rulesIntro: null
@@ -291,8 +437,13 @@ var STANDARD_MATCH_CONFIG = {
 var PURE_LUCK_MATCH_CONFIG = {
   modeId: "gameMode_1_piece",
   displayName: "Pure Luck",
+  baseRulesetPreset: "custom",
   pieceCountPerSide: 3,
   rulesVariant: "no-capture",
+  rosetteSafetyMode: "open",
+  exitStyle: "standard",
+  eliminationMode: "return_to_start",
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: false,
   allowsChallenges: true,
@@ -301,6 +452,9 @@ var PURE_LUCK_MATCH_CONFIG = {
   offlineWinRewardSource: "practice_1_piece_win",
   opponentType: "bot",
   pathVariant: "default",
+  throwProfile: "standard",
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: true,
   selectionSubtitle: "Three pieces per side with captures disabled everywhere.",
   rulesIntro: {
@@ -311,8 +465,13 @@ var PURE_LUCK_MATCH_CONFIG = {
 var RACE_MATCH_CONFIG = {
   modeId: "gameMode_3_pieces",
   displayName: "Race",
+  baseRulesetPreset: "race",
   pieceCountPerSide: 3,
   rulesVariant: "standard",
+  rosetteSafetyMode: "standard",
+  exitStyle: "standard",
+  eliminationMode: "return_to_start",
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: false,
   allowsChallenges: true,
@@ -321,6 +480,9 @@ var RACE_MATCH_CONFIG = {
   offlineWinRewardSource: "practice_3_pieces_win",
   opponentType: "bot",
   pathVariant: "default",
+  throwProfile: "standard",
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: true,
   selectionSubtitle: "Three pieces per side with the standard capture rules.",
   rulesIntro: {
@@ -331,8 +493,13 @@ var RACE_MATCH_CONFIG = {
 var LEGACY_FIVE_PIECE_MATCH_CONFIG = {
   modeId: "gameMode_5_pieces",
   displayName: "5 Pieces",
+  baseRulesetPreset: "custom",
   pieceCountPerSide: 5,
   rulesVariant: "standard",
+  rosetteSafetyMode: "standard",
+  exitStyle: "standard",
+  eliminationMode: "return_to_start",
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: false,
   allowsChallenges: true,
@@ -341,6 +508,9 @@ var LEGACY_FIVE_PIECE_MATCH_CONFIG = {
   offlineWinRewardSource: "practice_5_pieces_win",
   opponentType: "bot",
   pathVariant: "default",
+  throwProfile: "standard",
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: true,
   selectionSubtitle: "Legacy five-piece practice rules.",
   rulesIntro: {
@@ -351,8 +521,13 @@ var LEGACY_FIVE_PIECE_MATCH_CONFIG = {
 var FINKEL_RULES_MATCH_CONFIG = {
   modeId: "gameMode_finkel_rules",
   displayName: "Finkel Rules",
+  baseRulesetPreset: "finkel_rules",
   pieceCountPerSide: 7,
   rulesVariant: "standard",
+  rosetteSafetyMode: "standard",
+  exitStyle: "standard",
+  eliminationMode: "return_to_start",
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: false,
   allowsChallenges: true,
@@ -361,6 +536,9 @@ var FINKEL_RULES_MATCH_CONFIG = {
   offlineWinRewardSource: "practice_finkel_rules_win",
   opponentType: "bot",
   pathVariant: "default",
+  throwProfile: "standard",
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: true,
   selectionSubtitle: "Seven pieces per side using the classic protected-rosette rules.",
   rulesIntro: {
@@ -371,8 +549,13 @@ var FINKEL_RULES_MATCH_CONFIG = {
 var LOCAL_PVP_MATCH_CONFIG = {
   modeId: "gameMode_pvp",
   displayName: "PvP",
+  baseRulesetPreset: "custom",
   pieceCountPerSide: 7,
   rulesVariant: "standard",
+  rosetteSafetyMode: "standard",
+  exitStyle: "standard",
+  eliminationMode: "return_to_start",
+  fogOfWar: false,
   allowsXp: false,
   allowsOnline: false,
   allowsChallenges: false,
@@ -381,6 +564,9 @@ var LOCAL_PVP_MATCH_CONFIG = {
   offlineWinRewardSource: "practice_finkel_rules_win",
   opponentType: "human",
   pathVariant: "default",
+  throwProfile: "standard",
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: true,
   selectionSubtitle: "Two human players on one device using seven-piece Finkel rules offline.",
   rulesIntro: {
@@ -391,8 +577,13 @@ var LOCAL_PVP_MATCH_CONFIG = {
 var CAPTURE_MATCH_CONFIG = {
   modeId: "gameMode_capture",
   displayName: "Capture",
+  baseRulesetPreset: "capture",
   pieceCountPerSide: 5,
   rulesVariant: "capture",
+  rosetteSafetyMode: "open",
+  exitStyle: "standard",
+  eliminationMode: "return_to_start",
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: false,
   allowsChallenges: true,
@@ -401,6 +592,9 @@ var CAPTURE_MATCH_CONFIG = {
   offlineWinRewardSource: "practice_capture_win",
   opponentType: "bot",
   pathVariant: "default",
+  throwProfile: "standard",
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: true,
   isPracticeMode: true,
   selectionSubtitle: "Five pieces per side where captures can chain extra rolls.",
   rulesIntro: {
@@ -411,8 +605,13 @@ var CAPTURE_MATCH_CONFIG = {
 var EXTENDED_PATH_MATCH_CONFIG = {
   modeId: "gameMode_full_path",
   displayName: "Extended Path",
+  baseRulesetPreset: "custom",
   pieceCountPerSide: 7,
   rulesVariant: "standard",
+  rosetteSafetyMode: "standard",
+  exitStyle: "single_exit",
+  eliminationMode: "return_to_start",
+  fogOfWar: false,
   allowsXp: true,
   allowsOnline: false,
   allowsChallenges: true,
@@ -421,6 +620,9 @@ var EXTENDED_PATH_MATCH_CONFIG = {
   offlineWinRewardSource: "practice_extended_path_win",
   opponentType: "bot",
   pathVariant: "full-path",
+  throwProfile: "standard",
+  bonusTurnOnRosette: true,
+  bonusTurnOnCapture: false,
   isPracticeMode: true,
   selectionSubtitle: "Seven pieces each using the longer extended-path route.",
   rulesIntro: {
@@ -442,7 +644,6 @@ var DEFAULT_MATCH_CONFIG = STANDARD_MATCH_CONFIG;
 var MATCH_MODE_SELECTION_IDS = [
   "standard",
   "gameMode_3_pieces",
-  "gameMode_capture",
   "gameMode_finkel_rules",
   "gameMode_pvp"
 ];
@@ -457,7 +658,6 @@ var MATCH_MODE_SELECTION_OPTIONS = MATCH_MODE_SELECTION_IDS.map((modeId) => {
 });
 var PRIVATE_MATCH_SELECTION_IDS = [
   "gameMode_3_pieces",
-  "gameMode_capture",
   "gameMode_finkel_rules"
 ];
 var PRIVATE_MATCH_OPTIONS = PRIVATE_MATCH_SELECTION_IDS.map((modeId) => {
@@ -469,6 +669,41 @@ var PRIVATE_MATCH_OPTIONS = PRIVATE_MATCH_SELECTION_IDS.map((modeId) => {
     description: (_a = config.selectionSubtitle) != null ? _a : config.displayName
   };
 });
+var STANDARD_THROW_OUTCOMES = [
+  { rawThrowFace: 0, moveDistance: 0, grantsBonusThrow: false },
+  { rawThrowFace: 1, moveDistance: 1, grantsBonusThrow: false },
+  { rawThrowFace: 2, moveDistance: 2, grantsBonusThrow: false },
+  { rawThrowFace: 3, moveDistance: 3, grantsBonusThrow: false },
+  { rawThrowFace: 4, moveDistance: 4, grantsBonusThrow: false }
+];
+var HISTORICAL_THROW_OUTCOMES = [
+  { rawThrowFace: 0, moveDistance: 4, grantsBonusThrow: true },
+  { rawThrowFace: 1, moveDistance: 0, grantsBonusThrow: false },
+  { rawThrowFace: 2, moveDistance: 1, grantsBonusThrow: true },
+  { rawThrowFace: 3, moveDistance: 5, grantsBonusThrow: true }
+];
+var resolveThrowOutcome = (throwProfile, rawThrowFace) => {
+  var _a, _b;
+  const profile = typeof throwProfile === "string" ? throwProfile : (_a = throwProfile.throwProfile) != null ? _a : "standard";
+  const table = profile === "standard" ? STANDARD_THROW_OUTCOMES : HISTORICAL_THROW_OUTCOMES;
+  return (_b = table.find((entry) => entry.rawThrowFace === rawThrowFace)) != null ? _b : {
+    rawThrowFace,
+    moveDistance: rawThrowFace,
+    grantsBonusThrow: false
+  };
+};
+var getThrowOutcomeDistribution = (throwProfile) => throwProfile === "standard" ? [
+  { rawThrowFace: 0, probability: 1 / 16 },
+  { rawThrowFace: 1, probability: 4 / 16 },
+  { rawThrowFace: 2, probability: 6 / 16 },
+  { rawThrowFace: 3, probability: 4 / 16 },
+  { rawThrowFace: 4, probability: 1 / 16 }
+] : [
+  { rawThrowFace: 0, probability: 1 / 8 },
+  { rawThrowFace: 1, probability: 3 / 8 },
+  { rawThrowFace: 2, probability: 3 / 8 },
+  { rawThrowFace: 3, probability: 1 / 8 }
+];
 var isMatchModeId = (value) => typeof value === "string" && value in MATCH_CONFIGS;
 var getMatchConfig = (modeId) => modeId && isMatchModeId(modeId) ? MATCH_CONFIGS[modeId] : DEFAULT_MATCH_CONFIG;
 
@@ -493,7 +728,12 @@ var canCaptureOnWarTile = (matchConfigOrVariant, coord) => {
 };
 var isProtectedFromCapture = (matchConfigOrVariant, coord) => Boolean(coord && isWarZone(coord.row, coord.col) && !canCaptureOnWarTile(matchConfigOrVariant, coord));
 var isContestedWarTile = (matchConfigOrVariant, coord) => canCaptureOnWarTile(matchConfigOrVariant, coord);
-var shouldGrantExtraTurn = (matchConfigOrVariant, options) => options.landedOnRosette || resolveRulesVariant(matchConfigOrVariant) === "capture" && options.didCapture;
+var shouldGrantExtraTurn = (matchConfig, options) => {
+  var _a, _b;
+  const bonusTurnOnRosette = (_a = matchConfig.bonusTurnOnRosette) != null ? _a : true;
+  const bonusTurnOnCapture = (_b = matchConfig.bonusTurnOnCapture) != null ? _b : false;
+  return options.bonusThrow || bonusTurnOnRosette && options.landedOnRosette || bonusTurnOnCapture && options.didCapture;
+};
 
 // logic/engine.ts
 var INITIAL_PIECE_COUNT = DEFAULT_MATCH_CONFIG.pieceCountPerSide;
@@ -519,25 +759,32 @@ var createInitialState = (matchConfig = DEFAULT_MATCH_CONFIG) => ({
   winner: null,
   history: []
 });
-var rollDice = (randomSource = Math.random) => {
+var rollThrowFace = (matchConfig = DEFAULT_MATCH_CONFIG, randomSource = Math.random) => {
+  var _a;
   let sum = 0;
-  for (let i = 0; i < 4; i++) {
+  const throwProfile = (_a = matchConfig.throwProfile) != null ? _a : "standard";
+  const binaryLotCount = throwProfile === "standard" ? 4 : 3;
+  for (let i = 0; i < binaryLotCount; i++) {
     if (randomSource() >= 0.5) sum++;
   }
   return sum;
 };
 var getValidMoves = (state, roll) => {
-  if (roll === 0) return [];
+  var _a;
   const player = state[state.currentTurn];
   const opponent = state[state.currentTurn === "light" ? "dark" : "light"];
   const moves = [];
   const processedPositions = /* @__PURE__ */ new Set();
   const pathLength = getPathLength(state.matchConfig.pathVariant);
+  const moveDistance = resolveThrowOutcome((_a = state.matchConfig.throwProfile) != null ? _a : "standard", roll).moveDistance;
+  if (moveDistance === 0) {
+    return [];
+  }
   for (const piece of player.pieces) {
     if (piece.isFinished) continue;
     if (piece.position === -1 && processedPositions.has(-1)) continue;
     if (piece.position === -1) processedPositions.add(-1);
-    const targetIndex = piece.position + roll;
+    const targetIndex = piece.position + moveDistance;
     if (targetIndex > pathLength) continue;
     if (targetIndex === pathLength) {
       moves.push({ pieceId: piece.id, fromIndex: piece.position, toIndex: targetIndex });
@@ -564,6 +811,7 @@ var getValidMoves = (state, roll) => {
   return moves;
 };
 var applyMove = (state, move) => {
+  var _a, _b;
   const newState = JSON.parse(JSON.stringify(state));
   const player = newState[newState.currentTurn];
   const opponent = newState[newState.currentTurn === "light" ? "dark" : "light"];
@@ -587,7 +835,13 @@ var applyMove = (state, move) => {
       return opCoord.row === targetCoord.row && opCoord.col === targetCoord.col;
     });
     if (opponentPiece && isContestedWarTile(newState.matchConfig, targetCoord)) {
-      opponentPiece.position = -1;
+      if (newState.matchConfig.eliminationMode === "eliminated") {
+        opponentPiece.position = pathLength;
+        opponentPiece.isFinished = true;
+        opponent.finishedCount++;
+      } else {
+        opponentPiece.position = -1;
+      }
       player.capturedCount++;
       didCapture = true;
       newState.history.push(`${player.color} captured ${opponent.color}`);
@@ -601,7 +855,12 @@ var applyMove = (state, move) => {
     }
   }
   newState.history.push(`${player.color} moved to ${move.toIndex}. Rosette: ${isRosetteLanding}`);
-  if (shouldGrantExtraTurn(newState.matchConfig, { didCapture, landedOnRosette: isRosetteLanding })) {
+  const throwOutcome = resolveThrowOutcome((_a = newState.matchConfig.throwProfile) != null ? _a : "standard", (_b = state.rollValue) != null ? _b : 0);
+  if (shouldGrantExtraTurn(newState.matchConfig, {
+    didCapture,
+    landedOnRosette: isRosetteLanding,
+    bonusThrow: throwOutcome.grantsBonusThrow
+  })) {
     newState.phase = "rolling";
     newState.rollValue = null;
   } else {
@@ -622,13 +881,6 @@ var DEFAULT_BOT_DIFFICULTY = "easy";
 var isBotDifficulty = (value) => BOT_DIFFICULTIES.includes(value);
 
 // logic/bot/bot.ts
-var ROLL_OUTCOMES = [
-  { roll: 0, probability: 1 / 16 },
-  { roll: 1, probability: 4 / 16 },
-  { roll: 2, probability: 6 / 16 },
-  { roll: 3, probability: 4 / 16 },
-  { roll: 4, probability: 1 / 16 }
-];
 var EPSILON = 1e-6;
 var otherColor = (color) => color === "light" ? "dark" : "light";
 var clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -668,14 +920,19 @@ var countRosetteOccupancyForState = (state, player) => player.pieces.reduce((cou
   return isRosette(coord.row, coord.col) ? count + 1 : count;
 }, 0);
 var canReachCoordOnNextRoll = (state, attackerColor, row, col) => {
+  var _a;
   const attacker = state[attackerColor];
   const pathLength = getPathLength(state.matchConfig.pathVariant);
+  const throwProfile = (_a = state.matchConfig.throwProfile) != null ? _a : "standard";
+  const reachableDistances = new Set(
+    getThrowOutcomeDistribution(throwProfile).map((outcome) => resolveThrowOutcome(throwProfile, outcome.rawThrowFace).moveDistance).filter((moveDistance) => moveDistance > 0)
+  );
   return attacker.pieces.some((piece) => {
     if (piece.isFinished) {
       return false;
     }
-    for (let roll = 1; roll <= 4; roll += 1) {
-      const targetIndex = piece.position + roll;
+    for (const moveDistance of reachableDistances) {
+      const targetIndex = piece.position + moveDistance;
       if (targetIndex < 0 || targetIndex >= pathLength) {
         continue;
       }
@@ -791,6 +1048,10 @@ var simulateRollState = (state, roll) => {
     history: [...state.history, `${state.currentTurn} rolled ${roll} but had no moves.`]
   }));
 };
+var getRollOutcomes = (state) => {
+  var _a;
+  return getThrowOutcomeDistribution((_a = state.matchConfig.throwProfile) != null ? _a : "standard");
+};
 var evaluateSearch = (state, depth, context) => {
   if (state.winner) {
     return state.winner === context.rootColor ? 1 : 0;
@@ -829,8 +1090,8 @@ var evaluateSearch = (state, depth, context) => {
       }
     }
   } else {
-    value = ROLL_OUTCOMES.reduce((total, outcome) => {
-      const nextState = simulateRollState(state, outcome.roll);
+    value = getRollOutcomes(state).reduce((total, outcome) => {
+      const nextState = simulateRollState(state, outcome.rawThrowFace);
       return total + outcome.probability * evaluateSearch(nextState, depth - 1, context);
     }, 0);
   }
@@ -3540,7 +3801,7 @@ var isCompletedMatchSummary = (value) => {
   const summary = value;
   return typeof summary.matchId === "string" && typeof summary.playerUserId === "string" && isOpponentType(summary.opponentType) && (summary.opponentDifficulty === null || typeof summary.opponentDifficulty === "undefined" || isOpponentDifficulty(summary.opponentDifficulty)) && typeof summary.didWin === "boolean" && typeof summary.totalMoves === "number" && typeof summary.playerMoveCount === "number" && isOptionalNonNegativeNumber(summary.playerTurnCount) && isOptionalNonNegativeNumber(summary.opponentTurnCount) && typeof summary.piecesLost === "number" && typeof summary.maxRollCount === "number" && isOptionalNonNegativeNumber(summary.unusableRollCount) && typeof summary.capturesMade === "number" && typeof summary.capturesSuffered === "number" && (typeof summary.captureTurnNumbers === "undefined" || Array.isArray(summary.captureTurnNumbers) && summary.captureTurnNumbers.every((turn) => typeof turn === "number" && turn >= 0)) && isOptionalNonNegativeNumber(summary.maxCaptureTurnStreak) && isOptionalBoolean(summary.doubleStrikeAchieved) && isOptionalBoolean(summary.relentlessPressureAchieved) && typeof summary.contestedTilesLandedCount === "number" && (typeof summary.opponentStartingAreaExitTurn === "undefined" || summary.opponentStartingAreaExitTurn === null || typeof summary.opponentStartingAreaExitTurn === "number" && summary.opponentStartingAreaExitTurn >= 0) && isOptionalBoolean(summary.lockdownAchieved) && typeof summary.borneOffCount === "number" && typeof summary.opponentBorneOffCount === "number" && typeof summary.wasBehindDuringMatch === "boolean" && typeof summary.behindCheckpointCount === "number" && Array.isArray(summary.behindReasons) && summary.behindReasons.every(
     (reason) => reason === "progress_deficit" || reason === "borne_off_deficit"
-  ) && isOptionalBoolean(summary.opponentReachedBrink) && isOptionalBoolean(summary.momentumShiftAchieved) && (typeof summary.momentumShiftTurnSpan === "undefined" || summary.momentumShiftTurnSpan === null || typeof summary.momentumShiftTurnSpan === "number" && summary.momentumShiftTurnSpan >= 0) && isOptionalNonNegativeNumber(summary.maxActivePiecesOnBoard) && (typeof summary.modeId === "undefined" || summary.modeId === null || isMatchModeId(summary.modeId)) && isOptionalNonNegativeNumber(summary.pieceCountPerSide) && isOptionalBoolean(summary.isPrivateMatch) && isOptionalBoolean(summary.isFriendMatch) && isOptionalBoolean(summary.isTournamentMatch) && isOptionalBoolean(summary.tournamentEliminationRisk) && typeof summary.timestamp === "string";
+  ) && isOptionalBoolean(summary.opponentReachedBrink) && isOptionalBoolean(summary.momentumShiftAchieved) && (typeof summary.momentumShiftTurnSpan === "undefined" || summary.momentumShiftTurnSpan === null || typeof summary.momentumShiftTurnSpan === "number" && summary.momentumShiftTurnSpan >= 0) && isOptionalNonNegativeNumber(summary.maxActivePiecesOnBoard) && (typeof summary.modeId === "undefined" || summary.modeId === null || typeof summary.modeId === "string") && isOptionalNonNegativeNumber(summary.pieceCountPerSide) && isOptionalBoolean(summary.isPrivateMatch) && isOptionalBoolean(summary.isFriendMatch) && isOptionalBoolean(summary.isTournamentMatch) && isOptionalBoolean(summary.tournamentEliminationRisk) && typeof summary.timestamp === "string";
 };
 var isCompletedBotMatchRewardMode = (value) => value === "standard" || value === "base_win_only";
 var isSubmitCompletedBotMatchRpcRequest = (value) => {
@@ -3548,7 +3809,7 @@ var isSubmitCompletedBotMatchRpcRequest = (value) => {
     return false;
   }
   const payload = value;
-  return isCompletedMatchSummary(payload.summary) && (typeof payload.tutorialId === "string" || payload.tutorialId === null || typeof payload.tutorialId === "undefined") && (typeof payload.modeId === "undefined" || payload.modeId === null || isMatchModeId(payload.modeId)) && (typeof payload.rewardMode === "undefined" || isCompletedBotMatchRewardMode(payload.rewardMode));
+  return isCompletedMatchSummary(payload.summary) && (typeof payload.tutorialId === "string" || payload.tutorialId === null || typeof payload.tutorialId === "undefined") && (typeof payload.modeId === "undefined" || payload.modeId === null || typeof payload.modeId === "string") && (typeof payload.rewardMode === "undefined" || isCompletedBotMatchRewardMode(payload.rewardMode));
 };
 var getPieceProgressScore = (position, pathLength) => {
   if (position < 0) {
@@ -6729,9 +6990,11 @@ var rpcGetFullCatalog = (ctx, _logger, nk, _payload) => {
   if (!ctx.userId) {
     throw new Error("Authentication required.");
   }
-  const response = {
-    items: loadCatalogFromStorage(nk)
-  };
+  const items = loadCatalogFromStorage(nk).map((_a2) => {
+    var _b2 = _a2, { uploadedAsset: _a, uploadedAsset2: _b } = _b2, rest = __objRest(_b2, ["uploadedAsset", "uploadedAsset2"]);
+    return rest;
+  });
+  const response = { items };
   return JSON.stringify(response);
 };
 var rpcPurchaseItem = (ctx, logger, nk, payload) => {
@@ -6824,6 +7087,701 @@ var rpcAdminRemoveLimitedTimeEvent = (ctx, logger, nk, payload) => {
 var rpcAdminGetStoreStats = (ctx, logger, nk, _payload) => {
   requireAdminRole(ctx, nk, "viewer");
   return JSON.stringify(buildStoreStats(nk, logger));
+};
+
+// shared/gameModes.ts
+var GAME_MODE_PRESET_OPTIONS = [
+  {
+    id: "finkel_rules",
+    label: "Finkel",
+    description: "Seven pieces on the classic protected-rosette route.",
+    baseRulesetPreset: "finkel_rules",
+    pieceCountPerSide: 7,
+    rulesVariant: "standard",
+    rosetteSafetyMode: "standard",
+    exitStyle: "standard",
+    eliminationMode: "return_to_start",
+    fogOfWar: false,
+    boardAssetKey: "board_design",
+    pathVariant: "default",
+    throwProfile: "standard",
+    bonusTurnOnRosette: true,
+    bonusTurnOnCapture: false
+  },
+  {
+    id: "hjr_murray",
+    label: "HJR Murray",
+    description: "Seven pieces on the longer looped reconstruction.",
+    baseRulesetPreset: "hjr_murray",
+    pieceCountPerSide: 7,
+    rulesVariant: "standard",
+    rosetteSafetyMode: "standard",
+    exitStyle: "standard",
+    eliminationMode: "return_to_start",
+    fogOfWar: false,
+    boardAssetKey: "board_design",
+    pathVariant: "murray",
+    throwProfile: "standard",
+    bonusTurnOnRosette: true,
+    bonusTurnOnCapture: false
+  },
+  {
+    id: "rc_bell",
+    label: "RC Bell",
+    description: "Seven pieces with Bell throws and rosette fines.",
+    baseRulesetPreset: "rc_bell",
+    pieceCountPerSide: 7,
+    rulesVariant: "standard",
+    rosetteSafetyMode: "open",
+    exitStyle: "standard",
+    eliminationMode: "return_to_start",
+    fogOfWar: false,
+    boardAssetKey: "board_design",
+    pathVariant: "default",
+    throwProfile: "bell",
+    bonusTurnOnRosette: false,
+    bonusTurnOnCapture: false
+  },
+  {
+    id: "masters",
+    label: "Masters",
+    description: "Seven pieces on the compromise looped route.",
+    baseRulesetPreset: "masters",
+    pieceCountPerSide: 7,
+    rulesVariant: "standard",
+    rosetteSafetyMode: "standard",
+    exitStyle: "standard",
+    eliminationMode: "return_to_start",
+    fogOfWar: false,
+    boardAssetKey: "board_design",
+    pathVariant: "masters",
+    throwProfile: "masters",
+    bonusTurnOnRosette: true,
+    bonusTurnOnCapture: false
+  },
+  {
+    id: "skiryuk",
+    label: "Skiryuk",
+    description: "Seven pieces on the alternate middle-left exit route.",
+    baseRulesetPreset: "skiryuk",
+    pieceCountPerSide: 7,
+    rulesVariant: "standard",
+    rosetteSafetyMode: "standard",
+    exitStyle: "standard",
+    eliminationMode: "return_to_start",
+    fogOfWar: false,
+    boardAssetKey: "board_design",
+    pathVariant: "skiryuk",
+    throwProfile: "standard",
+    bonusTurnOnRosette: true,
+    bonusTurnOnCapture: false
+  },
+  {
+    id: "custom",
+    label: "Custom",
+    description: "A blank slate for operator-built mode variants.",
+    baseRulesetPreset: "custom",
+    pieceCountPerSide: 7,
+    rulesVariant: "standard",
+    rosetteSafetyMode: "standard",
+    exitStyle: "standard",
+    eliminationMode: "return_to_start",
+    fogOfWar: false,
+    boardAssetKey: "board_design",
+    pathVariant: "default",
+    throwProfile: "standard",
+    bonusTurnOnRosette: true,
+    bonusTurnOnCapture: false
+  }
+];
+var GAME_MODE_PRESET_BY_ID = Object.fromEntries(
+  GAME_MODE_PRESET_OPTIONS.map((option) => [option.id, option])
+);
+var LEGACY_GAME_MODE_PRESET_IDS = [
+  "quick_play",
+  "race",
+  "capture"
+];
+var LEGACY_GAME_MODE_PRESET_IDS_SET = new Set(LEGACY_GAME_MODE_PRESET_IDS);
+var normalizeGameModeBaseRulesetPreset = (preset) => {
+  if (preset && preset in GAME_MODE_PRESET_BY_ID) {
+    return preset;
+  }
+  return "custom";
+};
+var isLegacyGameModeBaseRulesetPreset = (preset) => Boolean(preset && LEGACY_GAME_MODE_PRESET_IDS_SET.has(preset));
+var getGameModePresetDefaults = (preset) => {
+  var _a;
+  const normalizedPreset = normalizeGameModeBaseRulesetPreset(preset);
+  const option = (_a = GAME_MODE_PRESET_BY_ID[normalizedPreset]) != null ? _a : GAME_MODE_PRESET_BY_ID.custom;
+  return {
+    baseRulesetPreset: option.baseRulesetPreset,
+    pieceCountPerSide: option.pieceCountPerSide,
+    rulesVariant: option.rulesVariant,
+    rosetteSafetyMode: option.rosetteSafetyMode,
+    exitStyle: option.exitStyle,
+    eliminationMode: option.eliminationMode,
+    fogOfWar: option.fogOfWar,
+    boardAssetKey: option.boardAssetKey,
+    pathVariant: option.pathVariant,
+    throwProfile: option.throwProfile,
+    bonusTurnOnRosette: option.bonusTurnOnRosette,
+    bonusTurnOnCapture: option.bonusTurnOnCapture
+  };
+};
+var resolveGameModeBaseRulesetLabel = (preset) => {
+  var _a, _b;
+  return (_b = (_a = GAME_MODE_PRESET_BY_ID[preset]) == null ? void 0 : _a.label) != null ? _b : "Custom";
+};
+var resolveGameModeBoardLabel = (boardAssetKey) => boardAssetKey === "board_single_exit" ? "Single Exit Board" : "Board Design";
+var resolveGameModeRulesLabel = (rulesVariant) => {
+  switch (rulesVariant) {
+    case "capture":
+      return "Capture rules";
+    case "no-capture":
+      return "No-capture rules";
+    default:
+      return "Standard rules";
+  }
+};
+var resolveGameModeSummary = (mode) => {
+  const parts = [
+    resolveGameModeBaseRulesetLabel(mode.baseRulesetPreset),
+    `${mode.pieceCountPerSide} pieces`,
+    resolveGameModeRulesLabel(mode.rulesVariant),
+    mode.rosetteSafetyMode === "open" ? "open rosettes" : "protected rosettes",
+    mode.eliminationMode === "eliminated" ? "elimination mode" : "return to start",
+    mode.exitStyle === "single_exit" ? "single-exit board" : "standard exit",
+    mode.fogOfWar ? "fog on" : "fog off",
+    resolveGameModeBoardLabel(mode.boardAssetKey)
+  ];
+  return parts.join(" \xB7 ");
+};
+var toGameModeDefinition = (mode) => ({
+  id: mode.id,
+  name: mode.name,
+  description: mode.description,
+  baseRulesetPreset: mode.baseRulesetPreset,
+  pieceCountPerSide: mode.pieceCountPerSide,
+  rulesVariant: mode.rulesVariant,
+  rosetteSafetyMode: mode.rosetteSafetyMode,
+  exitStyle: mode.exitStyle,
+  eliminationMode: mode.eliminationMode,
+  fogOfWar: mode.fogOfWar,
+  boardAssetKey: mode.boardAssetKey
+});
+var buildGameModeMatchConfig = (mode, options = {}) => {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
+  return {
+    modeId: mode.id,
+    displayName: (_a = options.displayName) != null ? _a : mode.name,
+    baseRulesetPreset: mode.baseRulesetPreset,
+    pieceCountPerSide: mode.pieceCountPerSide,
+    rulesVariant: mode.rulesVariant,
+    rosetteSafetyMode: mode.rosetteSafetyMode,
+    exitStyle: mode.exitStyle,
+    eliminationMode: mode.eliminationMode,
+    fogOfWar: mode.fogOfWar,
+    boardAssetKey: mode.boardAssetKey,
+    allowsXp: (_b = options.allowsXp) != null ? _b : false,
+    allowsChallenges: (_c = options.allowsChallenges) != null ? _c : false,
+    allowsOnline: (_d = options.allowsOnline) != null ? _d : false,
+    allowsRankedStats: (_e = options.allowsRankedStats) != null ? _e : false,
+    allowsCoins: (_f = options.allowsCoins) != null ? _f : false,
+    isPracticeMode: (_g = options.isPracticeMode) != null ? _g : true,
+    offlineWinRewardSource: (_h = options.offlineWinRewardSource) != null ? _h : "practice_finkel_rules_win",
+    opponentType: (_i = options.opponentType) != null ? _i : "bot",
+    pathVariant: (_j = options.pathVariant) != null ? _j : getGameModePresetDefaults(mode.baseRulesetPreset).pathVariant,
+    throwProfile: (_k = options.throwProfile) != null ? _k : getGameModePresetDefaults(mode.baseRulesetPreset).throwProfile,
+    bonusTurnOnRosette: (_l = options.bonusTurnOnRosette) != null ? _l : getGameModePresetDefaults(mode.baseRulesetPreset).bonusTurnOnRosette,
+    bonusTurnOnCapture: (_m = options.bonusTurnOnCapture) != null ? _m : getGameModePresetDefaults(mode.baseRulesetPreset).bonusTurnOnCapture,
+    selectionSubtitle: resolveGameModeSummary(mode),
+    rulesIntro: null
+  };
+};
+var isGameModeDefinition = (value) => {
+  const record = typeof value === "object" && value !== null ? value : null;
+  const pieceCountPerSide = record == null ? void 0 : record.pieceCountPerSide;
+  return Boolean(
+    record && typeof record.id === "string" && typeof record.name === "string" && typeof record.description === "string" && typeof record.baseRulesetPreset === "string" && typeof pieceCountPerSide === "number" && Number.isInteger(pieceCountPerSide) && pieceCountPerSide > 0 && typeof record.rulesVariant === "string" && typeof record.rosetteSafetyMode === "string" && typeof record.exitStyle === "string" && typeof record.eliminationMode === "string" && typeof record.fogOfWar === "boolean" && typeof record.boardAssetKey === "string"
+  );
+};
+
+// backend/modules/gameModes.ts
+var GAME_MODE_COLLECTION = "game_modes";
+var GAME_MODE_KEY = "catalog";
+var RPC_GET_GAME_MODES = "get_game_modes";
+var RPC_ADMIN_LIST_GAME_MODES = "admin_list_game_modes";
+var RPC_ADMIN_GET_GAME_MODE = "admin_get_game_mode";
+var RPC_ADMIN_UPSERT_GAME_MODE = "admin_upsert_game_mode";
+var RPC_ADMIN_DISABLE_GAME_MODE = "admin_disable_game_mode";
+var RPC_ADMIN_ENABLE_GAME_MODE = "admin_enable_game_mode";
+var RPC_ADMIN_DELETE_GAME_MODE = "admin_delete_game_mode";
+var RPC_ADMIN_FEATURE_GAME_MODE = "admin_feature_game_mode";
+var RPC_ADMIN_UNFEATURE_GAME_MODE = "admin_unfeature_game_mode";
+var VALID_BOARD_ASSET_KEYS = ["board_design", "board_single_exit"];
+var isVersionConflict3 = (error) => {
+  const message = getErrorMessage2(error).toLowerCase();
+  return message.includes("version check") || message.includes("version conflict") || message.includes("version mismatch") || message.includes("storage write rejected");
+};
+var parseJsonPayload4 = (payload) => {
+  let parsed;
+  try {
+    parsed = payload ? JSON.parse(payload) : {};
+  } catch (e) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  const record = asRecord2(parsed);
+  if (!record) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  return record;
+};
+var readStringField11 = (value, keys) => {
+  const record = asRecord2(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "string" && field.trim().length > 0) {
+      return field.trim();
+    }
+  }
+  return null;
+};
+var readBooleanField5 = (value, keys) => {
+  const record = asRecord2(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "boolean") {
+      return field;
+    }
+  }
+  return null;
+};
+var readNumberField7 = (value, keys) => {
+  const record = asRecord2(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "number" && Number.isFinite(field)) {
+      return field;
+    }
+  }
+  return null;
+};
+var isValidBoardAssetKey = (value) => VALID_BOARD_ASSET_KEYS.includes(value);
+var normalizeAdminGameMode = (value) => {
+  const record = asRecord2(value);
+  if (!record) {
+    return null;
+  }
+  const id = readStringField11(record, ["id"]);
+  const name = readStringField11(record, ["name"]);
+  const description = readStringField11(record, ["description"]);
+  const baseRulesetPreset = readStringField11(record, ["baseRulesetPreset", "base_ruleset_preset"]);
+  const pieceCountPerSide = readNumberField7(record, ["pieceCountPerSide", "piece_count_per_side"]);
+  const rulesVariant = readStringField11(record, ["rulesVariant", "rules_variant"]);
+  const rosetteSafetyMode = readStringField11(record, ["rosetteSafetyMode", "rosette_safety_mode"]);
+  const exitStyle = readStringField11(record, ["exitStyle", "exit_style"]);
+  const eliminationMode = readStringField11(record, ["eliminationMode", "elimination_mode"]);
+  const fogOfWar = readBooleanField5(record, ["fogOfWar", "fog_of_war"]);
+  const boardAssetKey = readStringField11(record, ["boardAssetKey", "board_asset_key"]);
+  const isActive = readBooleanField5(record, ["isActive", "is_active"]);
+  const featured = readBooleanField5(record, ["featured"]);
+  const createdAt = readStringField11(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField11(record, ["updatedAt", "updated_at"]);
+  if (!id || !name || !description || !baseRulesetPreset || !isLegacyGameModeBaseRulesetPreset(baseRulesetPreset) && !(baseRulesetPreset in GAME_MODE_PRESET_BY_ID) || typeof pieceCountPerSide !== "number" || !Number.isInteger(pieceCountPerSide) || pieceCountPerSide <= 0 || !rulesVariant || !rosetteSafetyMode || !exitStyle || !eliminationMode || typeof fogOfWar !== "boolean" || !boardAssetKey || !isValidBoardAssetKey(boardAssetKey) || typeof isActive !== "boolean" || typeof featured !== "boolean" || !createdAt || !updatedAt || isMatchModeId(id)) {
+    return null;
+  }
+  const mode = {
+    id,
+    name,
+    description,
+    baseRulesetPreset: normalizeGameModeBaseRulesetPreset(baseRulesetPreset),
+    pieceCountPerSide,
+    rulesVariant,
+    rosetteSafetyMode,
+    exitStyle,
+    eliminationMode,
+    fogOfWar,
+    boardAssetKey,
+    isActive,
+    featured,
+    createdAt,
+    updatedAt
+  };
+  return isGameModeDefinition(toGameModeDefinition(mode)) ? mode : null;
+};
+var normalizeCatalogRecord = (value) => {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+  const record = asRecord2(value);
+  const rawModes = Array.isArray(record == null ? void 0 : record.modes) ? record.modes : Array.isArray(record == null ? void 0 : record.items) ? record.items : [];
+  const modesById = /* @__PURE__ */ new Map();
+  rawModes.forEach((item) => {
+    const mode = normalizeAdminGameMode(item);
+    if (mode) {
+      modesById.set(mode.id, mode);
+    }
+  });
+  if (!record && modesById.size === 0) {
+    return null;
+  }
+  const featuredModeId = readStringField11(record, ["featuredModeId", "featured_mode_id"]);
+  const fallbackFeaturedModeId = (_h = (_g = (_e = (_c = (_a = Array.from(modesById.values()).find((mode) => mode.featured && mode.isActive)) == null ? void 0 : _a.id) != null ? _c : (_b = Array.from(modesById.values()).find((mode) => mode.featured)) == null ? void 0 : _b.id) != null ? _e : (_d = Array.from(modesById.values()).find((mode) => mode.isActive)) == null ? void 0 : _d.id) != null ? _g : (_f = Array.from(modesById.values())[0]) == null ? void 0 : _f.id) != null ? _h : null;
+  const resolvedFeaturedModeId = featuredModeId && modesById.has(featuredModeId) ? featuredModeId : fallbackFeaturedModeId;
+  const modes = Array.from(modesById.values()).map((mode) => __spreadProps(__spreadValues({}, mode), {
+    featured: mode.id === resolvedFeaturedModeId
+  }));
+  return {
+    modes,
+    featuredModeId: resolvedFeaturedModeId,
+    updatedAt: (_i = readStringField11(record, ["updatedAt", "updated_at"])) != null ? _i : (/* @__PURE__ */ new Date()).toISOString()
+  };
+};
+var ensureFeaturedMode = (catalog) => {
+  var _a, _b;
+  if (catalog.modes.length === 0) {
+    return __spreadProps(__spreadValues({}, catalog), {
+      featuredModeId: null,
+      modes: []
+    });
+  }
+  const featuredModeId = catalog.featuredModeId && catalog.modes.some((mode) => mode.id === catalog.featuredModeId) ? catalog.featuredModeId : (_b = (_a = catalog.modes.find((mode) => mode.isActive)) == null ? void 0 : _a.id) != null ? _b : catalog.modes[0].id;
+  return __spreadProps(__spreadValues({}, catalog), {
+    featuredModeId,
+    modes: catalog.modes.map((mode) => __spreadProps(__spreadValues({}, mode), {
+      featured: mode.id === featuredModeId
+    }))
+  });
+};
+var readCatalogObject = (nk) => {
+  const objects = nk.storageRead([
+    {
+      collection: GAME_MODE_COLLECTION,
+      key: GAME_MODE_KEY,
+      userId: GLOBAL_STORAGE_USER_ID
+    }
+  ]);
+  const object = findStorageObject(objects, GAME_MODE_COLLECTION, GAME_MODE_KEY, GLOBAL_STORAGE_USER_ID);
+  return {
+    object,
+    catalog: normalizeCatalogRecord(getStorageObjectValue(object))
+  };
+};
+var writeCatalog = (nk, catalog, version) => {
+  nk.storageWrite([
+    maybeSetStorageVersion(
+      {
+        collection: GAME_MODE_COLLECTION,
+        key: GAME_MODE_KEY,
+        userId: GLOBAL_STORAGE_USER_ID,
+        value: ensureFeaturedMode(catalog),
+        permissionRead: STORAGE_PERMISSION_NONE2,
+        permissionWrite: STORAGE_PERMISSION_NONE2
+      },
+      version
+    )
+  ]);
+};
+var updateCatalogWithRetry = (nk, logger, update) => {
+  var _a;
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const { object, catalog } = readCatalogObject(nk);
+    const currentCatalog = catalog != null ? catalog : {
+      modes: [],
+      featuredModeId: null,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    const nextCatalog = ensureFeaturedMode(
+      update(__spreadProps(__spreadValues({}, currentCatalog), {
+        modes: currentCatalog.modes.map((mode) => __spreadValues({}, mode))
+      }))
+    );
+    try {
+      writeCatalog(nk, nextCatalog, object ? (_a = getStorageObjectVersion(object)) != null ? _a : "" : "*");
+      return nextCatalog;
+    } catch (error) {
+      if (!isVersionConflict3(error) || attempt === MAX_WRITE_ATTEMPTS) {
+        logger.error("Failed to write game mode catalog: %s", getErrorMessage2(error));
+        throw error;
+      }
+    }
+  }
+  throw new Error("GAME_MODE_CATALOG_WRITE_FAILED");
+};
+var updateModeWithRetry = (nk, logger, modeId, update) => {
+  var _a;
+  let result = null;
+  const catalog = updateCatalogWithRetry(nk, logger, (currentCatalog) => {
+    var _a2, _b;
+    const currentMode = (_a2 = currentCatalog.modes.find((mode) => mode.id === modeId)) != null ? _a2 : null;
+    const nextCatalog = update(currentMode, currentCatalog);
+    result = {
+      catalog: nextCatalog,
+      mode: (_b = nextCatalog.modes.find((mode) => mode.id === modeId)) != null ? _b : null
+    };
+    return nextCatalog;
+  });
+  return result != null ? result : {
+    catalog,
+    mode: (_a = catalog.modes.find((mode) => mode.id === modeId)) != null ? _a : null
+  };
+};
+var normalizeDraft = (value) => {
+  var _a;
+  const record = asRecord2(value);
+  if (!record) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  const source = (_a = asRecord2(record.mode)) != null ? _a : record;
+  const id = readStringField11(source, ["id"]);
+  const name = readStringField11(source, ["name"]);
+  const description = readStringField11(source, ["description"]);
+  const baseRulesetPreset = readStringField11(source, ["baseRulesetPreset", "base_ruleset_preset"]);
+  const pieceCountPerSide = readNumberField7(source, ["pieceCountPerSide", "piece_count_per_side"]);
+  const rulesVariant = readStringField11(source, ["rulesVariant", "rules_variant"]);
+  const rosetteSafetyMode = readStringField11(source, ["rosetteSafetyMode", "rosette_safety_mode"]);
+  const exitStyle = readStringField11(source, ["exitStyle", "exit_style"]);
+  const eliminationMode = readStringField11(source, ["eliminationMode", "elimination_mode"]);
+  const fogOfWar = readBooleanField5(source, ["fogOfWar", "fog_of_war"]);
+  const boardAssetKey = readStringField11(source, ["boardAssetKey", "board_asset_key"]);
+  const isActive = readBooleanField5(source, ["isActive", "is_active"]);
+  if (!id || !name || !description || !baseRulesetPreset || !isLegacyGameModeBaseRulesetPreset(baseRulesetPreset) && !(baseRulesetPreset in GAME_MODE_PRESET_BY_ID) || typeof pieceCountPerSide !== "number" || !Number.isInteger(pieceCountPerSide) || pieceCountPerSide <= 0 || !rulesVariant || !rosetteSafetyMode || !exitStyle || !eliminationMode || typeof fogOfWar !== "boolean" || !boardAssetKey || !isValidBoardAssetKey(boardAssetKey) || typeof isActive !== "boolean" || isMatchModeId(id)) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  return {
+    id,
+    name,
+    description,
+    baseRulesetPreset: normalizeGameModeBaseRulesetPreset(baseRulesetPreset),
+    pieceCountPerSide,
+    rulesVariant,
+    rosetteSafetyMode,
+    exitStyle,
+    eliminationMode,
+    fogOfWar,
+    boardAssetKey,
+    isActive
+  };
+};
+var parseModeIdRequest = (payload) => {
+  const record = parseJsonPayload4(payload);
+  const modeId = readStringField11(record, ["modeId", "mode_id", "id"]);
+  if (!modeId) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  return { modeId };
+};
+var buildGameModeResponse = (mode) => ({
+  success: true,
+  mode
+});
+var buildToggleResponse = (modeId) => ({
+  success: true,
+  modeId
+});
+var buildDeleteResponse = (modeId) => ({
+  success: true,
+  modeId
+});
+var buildFeatureResponse = (featuredModeId) => ({
+  success: true,
+  featuredModeId
+});
+var requireAdminRole2 = (ctx, nk, role = "viewer") => assertAdmin(ctx, role, nk);
+var loadGameModeCatalog = (nk) => {
+  const { catalog } = readCatalogObject(nk);
+  return ensureFeaturedMode(
+    catalog != null ? catalog : {
+      modes: [],
+      featuredModeId: null,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    }
+  );
+};
+var listGameModes = (nk) => {
+  const catalog = loadGameModeCatalog(nk);
+  return {
+    featuredModeId: catalog.featuredModeId,
+    modes: catalog.modes
+  };
+};
+var getPublicGameModes = (nk) => {
+  var _a;
+  const catalog = loadGameModeCatalog(nk);
+  const activeModes = catalog.modes.filter((mode) => mode.isActive).map(toGameModeDefinition);
+  const featuredMode = (_a = catalog.modes.find((mode) => mode.id === catalog.featuredModeId)) != null ? _a : null;
+  return {
+    featuredMode: featuredMode ? toGameModeDefinition(featuredMode) : null,
+    activeModes
+  };
+};
+var getGameModeById = (nk, modeId) => {
+  var _a;
+  return (_a = loadGameModeCatalog(nk).modes.find((mode) => mode.id === modeId)) != null ? _a : null;
+};
+var rpcGetGameModes = (ctx, _logger, nk, _payload) => {
+  if (!ctx.userId) {
+    throw new Error("Authentication required.");
+  }
+  return JSON.stringify(getPublicGameModes(nk));
+};
+var rpcAdminListGameModes = (ctx, _logger, nk, _payload) => {
+  requireAdminRole2(ctx, nk, "viewer");
+  return JSON.stringify(listGameModes(nk));
+};
+var rpcAdminGetGameMode = (ctx, _logger, nk, payload) => {
+  requireAdminRole2(ctx, nk, "viewer");
+  const { modeId } = parseModeIdRequest(payload);
+  const mode = getGameModeById(nk, modeId);
+  if (!mode) {
+    throw new Error("MODE_NOT_FOUND");
+  }
+  return JSON.stringify(buildGameModeResponse(mode));
+};
+var rpcAdminUpsertGameMode = (ctx, logger, nk, payload) => {
+  var _a;
+  requireAdminRole2(ctx, nk, "operator");
+  const record = parseJsonPayload4(payload);
+  const mode = normalizeDraft((_a = record.mode) != null ? _a : record);
+  const result = updateModeWithRetry(nk, logger, mode.id, (currentMode, catalog) => {
+    var _a2;
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const nextMode = __spreadProps(__spreadValues(__spreadValues({}, currentMode != null ? currentMode : __spreadProps(__spreadValues({}, mode), {
+      featured: false,
+      createdAt: now
+    })), mode), {
+      featured: catalog.featuredModeId === mode.id || (currentMode == null ? void 0 : currentMode.featured) === true,
+      createdAt: (_a2 = currentMode == null ? void 0 : currentMode.createdAt) != null ? _a2 : now,
+      updatedAt: now
+    });
+    const modes = currentMode ? catalog.modes.map((item) => item.id === mode.id ? nextMode : item) : [...catalog.modes, nextMode];
+    return __spreadProps(__spreadValues({}, catalog), {
+      modes,
+      updatedAt: now
+    });
+  });
+  if (!result.mode) {
+    throw new Error("GAME_MODE_WRITE_FAILED");
+  }
+  return JSON.stringify(buildGameModeResponse(result.mode));
+};
+var rpcAdminDisableGameMode = (ctx, logger, nk, payload) => {
+  requireAdminRole2(ctx, nk, "operator");
+  const { modeId } = parseModeIdRequest(payload);
+  const result = updateModeWithRetry(nk, logger, modeId, (currentMode, catalog) => {
+    if (!currentMode) {
+      throw new Error("MODE_NOT_FOUND");
+    }
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const nextMode = __spreadProps(__spreadValues({}, currentMode), {
+      isActive: false,
+      featured: catalog.featuredModeId === currentMode.id,
+      updatedAt: now
+    });
+    return __spreadProps(__spreadValues({}, catalog), {
+      modes: catalog.modes.map((mode) => mode.id === currentMode.id ? nextMode : mode),
+      updatedAt: now
+    });
+  });
+  if (!result.mode) {
+    throw new Error("MODE_NOT_FOUND");
+  }
+  return JSON.stringify(buildToggleResponse(modeId));
+};
+var rpcAdminEnableGameMode = (ctx, logger, nk, payload) => {
+  requireAdminRole2(ctx, nk, "operator");
+  const { modeId } = parseModeIdRequest(payload);
+  const result = updateModeWithRetry(nk, logger, modeId, (currentMode, catalog) => {
+    if (!currentMode) {
+      throw new Error("MODE_NOT_FOUND");
+    }
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const nextMode = __spreadProps(__spreadValues({}, currentMode), {
+      isActive: true,
+      featured: catalog.featuredModeId === currentMode.id,
+      updatedAt: now
+    });
+    return __spreadProps(__spreadValues({}, catalog), {
+      modes: catalog.modes.map((mode) => mode.id === currentMode.id ? nextMode : mode),
+      updatedAt: now
+    });
+  });
+  if (!result.mode) {
+    throw new Error("MODE_NOT_FOUND");
+  }
+  return JSON.stringify(buildToggleResponse(modeId));
+};
+var rpcAdminDeleteGameMode = (ctx, logger, nk, payload) => {
+  requireAdminRole2(ctx, nk, "operator");
+  const { modeId } = parseModeIdRequest(payload);
+  updateCatalogWithRetry(nk, logger, (catalog) => {
+    const currentMode = catalog.modes.find((mode) => mode.id === modeId);
+    if (!currentMode) {
+      throw new Error("MODE_NOT_FOUND");
+    }
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    return __spreadProps(__spreadValues({}, catalog), {
+      modes: catalog.modes.filter((mode) => mode.id !== modeId),
+      updatedAt: now
+    });
+  });
+  return JSON.stringify(buildDeleteResponse(modeId));
+};
+var rpcAdminFeatureGameMode = (ctx, logger, nk, payload) => {
+  requireAdminRole2(ctx, nk, "operator");
+  const { modeId } = parseModeIdRequest(payload);
+  const result = updateModeWithRetry(nk, logger, modeId, (currentMode, catalog) => {
+    if (!currentMode) {
+      throw new Error("MODE_NOT_FOUND");
+    }
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const modes = catalog.modes.map((mode) => __spreadProps(__spreadValues({}, mode), {
+      featured: mode.id === modeId,
+      updatedAt: mode.id === modeId ? now : mode.updatedAt
+    }));
+    return __spreadProps(__spreadValues({}, catalog), {
+      featuredModeId: modeId,
+      modes,
+      updatedAt: now
+    });
+  });
+  if (!result.mode) {
+    throw new Error("MODE_NOT_FOUND");
+  }
+  return JSON.stringify(buildFeatureResponse(modeId));
+};
+var rpcAdminUnfeatureGameMode = (ctx, logger, nk, payload) => {
+  requireAdminRole2(ctx, nk, "operator");
+  const { modeId } = parseModeIdRequest(payload);
+  const result = updateModeWithRetry(nk, logger, modeId, (currentMode, catalog) => {
+    var _a, _b;
+    if (!currentMode) {
+      throw new Error("MODE_NOT_FOUND");
+    }
+    const fallbackMode = (_b = (_a = catalog.modes.find((mode) => mode.id !== modeId && mode.isActive)) != null ? _a : catalog.modes.find((mode) => mode.id !== modeId)) != null ? _b : currentMode;
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const modes = catalog.modes.map((mode) => __spreadProps(__spreadValues({}, mode), {
+      featured: mode.id === fallbackMode.id,
+      updatedAt: mode.id === fallbackMode.id ? now : mode.updatedAt
+    }));
+    return __spreadProps(__spreadValues({}, catalog), {
+      featuredModeId: fallbackMode.id,
+      modes,
+      updatedAt: now
+    });
+  });
+  if (!result.mode) {
+    throw new Error("MODE_NOT_FOUND");
+  }
+  return JSON.stringify(buildFeatureResponse(result.catalog.featuredModeId));
 };
 
 // shared/urMatchProtocol.ts
@@ -7512,7 +8470,7 @@ var formatTournamentEntryFee = (value) => {
 // shared/tournamentBots.ts
 var TOURNAMENT_BOT_USER_ID_PREFIX = "tournament-bot:";
 var asRecord7 = (value) => typeof value === "object" && value !== null ? value : null;
-var readBooleanField5 = (value, keys) => {
+var readBooleanField6 = (value, keys) => {
   const record = asRecord7(value);
   if (!record) {
     return null;
@@ -7524,7 +8482,7 @@ var readBooleanField5 = (value, keys) => {
   }
   return null;
 };
-var readStringField11 = (value, keys) => {
+var readStringField12 = (value, keys) => {
   const record = asRecord7(value);
   if (!record) {
     return null;
@@ -7551,8 +8509,8 @@ var formatBotDifficultyLabel = (difficulty) => `${difficulty.slice(0, 1).toUpper
 var buildTournamentBotDisplayName = (difficulty, ordinal) => `${formatBotDifficultyLabel(difficulty)} Bot ${Math.max(1, Math.floor(ordinal))}`;
 var normalizeTournamentBotPolicy = (metadata) => {
   var _a;
-  const autoAdd = (_a = readBooleanField5(metadata, ["autoAddBots", "auto_add_bots"])) != null ? _a : false;
-  const requestedDifficulty = readStringField11(metadata, ["botDifficulty", "bot_difficulty"]);
+  const autoAdd = (_a = readBooleanField6(metadata, ["autoAddBots", "auto_add_bots"])) != null ? _a : false;
+  const requestedDifficulty = readStringField12(metadata, ["botDifficulty", "bot_difficulty"]);
   const difficulty = requestedDifficulty && isBotDifficulty(requestedDifficulty) ? requestedDifficulty : null;
   if (!autoAdd) {
     return {
@@ -7636,7 +8594,7 @@ var MAX_RUN_LIST_LIMIT = 100;
 var SYSTEM_USER_ID4 = "00000000-0000-0000-0000-000000000000";
 var TOURNAMENT_RUN_MEMBERSHIPS_COLLECTION = "tournament_run_memberships";
 var TOURNAMENT_MATCH_RESULTS_COLLECTION = "tournament_match_results";
-var readBooleanField6 = (value, keys) => {
+var readBooleanField7 = (value, keys) => {
   const record = asRecord2(value);
   if (!record) {
     return null;
@@ -7759,7 +8717,7 @@ var normalizeRunRecord = (value, fallbackId) => {
     title,
     description: (_d = readStringField9(record, ["description"])) != null ? _d : "",
     category: clampInteger(readNumberField6(record, ["category"]), DEFAULT_CATEGORY, 0, 127),
-    authoritative: (_e = readBooleanField6(record, ["authoritative"])) != null ? _e : true,
+    authoritative: (_e = readBooleanField7(record, ["authoritative"])) != null ? _e : true,
     sortOrder: normalizeSortOrder((_f = readStringField9(record, ["sortOrder", "sort_order"])) != null ? _f : DEFAULT_SORT_ORDER),
     operator: normalizeOperator((_g = readStringField9(record, ["operator"])) != null ? _g : DEFAULT_OPERATOR),
     resetSchedule: (_h = readStringField9(record, ["resetSchedule", "reset_schedule"])) != null ? _h : "",
@@ -7774,8 +8732,8 @@ var normalizeRunRecord = (value, fallbackId) => {
       1,
       1e6
     ),
-    joinRequired: (_i = readBooleanField6(record, ["joinRequired", "join_required"])) != null ? _i : true,
-    enableRanks: (_j = readBooleanField6(record, ["enableRanks", "enable_ranks"])) != null ? _j : true,
+    joinRequired: (_i = readBooleanField7(record, ["joinRequired", "join_required"])) != null ? _i : true,
+    enableRanks: (_j = readBooleanField7(record, ["enableRanks", "enable_ranks"])) != null ? _j : true,
     lifecycle: normalizeRunLifecycle((_k = readStringField9(record, ["lifecycle"])) != null ? _k : "draft"),
     createdAt,
     updatedAt,
@@ -7980,7 +8938,7 @@ var buildRunBotSummary = (run) => buildTournamentBotSummary(run.metadata, getRun
 var buildRunResponseMetadata = (value) => {
   var _a, _b;
   const baseMetadata = readMetadataField(value, ["metadata"]);
-  const explicitAutoAddBots = readBooleanField6(value, ["autoAddBots", "auto_add_bots"]);
+  const explicitAutoAddBots = readBooleanField7(value, ["autoAddBots", "auto_add_bots"]);
   const explicitBotDifficulty = readStringField9(value, ["botDifficulty", "bot_difficulty"]);
   const explicitEntryFee = (_a = readStringField9(value, ["entryFee", "entry_fee", "buyIn", "buy_in"])) != null ? _a : readStringField9(baseMetadata, ["entryFee", "entry_fee", "buyIn", "buy_in"]);
   const normalizedEntryFee = formatTournamentEntryFee(explicitEntryFee);
@@ -8198,7 +9156,7 @@ var normalizeStoredTournamentMatchSummary = (value, options) => {
   var _a;
   const record = asRecord2(value);
   const requireCounted = (options == null ? void 0 : options.requireCounted) !== false;
-  if (!record || requireCounted && readBooleanField6(record, ["counted"]) !== true) {
+  if (!record || requireCounted && readBooleanField7(record, ["counted"]) !== true) {
     return null;
   }
   const summary = asRecord2(record.summary);
@@ -8217,7 +9175,7 @@ var normalizeStoredTournamentMatchSummary = (value, options) => {
     return {
       userId,
       username: readStringField9(player, ["username"]),
-      didWin: readBooleanField6(player, ["didWin"]) === true,
+      didWin: readBooleanField7(player, ["didWin"]) === true,
       score: Math.max(0, Math.floor((_a2 = readNumberField6(player, ["score"])) != null ? _a2 : 0)),
       finishedCount: Math.max(
         0,
@@ -9024,7 +9982,7 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
           title,
           description: (_a = readStringField9(parsed, ["description"])) != null ? _a : "",
           category: clampInteger(readNumberField6(parsed, ["category"]), DEFAULT_CATEGORY, 0, 127),
-          authoritative: (_b = readBooleanField6(parsed, ["authoritative"])) != null ? _b : true,
+          authoritative: (_b = readBooleanField7(parsed, ["authoritative"])) != null ? _b : true,
           sortOrder: normalizeSortOrder(readStringField9(parsed, ["sortOrder", "sort_order"])),
           operator: normalizeOperator(readStringField9(parsed, ["operator"])),
           resetSchedule: (_c = readStringField9(parsed, ["resetSchedule", "reset_schedule"])) != null ? _c : "",
@@ -9034,8 +9992,8 @@ var rpcAdminCreateTournamentRun = (ctx, logger, nk, payload) => {
           duration,
           maxSize,
           maxNumScore,
-          joinRequired: (_d = readBooleanField6(parsed, ["joinRequired", "join_required"])) != null ? _d : true,
-          enableRanks: (_e = readBooleanField6(parsed, ["enableRanks", "enable_ranks"])) != null ? _e : true,
+          joinRequired: (_d = readBooleanField7(parsed, ["joinRequired", "join_required"])) != null ? _d : true,
+          enableRanks: (_e = readBooleanField7(parsed, ["enableRanks", "enable_ranks"])) != null ? _e : true,
           lifecycle: "draft",
           createdAt,
           updatedAt: createdAt,
@@ -9993,7 +10951,7 @@ var readTournamentEntrantCount = (value) => {
 };
 var resolveTournamentRunModeId = (run) => {
   const modeId = readStringField9(run.metadata, ["gameMode", "game_mode"]);
-  return isMatchModeId(modeId) ? modeId : "standard";
+  return modeId != null ? modeId : "standard";
 };
 var buildBotOnlyTournamentCompletion = (run, entryId) => {
   var _a, _b, _c;
@@ -12189,7 +13147,7 @@ var MAX_LIMIT = 100;
 var DEFAULT_RANGE_DAYS = 30;
 var DAY_MS = 24 * 60 * 60 * 1e3;
 var asRecord8 = (value) => typeof value === "object" && value !== null ? value : null;
-var readStringField12 = (value, keys) => {
+var readStringField13 = (value, keys) => {
   const record = asRecord8(value);
   if (!record) {
     return null;
@@ -12202,7 +13160,7 @@ var readStringField12 = (value, keys) => {
   }
   return null;
 };
-var readNumberField7 = (value, keys) => {
+var readNumberField8 = (value, keys) => {
   const record = asRecord8(value);
   if (!record) {
     return null;
@@ -12254,18 +13212,18 @@ var parseAnalyticsFilters = (payload, now = Date.now()) => {
   const fallbackEndMs = now;
   const fallbackStartMs = fallbackEndMs - (DEFAULT_RANGE_DAYS - 1) * DAY_MS;
   const rawStartMs = parseDateMs(
-    readStringField12(parsed, ["startDate", "start_date"]),
+    readStringField13(parsed, ["startDate", "start_date"]),
     fallbackStartMs
   );
   const rawEndMs = parseDateMs(
-    readStringField12(parsed, ["endDate", "end_date"]),
+    readStringField13(parsed, ["endDate", "end_date"]),
     fallbackEndMs
   );
   const { startMs, endMs } = sanitizeRange(rawStartMs, rawEndMs);
-  const tournamentId = readStringField12(parsed, ["tournamentId", "tournament_id"]);
-  const gameMode = readStringField12(parsed, ["gameMode", "game_mode"]);
-  const eloMin = readNumberField7(parsed, ["eloMin", "elo_min"]);
-  const eloMax = readNumberField7(parsed, ["eloMax", "elo_max"]);
+  const tournamentId = readStringField13(parsed, ["tournamentId", "tournament_id"]);
+  const gameMode = readStringField13(parsed, ["gameMode", "game_mode"]);
+  const eloMin = readNumberField8(parsed, ["eloMin", "elo_min"]);
+  const eloMax = readNumberField8(parsed, ["eloMax", "elo_max"]);
   return {
     startDate: new Date(startMs).toISOString(),
     endDate: new Date(endMs).toISOString(),
@@ -12325,7 +13283,7 @@ var PARTICIPATION_BUCKETS = [
   { key: "17_plus", label: "17+ entrants", min: 17, max: null }
 ];
 var asRecord9 = (value) => typeof value === "object" && value !== null ? value : null;
-var readStringField13 = (value, keys) => {
+var readStringField14 = (value, keys) => {
   const record = asRecord9(value);
   if (!record) {
     return null;
@@ -12338,7 +13296,7 @@ var readStringField13 = (value, keys) => {
   }
   return null;
 };
-var readNumberField8 = (value, keys) => {
+var readNumberField9 = (value, keys) => {
   const record = asRecord9(value);
   if (!record) {
     return null;
@@ -12357,7 +13315,7 @@ var readNumberField8 = (value, keys) => {
   }
   return null;
 };
-var readBooleanField7 = (value, keys) => {
+var readBooleanField8 = (value, keys) => {
   const record = asRecord9(value);
   if (!record) {
     return null;
@@ -12447,7 +13405,7 @@ var createMetric = (value, availability, options) => {
 };
 var getRunGameMode2 = (run) => {
   var _a;
-  return (_a = readStringField13(run.metadata, ["gameMode", "game_mode"])) != null ? _a : "standard";
+  return (_a = readStringField14(run.metadata, ["gameMode", "game_mode"])) != null ? _a : "standard";
 };
 var runMatchesFilters = (run, filters) => {
   if (filters.tournamentId && filters.tournamentId !== run.runId && filters.tournamentId !== run.tournamentId) {
@@ -12470,10 +13428,10 @@ var matchesEloFilter = (eloRating, filters) => {
 var isHumanUserId = (userId) => typeof userId === "string" && userId.trim().length > 0 && !isTournamentBotUserId(userId);
 var normalizeTournamentMatchResult = (value) => {
   const record = asRecord9(value);
-  const resultId = readStringField13(record, ["resultId", "result_id"]);
-  const matchId = readStringField13(record, ["matchId", "match_id"]);
-  const runId = readStringField13(record, ["runId", "run_id"]);
-  const tournamentId = readStringField13(record, ["tournamentId", "tournament_id"]);
+  const resultId = readStringField14(record, ["resultId", "result_id"]);
+  const matchId = readStringField14(record, ["matchId", "match_id"]);
+  const runId = readStringField14(record, ["runId", "run_id"]);
+  const tournamentId = readStringField14(record, ["tournamentId", "tournament_id"]);
   if (!record || !resultId || !matchId || !runId || !tournamentId) {
     return null;
   }
@@ -12481,10 +13439,10 @@ var normalizeTournamentMatchResult = (value) => {
 };
 var normalizeEloHistoryRecord = (value) => {
   const record = asRecord9(value);
-  const matchId = readStringField13(record, ["matchId", "match_id"]);
-  const processedAt = readStringField13(record, ["processedAt", "processed_at"]);
-  const winnerUserId = readStringField13(record, ["winnerUserId", "winner_user_id"]);
-  const loserUserId = readStringField13(record, ["loserUserId", "loser_user_id"]);
+  const matchId = readStringField14(record, ["matchId", "match_id"]);
+  const processedAt = readStringField14(record, ["processedAt", "processed_at"]);
+  const winnerUserId = readStringField14(record, ["winnerUserId", "winner_user_id"]);
+  const loserUserId = readStringField14(record, ["loserUserId", "loser_user_id"]);
   if (!record || !matchId || !processedAt || !winnerUserId || !loserUserId) {
     return null;
   }
@@ -12492,11 +13450,11 @@ var normalizeEloHistoryRecord = (value) => {
   const playerResults = rawPlayers.map((player) => {
     var _a, _b, _c;
     const normalized = asRecord9(player);
-    const userId = readStringField13(normalized, ["userId", "user_id"]);
-    const usernameDisplay = readStringField13(normalized, ["usernameDisplay", "username_display"]);
-    const oldRating = readNumberField8(normalized, ["oldRating", "old_rating"]);
-    const newRating = readNumberField8(normalized, ["newRating", "new_rating"]);
-    const delta = readNumberField8(normalized, ["delta"]);
+    const userId = readStringField14(normalized, ["userId", "user_id"]);
+    const usernameDisplay = readStringField14(normalized, ["usernameDisplay", "username_display"]);
+    const oldRating = readNumberField9(normalized, ["oldRating", "old_rating"]);
+    const newRating = readNumberField9(normalized, ["newRating", "new_rating"]);
+    const delta = readNumberField9(normalized, ["delta"]);
     if (!normalized || !userId || !usernameDisplay || oldRating === null || newRating === null || delta === null) {
       return null;
     }
@@ -12506,10 +13464,10 @@ var normalizeEloHistoryRecord = (value) => {
       oldRating,
       newRating,
       delta,
-      ratedGames: Math.max(0, Math.floor((_a = readNumberField8(normalized, ["ratedGames", "rated_games"])) != null ? _a : 0)),
-      ratedWins: Math.max(0, Math.floor((_b = readNumberField8(normalized, ["ratedWins", "rated_wins"])) != null ? _b : 0)),
-      ratedLosses: Math.max(0, Math.floor((_c = readNumberField8(normalized, ["ratedLosses", "rated_losses"])) != null ? _c : 0)),
-      provisional: readBooleanField7(normalized, ["provisional"]) === true
+      ratedGames: Math.max(0, Math.floor((_a = readNumberField9(normalized, ["ratedGames", "rated_games"])) != null ? _a : 0)),
+      ratedWins: Math.max(0, Math.floor((_b = readNumberField9(normalized, ["ratedWins", "rated_wins"])) != null ? _b : 0)),
+      ratedLosses: Math.max(0, Math.floor((_c = readNumberField9(normalized, ["ratedLosses", "rated_losses"])) != null ? _c : 0)),
+      provisional: readBooleanField8(normalized, ["provisional"]) === true
     };
   }).filter((player) => Boolean(player));
   if (playerResults.length !== 2) {
@@ -12540,7 +13498,7 @@ var normalizeStorageListResult3 = (value) => {
   }) : [];
   return {
     objects,
-    cursor: readStringField13(record, ["cursor", "nextCursor", "next_cursor"])
+    cursor: readStringField14(record, ["cursor", "nextCursor", "next_cursor"])
   };
 };
 var listAllGlobalObjects = (nk, logger, collection, userId) => {
@@ -12581,10 +13539,10 @@ var getLeaderboardRecordMetadata2 = (record) => {
   var _a;
   return asRecord9((_a = asRecord9(record)) == null ? void 0 : _a.metadata);
 };
-var getLeaderboardRecordOwnerId2 = (record) => readStringField13(record, ["ownerId", "owner_id"]);
-var getLeaderboardRecordUsername2 = (record) => readStringField13(record, ["username"]);
-var getLeaderboardRecordScore2 = (record) => readNumberField8(record, ["score"]);
-var getLeaderboardRecordRank2 = (record) => readNumberField8(record, ["rank"]);
+var getLeaderboardRecordOwnerId2 = (record) => readStringField14(record, ["ownerId", "owner_id"]);
+var getLeaderboardRecordUsername2 = (record) => readStringField14(record, ["username"]);
+var getLeaderboardRecordScore2 = (record) => readNumberField9(record, ["score"]);
+var getLeaderboardRecordRank2 = (record) => readNumberField9(record, ["rank"]);
 var listAllLeaderboardRows = (nk) => {
   if (typeof nk.leaderboardRecordsList !== "function") {
     return [];
@@ -12601,19 +13559,19 @@ var listAllLeaderboardRows = (nk) => {
         return;
       }
       const metadata = getLeaderboardRecordMetadata2(record);
-      const ratedGames = Math.max(0, Math.floor((_a = readNumberField8(metadata, ["ratedGames", "rated_games"])) != null ? _a : 0));
+      const ratedGames = Math.max(0, Math.floor((_a = readNumberField9(metadata, ["ratedGames", "rated_games"])) != null ? _a : 0));
       rows.push({
         userId,
-        usernameDisplay: (_c = (_b = readStringField13(metadata, ["usernameDisplay", "username_display"])) != null ? _b : getLeaderboardRecordUsername2(record)) != null ? _c : userId,
+        usernameDisplay: (_c = (_b = readStringField14(metadata, ["usernameDisplay", "username_display"])) != null ? _b : getLeaderboardRecordUsername2(record)) != null ? _c : userId,
         eloRating: sanitizeEloRating((_d = getLeaderboardRecordScore2(record)) != null ? _d : DEFAULT_ELO_RATING),
         ratedGames,
-        ratedWins: Math.max(0, Math.floor((_e = readNumberField8(metadata, ["ratedWins", "rated_wins"])) != null ? _e : 0)),
-        ratedLosses: Math.max(0, Math.floor((_f = readNumberField8(metadata, ["ratedLosses", "rated_losses"])) != null ? _f : 0)),
-        provisional: readBooleanField7(metadata, ["provisional"]) === true || ratedGames < 10,
+        ratedWins: Math.max(0, Math.floor((_e = readNumberField9(metadata, ["ratedWins", "rated_wins"])) != null ? _e : 0)),
+        ratedLosses: Math.max(0, Math.floor((_f = readNumberField9(metadata, ["ratedLosses", "rated_losses"])) != null ? _f : 0)),
+        provisional: readBooleanField8(metadata, ["provisional"]) === true || ratedGames < 10,
         rank: getLeaderboardRecordRank2(record)
       });
     });
-    const nextCursor = readStringField13(result, ["nextCursor", "next_cursor"]);
+    const nextCursor = readStringField14(result, ["nextCursor", "next_cursor"]);
     if (!nextCursor) {
       break;
     }
@@ -12661,7 +13619,7 @@ var loadTournamentMatchHistory = (nk, runs) => {
   );
   const objectByKey = new Map(
     objects.map((object) => {
-      const key = readStringField13(object, ["key"]);
+      const key = readStringField14(object, ["key"]);
       return key ? [key, object] : null;
     }).filter((entry) => Boolean(entry))
   );
@@ -12676,22 +13634,22 @@ var loadTournamentMatchHistory = (nk, runs) => {
     const entryContext = (_a = entryContextByMatchId.get(record.matchId)) != null ? _a : null;
     const players = Array.isArray(summary == null ? void 0 : summary.players) ? summary.players.map((player) => {
       const normalized = asRecord9(player);
-      const userId = readStringField13(normalized, ["userId", "user_id"]);
+      const userId = readStringField14(normalized, ["userId", "user_id"]);
       if (!normalized || !userId) {
         return null;
       }
       return {
         userId,
-        username: readStringField13(normalized, ["username"]),
+        username: readStringField14(normalized, ["username"]),
         color: (() => {
-          const color = readStringField13(normalized, ["color"]);
+          const color = readStringField14(normalized, ["color"]);
           return color === "light" || color === "dark" ? color : null;
         })(),
-        didWin: readBooleanField7(normalized, ["didWin", "did_win"]),
-        capturesMade: readNumberField8(normalized, ["capturesMade", "captures_made"]),
-        capturesSuffered: readNumberField8(normalized, ["capturesSuffered", "captures_suffered"]),
-        playerMoveCount: readNumberField8(normalized, ["playerMoveCount", "player_move_count"]),
-        finishedCount: readNumberField8(normalized, ["finishedCount", "finished_count"]),
+        didWin: readBooleanField8(normalized, ["didWin", "did_win"]),
+        capturesMade: readNumberField9(normalized, ["capturesMade", "captures_made"]),
+        capturesSuffered: readNumberField9(normalized, ["capturesSuffered", "captures_suffered"]),
+        playerMoveCount: readNumberField9(normalized, ["playerMoveCount", "player_move_count"]),
+        finishedCount: readNumberField9(normalized, ["finishedCount", "finished_count"]),
         isBot: isTournamentBotUserId(userId)
       };
     }).filter((player) => Boolean(player)) : [];
@@ -12699,23 +13657,23 @@ var loadTournamentMatchHistory = (nk, runs) => {
       source: "tournament",
       matchId: record.matchId,
       startedAt: (_b = entryContext == null ? void 0 : entryContext.startedAt) != null ? _b : null,
-      endedAt: (_d = (_c = readStringField13(summary, ["completedAt", "completed_at"])) != null ? _c : entryContext == null ? void 0 : entryContext.completedAt) != null ? _d : record.updatedAt,
+      endedAt: (_d = (_c = readStringField14(summary, ["completedAt", "completed_at"])) != null ? _c : entryContext == null ? void 0 : entryContext.completedAt) != null ? _d : record.updatedAt,
       durationSeconds: (_e = entryContext == null ? void 0 : entryContext.durationSeconds) != null ? _e : null,
       reason: "completed",
-      modeId: (_g = readStringField13(summary, ["modeId", "mode_id"])) != null ? _g : getRunGameMode2((_f = runs.find((run) => run.runId === record.runId)) != null ? _f : runs[0]),
+      modeId: (_g = readStringField14(summary, ["modeId", "mode_id"])) != null ? _g : getRunGameMode2((_f = runs.find((run) => run.runId === record.runId)) != null ? _f : runs[0]),
       classification: {
-        ranked: readBooleanField7(classificationRecord, ["ranked"]) === true,
-        casual: readBooleanField7(classificationRecord, ["casual"]) === true,
-        private: readBooleanField7(classificationRecord, ["private"]) === true,
-        bot: readBooleanField7(classificationRecord, ["bot"]) === true,
-        experimental: readBooleanField7(classificationRecord, ["experimental"]) === true,
+        ranked: readBooleanField8(classificationRecord, ["ranked"]) === true,
+        casual: readBooleanField8(classificationRecord, ["casual"]) === true,
+        private: readBooleanField8(classificationRecord, ["private"]) === true,
+        bot: readBooleanField8(classificationRecord, ["bot"]) === true,
+        experimental: readBooleanField8(classificationRecord, ["experimental"]) === true,
         tournament: true
       },
       tournamentRunId: record.runId,
       tournamentId: record.tournamentId,
-      winnerUserId: readStringField13(summary, ["winnerUserId", "winner_user_id"]),
-      loserUserId: readStringField13(summary, ["loserUserId", "loser_user_id"]),
-      totalMoves: readNumberField8(summary, ["totalMoves", "total_moves"]),
+      winnerUserId: readStringField14(summary, ["winnerUserId", "winner_user_id"]),
+      loserUserId: readStringField14(summary, ["loserUserId", "loser_user_id"]),
+      totalMoves: readNumberField9(summary, ["totalMoves", "total_moves"]),
       totalTurns: null,
       players
     };
@@ -12843,9 +13801,9 @@ var loadKnownUsers = (nk, userIds, leaderboardRows) => {
     ]);
     const objects = nk.storageRead(requests);
     const objectEntries = objects.map((object) => {
-      const collection = readStringField13(object, ["collection"]);
-      const key = readStringField13(object, ["key"]);
-      const userId = readStringField13(object, ["userId", "user_id"]);
+      const collection = readStringField14(object, ["collection"]);
+      const key = readStringField14(object, ["key"]);
+      const userId = readStringField14(object, ["userId", "user_id"]);
       return collection && key && userId ? [`${collection}:${key}:${userId}`, object] : null;
     }).filter(
       (entry) => entry !== null
@@ -12862,10 +13820,10 @@ var loadKnownUsers = (nk, userIds, leaderboardRows) => {
       const leaderboardRow = (_e = leaderboardByUserId.get(userId)) != null ? _e : null;
       records.set(userId, {
         userId,
-        username: (_g = (_f = readStringField13(usernameProfile, ["usernameDisplay", "username_display"])) != null ? _f : leaderboardRow == null ? void 0 : leaderboardRow.usernameDisplay) != null ? _g : userId,
-        createdAt: readStringField13(usernameProfile, ["createdAt", "created_at"]),
-        totalXp: readNumberField8(progressionProfile, ["totalXp", "total_xp"]),
-        currentRankTitle: readStringField13(progressionProfile, ["currentRankTitle", "current_rank_title"]),
+        username: (_g = (_f = readStringField14(usernameProfile, ["usernameDisplay", "username_display"])) != null ? _f : leaderboardRow == null ? void 0 : leaderboardRow.usernameDisplay) != null ? _g : userId,
+        createdAt: readStringField14(usernameProfile, ["createdAt", "created_at"]),
+        totalXp: readNumberField9(progressionProfile, ["totalXp", "total_xp"]),
+        currentRankTitle: readStringField14(progressionProfile, ["currentRankTitle", "current_rank_title"]),
         eloRating: (_h = leaderboardRow == null ? void 0 : leaderboardRow.eloRating) != null ? _h : null,
         ratedGames: (_i = leaderboardRow == null ? void 0 : leaderboardRow.ratedGames) != null ? _i : null,
         ratedWins: (_j = leaderboardRow == null ? void 0 : leaderboardRow.ratedWins) != null ? _j : null,
@@ -13787,7 +14745,7 @@ var buildTournamentsData = (context) => {
   });
   context.tournamentMatches.forEach((match) => {
     var _a;
-    const round = readNumberField8(match, ["round"]);
+    const round = readNumberField9(match, ["round"]);
     const derivedRound = typeof round === "number" ? Math.max(1, Math.floor(round)) : (() => {
       var _a2, _b, _c;
       const run = context.runs.find((candidate) => candidate.runId === match.tournamentRunId);
@@ -14222,8 +15180,8 @@ var OPEN_ONLINE_MATCH_WAGER_STEP = 10;
 var OPEN_ONLINE_MATCH_DURATIONS_MINUTES = [3, 5, 10];
 var OPEN_ONLINE_MATCH_MODE_IDS = [
   "gameMode_3_pieces",
-  "gameMode_capture",
-  "gameMode_finkel_rules"
+  "gameMode_finkel_rules",
+  "standard"
 ];
 var USER_CHALLENGE_PROGRESS_COLLECTION2 = "user_challenge_progress";
 var USER_CHALLENGE_PROGRESS_KEY2 = "progress";
@@ -14250,8 +15208,8 @@ var getSecureRandomUnit = (nk) => {
   }
   throw new Error("Authoritative dice roll requires a cryptographically secure random source.");
 };
-var rollAuthoritativeDice = (nk) => rollDice(() => getSecureRandomUnit(nk));
-var readStringField14 = (value, keys) => {
+var rollAuthoritativeDice = (nk, matchConfig) => rollThrowFace(matchConfig, () => getSecureRandomUnit(nk));
+var readStringField15 = (value, keys) => {
   const record = asRecord10(value);
   if (!record) {
     return null;
@@ -14264,7 +15222,7 @@ var readStringField14 = (value, keys) => {
   }
   return null;
 };
-var readNumberField9 = (value, keys) => {
+var readNumberField10 = (value, keys) => {
   const record = asRecord10(value);
   if (!record) {
     return null;
@@ -14313,9 +15271,9 @@ var decodeMessageData = (data, nk) => {
   }
   return String(data != null ? data : "");
 };
-var getPresenceUserId = (presence) => readStringField14(presence, ["userId", "user_id"]);
-var getPresenceSessionId = (presence) => readStringField14(presence, ["sessionId", "session_id"]);
-var getSenderUserId = (sender) => readStringField14(sender, ["userId", "user_id"]);
+var getPresenceUserId = (presence) => readStringField15(presence, ["userId", "user_id"]);
+var getPresenceSessionId = (presence) => readStringField15(presence, ["sessionId", "session_id"]);
+var getSenderUserId = (sender) => readStringField15(sender, ["userId", "user_id"]);
 var getPresenceKey = (presence) => {
   const sessionId = getPresenceSessionId(presence);
   if (sessionId) {
@@ -14336,24 +15294,47 @@ var isSpectatorPresenceRequest = (presence) => {
 };
 var getMatchId = (ctx) => {
   var _a;
-  return (_a = readStringField14(ctx, ["matchId", "match_id"])) != null ? _a : "";
+  return (_a = readStringField15(ctx, ["matchId", "match_id"])) != null ? _a : "";
 };
-var getMessageOpCode = (message) => readNumberField9(message, ["opCode", "op_code"]);
-var getContextUserId2 = (ctx) => readStringField14(ctx, ["userId", "user_id"]);
-var resolveMatchModeId = (value) => isMatchModeId(value) ? value : "standard";
+var getMessageOpCode = (message) => readNumberField10(message, ["opCode", "op_code"]);
+var getContextUserId2 = (ctx) => readStringField15(ctx, ["userId", "user_id"]);
+var resolveMatchModeId = (value) => typeof value === "string" && value.trim().length > 0 ? value.trim() : "standard";
+var resolveMatchConfigForModeId = (nk, params, modeId) => {
+  const restrictedOnlineMatch = Boolean(readStringField15(params, ["openOnlineMatchId", "open_online_match_id"])) || params.privateMatch === true || Boolean(resolveTournamentMatchContextFromParams(params));
+  if (isMatchModeId(modeId)) {
+    if (restrictedOnlineMatch && !OPEN_ONLINE_MATCH_MODE_IDS.includes(modeId)) {
+      return null;
+    }
+    return getMatchConfig(modeId);
+  }
+  const isOpenOnlineMatch = Boolean(readStringField15(params, ["openOnlineMatchId", "open_online_match_id"]));
+  const isTournamentMatch = Boolean(resolveTournamentMatchContextFromParams(params));
+  const featuredMode = getPublicGameModes(nk).featuredMode;
+  if (!featuredMode || featuredMode.id !== modeId) {
+    return null;
+  }
+  return buildGameModeMatchConfig(featuredMode, {
+    allowsXp: true,
+    allowsChallenges: true,
+    allowsCoins: isOpenOnlineMatch,
+    allowsOnline: true,
+    allowsRankedStats: isOpenOnlineMatch || isTournamentMatch,
+    isPracticeMode: false,
+    displayName: featuredMode.name
+  });
+};
 var resolveConfiguredRewardXp = (value) => {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return null;
   }
   return Math.max(0, Math.floor(value));
 };
-var buildMatchClassification = (params, modeId) => {
-  const config = getMatchConfig(modeId);
+var buildMatchClassification = (params, matchConfig) => {
   const tournamentMatch = Boolean(resolveTournamentMatchContextFromParams(params));
   const privateMatch = params.privateMatch === true;
   const botMatch = params.botMatch === true;
   const casualMatch = params.casualMatch === true;
-  const experimental = !config.allowsRankedStats && !tournamentMatch;
+  const experimental = !matchConfig.allowsRankedStats && !tournamentMatch;
   const ranked = params.rankedMatch === true || !privateMatch && !botMatch && !casualMatch && !experimental && params.rankedMatch !== false;
   return {
     ranked,
@@ -14536,14 +15517,14 @@ var normalizePrivateMatchCodeRecord = (value) => {
   if (!record) {
     return null;
   }
-  const code = normalizePrivateMatchCodeInput((_a = readStringField14(record, ["code"])) != null ? _a : "");
-  const matchId = readStringField14(record, ["matchId", "match_id"]);
-  const modeId = record.modeId;
-  const creatorUserId = readStringField14(record, ["creatorUserId", "creator_user_id"]);
-  const joinedUserId = readStringField14(record, ["joinedUserId", "joined_user_id"]);
-  const createdAt = readStringField14(record, ["createdAt", "created_at"]);
-  const updatedAt = readStringField14(record, ["updatedAt", "updated_at"]);
-  if (!isPrivateMatchCode(code) || !isMatchModeId(modeId) || !creatorUserId || !createdAt || !updatedAt) {
+  const code = normalizePrivateMatchCodeInput((_a = readStringField15(record, ["code"])) != null ? _a : "");
+  const matchId = readStringField15(record, ["matchId", "match_id"]);
+  const modeId = readStringField15(record, ["modeId", "mode_id"]);
+  const creatorUserId = readStringField15(record, ["creatorUserId", "creator_user_id"]);
+  const joinedUserId = readStringField15(record, ["joinedUserId", "joined_user_id"]);
+  const createdAt = readStringField15(record, ["createdAt", "created_at"]);
+  const updatedAt = readStringField15(record, ["updatedAt", "updated_at"]);
+  if (!isPrivateMatchCode(code) || !modeId || !creatorUserId || !createdAt || !updatedAt) {
     return null;
   }
   return {
@@ -14649,23 +15630,24 @@ var deletePrivateMatchCodeRecord = (nk, code) => {
 };
 var isOpenOnlineMatchDurationMinutes = (value) => OPEN_ONLINE_MATCH_DURATIONS_MINUTES.includes(value);
 var normalizeOpenOnlineMatchWager = (value) => {
-  const wager = readNumberField9({ value }, ["value"]);
+  const wager = readNumberField10({ value }, ["value"]);
   if (wager === null || !Number.isInteger(wager) || wager < OPEN_ONLINE_MATCH_MIN_WAGER || wager > OPEN_ONLINE_MATCH_MAX_WAGER || wager % OPEN_ONLINE_MATCH_WAGER_STEP !== 0) {
     throw new Error("Wager must be between 10 and 100 coins in increments of 10.");
   }
   return wager;
 };
 var normalizeOpenOnlineMatchDurationMinutes = (value) => {
-  const durationMinutes = readNumberField9({ value }, ["value"]);
+  const durationMinutes = readNumberField10({ value }, ["value"]);
   if (durationMinutes === null || !Number.isInteger(durationMinutes) || !isOpenOnlineMatchDurationMinutes(durationMinutes)) {
     throw new Error("Open match duration must be 3, 5, or 10 minutes.");
   }
   return durationMinutes;
 };
-var normalizeOpenOnlineMatchModeId = (value) => {
+var normalizeOpenOnlineMatchModeId = (nk, value) => {
   const modeId = resolveMatchModeId(value);
-  if (!OPEN_ONLINE_MATCH_MODE_IDS.includes(modeId)) {
-    throw new Error("Online matches support Race, Capture, or Finkel Rules modes.");
+  const featuredMode = getPublicGameModes(nk).featuredMode;
+  if (!OPEN_ONLINE_MATCH_MODE_IDS.includes(modeId) && (featuredMode == null ? void 0 : featuredMode.id) !== modeId) {
+    throw new Error("Online matches support Race, Finkel Rules, or the current Game Mode of the Month.");
   }
   return modeId;
 };
@@ -14680,22 +15662,21 @@ var normalizeOpenOnlineMatchStatus = (value) => {
   return "open";
 };
 var normalizeOpenOnlineMatchRecord = (value) => {
-  var _a;
   const record = asRecord10(value);
   if (!record) {
     return null;
   }
-  const openMatchId = readStringField14(record, ["openMatchId", "open_match_id"]);
-  const matchId = readStringField14(record, ["matchId", "match_id"]);
-  const modeId = (_a = record.modeId) != null ? _a : record.mode_id;
-  const creatorUserId = readStringField14(record, ["creatorUserId", "creator_user_id"]);
-  const joinedUserId = readStringField14(record, ["joinedUserId", "joined_user_id"]);
-  const wager = readNumberField9(record, ["wager"]);
-  const durationMinutes = readNumberField9(record, ["durationMinutes", "duration_minutes"]);
-  const createdAt = readStringField14(record, ["createdAt", "created_at"]);
-  const expiresAt = readStringField14(record, ["expiresAt", "expires_at"]);
-  const updatedAt = readStringField14(record, ["updatedAt", "updated_at"]);
-  if (!openMatchId || !matchId || !isMatchModeId(modeId) || !creatorUserId || wager === null || durationMinutes === null || !Number.isInteger(wager) || !Number.isInteger(durationMinutes) || !createdAt || !expiresAt || !updatedAt) {
+  const openMatchId = readStringField15(record, ["openMatchId", "open_match_id"]);
+  const matchId = readStringField15(record, ["matchId", "match_id"]);
+  const modeId = readStringField15(record, ["modeId", "mode_id"]);
+  const creatorUserId = readStringField15(record, ["creatorUserId", "creator_user_id"]);
+  const joinedUserId = readStringField15(record, ["joinedUserId", "joined_user_id"]);
+  const wager = readNumberField10(record, ["wager"]);
+  const durationMinutes = readNumberField10(record, ["durationMinutes", "duration_minutes"]);
+  const createdAt = readStringField15(record, ["createdAt", "created_at"]);
+  const expiresAt = readStringField15(record, ["expiresAt", "expires_at"]);
+  const updatedAt = readStringField15(record, ["updatedAt", "updated_at"]);
+  if (!openMatchId || !matchId || !modeId || !creatorUserId || wager === null || durationMinutes === null || !Number.isInteger(wager) || !Number.isInteger(durationMinutes) || !createdAt || !expiresAt || !updatedAt) {
     return null;
   }
   return {
@@ -14819,7 +15800,7 @@ var normalizeStorageListResultForOpenMatches = (result) => {
   const rawObjects = Array.isArray(record.objects) ? record.objects : Array.isArray(record.storageObjects) ? record.storageObjects : Array.isArray(record.runtimeObjects) ? record.runtimeObjects : [];
   return {
     objects: rawObjects.filter((object) => asRecord10(object) !== null),
-    cursor: readStringField14(record, ["cursor"])
+    cursor: readStringField15(record, ["cursor"])
   };
 };
 var listOpenOnlineMatchStorageObjects = (logger, nk) => {
@@ -15577,7 +16558,7 @@ var buildPlayerMatchSummary = (state, matchId, playerUserId, playerColor) => {
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   };
 };
-var getPresenceUsername = (presence) => readStringField14(presence, ["username", "displayName", "display_name", "name"]);
+var getPresenceUsername = (presence) => readStringField15(presence, ["username", "displayName", "display_name", "name"]);
 var buildAnalyticsMatchPlayers = (state) => Object.entries(state.assignments).map(([userId, color]) => {
   var _a, _b;
   const presence = getPrimaryUserPresence(state, userId);
@@ -15732,6 +16713,15 @@ function InitModule(_ctx, logger, nk, initializer) {
   initializer.registerRpc(RPC_ADMIN_SET_LIMITED_TIME_EVENT, rpcAdminSetLimitedTimeEvent);
   initializer.registerRpc(RPC_ADMIN_REMOVE_LIMITED_TIME_EVENT, rpcAdminRemoveLimitedTimeEvent);
   initializer.registerRpc(RPC_ADMIN_GET_STORE_STATS, rpcAdminGetStoreStats);
+  initializer.registerRpc(RPC_GET_GAME_MODES, rpcGetGameModes);
+  initializer.registerRpc(RPC_ADMIN_LIST_GAME_MODES, rpcAdminListGameModes);
+  initializer.registerRpc(RPC_ADMIN_GET_GAME_MODE, rpcAdminGetGameMode);
+  initializer.registerRpc(RPC_ADMIN_UPSERT_GAME_MODE, rpcAdminUpsertGameMode);
+  initializer.registerRpc(RPC_ADMIN_DISABLE_GAME_MODE, rpcAdminDisableGameMode);
+  initializer.registerRpc(RPC_ADMIN_ENABLE_GAME_MODE, rpcAdminEnableGameMode);
+  initializer.registerRpc(RPC_ADMIN_DELETE_GAME_MODE, rpcAdminDeleteGameMode);
+  initializer.registerRpc(RPC_ADMIN_FEATURE_GAME_MODE, rpcAdminFeatureGameMode);
+  initializer.registerRpc(RPC_ADMIN_UNFEATURE_GAME_MODE, rpcAdminUnfeatureGameMode);
   initializer.registerRpc(RPC_SUBMIT_FEEDBACK, rpcSubmitFeedback);
   initializer.registerRpc(RPC_ADMIN_LIST_FEEDBACK, rpcAdminListFeedback);
   initializer.registerMatch(MATCH_HANDLER, {
@@ -15822,7 +16812,10 @@ function rpcCreatePrivateMatch(ctx, logger, nk, payload) {
   requireCompletedUsernameOnboarding(nk, ctx.userId);
   const data = parseRpcPayload(payload);
   const modeId = resolveMatchModeId(data.modeId);
-  const matchConfig = getMatchConfig(modeId);
+  const matchConfig = resolveMatchConfigForModeId(nk, { privateMatch: true }, modeId);
+  if (!matchConfig) {
+    throw new Error("Private matches support Race, Finkel Rules, or the current Game Mode of the Month.");
+  }
   const reservation = reservePrivateMatchCodeRecord(nk, modeId, ctx.userId);
   const privateCode = reservation.code;
   let matchId;
@@ -15915,7 +16908,15 @@ function rpcCreateOpenOnlineMatch(ctx, logger, nk, payload) {
   const data = parseRpcPayload(payload);
   const wager = normalizeOpenOnlineMatchWager(data.wager);
   const durationMinutes = normalizeOpenOnlineMatchDurationMinutes(data.durationMinutes);
-  const modeId = normalizeOpenOnlineMatchModeId((_a = data.modeId) != null ? _a : data.mode_id);
+  const modeId = normalizeOpenOnlineMatchModeId(nk, (_a = data.modeId) != null ? _a : data.mode_id);
+  const matchConfig = resolveMatchConfigForModeId(
+    nk,
+    { openOnlineMatchId: "pending" },
+    modeId
+  );
+  if (!matchConfig) {
+    throw new Error("Open matches support Race, Finkel Rules, or the current Game Mode of the Month.");
+  }
   const openMatchId = generateOpenOnlineMatchId();
   const now = /* @__PURE__ */ new Date();
   const createdAt = now.toISOString();
@@ -16022,7 +17023,7 @@ function rpcJoinOpenOnlineMatch(ctx, logger, nk, payload) {
   }
   requireCompletedUsernameOnboarding(nk, ctx.userId);
   const data = parseRpcPayload(payload);
-  const openMatchId = readStringField14(data, ["openMatchId", "open_match_id"]);
+  const openMatchId = readStringField15(data, ["openMatchId", "open_match_id"]);
   if (!openMatchId) {
     throw new Error("Open match id is required.");
   }
@@ -16084,7 +17085,7 @@ function rpcGetOpenOnlineMatchStatus(ctx, logger, nk, payload) {
   }
   requireCompletedUsernameOnboarding(nk, ctx.userId);
   const data = parseRpcPayload(payload);
-  const openMatchId = readStringField14(data, ["openMatchId", "open_match_id"]);
+  const openMatchId = readStringField15(data, ["openMatchId", "open_match_id"]);
   if (!openMatchId) {
     throw new Error("Open match id is required.");
   }
@@ -16177,29 +17178,33 @@ function matchInit(_ctx, logger, nk, params) {
   var _a;
   const playerIds = Array.isArray(params.playerIds) ? params.playerIds : [];
   const modeId = resolveMatchModeId(params.modeId);
-  const classification = buildMatchClassification(params, modeId);
+  const matchConfig = resolveMatchConfigForModeId(nk, params, modeId);
+  if (!matchConfig) {
+    throw new Error(`Unsupported game mode: ${modeId}`);
+  }
+  const classification = buildMatchClassification(params, matchConfig);
   const privateMatch = classification.private;
   const privateCode = typeof params.privateCode === "string" ? normalizePrivateMatchCodeInput(params.privateCode) : "";
   const privateCreatorUserId = typeof params.privateCreatorUserId === "string" ? params.privateCreatorUserId : null;
   const privateGuestUserId = typeof params.privateGuestUserId === "string" ? params.privateGuestUserId : null;
-  const openOnlineMatchId = readStringField14(params, ["openOnlineMatchId", "open_online_match_id"]);
-  const openOnlineMatchWager = readNumberField9(params, ["openOnlineMatchWager", "open_online_match_wager"]);
-  const openOnlineMatchCreatorUserId = readStringField14(params, [
+  const openOnlineMatchId = readStringField15(params, ["openOnlineMatchId", "open_online_match_id"]);
+  const openOnlineMatchWager = readNumberField10(params, ["openOnlineMatchWager", "open_online_match_wager"]);
+  const openOnlineMatchCreatorUserId = readStringField15(params, [
     "openOnlineMatchCreatorUserId",
     "open_online_match_creator_user_id"
   ]);
-  const openOnlineMatchJoinerUserId = readStringField14(params, [
+  const openOnlineMatchJoinerUserId = readStringField15(params, [
     "openOnlineMatchJoinerUserId",
     "open_online_match_joiner_user_id"
   ]);
-  const botUserId = readStringField14(params, ["botUserId", "bot_user_id"]);
-  const botDifficultyValue = readStringField14(params, ["botDifficulty", "bot_difficulty"]);
+  const botUserId = readStringField15(params, ["botUserId", "bot_user_id"]);
+  const botDifficultyValue = readStringField15(params, ["botDifficulty", "bot_difficulty"]);
   const botDifficulty = botDifficultyValue && isBotDifficulty(botDifficultyValue) ? botDifficultyValue : DEFAULT_BOT_DIFFICULTY;
-  const botDisplayName = (_a = readStringField14(params, ["botDisplayName", "bot_display_name"])) != null ? _a : `${botDifficulty.slice(0, 1).toUpperCase()}${botDifficulty.slice(1)} Bot`;
+  const botDisplayName = (_a = readStringField15(params, ["botDisplayName", "bot_display_name"])) != null ? _a : `${botDifficulty.slice(0, 1).toUpperCase()}${botDifficulty.slice(1)} Bot`;
   const winRewardSource = params.winRewardSource === "private_pvp_win" ? "private_pvp_win" : "pvp_win";
   const allowsChallengeRewards = params.allowsChallengeRewards !== false;
   const tournamentMatchWinXp = resolveConfiguredRewardXp(
-    readNumberField9(params, ["tournamentMatchWinXp", "tournament_match_win_xp"])
+    readNumberField10(params, ["tournamentMatchWinXp", "tournament_match_win_xp"])
   );
   const assignments = {};
   if (playerIds[0]) {
@@ -16236,7 +17241,7 @@ function matchInit(_ctx, logger, nk, params) {
     playerTitles,
     playerRankTitles,
     bot,
-    gameState: createInitialState(getMatchConfig(modeId)),
+    gameState: createInitialState(matchConfig),
     revision: 0,
     started: false,
     opponentType: bot ? getBotOpponentType(bot.difficulty) : "human",
@@ -16636,7 +17641,9 @@ function ensureAssignment(state, userId) {
   }
 }
 function applyRollOutcome(state, playerColor, rollValue) {
-  if (rollValue === 4) {
+  var _a;
+  const maxRawThrowFace = ((_a = state.gameState.matchConfig.throwProfile) != null ? _a : "standard") === "standard" ? 4 : 3;
+  if (rollValue === maxRawThrowFace) {
     state.telemetry.players[playerColor].maxRollCount += 1;
   }
   const rollingState = __spreadProps(__spreadValues({}, state.gameState), {
@@ -16732,7 +17739,7 @@ function applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, nowMs) {
   }
   if (isConfiguredBotColor(state, activePlayerColor) && state.bot) {
     if (state.gameState.phase === "rolling") {
-      const rolledValue = rollAuthoritativeDice(nk);
+      const rolledValue = rollAuthoritativeDice(nk, state.gameState.matchConfig);
       const validMoves = applyRollOutcome(state, activePlayerColor, rolledValue);
       if (validMoves.length > 0) {
         const botMove = (_b = getBotMove(state.gameState, rolledValue, state.bot.difficulty)) != null ? _b : validMoves[0];
@@ -16799,7 +17806,7 @@ function applyTimedTurnTimeout(logger, nk, dispatcher, state, matchId, nowMs) {
     return;
   }
   if (state.gameState.phase === "rolling") {
-    const validMoves = applyRollOutcome(state, activePlayerColor, rollAuthoritativeDice(nk));
+    const validMoves = applyRollOutcome(state, activePlayerColor, rollAuthoritativeDice(nk, state.gameState.matchConfig));
     if (validMoves.length > 0) {
       applyValidatedMove(state, activePlayerColor, validMoves[0]);
     }
@@ -16853,7 +17860,7 @@ function applyRollRequest(logger, nk, dispatcher, state, userId, playerColor, pa
   if (payload.autoTriggered !== true) {
     resetAfkOnMeaningfulAction(state, playerColor, nowMs);
   }
-  applyRollOutcome(state, playerColor, rollAuthoritativeDice(nk));
+  applyRollOutcome(state, playerColor, rollAuthoritativeDice(nk, state.gameState.matchConfig));
   state.matchEnd = null;
   resetTurnTimerForCurrentState(state, nowMs, "player_roll");
   state.revision += 1;
@@ -17328,11 +18335,11 @@ var readTournamentEloRanksByUserId = (logger, nk, playerUserIds) => {
     const ownerRecords = Array.isArray(result.ownerRecords) ? result.ownerRecords : Array.isArray(result.owner_records) ? result.owner_records : [];
     return ownerRecords.reduce(
       (entries, record) => {
-        const ownerId = readStringField14(record, ["ownerId", "owner_id"]);
+        const ownerId = readStringField15(record, ["ownerId", "owner_id"]);
         if (!ownerId) {
           return entries;
         }
-        const rank = readNumberField9(record, ["rank"]);
+        const rank = readNumberField10(record, ["rank"]);
         entries[ownerId] = typeof rank === "number" ? rank : null;
         return entries;
       },
@@ -17350,16 +18357,16 @@ var readTournamentEloRanksByUserId = (logger, nk, playerUserIds) => {
 var buildEloProfileFromStorageObject = (userId, fallbackUsernameDisplay, rawValue, rank) => {
   var _a, _b, _c, _d, _e;
   const normalizedFallbackName = fallbackUsernameDisplay.trim().length > 0 ? fallbackUsernameDisplay : userId;
-  const usernameDisplay = (_a = readStringField14(rawValue, ["usernameDisplay", "username_display"])) != null ? _a : normalizedFallbackName;
-  const eloRating = sanitizeEloRating((_b = readNumberField9(rawValue, ["eloRating", "elo_rating"])) != null ? _b : DEFAULT_ELO_RATING);
-  const ratedGames = sanitizeRatedGameCount((_c = readNumberField9(rawValue, ["ratedGames", "rated_games"])) != null ? _c : 0);
+  const usernameDisplay = (_a = readStringField15(rawValue, ["usernameDisplay", "username_display"])) != null ? _a : normalizedFallbackName;
+  const eloRating = sanitizeEloRating((_b = readNumberField10(rawValue, ["eloRating", "elo_rating"])) != null ? _b : DEFAULT_ELO_RATING);
+  const ratedGames = sanitizeRatedGameCount((_c = readNumberField10(rawValue, ["ratedGames", "rated_games"])) != null ? _c : 0);
   const ratedWins = Math.min(
     ratedGames,
-    sanitizeRatedGameCount((_d = readNumberField9(rawValue, ["ratedWins", "rated_wins"])) != null ? _d : 0)
+    sanitizeRatedGameCount((_d = readNumberField10(rawValue, ["ratedWins", "rated_wins"])) != null ? _d : 0)
   );
   const ratedLosses = Math.min(
     Math.max(0, ratedGames - ratedWins),
-    sanitizeRatedGameCount((_e = readNumberField9(rawValue, ["ratedLosses", "rated_losses"])) != null ? _e : 0)
+    sanitizeRatedGameCount((_e = readNumberField10(rawValue, ["ratedLosses", "rated_losses"])) != null ? _e : 0)
   );
   return {
     leaderboardId: ELO_LEADERBOARD_ID,
@@ -17371,8 +18378,8 @@ var buildEloProfileFromStorageObject = (userId, fallbackUsernameDisplay, rawValu
     ratedLosses,
     provisional: ratedGames < PROVISIONAL_RATED_GAMES,
     rank,
-    lastRatedMatchId: readStringField14(rawValue, ["lastRatedMatchId", "last_rated_match_id"]),
-    lastRatedAt: readStringField14(rawValue, ["lastRatedAt", "last_rated_at"])
+    lastRatedMatchId: readStringField15(rawValue, ["lastRatedMatchId", "last_rated_match_id"]),
+    lastRatedAt: readStringField15(rawValue, ["lastRatedAt", "last_rated_at"])
   };
 };
 var buildTournamentRewardSummaryReadModelsByUserId = (logger, nk, state) => {
@@ -17633,6 +18640,15 @@ var runtimeGlobals = {
   rpcGetStorefront,
   rpcPurchaseItem,
   rpcGetOwnedCosmetics,
+  rpcGetGameModes,
+  rpcAdminListGameModes,
+  rpcAdminGetGameMode,
+  rpcAdminUpsertGameMode,
+  rpcAdminDisableGameMode,
+  rpcAdminDeleteGameMode,
+  rpcAdminEnableGameMode,
+  rpcAdminFeatureGameMode,
+  rpcAdminUnfeatureGameMode,
   rpcMatchmakerAdd,
   rpcCreatePrivateMatch,
   rpcJoinPrivateMatch,

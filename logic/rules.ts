@@ -43,8 +43,11 @@ export const isContestedWarTile = (
 ): boolean => canCaptureOnWarTile(matchConfigOrVariant, coord);
 
 export const shouldGrantExtraTurn = (
-  matchConfigOrVariant: Pick<MatchConfig, 'rulesVariant'> | RulesVariant,
-  options: { didCapture: boolean; landedOnRosette: boolean },
-): boolean =>
-  options.landedOnRosette ||
-  (resolveRulesVariant(matchConfigOrVariant) === 'capture' && options.didCapture);
+  matchConfig: Pick<MatchConfig, 'bonusTurnOnRosette' | 'bonusTurnOnCapture'>,
+  options: { didCapture: boolean; landedOnRosette: boolean; bonusThrow: boolean },
+): boolean => {
+  const bonusTurnOnRosette = matchConfig.bonusTurnOnRosette ?? true;
+  const bonusTurnOnCapture = matchConfig.bonusTurnOnCapture ?? false;
+
+  return options.bonusThrow || (bonusTurnOnRosette && options.landedOnRosette) || (bonusTurnOnCapture && options.didCapture);
+};

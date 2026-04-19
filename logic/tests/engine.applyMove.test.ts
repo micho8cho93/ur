@@ -66,6 +66,28 @@ describe('engine applyMove', () => {
     expect(next.dark.pieces[0].position).toBe(-1);
   });
 
+  it('keeps the turn on a Bell bonus throw even without a rosette landing', () => {
+    const bellConfig = {
+      ...getMatchConfig('gameMode_finkel_rules'),
+      baseRulesetPreset: 'rc_bell' as const,
+      rosetteSafetyMode: 'open' as const,
+      throwProfile: 'bell' as const,
+      bonusTurnOnRosette: false,
+      bonusTurnOnCapture: false,
+    };
+    const state = createInitialState(bellConfig);
+    state.phase = 'moving';
+    state.rollValue = 2;
+    state.light.pieces[0].position = 4;
+
+    const move = { pieceId: state.light.pieces[0].id, fromIndex: 4, toIndex: 5 };
+    const next = applyMove(state, move);
+
+    expect(next.currentTurn).toBe('light');
+    expect(next.phase).toBe('rolling');
+    expect(next.rollValue).toBeNull();
+  });
+
   it('marks a piece finished and increments finished count on bearing off', () => {
     const state = createInitialState();
     state.light.pieces[0].position = PATH_LENGTH - 1;

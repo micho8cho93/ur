@@ -150,4 +150,25 @@ describe('engine getValidMoves', () => {
 
     expect(moves).toEqual([]);
   });
+
+  it('resolves Bell raw throw faces into historical move distances', () => {
+    const bellConfig = {
+      ...getMatchConfig('gameMode_finkel_rules'),
+      baseRulesetPreset: 'rc_bell' as const,
+      rosetteSafetyMode: 'open' as const,
+      throwProfile: 'bell' as const,
+      bonusTurnOnRosette: false,
+      bonusTurnOnCapture: false,
+    };
+    const state = createInitialState(bellConfig);
+    state.currentTurn = 'light';
+    setOnlyActivePiece(state, 'light', 0, 0);
+
+    expect(getValidMoves(state, 0)).toContainEqual({
+      pieceId: state.light.pieces[0].id,
+      fromIndex: 0,
+      toIndex: 4,
+    });
+    expect(getValidMoves(state, 1)).toEqual([]);
+  });
 });

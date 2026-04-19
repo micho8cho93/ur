@@ -5,7 +5,7 @@
 
 import { getBotMove } from "../../logic/bot/bot";
 import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty, type BotDifficulty } from "../../logic/bot/types";
-import { applyMove, createInitialState, getValidMoves, rollDice } from "../../logic/engine";
+import { applyMove, createInitialState, getValidMoves, rollThrowFace } from "../../logic/engine";
 import { getMatchConfig, isMatchModeId, type MatchConfig } from "../../logic/matchConfigs";
 import { getPathCoord as getVariantPathCoord, getPathLength } from "../../logic/pathVariants";
 import { GameState, PlayerColor } from "../../logic/types";
@@ -92,6 +92,7 @@ import {
 } from "./cosmeticStore";
 import {
   RPC_ADMIN_DISABLE_GAME_MODE,
+  RPC_ADMIN_DELETE_GAME_MODE,
   RPC_ADMIN_ENABLE_GAME_MODE,
   RPC_ADMIN_FEATURE_GAME_MODE,
   RPC_ADMIN_GET_GAME_MODE,
@@ -100,6 +101,7 @@ import {
   RPC_ADMIN_UPSERT_GAME_MODE,
   RPC_GET_GAME_MODES,
   rpcAdminDisableGameMode,
+  rpcAdminDeleteGameMode,
   rpcAdminEnableGameMode,
   rpcAdminFeatureGameMode,
   rpcAdminGetGameMode,
@@ -537,7 +539,10 @@ const getSecureRandomUnit = (nk?: nkruntime.Nakama): number => {
   throw new Error("Authoritative dice roll requires a cryptographically secure random source.");
 };
 
-const rollAuthoritativeDice = (nk?: nkruntime.Nakama): number => rollDice(() => getSecureRandomUnit(nk));
+const rollAuthoritativeDice = (
+  nk: nkruntime.Nakama | undefined,
+  matchConfig: Pick<MatchConfig, "throwProfile">,
+): number => rollThrowFace(matchConfig, () => getSecureRandomUnit(nk));
 
 const readStringField = (value: unknown, keys: string[]): string | null => {
   const record = asRecord(value);
@@ -2607,6 +2612,7 @@ function InitModule(
   initializer.registerRpc(RPC_ADMIN_UPSERT_GAME_MODE, rpcAdminUpsertGameMode);
   initializer.registerRpc(RPC_ADMIN_DISABLE_GAME_MODE, rpcAdminDisableGameMode);
   initializer.registerRpc(RPC_ADMIN_ENABLE_GAME_MODE, rpcAdminEnableGameMode);
+  initializer.registerRpc(RPC_ADMIN_DELETE_GAME_MODE, rpcAdminDeleteGameMode);
   initializer.registerRpc(RPC_ADMIN_FEATURE_GAME_MODE, rpcAdminFeatureGameMode);
   initializer.registerRpc(RPC_ADMIN_UNFEATURE_GAME_MODE, rpcAdminUnfeatureGameMode);
   initializer.registerRpc(RPC_SUBMIT_FEEDBACK, rpcSubmitFeedback);
@@ -3862,7 +3868,8 @@ function ensureAssignment(state: MatchState, userId: string): void {
 }
 
 function applyRollOutcome(state: MatchState, playerColor: PlayerColor, rollValue: number): MoveRequestPayload["move"][] {
-  if (rollValue === 4) {
+  const maxRawThrowFace = (state.gameState.matchConfig.throwProfile ?? "standard") === "standard" ? 4 : 3;
+  if (rollValue === maxRawThrowFace) {
     state.telemetry.players[playerColor].maxRollCount += 1;
   }
 
@@ -3994,7 +4001,7 @@ function applyTimedTurnTimeout(
 
   if (isConfiguredBotColor(state, activePlayerColor) && state.bot) {
     if (state.gameState.phase === "rolling") {
-      const rolledValue = rollAuthoritativeDice(nk);
+      const rolledValue = rollAuthoritativeDice(nk, state.gameState.matchConfig);
       const validMoves = applyRollOutcome(state, activePlayerColor, rolledValue);
       if (validMoves.length > 0) {
         const botMove = getBotMove(state.gameState, rolledValue, state.bot.difficulty) ?? validMoves[0];
@@ -4067,7 +4074,7 @@ function applyTimedTurnTimeout(
   }
 
   if (state.gameState.phase === "rolling") {
-    const validMoves = applyRollOutcome(state, activePlayerColor, rollAuthoritativeDice(nk));
+    const validMoves = applyRollOutcome(state, activePlayerColor, rollAuthoritativeDice(nk, state.gameState.matchConfig));
     if (validMoves.length > 0) {
       applyValidatedMove(state, activePlayerColor, validMoves[0]);
     }
@@ -4138,7 +4145,7 @@ function applyRollRequest(
   if (payload.autoTriggered !== true) {
     resetAfkOnMeaningfulAction(state, playerColor, nowMs);
   }
-  applyRollOutcome(state, playerColor, rollAuthoritativeDice(nk));
+  applyRollOutcome(state, playerColor, rollAuthoritativeDice(nk, state.gameState.matchConfig));
   state.matchEnd = null;
   resetTurnTimerForCurrentState(state, nowMs, "player_roll");
   state.revision += 1;
@@ -5182,6 +5189,7 @@ type RuntimeGlobalBindings = {
   rpcAdminGetGameMode: typeof rpcAdminGetGameMode;
   rpcAdminUpsertGameMode: typeof rpcAdminUpsertGameMode;
   rpcAdminDisableGameMode: typeof rpcAdminDisableGameMode;
+  rpcAdminDeleteGameMode: typeof rpcAdminDeleteGameMode;
   rpcAdminEnableGameMode: typeof rpcAdminEnableGameMode;
   rpcAdminFeatureGameMode: typeof rpcAdminFeatureGameMode;
   rpcAdminUnfeatureGameMode: typeof rpcAdminUnfeatureGameMode;
@@ -5223,6 +5231,7 @@ const runtimeGlobals: RuntimeGlobalBindings = {
   rpcAdminGetGameMode,
   rpcAdminUpsertGameMode,
   rpcAdminDisableGameMode,
+  rpcAdminDeleteGameMode,
   rpcAdminEnableGameMode,
   rpcAdminFeatureGameMode,
   rpcAdminUnfeatureGameMode,

@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
-import { getAdminGameModes, upsertGameMode, enableGameMode, disableGameMode, featureGameMode, unfeatureGameMode } from '../api/gameModes'
+import {
+  deleteGameMode,
+  disableGameMode,
+  enableGameMode,
+  featureGameMode,
+  getAdminGameModes,
+  unfeatureGameMode,
+  upsertGameMode,
+} from '../api/gameModes'
 import { ActionToolbar } from '../components/ActionToolbar'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
@@ -79,6 +87,8 @@ const ELIMINATION_OPTIONS: Array<{ value: GameModeEliminationMode; label: string
   { value: 'return_to_start', label: 'Return to start' },
   { value: 'eliminated', label: 'Eliminated' },
 ]
+
+const GAME_MODE_FORM_ID = 'game-mode-editor-form'
 
 function createDefaultForm(): GameModeEditorState {
   const defaults = getGameModePresetDefaults('custom')
@@ -341,6 +351,30 @@ export function GameModesPage() {
     }
   }
 
+  async function handleDelete(mode: AdminGameMode) {
+    const confirmed = window.confirm(`Delete "${mode.name}" permanently? This cannot be undone.`)
+    if (!confirmed) {
+      return
+    }
+
+    setIsMutatingModeId(mode.id)
+    setErrorMessage(null)
+
+    try {
+      await deleteGameMode(mode.id)
+      if (mode.id === editingMode?.id) {
+        navigate(appRoutes.gameModes.new, { replace: true })
+        return
+      }
+
+      await refresh()
+    } catch (mutateError) {
+      setErrorMessage(mutateError instanceof Error ? mutateError.message : 'Unable to delete mode.')
+    } finally {
+      setIsMutatingModeId(null)
+    }
+  }
+
   const columns: DataTableColumn<AdminGameMode>[] = [
     {
       key: 'mode',
@@ -404,6 +438,14 @@ export function GameModesPage() {
           >
             {mode.isActive ? 'Deactivate' : 'Activate'}
           </button>
+          <button
+            className="button button--danger"
+            type="button"
+            onClick={() => void handleDelete(mode)}
+            disabled={isMutatingModeId === mode.id}
+          >
+            Delete
+          </button>
         </div>
       ),
     },
@@ -422,9 +464,15 @@ export function GameModesPage() {
           </div>
         }
         actions={
-          <Link className="button button--primary" to={appRoutes.gameModes.new}>
-            Create mode
-          </Link>
+          isCreating ? (
+            <button className="button button--primary" type="submit" form={GAME_MODE_FORM_ID} disabled={isSaving}>
+              {isSaving ? 'Saving...' : 'Create mode'}
+            </button>
+          ) : (
+            <Link className="button button--primary" to={appRoutes.gameModes.new}>
+              Create mode
+            </Link>
+          )
         }
       />
 
@@ -459,7 +507,7 @@ export function GameModesPage() {
             : 'Change the stored configuration and keep the featured state in sync from the table actions.'
         }
       >
-        <form className="stack" onSubmit={(event) => void handleSave(event)}>
+        <form id={GAME_MODE_FORM_ID} className="stack" onSubmit={(event) => void handleSave(event)}>
           <div className="form-grid">
             <label className="field">
               <span className="field__label">Mode ID</span>

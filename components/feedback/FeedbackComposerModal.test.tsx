@@ -100,12 +100,11 @@ describe('FeedbackComposerModal', () => {
       />,
     )
 
-    expect(screen.getAllByText('Match')).not.toHaveLength(0)
-    expect(screen.getByText('match-22')).toBeTruthy()
-    expect(screen.getByText('Opponent')).toBeTruthy()
+    expect(screen.getByText('Player report')).toBeTruthy()
+    expect(screen.getByText('A conduct issue, exploit, or abuse report.')).toBeTruthy()
 
     fireEvent.changeText(screen.getByLabelText('Feedback message'), 'The other player kept stalling.')
-    fireEvent.press(screen.getByText('Send feedback'))
+    fireEvent.press(screen.getByLabelText('Send feedback'))
 
     await waitFor(() => {
       expect(mockSubmitFeedback).toHaveBeenCalledWith(
@@ -129,11 +128,11 @@ describe('FeedbackComposerModal', () => {
   it('requires a category and message before submitting', async () => {
     render(<FeedbackComposerModal visible sourcePage="home" onClose={jest.fn()} />)
 
-    fireEvent.press(screen.getByText('Send feedback'))
-    expect(screen.getByText('Pick a feedback category before sending.')).toBeTruthy()
+    fireEvent.press(screen.getByLabelText('Send feedback'))
+    expect(screen.getByText('Pick a category before sending.')).toBeTruthy()
 
     fireEvent.press(screen.getByText('Bug'))
-    fireEvent.press(screen.getByText('Send feedback'))
-    expect(screen.getByText('Write a message before sending feedback.')).toBeTruthy()
+    fireEvent.press(screen.getByLabelText('Send feedback'))
+    expect(screen.getByText('Write a message before sending.')).toBeTruthy()
   })
 })

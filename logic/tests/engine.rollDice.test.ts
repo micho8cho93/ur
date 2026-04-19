@@ -1,4 +1,4 @@
-import { rollDice } from '@/logic/engine';
+import { rollDice, rollThrowFace } from '@/logic/engine';
 
 describe('engine rollDice', () => {
   afterEach(() => {
@@ -34,5 +34,24 @@ describe('engine rollDice', () => {
     }
 
     expect(outcomeCounts).toEqual([1, 4, 6, 4, 1]);
+  });
+
+  it('uses three binary lots for Bell and Masters throw profiles', () => {
+    jest
+      .spyOn(Math, 'random')
+      .mockReturnValueOnce(0.5)
+      .mockReturnValueOnce(0.5)
+      .mockReturnValueOnce(0.5);
+
+    expect(rollThrowFace({ throwProfile: 'bell' })).toBe(3);
+
+    jest.restoreAllMocks();
+    jest
+      .spyOn(Math, 'random')
+      .mockReturnValueOnce(0.5)
+      .mockReturnValueOnce(0.5)
+      .mockReturnValueOnce(0.5);
+
+    expect(rollThrowFace({ throwProfile: 'masters' })).toBe(3);
   });
 });

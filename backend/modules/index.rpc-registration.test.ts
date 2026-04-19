@@ -73,6 +73,7 @@ describe("InitModule tournament RPC registration", () => {
         "admin_upsert_game_mode",
         "admin_disable_game_mode",
         "admin_enable_game_mode",
+        "admin_delete_game_mode",
         "admin_feature_game_mode",
         "admin_unfeature_game_mode",
         "submit_feedback",
@@ -142,6 +143,9 @@ describe("InitModule tournament RPC registration", () => {
     );
     expect(entrypointSource).toContain(
       "initializer.registerRpc(RPC_ADMIN_ENABLE_GAME_MODE, rpcAdminEnableGameMode);",
+    );
+    expect(entrypointSource).toContain(
+      "initializer.registerRpc(RPC_ADMIN_DELETE_GAME_MODE, rpcAdminDeleteGameMode);",
     );
     expect(entrypointSource).toContain(
       "initializer.registerRpc(RPC_ADMIN_FEATURE_GAME_MODE, rpcAdminFeatureGameMode);",

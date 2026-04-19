@@ -3,6 +3,7 @@ import { GLOBAL_STORAGE_USER_ID } from './progression'
 import {
   getPublicGameModes,
   rpcAdminDisableGameMode,
+  rpcAdminDeleteGameMode,
   rpcAdminFeatureGameMode,
   rpcAdminGetGameMode,
   rpcAdminListGameModes,
@@ -107,7 +108,16 @@ const upsertMode = (
     id: string
     name: string
     description: string
-    baseRulesetPreset: 'quick_play' | 'race' | 'finkel_rules' | 'capture' | 'custom'
+    baseRulesetPreset:
+      | 'quick_play'
+      | 'race'
+      | 'capture'
+      | 'finkel_rules'
+      | 'hjr_murray'
+      | 'rc_bell'
+      | 'masters'
+      | 'skiryuk'
+      | 'custom'
     pieceCountPerSide: number
     rulesVariant: 'standard' | 'capture' | 'no-capture'
     rosetteSafetyMode: 'standard' | 'open'
@@ -199,6 +209,65 @@ describe('gameModes catalog RPCs', () => {
         activeModes: expect.arrayContaining([expect.objectContaining({ id: 'moonlight_sprint' })]),
       }),
     )
+  })
+
+  it('normalizes legacy preset ids back to custom when records are read', () => {
+    const nk = createNakama()
+    const logger = createLogger()
+    seedAdminRole(nk)
+
+    upsertMode(nk, logger, {
+      id: 'legacy_mode',
+      name: 'Legacy Mode',
+      description: 'Stored with a retired preset id',
+      baseRulesetPreset: 'capture',
+      pieceCountPerSide: 5,
+      rulesVariant: 'capture',
+      rosetteSafetyMode: 'open',
+      exitStyle: 'standard',
+      eliminationMode: 'return_to_start',
+      fogOfWar: false,
+      boardAssetKey: 'board_design',
+      isActive: true,
+    })
+
+    const adminMode = JSON.parse(
+      rpcAdminGetGameMode({ userId: 'admin-1' }, logger, nk, JSON.stringify({ modeId: 'legacy_mode' })),
+    ) as { success: true; mode: { baseRulesetPreset: string } }
+    const adminList = JSON.parse(rpcAdminListGameModes({ userId: 'admin-1' }, logger, nk, '')) as {
+      modes: Array<{ id: string; baseRulesetPreset: string }>
+    }
+
+    expect(adminMode.mode.baseRulesetPreset).toBe('custom')
+    expect(adminList.modes.find((mode) => mode.id === 'legacy_mode')?.baseRulesetPreset).toBe('custom')
+  })
+
+  it('accepts the new historical preset ids in storage round-trips', () => {
+    const nk = createNakama()
+    const logger = createLogger()
+    seedAdminRole(nk)
+
+    upsertMode(nk, logger, {
+      id: 'masters_mode',
+      name: 'Masters Mode',
+      description: 'Uses the Masters route and throw profile',
+      baseRulesetPreset: 'masters',
+      pieceCountPerSide: 7,
+      rulesVariant: 'standard',
+      rosetteSafetyMode: 'standard',
+      exitStyle: 'standard',
+      eliminationMode: 'return_to_start',
+      fogOfWar: false,
+      boardAssetKey: 'board_design',
+      isActive: true,
+    })
+
+    const storedMode = JSON.parse(
+      rpcAdminGetGameMode({ userId: 'admin-1' }, logger, nk, JSON.stringify({ modeId: 'masters_mode' })),
+    ) as { success: true; mode: { baseRulesetPreset: string; id: string } }
+
+    expect(storedMode.mode.id).toBe('masters_mode')
+    expect(storedMode.mode.baseRulesetPreset).toBe('masters')
   })
 
   it('keeps exactly one featured mode after feature and unfeature mutations', () => {
@@ -299,6 +368,60 @@ describe('gameModes catalog RPCs', () => {
     }
 
     expect(publicPayload.featuredMode).toEqual(expect.objectContaining({ id: 'moonlight_sprint' }))
+    expect(publicPayload.activeModes.map((mode) => mode.id)).toEqual(['ember_trial'])
+  })
+
+  it('permanently deletes a mode and keeps the active catalog playable', () => {
+    const nk = createNakama()
+    const logger = createLogger()
+    seedAdminRole(nk)
+
+    upsertMode(nk, logger, {
+      id: 'moonlight_sprint',
+      name: 'Moonlight Sprint',
+      description: 'Fogged custom mode',
+      baseRulesetPreset: 'custom',
+      pieceCountPerSide: 7,
+      rulesVariant: 'standard',
+      rosetteSafetyMode: 'standard',
+      exitStyle: 'single_exit',
+      eliminationMode: 'return_to_start',
+      fogOfWar: true,
+      boardAssetKey: 'board_single_exit',
+      isActive: true,
+    })
+    upsertMode(nk, logger, {
+      id: 'ember_trial',
+      name: 'Ember Trial',
+      description: 'Capture-focused mode',
+      baseRulesetPreset: 'capture',
+      pieceCountPerSide: 5,
+      rulesVariant: 'capture',
+      rosetteSafetyMode: 'open',
+      exitStyle: 'standard',
+      eliminationMode: 'eliminated',
+      fogOfWar: false,
+      boardAssetKey: 'board_design',
+      isActive: true,
+    })
+
+    const deleted = JSON.parse(
+      rpcAdminDeleteGameMode({ userId: 'admin-1' }, logger, nk, JSON.stringify({ modeId: 'moonlight_sprint' })),
+    ) as { success: true; modeId: string }
+    expect(deleted.modeId).toBe('moonlight_sprint')
+
+    const adminList = JSON.parse(rpcAdminListGameModes({ userId: 'admin-1' }, logger, nk, '')) as {
+      featuredModeId: string | null
+      modes: Array<{ id: string; featured: boolean; isActive: boolean }>
+    }
+    const publicPayload = JSON.parse(rpcGetGameModes({ userId: 'player-1' }, logger, nk, '')) as {
+      featuredMode: { id: string } | null
+      activeModes: Array<{ id: string }>
+    }
+
+    expect(adminList.modes.map((mode) => mode.id)).toEqual(['ember_trial'])
+    expect(adminList.featuredModeId).toBe('ember_trial')
+    expect(publicPayload.featuredMode).toEqual(expect.objectContaining({ id: 'ember_trial' }))
     expect(publicPayload.activeModes.map((mode) => mode.id)).toEqual(['ember_trial'])
   })
 })
