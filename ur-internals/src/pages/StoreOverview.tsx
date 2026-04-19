@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getAdminFullCatalog, getStoreStats } from '../api/store'
-import { ActionToolbar } from '../components/ActionToolbar'
+import { useTopbarActions } from '../layout/TopbarActionsContext'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
@@ -43,6 +43,15 @@ const pricingLayers: PricingLayer[] = [
     notes: 'Keep this lane open for future match-priced modes.',
   },
 ]
+
+type CatalogEconomicsSummary = {
+  currency: string
+  count: number
+  min: number
+  max: number
+  avg: number
+  total: number
+}
 
 function sumPrices(items: CosmeticDefinition[], currency: 'soft' | 'premium'): number {
   return items.reduce((total, item) => (item.price.currency === currency ? total + item.price.amount : total), 0)
@@ -90,13 +99,36 @@ export function StoreOverviewPage() {
     }
   }, [])
 
-  const softPricedItems = useMemo(() => catalog.filter((item) => item.price.currency === 'soft').length, [catalog])
-  const premiumPricedItems = useMemo(
-    () => catalog.filter((item) => item.price.currency === 'premium').length,
-    [catalog],
-  )
+  const coinItems = useMemo(() => catalog.filter((item) => item.price.currency === 'soft'), [catalog])
+  const gemItems = useMemo(() => catalog.filter((item) => item.price.currency === 'premium'), [catalog])
+
+  const softPricedItems = coinItems.length
+  const premiumPricedItems = gemItems.length
   const softPriceTotal = useMemo(() => sumPrices(catalog, 'soft'), [catalog])
   const premiumPriceTotal = useMemo(() => sumPrices(catalog, 'premium'), [catalog])
+
+  const catalogEconomics = useMemo((): CatalogEconomicsSummary[] => {
+    const coinPrices = coinItems.map((i) => i.price.amount)
+    const gemPrices = gemItems.map((i) => i.price.amount)
+    const summarize = (prices: number[], currency: string): CatalogEconomicsSummary => ({
+      currency,
+      count: prices.length,
+      min: prices.length > 0 ? Math.min(...prices) : 0,
+      max: prices.length > 0 ? Math.max(...prices) : 0,
+      avg: prices.length > 0 ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 0,
+      total: prices.reduce((a, b) => a + b, 0),
+    })
+    return [summarize(coinPrices, 'Coins'), summarize(gemPrices, 'Gems')]
+  }, [coinItems, gemItems])
+
+  const economicsColumns: DataTableColumn<CatalogEconomicsSummary>[] = [
+    { key: 'currency', header: 'Currency', render: (row) => <strong>{row.currency}</strong> },
+    { key: 'count', header: 'Items', align: 'right', render: (row) => (isLoading ? '…' : row.count) },
+    { key: 'min', header: 'Cheapest', align: 'right', render: (row) => (isLoading ? '…' : row.min) },
+    { key: 'max', header: 'Most expensive', align: 'right', render: (row) => (isLoading ? '…' : row.max) },
+    { key: 'avg', header: 'Average', align: 'right', render: (row) => (isLoading ? '…' : row.avg) },
+    { key: 'total', header: 'Total pool', align: 'right', render: (row) => (isLoading ? '…' : row.total) },
+  ]
 
   const pricingColumns: DataTableColumn<PricingLayer>[] = [
     {
@@ -121,19 +153,18 @@ export function StoreOverviewPage() {
     },
   ]
 
+  useTopbarActions(
+    <Link className="button button--secondary" to={appRoutes.store.catalog}>
+      Open catalog
+    </Link>,
+  )
+
   return (
     <>
       <PageHeader
         eyebrow="Store"
         title="Pricing overview"
         description="A compact map of how coins, gems, tournament entry fees, and future match fees fit together."
-        actions={
-          <ActionToolbar>
-            <Link className="button button--secondary" to={appRoutes.store.catalog}>
-              Open catalog
-            </Link>
-          </ActionToolbar>
-        }
       />
 
       {error ? <div className="alert alert--error">{error}</div> : null}
@@ -163,6 +194,18 @@ export function StoreOverviewPage() {
           hint="Observed premium-currency sink from store purchases."
         />
       </MetaStrip>
+
+      <SectionPanel
+        title="Catalog economics"
+        subtitle="Price ranges across the full item catalog — helps calibrate tournament fees and earning targets."
+      >
+        <DataTable
+          columns={economicsColumns}
+          rows={catalogEconomics}
+          rowKey={(row) => row.currency}
+          emptyState={<EmptyState title="No catalog data" description="Load the catalog to see price ranges." />}
+        />
+      </SectionPanel>
 
       <SectionPanel
         title="Pricing map"

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import env from '../config/env'
+import { TopbarActionsContext } from '../layout/TopbarActionsContext'
 import { getTargetLabel } from '../layout/workspaceMeta'
 import { internalsSections, sectionNavItems, type InternalsSectionId } from '../routes'
 import { SidebarNav } from './SidebarNav'
@@ -27,6 +28,7 @@ export function AppShell({ section }: AppShellProps) {
   const { adminIdentity } = useSession()
   const sectionMeta = internalsSections[section]
   const items = sectionNavItems[section]
+  const [topbarActions, setTopbarActions] = useState<ReactNode>(null)
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') {
       return false
@@ -53,6 +55,7 @@ export function AppShell({ section }: AppShellProps) {
       )?.label ?? sectionMeta.label
 
   return (
+    <TopbarActionsContext.Provider value={{ setActions: setTopbarActions }}>
     <div className={shellClassName}>
       <SidebarNav
         collapsed={collapsed}
@@ -76,6 +79,7 @@ export function AppShell({ section }: AppShellProps) {
           </div>
 
           <div className="console-topbar__actions">
+            {topbarActions}
             <Link className="button button--secondary" to="/">
               Switch internals section
             </Link>
@@ -87,5 +91,6 @@ export function AppShell({ section }: AppShellProps) {
         </main>
       </div>
     </div>
+    </TopbarActionsContext.Provider>
   )
 }

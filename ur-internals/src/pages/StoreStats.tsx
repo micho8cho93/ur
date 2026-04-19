@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getAdminFullCatalog, getStoreStats } from '../api/store'
-import { ActionToolbar } from '../components/ActionToolbar'
+import { useTopbarActions } from '../layout/TopbarActionsContext'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
 import { KpiStatCard } from '../components/KpiStatCard'
@@ -69,19 +69,18 @@ export function StoreStatsPage() {
     }
   }
 
+  useTopbarActions(
+    <button className="button button--secondary" type="button" onClick={() => void load()}>
+      Refresh
+    </button>,
+  )
+
   return (
     <>
       <PageHeader
         eyebrow="Store"
         title="Store Stats"
         description="Cosmetic purchase totals collected from store analytics events."
-        actions={
-          <ActionToolbar>
-            <button className="button button--secondary" type="button" onClick={() => void load()}>
-              Refresh
-            </button>
-          </ActionToolbar>
-        }
       />
 
       {error ? <div className="alert alert--error">{error}</div> : null}

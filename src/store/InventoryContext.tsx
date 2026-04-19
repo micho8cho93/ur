@@ -243,6 +243,8 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeUserIdRef = useRef<string | null>(null);
   const requestIdRef = useRef(0);
+  const storefrontRef = useRef(storefront);
+  storefrontRef.current = storefront;
 
   const refresh = useCallback(async () => {
     if (!user) {
@@ -274,7 +276,7 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
       }
 
       const catalogById = new Map(nextCatalogItems.items.map((item) => [item.id, item]));
-      const freshOwnedIds = new Set((nextStorefront ?? storefront)?.ownedIds ?? []);
+      const freshOwnedIds = new Set((nextStorefront ?? storefrontRef.current)?.ownedIds ?? []);
       const sanitizedLoadout = sanitizeLoadout(nextLoadout, freshOwnedIds, catalogById);
 
       setCatalogItems(nextCatalogItems.items);
@@ -291,7 +293,7 @@ export const InventoryProvider: React.FC<PropsWithChildren> = ({ children }) => 
         setIsCatalogLoading(false);
       }
     }
-  }, [refreshStorefront, storefront, user]);
+  }, [refreshStorefront, user]);
 
   useEffect(() => {
     if (isAuthLoading || isStoreLoading) {

@@ -50,6 +50,8 @@ export const StoreProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeUserIdRef = useRef<string | null>(null);
   const requestIdRef = useRef(0);
+  const storefrontRef = useRef(storefront);
+  storefrontRef.current = storefront;
 
   const resetState = useCallback(() => {
     requestIdRef.current += 1;
@@ -70,7 +72,7 @@ export const StoreProvider: React.FC<PropsWithChildren> = ({ children }) => {
       const requestId = requestIdRef.current;
 
       setErrorMessage(null);
-      if (!options?.silent || !storefront) {
+      if (!options?.silent || !storefrontRef.current) {
         setLoading(true);
       }
 
@@ -94,7 +96,7 @@ export const StoreProvider: React.FC<PropsWithChildren> = ({ children }) => {
         return null;
       }
     },
-    [resetState, storefront, user],
+    [resetState, user],
   );
 
   useEffect(() => {

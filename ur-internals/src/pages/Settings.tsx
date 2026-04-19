@@ -1,6 +1,6 @@
 import { useSession } from '../auth/useSession'
 import env from '../config/env'
-import { ActionToolbar } from '../components/ActionToolbar'
+import { useTopbarActions } from '../layout/TopbarActionsContext'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
@@ -9,26 +9,24 @@ import { getTargetLabel } from '../layout/workspaceMeta'
 export function SettingsPage() {
   const { adminIdentity, isAuthenticating, logout } = useSession()
 
+  useTopbarActions(
+    <button
+      className="button button--secondary"
+      type="button"
+      onClick={() => { void logout() }}
+      disabled={isAuthenticating}
+    >
+      Sign out
+    </button>,
+    [isAuthenticating, logout],
+  )
+
   return (
     <>
       <PageHeader
         eyebrow="Settings"
         title="Console settings"
         description="Session, environment, and operator controls for UR Internals."
-        actions={
-          <ActionToolbar>
-            <button
-              className="button button--secondary"
-              type="button"
-              onClick={() => {
-                void logout()
-              }}
-              disabled={isAuthenticating}
-            >
-              Sign out
-            </button>
-          </ActionToolbar>
-        }
       />
 
       <MetaStrip>

@@ -8,6 +8,7 @@ import {
   setManualRotation,
 } from '../api/store'
 import { ActionToolbar } from '../components/ActionToolbar'
+import { useTopbarActions } from '../layout/TopbarActionsContext'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
 import { PageHeader } from '../components/PageHeader'
@@ -191,19 +192,18 @@ export function StoreRotationPage() {
     }
   }
 
+  useTopbarActions(
+    <button className="button button--secondary" type="button" onClick={() => void load()}>
+      Refresh
+    </button>,
+  )
+
   return (
     <>
       <PageHeader
         eyebrow="Store"
         title="Rotation"
         description="Set manual daily and featured store rotation IDs, or manage limited-time cosmetic events."
-        actions={
-          <ActionToolbar>
-            <button className="button button--secondary" type="button" onClick={() => void load()}>
-              Refresh
-            </button>
-          </ActionToolbar>
-        }
       />
 
       {error ? <div className="alert alert--error">{error}</div> : null}

@@ -4,6 +4,7 @@ import { listAuditLog } from '../api/auditLog'
 import { getTournamentLiveOverview } from '../api/liveStatus'
 import { useSession } from '../auth/useSession'
 import { ActionToolbar } from '../components/ActionToolbar'
+import { useTopbarActions } from '../layout/TopbarActionsContext'
 import { EmptyState } from '../components/EmptyState'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
@@ -239,19 +240,18 @@ export function OverviewPage() {
 
   const kpis = buildTournamentLiveOverviewKpis(summaries)
 
+  useTopbarActions(
+    <Link className="button button--primary" to={appRoutes.tournaments.create}>
+      Create tournament
+    </Link>,
+  )
+
   return (
     <>
       <PageHeader
         eyebrow="Overview"
         title="Tournament ops dashboard"
         description="Cross-tournament operational view with live bracket pressure, queue health, finalize readiness, and audit activity."
-        actions={
-          <ActionToolbar>
-            <Link className="button button--primary" to={appRoutes.tournaments.create}>
-              Create tournament
-            </Link>
-          </ActionToolbar>
-        }
       />
 
       {error ? <div className="alert alert--error">{error}</div> : null}

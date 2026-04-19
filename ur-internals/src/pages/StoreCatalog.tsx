@@ -7,6 +7,7 @@ import {
   upsertCosmetic,
 } from '../api/store'
 import { ActionToolbar } from '../components/ActionToolbar'
+import { useTopbarActions } from '../layout/TopbarActionsContext'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
 import { FilterBar } from '../components/FilterBar'
@@ -474,19 +475,18 @@ export function StoreCatalogPage() {
     }
   }
 
+  useTopbarActions(
+    <button className="button button--secondary" type="button" onClick={() => void loadCatalog()}>
+      Refresh
+    </button>,
+  )
+
   return (
     <>
       <PageHeader
         eyebrow="Store"
         title="Catalog"
         description="Create, edit, disable, and inspect cosmetic items stored in Nakama."
-        actions={
-          <ActionToolbar>
-            <button className="button button--secondary" type="button" onClick={() => void loadCatalog()}>
-              Refresh
-            </button>
-          </ActionToolbar>
-        }
       />
 
       {error ? <div className="alert alert--error">{error}</div> : null}

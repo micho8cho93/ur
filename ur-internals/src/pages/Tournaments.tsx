@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { deleteTournament, listTournaments, openTournament } from '../api/tournaments'
-import { ActionToolbar } from '../components/ActionToolbar'
+import { useTopbarActions } from '../layout/TopbarActionsContext'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
@@ -212,19 +212,18 @@ export function TournamentsPage() {
     }
   }
 
+  useTopbarActions(
+    <Link className="button button--primary" to={appRoutes.tournaments.create}>
+      New tournament
+    </Link>,
+  )
+
   return (
     <>
       <PageHeader
         eyebrow="Runs"
         title="Tournament runs"
         description="Run queue returned by the tournament admin RPC, with lifecycle, capacity, structure, and direct control-room access."
-        actions={
-          <ActionToolbar>
-            <Link className="button button--primary" to={appRoutes.tournaments.create}>
-              New tournament
-            </Link>
-          </ActionToolbar>
-        }
       />
 
       {error ? <div className="alert alert--error">{error}</div> : null}

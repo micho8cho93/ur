@@ -198,44 +198,44 @@ interface BoardTileFocusFrameRatio {
 // Anchors stay lane-aligned from the right column baseline.
 const VERTICAL_BOARD_TILE_FOCUS_FRAME_RATIOS: readonly (readonly BoardTileFocusFrameRatio[])[] = [
   [
-    { centerX: 0.5, centerY: 0.48, width: 0.86, height: 0.78 },
+    { centerX: 0.47, centerY: 0.48, width: 0.86, height: 0.78 },
     { centerX: 0.5, centerY: 0.48, width: 0.84, height: 0.78 },
-    { centerX: 0.5, centerY: 0.48, width: 0.86, height: 0.78 },
+    { centerX: 0.55, centerY: 0.48, width: 0.86, height: 0.78 },
   ],
   [
-    { centerX: 0.51, centerY: 0.48, width: 0.86, height: 0.82 },
+    { centerX: 0.48, centerY: 0.48, width: 0.86, height: 0.82 },
     { centerX: 0.51, centerY: 0.48, width: 0.84, height: 0.82 },
-    { centerX: 0.51, centerY: 0.48, width: 0.86, height: 0.82 },
+    { centerX: 0.56, centerY: 0.48, width: 0.86, height: 0.82 },
   ],
   [
-    { centerX: 0.51, centerY: 0.49, width: 0.86, height: 0.84 },
+    { centerX: 0.48, centerY: 0.49, width: 0.86, height: 0.84 },
     { centerX: 0.51, centerY: 0.49, width: 0.84, height: 0.84 },
-    { centerX: 0.51, centerY: 0.49, width: 0.86, height: 0.84 },
+    { centerX: 0.56, centerY: 0.49, width: 0.86, height: 0.84 },
   ],
   [
-    { centerX: 0.51, centerY: 0.49, width: 0.86, height: 0.84 },
+    { centerX: 0.48, centerY: 0.49, width: 0.86, height: 0.84 },
     { centerX: 0.51, centerY: 0.49, width: 0.84, height: 0.84 },
-    { centerX: 0.51, centerY: 0.49, width: 0.86, height: 0.84 },
+    { centerX: 0.56, centerY: 0.49, width: 0.86, height: 0.84 },
   ],
   [
-    { centerX: 0.5, centerY: 0.5, width: 0.86, height: 0.84 },
+    { centerX: 0.47, centerY: 0.5, width: 0.86, height: 0.84 },
     { centerX: 0.5, centerY: 0.5, width: 0.84, height: 0.84 },
-    { centerX: 0.5, centerY: 0.5, width: 0.86, height: 0.84 },
+    { centerX: 0.55, centerY: 0.5, width: 0.86, height: 0.84 },
   ],
   [
-    { centerX: 0.5, centerY: 0.5, width: 0.86, height: 0.84 },
+    { centerX: 0.47, centerY: 0.5, width: 0.86, height: 0.84 },
     { centerX: 0.5, centerY: 0.5, width: 0.84, height: 0.84 },
-    { centerX: 0.5, centerY: 0.5, width: 0.86, height: 0.84 },
+    { centerX: 0.55, centerY: 0.5, width: 0.86, height: 0.84 },
   ],
   [
-    { centerX: 0.5, centerY: 0.5, width: 0.86, height: 0.84 },
+    { centerX: 0.47, centerY: 0.5, width: 0.86, height: 0.84 },
     { centerX: 0.5, centerY: 0.5, width: 0.84, height: 0.84 },
-    { centerX: 0.5, centerY: 0.5, width: 0.86, height: 0.84 },
+    { centerX: 0.55, centerY: 0.5, width: 0.86, height: 0.84 },
   ],
   [
-    { centerX: 0.51, centerY: 0.42, width: 0.86, height: 0.82 },
+    { centerX: 0.48, centerY: 0.42, width: 0.86, height: 0.82 },
     { centerX: 0.51, centerY: 0.42, width: 0.84, height: 0.82 },
-    { centerX: 0.51, centerY: 0.42, width: 0.86, height: 0.82 },
+    { centerX: 0.56, centerY: 0.42, width: 0.86, height: 0.82 },
   ],
 ] as const;
 const DEFAULT_VERTICAL_BOARD_TILE_FOCUS_FRAME_RATIO: BoardTileFocusFrameRatio = {

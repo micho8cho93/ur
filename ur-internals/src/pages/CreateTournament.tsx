@@ -2,6 +2,7 @@ import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createTournament } from '../api/tournaments'
 import { ActionToolbar } from '../components/ActionToolbar'
+import { useTopbarActions } from '../layout/TopbarActionsContext'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
@@ -19,13 +20,16 @@ import {
 import { formatTournamentEntryFee, parseTournamentEntryFee } from '../tournamentFees'
 import { BOT_DIFFICULTIES, DEFAULT_BOT_DIFFICULTY, type BotDifficulty } from '../types/bot'
 
+type EntryFeeCurrency = 'none' | 'coins' | 'gems'
+
 type FormState = {
   runId: string
   name: string
   gameMode: string
   entrants: string
   startAt: string
-  entryFee: string
+  entryFeeCurrency: EntryFeeCurrency
+  entryFeeAmount: string
   autoAddBots: boolean
   botDifficulty: BotDifficulty
   joinRequired: boolean
@@ -42,7 +46,8 @@ const initialState: FormState = {
   gameMode: 'gameMode_3_pieces',
   entrants: '16',
   startAt: '',
-  entryFee: 'Free',
+  entryFeeCurrency: 'none',
+  entryFeeAmount: '',
   autoAddBots: false,
   botDifficulty: DEFAULT_BOT_DIFFICULTY,
   joinRequired: true,
@@ -83,7 +88,9 @@ export function CreateTournamentPage() {
     const xpPerMatchWin = Number(form.xpPerMatchWin)
     const xpForTournamentChampion = Number(form.xpForTournamentChampion)
     const gemsForRank1 = Number(form.gemsForRank1)
-    const entryFee = parseTournamentEntryFee(form.entryFee)
+    const entryFeeString =
+      form.entryFeeCurrency === 'none' ? 'Free' : `${form.entryFeeAmount} ${form.entryFeeCurrency}`
+    const entryFee = parseTournamentEntryFee(entryFeeString)
     const roundCount = getSingleEliminationRoundCount(entrants)
 
     if (!form.name.trim()) {
@@ -121,9 +128,12 @@ export function CreateTournamentPage() {
       return
     }
 
-    if (form.entryFee.trim().length > 0 && form.entryFee.trim().toLowerCase() !== 'free' && !entryFee) {
-      setError('Entry fee must be Free or a coin/gem amount like "250 coins" or "25 gems".')
-      return
+    if (form.entryFeeCurrency !== 'none') {
+      const amount = Number(form.entryFeeAmount)
+      if (!Number.isFinite(amount) || amount <= 0) {
+        setError('Entry fee amount must be a positive number.')
+        return
+      }
     }
 
     try {
@@ -143,7 +153,7 @@ export function CreateTournamentPage() {
         xpPerMatchWin: Math.floor(xpPerMatchWin),
         xpForTournamentChampion: Math.floor(xpForTournamentChampion),
         gemsForRank1: Math.floor(gemsForRank1),
-        entryFee: formatTournamentEntryFee(form.entryFee),
+        entryFee: formatTournamentEntryFee(entryFeeString),
       })
 
       void navigate(appRoutes.tournaments.detail(tournament.id))
@@ -163,7 +173,15 @@ export function CreateTournamentPage() {
   const awardsXp = Number(form.xpPerMatchWin) > 0 || Number(form.xpForTournamentChampion) > 0
   const structureLabel = getTournamentStructureLabel(form.gameMode)
   const botSummary = form.autoAddBots ? `Bot fill enabled · ${form.botDifficulty}` : 'Bots off'
-  const entryFeeLabel = formatTournamentEntryFee(form.entryFee)
+  const entryFeeString =
+    form.entryFeeCurrency === 'none' ? 'Free' : `${form.entryFeeAmount} ${form.entryFeeCurrency}`
+  const entryFeeLabel = formatTournamentEntryFee(entryFeeString)
+
+  useTopbarActions(
+    <Link to={appRoutes.tournaments.runs} className="button button--secondary">
+      Cancel
+    </Link>,
+  )
 
   return (
     <>
@@ -171,13 +189,6 @@ export function CreateTournamentPage() {
         eyebrow="Create Tournament"
         title="Create a tournament run"
         description="Creates a draft single-elimination tournament run in Nakama. Drafts stay hidden from public players until you open them from the admin dashboard."
-        actions={
-          <ActionToolbar>
-            <Link to={appRoutes.tournaments.runs} className="button button--secondary">
-              Cancel
-            </Link>
-          </ActionToolbar>
-        }
       />
 
       {error ? <div className="alert alert--error">{error}</div> : null}
@@ -293,17 +304,44 @@ export function CreateTournamentPage() {
             subtitle="Set the currency players spend to enter the tournament."
           >
             <div className="form-grid">
-              <div className="field field--full">
-                <label htmlFor="entryFee">Entry fee</label>
+              <div className="field">
+                <label htmlFor="entryFeeCurrency">Currency</label>
+                <select
+                  id="entryFeeCurrency"
+                  name="entryFeeCurrency"
+                  value={form.entryFeeCurrency}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      entryFeeCurrency: event.target.value as EntryFeeCurrency,
+                    }))
+                  }
+                >
+                  <option value="none">None (free entry)</option>
+                  <option value="coins">Coins</option>
+                  <option value="gems">Gems</option>
+                </select>
+                <span className="field__hint">
+                  Choose the currency players spend to enter. Select None for open entry.
+                </span>
+              </div>
+
+              <div className="field">
+                <label htmlFor="entryFeeAmount">Amount</label>
                 <input
-                  id="entryFee"
-                  name="entryFee"
-                  value={form.entryFee}
-                  onChange={(event) => updateField('entryFee', event)}
-                  placeholder="250 coins or 25 gems"
+                  id="entryFeeAmount"
+                  name="entryFeeAmount"
+                  type="number"
+                  min="1"
+                  disabled={form.entryFeeCurrency === 'none'}
+                  value={form.entryFeeAmount}
+                  onChange={(event) => updateField('entryFeeAmount', event)}
+                  placeholder={form.entryFeeCurrency === 'gems' ? '25' : '250'}
                 />
                 <span className="field__hint">
-                  Use `Free`, a coin amount, or a gem amount. Example: `250 coins` or `25 gems`.
+                  {form.entryFeeCurrency === 'none'
+                    ? 'No wallet deduction on join.'
+                    : `Players spend this many ${form.entryFeeCurrency} to enter.`}
                 </span>
               </div>
             </div>

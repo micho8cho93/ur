@@ -847,9 +847,10 @@ export const rpcGetFullCatalog = (
     throw new Error("Authentication required.");
   }
 
-  const response: FullCatalogResponse = {
-    items: loadCatalogFromStorage(nk),
-  };
+  // Strip uploadedAsset fields — base64 dataUrls bloat the response past HTTP/2 limits.
+  // The game client uses assetKey for rendering, not the inline dataUrl.
+  const items = loadCatalogFromStorage(nk).map(({ uploadedAsset: _a, uploadedAsset2: _b, ...rest }) => rest);
+  const response: FullCatalogResponse = { items: items as CosmeticDefinition[] };
   return JSON.stringify(response);
 };
 

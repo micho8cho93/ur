@@ -1,7 +1,9 @@
 import React from 'react'
 import {
+  ActivityIndicator,
+  ImageBackground,
+  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -9,12 +11,13 @@ import {
 } from 'react-native'
 
 import { Modal } from '@/components/ui/Modal'
+import { CTA_BUTTON_VISIBLE_IMAGE_STYLE } from '@/components/ui/buttonArt'
 import { boxShadow } from '@/constants/styleEffects'
 import { urPanelColors, urTextColors, urTextVariants, urTheme } from '@/constants/urTheme'
+import { HOME_FREDOKA_FONT_FAMILY, HOME_GROBOLD_FONT_FAMILY } from '@/src/home/homeTheme'
 import { useAuth } from '@/src/auth/useAuth'
 import { submitFeedback } from '@/services/feedback'
 import {
-  FEEDBACK_SOURCE_PAGE_LABELS,
   FEEDBACK_TYPE_LABELS,
   FEEDBACK_TYPES,
   type FeedbackMatchContext,
@@ -22,6 +25,12 @@ import {
   type FeedbackSourcePage,
   type FeedbackType,
 } from '@/shared/feedback'
+
+const ctaButtonArt = require('../../assets/buttons/cta_button.png')
+const lightButtonArt = require('../../assets/buttons/button_light_cropped.png')
+
+const BUTTON_HEIGHT = 54
+const BUTTON_CORNER_RADIUS = Math.round(BUTTON_HEIGHT * 0.34)
 
 type FeedbackComposerModalProps = {
   visible: boolean
@@ -33,12 +42,10 @@ type FeedbackComposerModalProps = {
 }
 
 const FEEDBACK_TYPE_HINTS: Record<FeedbackType, string> = {
-  bug: 'Something broke, behaved oddly, or blocked play.',
-  feature_request: 'A quality-of-life idea or a new capability.',
-  player_report: 'A player conduct issue, exploit, or abuse report.',
+  bug: 'Something broke or behaved oddly.',
+  feature_request: 'A quality-of-life idea or new capability.',
+  player_report: 'A conduct issue, exploit, or abuse report.',
 }
-
-const getCategoryChipLabel = (type: FeedbackType) => FEEDBACK_TYPE_LABELS[type]
 
 export function FeedbackComposerModal({
   visible,
@@ -65,7 +72,6 @@ export function FeedbackComposerModal({
     setIsSubmitting(false)
   }, [visible, initialType, matchContext?.matchId, reportedUser?.userId, sourcePage])
 
-  const sourceLabel = FEEDBACK_SOURCE_PAGE_LABELS[sourcePage]
   const trimmedMessage = message.trim()
 
   const handleSubmit = async () => {
@@ -75,12 +81,12 @@ export function FeedbackComposerModal({
     }
 
     if (!type) {
-      setErrorMessage('Pick a feedback category before sending.')
+      setErrorMessage('Pick a category before sending.')
       return
     }
 
     if (!trimmedMessage) {
-      setErrorMessage('Write a message before sending feedback.')
+      setErrorMessage('Write a message before sending.')
       return
     }
 
@@ -111,30 +117,11 @@ export function FeedbackComposerModal({
     }
   }
 
-  const renderedContextItems = [
-    { label: 'Source', value: sourceLabel },
-    matchContext ? { label: 'Match', value: matchContext.matchId } : null,
-    reportedUser ? { label: 'Reported user', value: reportedUser.username } : null,
-  ].filter(Boolean) as Array<{ label: string; value: string }>
-
   return (
-    <Modal
-      visible={visible}
-      title="Send Feedback"
-      message="Share a bug, suggest a feature, or file a player report. Match context is attached automatically when you open this from a live game."
-      actionLabel="Send feedback"
-      actionLoading={isSubmitting}
-      onAction={() => {
-        void handleSubmit()
-      }}
-      secondaryActionLabel="Cancel"
-      onSecondaryAction={onClose}
-      maxWidth={520}
-    >
+    <Modal visible={visible} title="Send Feedback" maxWidth={480}>
       <View style={styles.content}>
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Category</Text>
-          <Text style={styles.sectionHint}>Required</Text>
           <View style={styles.chipRow}>
             {FEEDBACK_TYPES.map((option) => {
               const selected = option === type
@@ -155,7 +142,7 @@ export function FeedbackComposerModal({
                   ]}
                 >
                   <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>
-                    {getCategoryChipLabel(option)}
+                    {FEEDBACK_TYPE_LABELS[option]}
                   </Text>
                 </Pressable>
               )
@@ -168,8 +155,8 @@ export function FeedbackComposerModal({
           <Text style={styles.sectionLabel}>Message</Text>
           <TextInput
             accessibilityLabel="Feedback message"
-            placeholder="Tell us what happened, what you expected, or what should improve."
-            placeholderTextColor="rgba(75, 85, 99, 0.72)"
+            placeholder="Tell us what happened or what you'd like to see."
+            placeholderTextColor="rgba(230, 211, 163, 0.32)"
             multiline
             value={message}
             onChangeText={(text) => {
@@ -183,37 +170,90 @@ export function FeedbackComposerModal({
           />
         </View>
 
-        <View style={styles.contextSection}>
-          <Text style={styles.contextTitle}>Context</Text>
-          <View style={styles.contextCard}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.contextChipRow}
-            >
-              {renderedContextItems.map((item) => (
-                <View key={item.label} style={styles.contextChip}>
-                  <Text style={styles.contextChipLabel}>{item.label}</Text>
-                  <Text numberOfLines={1} style={styles.contextChipValue}>
-                    {item.value}
-                  </Text>
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
         {user ? (
-          <Text style={styles.submitterNote}>
-            Sending as {user.username}
-            {user.nakamaUserId ? ` · ${user.nakamaUserId}` : ''}
-          </Text>
+          <Text style={styles.submitterNote}>Sending as {user.username}</Text>
         ) : null}
+
+        <View style={styles.buttonStack}>
+          {/* Send — CTA button */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Send feedback"
+            disabled={isSubmitting}
+            onPress={() => { void handleSubmit() }}
+            style={({ pressed, hovered }) => [
+              styles.button,
+              hovered && !isSubmitting ? styles.buttonHovered : null,
+              pressed && !isSubmitting ? styles.buttonPressed : null,
+              isSubmitting ? styles.buttonDisabled : null,
+            ]}
+          >
+            {({ pressed }) => (
+              <ImageBackground
+                source={ctaButtonArt}
+                resizeMode="stretch"
+                style={styles.buttonFrame}
+                imageStyle={[
+                  styles.ctaButtonImage,
+                  pressed && !isSubmitting ? styles.buttonImagePressed : null,
+                  isSubmitting ? styles.buttonImageDisabled : null,
+                ]}
+              >
+                {isSubmitting ? (
+                  <View style={styles.buttonContent}>
+                    <ActivityIndicator color={urTheme.colors.ivory} size="small" />
+                    <Text style={styles.ctaLabel}>Sending…</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.ctaLabel}>Send Feedback</Text>
+                )}
+              </ImageBackground>
+            )}
+          </Pressable>
+
+          {/* Cancel — light stone button */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Cancel"
+            onPress={onClose}
+            style={({ pressed, hovered }) => [
+              styles.button,
+              hovered ? styles.buttonHovered : null,
+              pressed ? styles.buttonPressed : null,
+            ]}
+          >
+            {({ pressed }) => (
+              <ImageBackground
+                source={lightButtonArt}
+                resizeMode="stretch"
+                style={styles.buttonFrame}
+                imageStyle={[
+                  styles.lightButtonImage,
+                  pressed ? styles.buttonImagePressed : null,
+                ]}
+              >
+                <Text style={styles.lightLabel}>Cancel</Text>
+              </ImageBackground>
+            )}
+          </Pressable>
+        </View>
       </View>
     </Modal>
   )
 }
+
+const buttonWebStyle = Platform.select({
+  web: {
+    cursor: 'pointer' as const,
+    transitionDuration: '160ms',
+    transitionProperty: 'transform, opacity',
+    userSelect: 'none' as const,
+    willChange: 'transform',
+  },
+  default: {},
+}) ?? {}
 
 const styles = StyleSheet.create({
   content: {
@@ -221,127 +261,150 @@ const styles = StyleSheet.create({
     gap: urTheme.spacing.md,
   },
   section: {
-    gap: 8,
+    gap: urTheme.spacing.xs,
   },
   sectionLabel: {
-    ...urTextVariants.body,
-    color: urTextColors.titleOnScene,
-    fontWeight: '700',
-  },
-  sectionHint: {
-    marginTop: -4,
-    color: 'rgba(85, 63, 33, 0.68)',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.08,
+    fontFamily: HOME_GROBOLD_FONT_FAMILY,
+    ...urTextVariants.caption,
+    color: urTextColors.captionOnScene,
+    fontSize: 11,
   },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
   },
   chip: {
-    borderRadius: 999,
+    borderRadius: urTheme.radii.pill,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderWidth: 1.5,
-    borderColor: 'rgba(141, 103, 47, 0.3)',
-    backgroundColor: 'rgba(255, 247, 225, 0.72)',
+    borderColor: urPanelColors.darkBorder,
+    backgroundColor: urPanelColors.darkSurfaceSoft,
+    ...boxShadow({
+      color: '#000',
+      opacity: 0.18,
+      offset: { width: 0, height: 2 },
+      blurRadius: 4,
+      elevation: 2,
+    }),
+  },
+  chipSelected: {
+    backgroundColor: 'rgba(244, 197, 66, 0.14)',
+    borderColor: urPanelColors.darkBorderStrong,
   },
   chipPressed: {
     transform: [{ translateY: 1 }],
   },
-  chipSelected: {
-    backgroundColor: 'rgba(200, 152, 32, 0.16)',
-    borderColor: 'rgba(200, 152, 32, 0.86)',
-  },
   chipLabel: {
+    fontFamily: HOME_GROBOLD_FONT_FAMILY,
     ...urTextVariants.buttonLabel,
-    color: '#5A4420',
-    fontSize: 12,
-    lineHeight: 14,
+    color: 'rgba(230, 211, 163, 0.6)',
+    fontSize: 11,
+    lineHeight: 13,
   },
   chipLabelSelected: {
-    color: '#40290E',
+    color: urTextColors.captionOnScene,
   },
   categoryHint: {
-    color: 'rgba(75, 63, 39, 0.82)',
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
+    color: 'rgba(230, 211, 163, 0.62)',
     fontSize: 13,
     lineHeight: 18,
   },
   textArea: {
-    minHeight: 140,
-    borderRadius: 14,
+    minHeight: 120,
+    borderRadius: urTheme.radii.md,
     borderWidth: 1.5,
-    borderColor: 'rgba(141, 103, 47, 0.22)',
-    backgroundColor: '#FFF8EA',
-    color: '#311E0D',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderColor: urPanelColors.darkBorder,
+    backgroundColor: 'rgba(21, 15, 8, 0.52)',
+    color: urTextColors.bodyOnScene,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.sm,
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
     fontSize: 15,
     lineHeight: 21,
   },
-  contextSection: {
-    gap: 8,
-  },
-  contextTitle: {
-    ...urTextVariants.body,
-    color: urTextColors.titleOnScene,
-    fontWeight: '700',
-  },
-  contextCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: urPanelColors.darkBorder,
-    backgroundColor: 'rgba(255, 249, 236, 0.82)',
-    padding: 12,
-    ...boxShadow({
-      color: '#000',
-      opacity: 0.08,
-      offset: { width: 0, height: 4 },
-      blurRadius: 8,
-      elevation: 2,
-    }),
-  },
-  contextChipRow: {
-    gap: 10,
-  },
-  contextChip: {
-    minWidth: 110,
-    maxWidth: 180,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(200, 152, 32, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(200, 152, 32, 0.18)',
-    gap: 2,
-  },
-  contextChipLabel: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.08,
-    color: 'rgba(75, 63, 33, 0.7)',
-  },
-  contextChipValue: {
-    color: '#311E0D',
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '600',
-  },
   errorText: {
-    color: '#9B1C1C',
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
+    color: urTextColors.statusDanger,
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '600',
+    textAlign: 'center',
   },
   submitterNote: {
-    color: 'rgba(75, 63, 33, 0.68)',
+    fontFamily: HOME_FREDOKA_FONT_FAMILY,
+    color: 'rgba(230, 211, 163, 0.44)',
     fontSize: 12,
     lineHeight: 16,
     textAlign: 'center',
+  },
+  buttonStack: {
+    gap: urTheme.spacing.sm,
+    marginTop: urTheme.spacing.xs,
+  },
+  button: {
+    width: 220,
+    alignSelf: 'center',
+    height: BUTTON_HEIGHT,
+    borderRadius: BUTTON_CORNER_RADIUS,
+    ...buttonWebStyle,
+  },
+  buttonHovered: {
+    transform: [{ translateY: -1 }],
+  },
+  buttonPressed: {
+    transform: [{ translateY: 2 }],
+  },
+  buttonDisabled: {
+    opacity: 0.68,
+  },
+  buttonFrame: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: urTheme.spacing.md,
+    borderRadius: BUTTON_CORNER_RADIUS,
+    overflow: 'hidden',
+  },
+  ctaButtonImage: {
+    ...CTA_BUTTON_VISIBLE_IMAGE_STYLE,
+    borderRadius: BUTTON_CORNER_RADIUS,
+  },
+  lightButtonImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: BUTTON_CORNER_RADIUS,
+  },
+  buttonImagePressed: {
+    opacity: 0.96,
+  },
+  buttonImageDisabled: {
+    opacity: 0.62,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: urTheme.spacing.xs,
+  },
+  ctaLabel: {
+    fontFamily: HOME_GROBOLD_FONT_FAMILY,
+    ...urTextVariants.buttonLabel,
+    color: urTheme.colors.ivory,
+    fontSize: 15,
+    lineHeight: 17,
+    textShadowColor: 'rgba(86, 42, 0, 0.42)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1.5,
+  },
+  lightLabel: {
+    fontFamily: HOME_GROBOLD_FONT_FAMILY,
+    ...urTextVariants.buttonLabel,
+    color: urTheme.colors.ivory,
+    fontSize: 15,
+    lineHeight: 17,
   },
 })
