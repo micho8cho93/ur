@@ -17,7 +17,7 @@ import {
   getSingleEliminationRoundCount,
   TOURNAMENT_SIZE_OPTIONS,
 } from '../tournamentSizing'
-import { formatTournamentEntryFee, parseTournamentEntryFee } from '../tournamentFees'
+import { formatTournamentEntryFee } from '../tournamentFees'
 import { BOT_DIFFICULTIES, DEFAULT_BOT_DIFFICULTY, type BotDifficulty } from '../types/bot'
 
 type EntryFeeCurrency = 'none' | 'coins' | 'gems'
@@ -90,7 +90,6 @@ export function CreateTournamentPage() {
     const gemsForRank1 = Number(form.gemsForRank1)
     const entryFeeString =
       form.entryFeeCurrency === 'none' ? 'Free' : `${form.entryFeeAmount} ${form.entryFeeCurrency}`
-    const entryFee = parseTournamentEntryFee(entryFeeString)
     const roundCount = getSingleEliminationRoundCount(entrants)
 
     if (!form.name.trim()) {
