@@ -3,12 +3,11 @@ import { PressablePanelCard } from '@/components/ui/PressablePanelCard';
 import { SketchButton } from '@/components/ui/SketchButton';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { urPanelColors, urTextColors, urTextVariants, urTheme } from '@/constants/urTheme';
-import { getMatchConfig, MATCH_CONFIGS } from '@/logic/matchConfigs';
+import { getMatchConfig } from '@/logic/matchConfigs';
 import {
   buildGameModeMatchConfig,
   resolveGameModeBoardLabel,
   resolveGameModeSummary,
-  GAME_MODE_PRESET_OPTIONS,
 } from '@/shared/gameModes';
 import {
   buildOfflineMatchEconomyDetails,
@@ -24,7 +23,6 @@ import {
   resolveHomeFredokaFontFamily,
   resolveHomeMagicFontFamily,
 } from '@/src/home/homeTheme';
-import type { GameModeDefinition } from '@/shared/gameModes';
 import { MatchEconomyInfoButton } from '@/components/match/MatchEconomyInfoButton';
 import { MatchEconomyInfoModal } from '@/components/match/MatchEconomyInfoModal';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -39,8 +37,6 @@ const homeMobileBackground = require('../../assets/images/bg_quickplay_mobile.pn
 const quickPlayModePanel = require('../../assets/images/quick_play_mode_panel_cropped.png');
 
 const MODE_PANEL_ART_ASPECT_RATIO = 1113 / 458;
-const XP_MODE_COUNT = Object.values(MATCH_CONFIGS).filter((c) => c.allowsXp).length;
-const PRESET_RULESET_COUNT = GAME_MODE_PRESET_OPTIONS.length;
 
 type MatchEconomyModalState = {
   title: string;
@@ -186,9 +182,6 @@ export default function GameModesScreen() {
     ? buildOfflineMatchEconomyDetails(buildGameModeMatchConfig(activeFeaturedMode))
     : null
   const showFeaturedEconomyInfo = Boolean(featuredEconomyDetails && hasVisibleMatchEconomyRows(featuredEconomyDetails))
-  const additionalModes = activeFeaturedMode
-    ? activeAdminModes.filter((mode) => mode.id !== activeFeaturedMode.id)
-    : activeAdminModes
 
   React.useEffect(() => {
     let active = true
@@ -222,58 +215,6 @@ export default function GameModesScreen() {
       active = false
     }
   }, [])
-
-  const renderAdminCard = (mode: GameModeDefinition) => {
-    const economyDetails = buildOfflineMatchEconomyDetails(buildGameModeMatchConfig(mode))
-    const showInfoButton = hasVisibleMatchEconomyRows(economyDetails)
-
-    return (
-      <View
-        key={mode.id}
-        style={[
-          styles.cardShell,
-          isCompactLayout && styles.cardShellCompact,
-          isDesktopViewport && styles.cardShellDesktop,
-        ]}
-      >
-        <View style={styles.cardFrame}>
-          <PressablePanelCard
-            accessibilityLabel={`Play ${mode.name}`}
-            onPress={() => router.push(`/(game)/bot?modeId=${mode.id}`)}
-            panelStyle={styles.cardPanel}
-            source={quickPlayModePanel}
-            imageStyle={styles.cardPanelImage}
-          >
-            <View style={styles.cardPanelContent}>
-              <View style={styles.cardTitleRow}>
-                <View style={styles.cardTitleLeading}>
-                  <View style={styles.iconWrap}>
-                    <MaterialIcons name="auto-awesome" size={18} color="#8A611B" />
-                  </View>
-                  <Text numberOfLines={2} style={[styles.cardTitle, { fontFamily: buttonFontFamily }]}>
-                    {mode.name}
-                  </Text>
-                </View>
-                {showInfoButton ? (
-                  <MatchEconomyInfoButton
-                    accessibilityLabel={`Open economy details for ${mode.name}`}
-                    onPress={() => openEconomyDetails(`${mode.name} Economy`, economyDetails)}
-                    style={styles.cardInfoButton}
-                  />
-                ) : null}
-              </View>
-              <Text numberOfLines={2} style={[styles.cardSubtitle, { fontFamily: bodyFontFamily }]}>
-                {mode.description}
-              </Text>
-              <Text numberOfLines={1} style={[styles.featuredMeta, { fontFamily: bodyFontFamily }]}>
-                {resolveGameModeSummary(mode)}
-              </Text>
-            </View>
-          </PressablePanelCard>
-        </View>
-      </View>
-    )
-  }
 
   return (
     <>
@@ -342,7 +283,7 @@ export default function GameModesScreen() {
                 { fontFamily: bodyFontFamily },
               ]}
             >
-              Choose a built-in mode, then explore the active featured admin mode and any other active custom variants.
+              Choose a built-in mode, then explore the featured mode.
             </Text>
           </View>
 
@@ -396,7 +337,7 @@ export default function GameModesScreen() {
                     ? 'Loading featured catalog content.'
                     : activeFeaturedMode
                       ? activeFeaturedMode.description
-                      : 'No active featured admin mode is currently configured.'}
+                      : 'No active featured mode is currently configured.'}
                 </Text>
               </View>
             </View>
@@ -451,99 +392,12 @@ export default function GameModesScreen() {
               <View style={styles.loadingCard}>
                 <Text style={[styles.loadingTitle, { fontFamily: titleFontFamily }]}>No active featured mode</Text>
                 <Text style={[styles.loadingText, { fontFamily: bodyFontFamily }]}>
-                  Feature an active saved mode in the internals app to surface it here.
+                  Feature a saved mode to surface it here.
                 </Text>
               </View>
             )}
           </View>
 
-          {additionalModes.length > 0 ? (
-            <View style={[styles.stage, { width: stageWidth }]}>
-              <View style={styles.sectionHeader}>
-                <View>
-                  <Text style={[styles.sectionTitle, { fontFamily: titleFontFamily }]}>Other active modes</Text>
-                  <Text style={[styles.sectionSubtitle, { fontFamily: bodyFontFamily }]}>
-                    Additional admin-created modes currently enabled for play.
-                  </Text>
-                </View>
-              </View>
-
-              <View
-                style={[
-                  styles.gridList,
-                  isCompactLayout && styles.gridListCompact,
-                  isDesktopViewport && styles.gridListDesktop,
-                ]}
-              >
-                {additionalModes.map((mode) => renderAdminCard(mode))}
-              </View>
-            </View>
-          ) : null}
-
-          <View style={[styles.stage, { width: stageWidth }]}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { fontFamily: titleFontFamily }]}>UR Internals Store</Text>
-              <Text style={[styles.sectionSubtitle, { fontFamily: bodyFontFamily }]}>
-                {`${BUILT_IN_MODES.length} built-in modes · ${PRESET_RULESET_COUNT} preset rulesets · ${XP_MODE_COUNT} XP-earning configs${!isLoadingModes && publicModes ? ` · ${publicModes.activeModes.length} active admin mode${publicModes.activeModes.length !== 1 ? 's' : ''}` : ''}`}
-              </Text>
-            </View>
-
-            <View style={styles.statsRow}>
-              <View style={styles.statChip}>
-                <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{BUILT_IN_MODES.length}</Text>
-                <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>Built-in modes</Text>
-              </View>
-              <View style={styles.statChip}>
-                <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{PRESET_RULESET_COUNT}</Text>
-                <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>Preset rulesets</Text>
-              </View>
-              <View style={styles.statChip}>
-                <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{XP_MODE_COUNT}</Text>
-                <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>XP configs</Text>
-              </View>
-              {!isLoadingModes && publicModes ? (
-                <View style={styles.statChip}>
-                  <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{publicModes.activeModes.length}</Text>
-                  <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>Admin modes</Text>
-                </View>
-              ) : null}
-            </View>
-
-            <View style={styles.rulesetList}>
-              {GAME_MODE_PRESET_OPTIONS.map((preset) => (
-                <View key={preset.id} style={styles.rulesetRow}>
-                  <View style={styles.rulesetRowHeader}>
-                    <Text style={[styles.rulesetName, { fontFamily: titleFontFamily }]}>{preset.label}</Text>
-                    <View style={styles.rulesetTags}>
-                      <View style={styles.rulesetTag}>
-                        <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>{preset.pieceCountPerSide} pcs</Text>
-                      </View>
-                      {preset.throwProfile === 'bell' ? (
-                        <View style={styles.rulesetTag}>
-                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>Bell throw</Text>
-                        </View>
-                      ) : preset.throwProfile === 'masters' ? (
-                        <View style={styles.rulesetTag}>
-                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>Masters throw</Text>
-                        </View>
-                      ) : null}
-                      {preset.rosetteSafetyMode === 'open' ? (
-                        <View style={[styles.rulesetTag, styles.rulesetTagWarning]}>
-                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>open rosettes</Text>
-                        </View>
-                      ) : null}
-                      {preset.pathVariant !== 'default' ? (
-                        <View style={styles.rulesetTag}>
-                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>{preset.pathVariant} path</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-                  <Text style={[styles.rulesetDesc, { fontFamily: bodyFontFamily }]}>{preset.description}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
         </ScrollView>
         <MatchEconomyInfoModal
           visible={Boolean(economyModal)}

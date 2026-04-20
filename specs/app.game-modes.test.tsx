@@ -127,7 +127,7 @@ describe('GameModesScreen', () => {
     expect(view.queryByLabelText('Open economy details for PvP')).toBeNull();
     expect(view.queryByLabelText('Open economy details for Moonlight Sprint')).toBeNull();
     expect(view.getByText('Moonlight Sprint')).toBeTruthy();
-    expect(view.getByText('Ember Trial')).toBeTruthy();
+    expect(view.queryByText('Ember Trial')).toBeNull();
 
     fireEvent.press(view.getByLabelText('Open economy details for Race'));
     expect(mockPush).not.toHaveBeenCalled();
@@ -186,7 +186,7 @@ describe('GameModesScreen', () => {
 
     expect(view.getByText('No active featured mode')).toBeTruthy();
     expect(view.queryByText('Moonlight Sprint')).toBeNull();
-    expect(view.getByText('Ember Trial')).toBeTruthy();
+    expect(view.queryByText('Ember Trial')).toBeNull();
     expect(view.queryByLabelText('Play featured mode Moonlight Sprint')).toBeNull();
   });
 });
