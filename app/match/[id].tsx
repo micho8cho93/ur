@@ -370,6 +370,7 @@ const JackpotRollResultText = ({
   style?: StyleProp<TextStyle>;
 }) => {
   const glow = useRef(new Animated.Value(0)).current;
+  const shouldUseNativeDriver = Platform.OS !== 'web';
 
   useEffect(() => {
     glow.stopAnimation();
@@ -383,13 +384,13 @@ const JackpotRollResultText = ({
       Animated.timing(glow, {
         toValue: 1,
         duration: JACKPOT_ROLL_PULSE_IN_MS,
-        useNativeDriver: true,
+        useNativeDriver: shouldUseNativeDriver,
       }),
       Animated.delay(JACKPOT_ROLL_GLOW_HOLD_MS),
       Animated.timing(glow, {
         toValue: 0,
         duration: JACKPOT_ROLL_PULSE_OUT_MS,
-        useNativeDriver: true,
+        useNativeDriver: shouldUseNativeDriver,
       }),
     ]);
 
@@ -398,7 +399,7 @@ const JackpotRollResultText = ({
     return () => {
       glow.stopAnimation();
     };
-  }, [active, children, glow]);
+  }, [active, children, glow, shouldUseNativeDriver]);
 
   return (
     <View pointerEvents="none" style={styles.jackpotRollTextWrap}>
@@ -796,82 +797,10 @@ export function GameRoom() {
     () => (isBotDifficulty(botDifficultyParam) ? botDifficultyParam : DEFAULT_BOT_DIFFICULTY),
     [botDifficultyParam],
   );
-  const [resolvedRouteMatchConfig, setResolvedRouteMatchConfig] = React.useState<{
-    key: string | null;
-    config: MatchConfig | null | undefined;
-  }>({
-    key: null,
-    config: undefined,
-  });
-  const routeMatchConfigKey = useMemo(
-    () => (matchId && modeIdParam ? `${matchId}:${modeIdParam}` : null),
-    [matchId, modeIdParam],
-  );
-  const fallbackResolvedMatchConfig = useMemo(() => getMatchConfig(modeIdParam), [modeIdParam]);
-  const hasResolvedRouteMatchConfigForCurrentRoute =
-    resolvedRouteMatchConfig.key === routeMatchConfigKey && resolvedRouteMatchConfig.config !== undefined;
-  const resolvedMatchConfig = useMemo(() => {
-    if (storedMatchId === matchId) {
-      return gameState.matchConfig;
-    }
-
-    return hasResolvedRouteMatchConfigForCurrentRoute && resolvedRouteMatchConfig.config
-      ? resolvedRouteMatchConfig.config
-      : fallbackResolvedMatchConfig;
-  }, [
-    fallbackResolvedMatchConfig,
-    gameState.matchConfig,
-    hasResolvedRouteMatchConfigForCurrentRoute,
-    matchId,
-    resolvedRouteMatchConfig.config,
-    storedMatchId,
-  ]);
-  const shouldWaitForRouteMatchConfig =
-    routeMatchConfigKey !== null &&
-    storedMatchId !== matchId &&
-    !isMatchModeId(modeIdParam) &&
-    !hasResolvedRouteMatchConfigForCurrentRoute;
   const tutorialId = useMemo(
     () => (isPlaythroughTutorialId(tutorialParam) ? tutorialParam : null),
     [tutorialParam],
   );
-  useEffect(() => {
-    if (!routeMatchConfigKey || storedMatchId === matchId || isMatchModeId(modeIdParam) || !modeIdParam) {
-      return;
-    }
-
-    let cancelled = false;
-    setResolvedRouteMatchConfig({ key: routeMatchConfigKey, config: undefined });
-
-    void (async () => {
-      try {
-        const resolvedCustomMatchConfig = await resolveGameModeMatchConfig(modeIdParam, {
-          allowsXp: true,
-          allowsChallenges: true,
-          allowsCoins: true,
-          allowsOnline: true,
-          allowsRankedStats: true,
-          isPracticeMode: false,
-        });
-
-        if (!cancelled) {
-          setResolvedRouteMatchConfig(
-            resolvedCustomMatchConfig.modeId === modeIdParam
-              ? { key: routeMatchConfigKey, config: resolvedCustomMatchConfig }
-              : { key: routeMatchConfigKey, config: null },
-          );
-        }
-      } catch {
-        if (!cancelled) {
-          setResolvedRouteMatchConfig({ key: routeMatchConfigKey, config: null });
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [matchId, modeIdParam, routeMatchConfigKey, storedMatchId]);
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') {
       return;
@@ -1063,6 +992,78 @@ export function GameRoom() {
       setMoveCommandSender: state.setMoveCommandSender,
     })),
   );
+  const [resolvedRouteMatchConfig, setResolvedRouteMatchConfig] = React.useState<{
+    key: string | null;
+    config: MatchConfig | null | undefined;
+  }>({
+    key: null,
+    config: undefined,
+  });
+  const routeMatchConfigKey = useMemo(
+    () => (matchId && modeIdParam ? `${matchId}:${modeIdParam}` : null),
+    [matchId, modeIdParam],
+  );
+  const fallbackResolvedMatchConfig = useMemo(() => getMatchConfig(modeIdParam), [modeIdParam]);
+  const hasResolvedRouteMatchConfigForCurrentRoute =
+    resolvedRouteMatchConfig.key === routeMatchConfigKey && resolvedRouteMatchConfig.config !== undefined;
+  const resolvedMatchConfig = useMemo(() => {
+    if (storedMatchId === matchId) {
+      return gameState.matchConfig;
+    }
+
+    return hasResolvedRouteMatchConfigForCurrentRoute && resolvedRouteMatchConfig.config
+      ? resolvedRouteMatchConfig.config
+      : fallbackResolvedMatchConfig;
+  }, [
+    fallbackResolvedMatchConfig,
+    gameState.matchConfig,
+    hasResolvedRouteMatchConfigForCurrentRoute,
+    matchId,
+    resolvedRouteMatchConfig.config,
+    storedMatchId,
+  ]);
+  const shouldWaitForRouteMatchConfig =
+    routeMatchConfigKey !== null &&
+    storedMatchId !== matchId &&
+    !isMatchModeId(modeIdParam) &&
+    !hasResolvedRouteMatchConfigForCurrentRoute;
+  useEffect(() => {
+    if (!routeMatchConfigKey || storedMatchId === matchId || isMatchModeId(modeIdParam) || !modeIdParam) {
+      return;
+    }
+
+    let cancelled = false;
+    setResolvedRouteMatchConfig({ key: routeMatchConfigKey, config: undefined });
+
+    void (async () => {
+      try {
+        const resolvedCustomMatchConfig = await resolveGameModeMatchConfig(modeIdParam, {
+          allowsXp: true,
+          allowsChallenges: true,
+          allowsCoins: true,
+          allowsOnline: true,
+          allowsRankedStats: true,
+          isPracticeMode: false,
+        });
+
+        if (!cancelled) {
+          setResolvedRouteMatchConfig(
+            resolvedCustomMatchConfig.modeId === modeIdParam
+              ? { key: routeMatchConfigKey, config: resolvedCustomMatchConfig }
+              : { key: routeMatchConfigKey, config: null },
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setResolvedRouteMatchConfig({ key: routeMatchConfigKey, config: null });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId, modeIdParam, routeMatchConfigKey, storedMatchId]);
   const { progression, refresh: refreshProgression, errorMessage: progressionError } = useProgression();
   const { refresh: refreshWallet } = useWallet();
   const { ratingProfile, refresh: refreshElo } = useEloRating();
