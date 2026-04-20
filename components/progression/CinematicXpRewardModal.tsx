@@ -14,11 +14,7 @@ import {
 import { boxShadow } from '@/constants/styleEffects';
 import { urTheme, urTypography } from '@/constants/urTheme';
 import { buildDisplayedProgressionSnapshot, formatProgressionXp } from '@/src/progression/progressionDisplay';
-import {
-  XP_PROGRESS_FILL_COLOR,
-  XP_PROGRESS_GLOSS_COLOR,
-  XP_PROGRESS_SHEEN_COLOR,
-} from '@/src/progression/xpProgressBarTheme';
+import { XP_PROGRESS_FILL_COLOR } from '@/src/progression/xpProgressBarTheme';
 import { HOME_FREDOKA_FONT_FAMILY, HOME_SUPERCELL_FONT_FAMILY } from '@/src/home/homeTheme';
 import { RankBadge } from './RankBadge';
 
@@ -401,26 +397,7 @@ export const CinematicXpRewardModal: React.FC<CinematicXpRewardModalProps> = ({
 
           <View style={styles.trackWrap}>
             <View style={styles.track}>
-              <View style={[styles.fill, isMaxRank && styles.fillMax, { width: progressWidth }]}>
-                <View style={styles.fillGloss} />
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.fillSweep,
-                    {
-                      transform: [
-                        {
-                          translateX: sweepProgress.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [-220, 260],
-                          }),
-                        },
-                        { skewX: '-18deg' },
-                      ],
-                    },
-                  ]}
-                />
-              </View>
+              <View style={[styles.fill, isMaxRank && styles.fillMax, { width: progressWidth }]} />
             </View>
           </View>
 
@@ -607,21 +584,6 @@ const styles = StyleSheet.create({
   },
   fillMax: {
     backgroundColor: XP_PROGRESS_FILL_COLOR,
-  },
-  fillGloss: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '56%',
-    backgroundColor: XP_PROGRESS_GLOSS_COLOR,
-  },
-  fillSweep: {
-    position: 'absolute',
-    top: -6,
-    bottom: -6,
-    width: '28%',
-    backgroundColor: XP_PROGRESS_SHEEN_COLOR,
   },
   progressCopy: {
     gap: 4,

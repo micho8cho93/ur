@@ -17,10 +17,7 @@ import {
   buildDisplayedProgressionSnapshot,
   formatProgressionXp,
 } from '@/src/progression/progressionDisplay';
-import {
-  XP_PROGRESS_FILL_COLOR,
-  XP_PROGRESS_GLOSS_COLOR,
-} from '@/src/progression/xpProgressBarTheme';
+import { XP_PROGRESS_FILL_COLOR } from '@/src/progression/xpProgressBarTheme';
 import { RankBadge } from './RankBadge';
 
 interface XpProgressBarProps {
@@ -151,10 +148,7 @@ export const XpProgressBar: React.FC<XpProgressBarProps> = ({
       </View>
 
       <View style={[styles.track, compact && styles.trackCompact]}>
-        <View style={[styles.fill, isMaxRank && styles.fillMax, { width: progressWidth }]}>
-          <View style={styles.fillGloss} />
-          <View style={styles.fillEdge} />
-        </View>
+        <View style={[styles.fill, isMaxRank && styles.fillMax, { width: progressWidth }]} />
       </View>
 
       <Text style={[styles.progressLabel, compact && styles.progressLabelCompact]}>{progressLabel}</Text>
@@ -240,23 +234,6 @@ const styles = StyleSheet.create({
   },
   fillMax: {
     backgroundColor: XP_PROGRESS_FILL_COLOR,
-  },
-  fillGloss: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '56%',
-    backgroundColor: XP_PROGRESS_GLOSS_COLOR,
-  },
-  fillEdge: {
-    position: 'absolute',
-    top: 1,
-    right: 10,
-    bottom: 1,
-    width: 18,
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(255, 250, 245, 0.12)',
   },
   progressLabel: {
     color: 'rgba(250, 238, 214, 0.94)',

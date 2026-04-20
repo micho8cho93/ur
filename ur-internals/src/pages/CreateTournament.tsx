@@ -19,7 +19,7 @@ import {
   TOURNAMENT_SIZE_OPTIONS,
 } from '../tournamentSizing'
 import { formatTournamentEntryFee } from '../tournamentFees'
-import { BOT_DIFFICULTIES, DEFAULT_BOT_DIFFICULTY, type BotDifficulty } from '../types/bot'
+import { DEFAULT_BOT_DIFFICULTY, type BotDifficulty } from '../types/bot'
 
 type EntryFeeCurrency = 'none' | 'coins' | 'gems'
 
@@ -58,6 +58,8 @@ const initialState: FormState = {
   gemsForRank1: '0',
   description: '',
 }
+
+const CREATION_BOT_DIFFICULTIES: readonly BotDifficulty[] = ['easy', 'medium', 'hard']
 
 export function CreateTournamentPage() {
   const navigate = useNavigate()
@@ -470,7 +472,7 @@ export function CreateTournamentPage() {
                   disabled={!form.autoAddBots}
                   onChange={(event) => updateField('botDifficulty', event)}
                 >
-                  {BOT_DIFFICULTIES.map((difficulty) => (
+                  {CREATION_BOT_DIFFICULTIES.map((difficulty) => (
                     <option key={difficulty} value={difficulty}>
                       {difficulty}
                     </option>

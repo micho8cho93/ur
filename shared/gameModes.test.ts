@@ -1,6 +1,7 @@
 import {
   GAME_MODE_PRESET_BY_ID,
   GAME_MODE_PRESET_OPTIONS,
+  isGameModeDefinition,
   getGameModePresetDefaults,
   isLegacyGameModeBaseRulesetPreset,
   normalizeGameModeBaseRulesetPreset,
@@ -37,5 +38,23 @@ describe('shared gameModes presets', () => {
         throwProfile: 'standard',
       }),
     );
+  });
+
+  it('rejects malformed game mode enum values', () => {
+    expect(
+      isGameModeDefinition({
+        id: 'custom_mode',
+        name: 'Custom Mode',
+        description: 'Broken mode',
+        baseRulesetPreset: 'custom',
+        pieceCountPerSide: 7,
+        rulesVariant: 'experimental',
+        rosetteSafetyMode: 'standard',
+        exitStyle: 'standard',
+        eliminationMode: 'return_to_start',
+        fogOfWar: false,
+        boardAssetKey: 'board_design',
+      }),
+    ).toBe(false);
   });
 });

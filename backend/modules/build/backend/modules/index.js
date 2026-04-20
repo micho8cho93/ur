@@ -7203,6 +7203,15 @@ var LEGACY_GAME_MODE_PRESET_IDS = [
   "capture"
 ];
 var LEGACY_GAME_MODE_PRESET_IDS_SET = new Set(LEGACY_GAME_MODE_PRESET_IDS);
+var GAME_MODE_BASE_RULESET_PRESET_SET = /* @__PURE__ */ new Set([
+  ...GAME_MODE_PRESET_OPTIONS.map((option) => option.id),
+  ...LEGACY_GAME_MODE_PRESET_IDS
+]);
+var GAME_MODE_RULE_VARIANT_SET = /* @__PURE__ */ new Set(["standard", "capture", "no-capture"]);
+var GAME_MODE_ROSETTE_SAFETY_MODE_SET = /* @__PURE__ */ new Set(["standard", "open"]);
+var GAME_MODE_EXIT_STYLE_SET = /* @__PURE__ */ new Set(["standard", "single_exit"]);
+var GAME_MODE_ELIMINATION_MODE_SET = /* @__PURE__ */ new Set(["return_to_start", "eliminated"]);
+var GAME_MODE_BOARD_ASSET_KEY_SET = /* @__PURE__ */ new Set(["board_design", "board_single_exit"]);
 var normalizeGameModeBaseRulesetPreset = (preset) => {
   if (preset && preset in GAME_MODE_PRESET_BY_ID) {
     return preset;
@@ -7303,7 +7312,7 @@ var isGameModeDefinition = (value) => {
   const record = typeof value === "object" && value !== null ? value : null;
   const pieceCountPerSide = record == null ? void 0 : record.pieceCountPerSide;
   return Boolean(
-    record && typeof record.id === "string" && typeof record.name === "string" && typeof record.description === "string" && typeof record.baseRulesetPreset === "string" && typeof pieceCountPerSide === "number" && Number.isInteger(pieceCountPerSide) && pieceCountPerSide > 0 && typeof record.rulesVariant === "string" && typeof record.rosetteSafetyMode === "string" && typeof record.exitStyle === "string" && typeof record.eliminationMode === "string" && typeof record.fogOfWar === "boolean" && typeof record.boardAssetKey === "string"
+    record && typeof record.id === "string" && typeof record.name === "string" && typeof record.description === "string" && typeof record.baseRulesetPreset === "string" && GAME_MODE_BASE_RULESET_PRESET_SET.has(record.baseRulesetPreset) && typeof pieceCountPerSide === "number" && Number.isInteger(pieceCountPerSide) && pieceCountPerSide > 0 && typeof record.rulesVariant === "string" && GAME_MODE_RULE_VARIANT_SET.has(record.rulesVariant) && typeof record.rosetteSafetyMode === "string" && GAME_MODE_ROSETTE_SAFETY_MODE_SET.has(record.rosetteSafetyMode) && typeof record.exitStyle === "string" && GAME_MODE_EXIT_STYLE_SET.has(record.exitStyle) && typeof record.eliminationMode === "string" && GAME_MODE_ELIMINATION_MODE_SET.has(record.eliminationMode) && typeof record.fogOfWar === "boolean" && typeof record.boardAssetKey === "string" && GAME_MODE_BOARD_ASSET_KEY_SET.has(record.boardAssetKey)
   );
 };
 
@@ -7553,10 +7562,7 @@ var normalizeDraft = (value) => {
   const fogOfWar = readBooleanField5(source, ["fogOfWar", "fog_of_war"]);
   const boardAssetKey = readStringField11(source, ["boardAssetKey", "board_asset_key"]);
   const isActive = readBooleanField5(source, ["isActive", "is_active"]);
-  if (!id || !name || !description || !baseRulesetPreset || !isLegacyGameModeBaseRulesetPreset(baseRulesetPreset) && !(baseRulesetPreset in GAME_MODE_PRESET_BY_ID) || typeof pieceCountPerSide !== "number" || !Number.isInteger(pieceCountPerSide) || pieceCountPerSide <= 0 || !rulesVariant || !rosetteSafetyMode || !exitStyle || !eliminationMode || typeof fogOfWar !== "boolean" || !boardAssetKey || !isValidBoardAssetKey(boardAssetKey) || typeof isActive !== "boolean" || isMatchModeId(id)) {
-    throw new Error("INVALID_PAYLOAD");
-  }
-  return {
+  const draftCandidate = {
     id,
     name,
     description,
@@ -7567,9 +7573,17 @@ var normalizeDraft = (value) => {
     exitStyle,
     eliminationMode,
     fogOfWar,
-    boardAssetKey,
-    isActive
+    boardAssetKey
   };
+  if (!id || !name || !description || !baseRulesetPreset || !isLegacyGameModeBaseRulesetPreset(baseRulesetPreset) && !(baseRulesetPreset in GAME_MODE_PRESET_BY_ID) || typeof pieceCountPerSide !== "number" || !Number.isInteger(pieceCountPerSide) || pieceCountPerSide <= 0 || !rulesVariant || !rosetteSafetyMode || !exitStyle || !eliminationMode || typeof fogOfWar !== "boolean" || !boardAssetKey || !isValidBoardAssetKey(boardAssetKey) || typeof isActive !== "boolean" || isMatchModeId(id)) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  if (!isGameModeDefinition(draftCandidate)) {
+    throw new Error("INVALID_PAYLOAD");
+  }
+  return __spreadProps(__spreadValues({}, draftCandidate), {
+    isActive
+  });
 };
 var parseModeIdRequest = (payload) => {
   const record = parseJsonPayload4(payload);
@@ -17369,18 +17383,18 @@ function matchJoinAttempt(_ctx, logger, nk, _dispatcher, _tick, state, presence)
       return { state, accept: false, rejectMessage: "Enter the private game code before joining this table." };
     }
   }
-  if (state.openOnlineMatchId) {
-    syncOpenOnlineMatchReservation(logger, nk, state);
-    if (!canUserJoinOpenOnlineMatch(state, userId)) {
-      return { state, accept: false, rejectMessage: "Join this open match before entering the table." };
-    }
-  }
   if (isSpectatorPresenceRequest(presence)) {
     if (!isSpectatableMatchState(state)) {
       return { state, accept: false, rejectMessage: "This match is not available for spectating." };
     }
     upsertSpectatorPresence(state, presence);
     return { state, accept: true };
+  }
+  if (state.openOnlineMatchId) {
+    syncOpenOnlineMatchReservation(logger, nk, state);
+    if (!canUserJoinOpenOnlineMatch(state, userId)) {
+      return { state, accept: false, rejectMessage: "Join this open match before entering the table." };
+    }
   }
   const hasExistingAssignment = Boolean(state.assignments[userId]);
   if (Object.keys(state.assignments).length >= MAX_PLAYERS && !hasExistingAssignment) {

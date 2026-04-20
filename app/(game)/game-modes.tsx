@@ -3,11 +3,12 @@ import { PressablePanelCard } from '@/components/ui/PressablePanelCard';
 import { SketchButton } from '@/components/ui/SketchButton';
 import { MIN_WIDE_WEB_BACKGROUND_WIDTH, WideScreenBackground } from '@/components/ui/WideScreenBackground';
 import { urPanelColors, urTextColors, urTextVariants, urTheme } from '@/constants/urTheme';
-import { getMatchConfig } from '@/logic/matchConfigs';
+import { getMatchConfig, MATCH_CONFIGS } from '@/logic/matchConfigs';
 import {
   buildGameModeMatchConfig,
   resolveGameModeBoardLabel,
   resolveGameModeSummary,
+  GAME_MODE_PRESET_OPTIONS,
 } from '@/shared/gameModes';
 import {
   buildOfflineMatchEconomyDetails,
@@ -38,6 +39,8 @@ const homeMobileBackground = require('../../assets/images/bg_quickplay_mobile.pn
 const quickPlayModePanel = require('../../assets/images/quick_play_mode_panel_cropped.png');
 
 const MODE_PANEL_ART_ASPECT_RATIO = 1113 / 458;
+const XP_MODE_COUNT = Object.values(MATCH_CONFIGS).filter((c) => c.allowsXp).length;
+const PRESET_RULESET_COUNT = GAME_MODE_PRESET_OPTIONS.length;
 
 type MatchEconomyModalState = {
   title: string;
@@ -341,6 +344,71 @@ export default function GameModesScreen() {
             >
               Choose a built-in mode, then explore the active featured admin mode and any other active custom variants.
             </Text>
+          </View>
+
+          <View style={[styles.stage, { width: stageWidth }]}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { fontFamily: titleFontFamily }]}>Overview</Text>
+              <Text style={[styles.sectionSubtitle, { fontFamily: bodyFontFamily }]}>
+                {`${BUILT_IN_MODES.length} built-in modes · ${PRESET_RULESET_COUNT} preset rulesets · ${XP_MODE_COUNT} XP-earning configs${!isLoadingModes && publicModes ? ` · ${publicModes.activeModes.length} active admin mode${publicModes.activeModes.length !== 1 ? 's' : ''}` : ''}`}
+              </Text>
+            </View>
+
+            <View style={styles.statsRow}>
+              <View style={styles.statChip}>
+                <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{BUILT_IN_MODES.length}</Text>
+                <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>Built-in modes</Text>
+              </View>
+              <View style={styles.statChip}>
+                <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{PRESET_RULESET_COUNT}</Text>
+                <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>Preset rulesets</Text>
+              </View>
+              <View style={styles.statChip}>
+                <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{XP_MODE_COUNT}</Text>
+                <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>XP configs</Text>
+              </View>
+              {!isLoadingModes && publicModes ? (
+                <View style={styles.statChip}>
+                  <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{publicModes.activeModes.length}</Text>
+                  <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>Admin modes</Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.rulesetList}>
+              {GAME_MODE_PRESET_OPTIONS.map((preset) => (
+                <View key={preset.id} style={styles.rulesetRow}>
+                  <View style={styles.rulesetRowHeader}>
+                    <Text style={[styles.rulesetName, { fontFamily: titleFontFamily }]}>{preset.label}</Text>
+                    <View style={styles.rulesetTags}>
+                      <View style={styles.rulesetTag}>
+                        <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>{preset.pieceCountPerSide} pcs</Text>
+                      </View>
+                      {preset.throwProfile === 'bell' ? (
+                        <View style={styles.rulesetTag}>
+                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>Bell throw</Text>
+                        </View>
+                      ) : preset.throwProfile === 'masters' ? (
+                        <View style={styles.rulesetTag}>
+                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>Masters throw</Text>
+                        </View>
+                      ) : null}
+                      {preset.rosetteSafetyMode === 'open' ? (
+                        <View style={[styles.rulesetTag, styles.rulesetTagWarning]}>
+                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>open rosettes</Text>
+                        </View>
+                      ) : null}
+                      {preset.pathVariant !== 'default' ? (
+                        <View style={styles.rulesetTag}>
+                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>{preset.pathVariant} path</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                  <Text style={[styles.rulesetDesc, { fontFamily: bodyFontFamily }]}>{preset.description}</Text>
+                </View>
+              ))}
+            </View>
           </View>
 
           {errorMessage ? (
@@ -758,6 +826,87 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 14,
     lineHeight: 18,
+    ...urTextVariants.body,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: urTheme.spacing.sm,
+    marginBottom: urTheme.spacing.md,
+  },
+  statChip: {
+    backgroundColor: 'rgba(26, 18, 8, 0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(246, 214, 151, 0.24)',
+    borderRadius: 12,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.sm,
+    alignItems: 'center',
+    minWidth: 80,
+    flex: 1,
+  },
+  statValue: {
+    color: urTextColors.titleOnScene,
+    fontSize: 22,
+    lineHeight: 26,
+    textAlign: 'center',
+    ...urTextVariants.displayTitle,
+  },
+  statLabel: {
+    color: urTextColors.bodyOnPanel,
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
+    ...urTextVariants.body,
+  },
+  rulesetList: {
+    gap: urTheme.spacing.sm,
+  },
+  rulesetRow: {
+    backgroundColor: 'rgba(26, 18, 8, 0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(246, 214, 151, 0.18)',
+    borderRadius: 14,
+    paddingHorizontal: urTheme.spacing.md,
+    paddingVertical: urTheme.spacing.sm + 2,
+  },
+  rulesetRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  rulesetName: {
+    color: urTextColors.titleOnScene,
+    fontSize: 15,
+    lineHeight: 18,
+    ...urTextVariants.cardTitle,
+  },
+  rulesetTags: {
+    flexDirection: 'row',
+    gap: 4,
+    flexWrap: 'wrap',
+  },
+  rulesetTag: {
+    backgroundColor: 'rgba(246, 214, 151, 0.12)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  rulesetTagWarning: {
+    backgroundColor: 'rgba(200, 100, 50, 0.2)',
+  },
+  rulesetTagText: {
+    color: urTextColors.bodyOnPanel,
+    fontSize: 11,
+    lineHeight: 14,
+    ...urTextVariants.body,
+  },
+  rulesetDesc: {
+    color: urTextColors.bodyOnPanel,
+    fontSize: 13,
+    lineHeight: 17,
     ...urTextVariants.body,
   },
   noticeCard: {

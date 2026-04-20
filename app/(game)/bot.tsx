@@ -64,13 +64,6 @@ const BOT_LEVELS: readonly BotLevelCard[] = [
     accent: '#2E6FD8',
     icon: 'psychology',
   },
-  {
-    difficulty: 'perfect',
-    title: 'Perfect',
-    description: 'Uses the strongest local search in the app for the sharpest offline play.',
-    accent: '#C8981E',
-    icon: 'auto-awesome',
-  },
 ] as const;
 
 export default function BotSelection() {

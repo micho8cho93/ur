@@ -3,13 +3,14 @@ import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 import { HomeStatCard } from '@/components/home/HomeStatCard';
 import { ProgressionRankIcon } from '@/components/progression/ProgressionRankIcon';
-import { urRoyalButtonColors, urTextColors, urTextVariants } from '@/constants/urTheme';
+import { urTextColors, urTextVariants } from '@/constants/urTheme';
 import { useAuth } from '@/src/auth/useAuth';
 import { useProgression } from '@/src/progression/useProgression';
 import {
   buildDisplayedProgressionSnapshot,
   formatProgressionXp,
 } from '@/src/progression/progressionDisplay';
+import { XP_PROGRESS_FILL_COLOR } from '@/src/progression/xpProgressBarTheme';
 import {
   HomeLayoutVariant,
   resolveHomeFredokaFontFamily,
@@ -95,7 +96,6 @@ export const ProgressionSummaryCard: React.FC<ProgressionSummaryCardProps> = ({
 
           <View style={styles.trackShell}>
             <View style={[styles.trackFill, { width: progressWidth }]}>
-              <View style={styles.trackGloss} />
             </View>
           </View>
 
@@ -206,16 +206,8 @@ const styles = StyleSheet.create({
   trackFill: {
     height: '100%',
     borderRadius: 999,
-    backgroundColor: urRoyalButtonColors.mainFace,
+    backgroundColor: XP_PROGRESS_FILL_COLOR,
     overflow: 'hidden',
-  },
-  trackGloss: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '56%',
-    backgroundColor: urRoyalButtonColors.capGloss,
   },
   xpValue: {
     textAlign: 'center',

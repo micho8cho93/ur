@@ -101,7 +101,6 @@ describe('BotSelection', () => {
     expect(view.getByText('Easy')).toBeTruthy();
     expect(view.getByText('Medium')).toBeTruthy();
     expect(view.getByText('Hard')).toBeTruthy();
-    expect(view.getByText('Perfect')).toBeTruthy();
   });
 
   it('resolves custom game modes into gameplay configs before starting the match', async () => {

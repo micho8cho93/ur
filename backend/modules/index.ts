@@ -3439,14 +3439,6 @@ function matchJoinAttempt(
     }
   }
 
-  if (state.openOnlineMatchId) {
-    syncOpenOnlineMatchReservation(logger, nk, state);
-
-    if (!canUserJoinOpenOnlineMatch(state, userId)) {
-      return { state, accept: false, rejectMessage: "Join this open match before entering the table." };
-    }
-  }
-
   if (isSpectatorPresenceRequest(presence)) {
     if (!isSpectatableMatchState(state)) {
       return { state, accept: false, rejectMessage: "This match is not available for spectating." };
@@ -3454,6 +3446,14 @@ function matchJoinAttempt(
 
     upsertSpectatorPresence(state, presence);
     return { state, accept: true };
+  }
+
+  if (state.openOnlineMatchId) {
+    syncOpenOnlineMatchReservation(logger, nk, state);
+
+    if (!canUserJoinOpenOnlineMatch(state, userId)) {
+      return { state, accept: false, rejectMessage: "Join this open match before entering the table." };
+    }
   }
 
   const hasExistingAssignment = Boolean(state.assignments[userId]);

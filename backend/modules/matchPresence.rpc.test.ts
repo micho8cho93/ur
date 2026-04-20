@@ -171,6 +171,40 @@ describe('authoritative match presence handling', () => {
     expect(Object.keys((state as any).spectatorPresences)).toEqual(['spectator-user']);
   });
 
+  it('accepts a spectator for a live open online match without requiring player ownership', () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = createLogger();
+    const nk = createNakama();
+    const dispatcher = createDispatcher();
+    const ctx = { matchId: 'match-open-spectator-1' };
+
+    const initialized = runtime.matchInit(ctx, logger, nk, {
+      playerIds: ['creator-user', 'joiner-user'],
+      modeId: 'standard',
+      rankedMatch: true,
+      privateMatch: false,
+      botMatch: false,
+    });
+
+    const spectatorPresence = createSpectatorPresence('spectator-user', 'spectator-session-1');
+    let state = initialized.state;
+    state.openOnlineMatchId = 'open-live-1';
+    state.openOnlineMatchCreatorUserId = 'creator-user';
+    state.openOnlineMatchJoinerUserId = 'joiner-user';
+    state.started = true;
+
+    const spectatorAttempt = runtime.matchJoinAttempt(ctx, logger, nk, dispatcher, 0, state, spectatorPresence);
+
+    expect(spectatorAttempt.accept).toBe(true);
+    state = runtime.matchJoin(ctx, logger, nk, dispatcher, 0, spectatorAttempt.state, [spectatorPresence]).state;
+
+    expect(Object.keys((state as any).spectatorPresences)).toEqual(['spectator-user']);
+    expect((state as any).assignments).toEqual({
+      'creator-user': 'light',
+      'joiner-user': 'dark',
+    });
+  });
+
   it('rejects spectator commands as read-only even when the user also has a player assignment', () => {
     const runtime = globalThis as RuntimeGlobals;
     const logger = createLogger();

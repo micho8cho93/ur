@@ -242,6 +242,41 @@ describe('gameModes catalog RPCs', () => {
     expect(adminList.modes.find((mode) => mode.id === 'legacy_mode')?.baseRulesetPreset).toBe('custom')
   })
 
+  it('rejects malformed game mode enums before they reach storage', () => {
+    const nk = createNakama()
+    const logger = createLogger()
+    seedAdminRole(nk)
+
+    expect(() =>
+      rpcAdminUpsertGameMode(
+        { userId: 'admin-1' },
+        logger,
+        nk,
+        JSON.stringify({
+          mode: {
+            id: 'broken_mode',
+            name: 'Broken Mode',
+            description: 'Invalid rules variant',
+            baseRulesetPreset: 'custom',
+            pieceCountPerSide: 7,
+            rulesVariant: 'experimental',
+            rosetteSafetyMode: 'standard',
+            exitStyle: 'standard',
+            eliminationMode: 'return_to_start',
+            fogOfWar: false,
+            boardAssetKey: 'board_design',
+            isActive: true,
+          },
+        }),
+      ),
+    ).toThrow('INVALID_PAYLOAD')
+
+    const adminList = JSON.parse(rpcAdminListGameModes({ userId: 'admin-1' }, logger, nk, '')) as {
+      modes: Array<{ id: string }>
+    }
+    expect(adminList.modes).toEqual([])
+  })
+
   it('accepts the new historical preset ids in storage round-trips', () => {
     const nk = createNakama()
     const logger = createLogger()

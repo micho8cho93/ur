@@ -385,6 +385,19 @@ const normalizeDraft = (value: unknown): AdminGameModeDraft => {
   const fogOfWar = readBooleanField(source, ['fogOfWar', 'fog_of_war']);
   const boardAssetKey = readStringField(source, ['boardAssetKey', 'board_asset_key']);
   const isActive = readBooleanField(source, ['isActive', 'is_active']);
+  const draftCandidate = {
+    id,
+    name,
+    description,
+    baseRulesetPreset: normalizeGameModeBaseRulesetPreset(baseRulesetPreset),
+    pieceCountPerSide,
+    rulesVariant: rulesVariant as AdminGameModeDraft['rulesVariant'],
+    rosetteSafetyMode: rosetteSafetyMode as AdminGameModeDraft['rosetteSafetyMode'],
+    exitStyle: exitStyle as AdminGameModeDraft['exitStyle'],
+    eliminationMode: eliminationMode as AdminGameModeDraft['eliminationMode'],
+    fogOfWar,
+    boardAssetKey: boardAssetKey as GameModeBoardAssetKey,
+  } satisfies AdminGameModeDraft;
 
   if (
     !id ||
@@ -408,18 +421,12 @@ const normalizeDraft = (value: unknown): AdminGameModeDraft => {
     throw new Error('INVALID_PAYLOAD');
   }
 
+  if (!isGameModeDefinition(draftCandidate)) {
+    throw new Error('INVALID_PAYLOAD');
+  }
+
   return {
-    id,
-    name,
-    description,
-    baseRulesetPreset: normalizeGameModeBaseRulesetPreset(baseRulesetPreset),
-    pieceCountPerSide,
-    rulesVariant: rulesVariant as AdminGameModeDraft['rulesVariant'],
-    rosetteSafetyMode: rosetteSafetyMode as AdminGameModeDraft['rosetteSafetyMode'],
-    exitStyle: exitStyle as AdminGameModeDraft['exitStyle'],
-    eliminationMode: eliminationMode as AdminGameModeDraft['eliminationMode'],
-    fogOfWar,
-    boardAssetKey: boardAssetKey as GameModeBoardAssetKey,
+    ...draftCandidate,
     isActive,
   };
 };

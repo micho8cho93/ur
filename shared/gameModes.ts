@@ -220,6 +220,16 @@ const LEGACY_GAME_MODE_PRESET_IDS: readonly GameModeLegacyBaseRulesetPreset[] = 
 
 const LEGACY_GAME_MODE_PRESET_IDS_SET = new Set<string>(LEGACY_GAME_MODE_PRESET_IDS);
 
+const GAME_MODE_BASE_RULESET_PRESET_SET = new Set<string>([
+  ...GAME_MODE_PRESET_OPTIONS.map((option) => option.id),
+  ...LEGACY_GAME_MODE_PRESET_IDS,
+]);
+const GAME_MODE_RULE_VARIANT_SET = new Set<RulesVariant>(['standard', 'capture', 'no-capture']);
+const GAME_MODE_ROSETTE_SAFETY_MODE_SET = new Set<GameModeRosetteSafetyMode>(['standard', 'open']);
+const GAME_MODE_EXIT_STYLE_SET = new Set<GameModeExitStyle>(['standard', 'single_exit']);
+const GAME_MODE_ELIMINATION_MODE_SET = new Set<GameModeEliminationMode>(['return_to_start', 'eliminated']);
+const GAME_MODE_BOARD_ASSET_KEY_SET = new Set<GameModeBoardAssetKey>(['board_design', 'board_single_exit']);
+
 export const normalizeGameModeBaseRulesetPreset = (
   preset: string | null | undefined,
 ): GameModeBaseRulesetPreset => {
@@ -367,14 +377,20 @@ export const isGameModeDefinition = (value: unknown): value is GameModeDefinitio
       typeof record.name === 'string' &&
       typeof record.description === 'string' &&
       typeof record.baseRulesetPreset === 'string' &&
+      GAME_MODE_BASE_RULESET_PRESET_SET.has(record.baseRulesetPreset) &&
       typeof pieceCountPerSide === 'number' &&
       Number.isInteger(pieceCountPerSide) &&
       pieceCountPerSide > 0 &&
       typeof record.rulesVariant === 'string' &&
+      GAME_MODE_RULE_VARIANT_SET.has(record.rulesVariant as RulesVariant) &&
       typeof record.rosetteSafetyMode === 'string' &&
+      GAME_MODE_ROSETTE_SAFETY_MODE_SET.has(record.rosetteSafetyMode as GameModeRosetteSafetyMode) &&
       typeof record.exitStyle === 'string' &&
+      GAME_MODE_EXIT_STYLE_SET.has(record.exitStyle as GameModeExitStyle) &&
       typeof record.eliminationMode === 'string' &&
+      GAME_MODE_ELIMINATION_MODE_SET.has(record.eliminationMode as GameModeEliminationMode) &&
       typeof record.fogOfWar === 'boolean' &&
-      typeof record.boardAssetKey === 'string',
+      typeof record.boardAssetKey === 'string' &&
+      GAME_MODE_BOARD_ASSET_KEY_SET.has(record.boardAssetKey as GameModeBoardAssetKey),
   );
 };
