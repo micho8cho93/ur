@@ -4,6 +4,7 @@ import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { boxShadow } from '@/constants/styleEffects';
 import {
   urPanelColors,
+  urRoyalButtonColors,
   urTextColors,
   urTextVariants,
   urTheme,
@@ -28,6 +29,8 @@ export const XPDisplay: React.FC<XPDisplayProps> = ({
   style,
 }) => {
   const rankTitle = getProgressionDisplayTitle(progression?.currentRank) ?? progression?.currentRank ?? 'No title yet';
+  const progressPercent = progression ? Math.max(0, Math.min(100, progression.progressPercent)) : 0;
+  const progressWidth = `${progressPercent}%` as ViewStyle['width'];
 
   return (
     <View style={[styles.card, compact && styles.cardCompact, style]}>
@@ -42,6 +45,11 @@ export const XPDisplay: React.FC<XPDisplayProps> = ({
         <>
           <Text style={[styles.totalXp, compact && styles.totalXpCompact]}>{formatProgressionXp(progression.totalXp)} XP</Text>
           <Text style={styles.subtitle}>{rankTitle}</Text>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: progressWidth }]}>
+              <View style={styles.progressGloss} />
+            </View>
+          </View>
           <Text style={styles.metaText}>
             {progression.nextRank
               ? `${formatProgressionXp(progression.xpNeededForNextRank)} XP until ${getProgressionDisplayTitle(progression.nextRank) ?? progression.nextRank}`
@@ -51,7 +59,7 @@ export const XPDisplay: React.FC<XPDisplayProps> = ({
       ) : isLoading ? (
         <>
           <Text style={[styles.totalXp, compact && styles.totalXpCompact]}>Loading…</Text>
-          <Text style={styles.metaText}>Fetching your current XP from Nakama.</Text>
+          <Text style={styles.metaText}>Fetching your current XP from the server.</Text>
         </>
       ) : errorMessage ? (
         <>
@@ -125,6 +133,29 @@ const styles = StyleSheet.create({
     color: urTextColors.jewel,
     fontSize: 16,
     lineHeight: 22,
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: urTheme.radii.pill,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(6, 11, 18, 0.52)',
+    borderWidth: 1,
+    borderColor: 'rgba(184, 134, 11, 0.22)',
+    marginTop: 2,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: urTheme.radii.pill,
+    backgroundColor: urRoyalButtonColors.mainFace,
+    overflow: 'hidden',
+  },
+  progressGloss: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '56%',
+    backgroundColor: urRoyalButtonColors.capGloss,
   },
   metaText: {
     color: 'rgba(230, 211, 163, 0.78)',

@@ -298,6 +298,8 @@ describe("open online match RPCs", () => {
       expect.objectContaining({
         matchId: "match-open-1",
         modeId: "gameMode_3_pieces",
+        displayName: "Race",
+        playerLabels: ["Guest", "Guest"],
       }),
     ]);
   });

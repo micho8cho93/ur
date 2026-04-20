@@ -8911,6 +8911,18 @@ var getRunCapacity = (run, nakamaTournament) => {
   var _a;
   return Math.max(0, Math.floor((_a = readNumberField6(nakamaTournament, ["maxSize", "max_size"])) != null ? _a : run.maxSize));
 };
+var getRunStartTimeMs = (run, nakamaTournament) => {
+  var _a;
+  const startTimeSeconds = (_a = readNumberField6(nakamaTournament, ["startTime", "start_time"])) != null ? _a : run.startTime;
+  if (typeof startTimeSeconds !== "number" || !Number.isFinite(startTimeSeconds) || startTimeSeconds <= 0) {
+    return null;
+  }
+  return Math.floor(startTimeSeconds * 1e3);
+};
+var hasRunReachedStartTime = (run, nakamaTournament, nowMs = Date.now()) => {
+  const startTimeMs = getRunStartTimeMs(run, nakamaTournament);
+  return startTimeMs === null || startTimeMs <= nowMs;
+};
 var getRunBotUserIds = (run) => {
   var _a, _b;
   const userIds = /* @__PURE__ */ new Set();
@@ -9005,6 +9017,9 @@ var isRunAwaitingLobbyFill = (run, nakamaTournament) => {
 };
 var hasRunLobbyFillCountdownExpired = (run, nakamaTournament, nowMs = Date.now()) => {
   if (!isRunAwaitingLobbyFill(run, nakamaTournament)) {
+    return false;
+  }
+  if (!hasRunReachedStartTime(run, nakamaTournament, nowMs)) {
     return false;
   }
   const deadlineMs = getTournamentLobbyDeadlineMs(run.openedAt);
@@ -10718,7 +10733,7 @@ var mapOperatorToOverride = (operator) => {
   return 0;
 };
 var buildInvalidReason = (completion, run) => {
-  var _a, _b;
+  var _a, _b, _c;
   if (!completion.winningColor || !completion.winnerUserId || !completion.loserUserId) {
     return "Match winner could not be determined.";
   }
@@ -10743,11 +10758,11 @@ var buildInvalidReason = (completion, run) => {
   if (completion.classification.experimental) {
     return "Experimental matches do not count toward tournaments.";
   }
-  if (completion.totalMoves < 1) {
+  if (completion.totalMoves < 1 && ((_a = completion.context) == null ? void 0 : _a.eliminationRisk) !== true) {
     return "Matches without at least one applied move do not count toward tournaments.";
   }
   if (!run) {
-    return `Tournament run '${(_b = (_a = completion.context) == null ? void 0 : _a.runId) != null ? _b : ""}' was not found.`;
+    return `Tournament run '${(_c = (_b = completion.context) == null ? void 0 : _b.runId) != null ? _c : ""}' was not found.`;
   }
   if (run.lifecycle !== "open") {
     return `Tournament run '${run.runId}' is not open.`;
@@ -12322,6 +12337,14 @@ var getRunEndTimeMs = (run, nakamaTournament) => {
   }
   return Math.floor(endTimeSeconds * 1e3);
 };
+var getRunStartTimeMs2 = (run, nakamaTournament) => {
+  var _a;
+  const startTimeSeconds = (_a = readNumberField6(nakamaTournament, ["startTime", "start_time"])) != null ? _a : run.startTime;
+  if (typeof startTimeSeconds !== "number" || !Number.isFinite(startTimeSeconds) || startTimeSeconds <= 0) {
+    return null;
+  }
+  return Math.floor(startTimeSeconds * 1e3);
+};
 var getRunEntrants = (run, nakamaTournament) => {
   var _a;
   return Math.max(
@@ -12340,9 +12363,16 @@ var isPublicRunFull = (run, nakamaTournament) => {
   const maxEntrants = getRunMaxEntrants(run, nakamaTournament);
   return maxEntrants > 0 && getRunEntrants(run, nakamaTournament) >= maxEntrants;
 };
+var hasPublicRunReachedStartTime = (run, nakamaTournament, nowMs = Date.now()) => {
+  const startTimeMs = getRunStartTimeMs2(run, nakamaTournament);
+  return startTimeMs === null || startTimeMs <= nowMs;
+};
 var getLaunchBlockedReason = (run, nakamaTournament) => {
   if (!isPublicRunFull(run, nakamaTournament)) {
     return "lobby";
+  }
+  if (!hasPublicRunReachedStartTime(run, nakamaTournament)) {
+    return "start";
   }
   return null;
 };
@@ -12350,6 +12380,9 @@ var isPublicRunActive = (run, nakamaTournament, nowMs = Date.now()) => {
   var _a;
   if (run.lifecycle !== "open" || run.finalizedAt != null || ((_a = run.bracket) == null ? void 0 : _a.finalizedAt) != null || !nakamaTournament) {
     return false;
+  }
+  if (run.bracket && !run.bracket.finalizedAt) {
+    return true;
   }
   const endTimeMs = getRunEndTimeMs(run, nakamaTournament);
   return endTimeMs === null || endTimeMs > nowMs;
@@ -12638,6 +12671,9 @@ var maybeStartBracketForRun = (nk, logger, run) => {
   }
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   if (!isPublicRunFull(run, nakamaTournament)) {
+    return run;
+  }
+  if (!hasPublicRunReachedStartTime(run, nakamaTournament)) {
     return run;
   }
   const bracketStartNotificationToken = `bracket-start:${run.runId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
@@ -12942,6 +12978,9 @@ var rpcLaunchTournamentMatch = (ctx, logger, nk, payload) => {
     const launchBlockedReason = getLaunchBlockedReason(run, nakamaTournament);
     if (launchBlockedReason === "lobby") {
       throw new Error("This tournament is waiting for the lobby to fill.");
+    }
+    if (launchBlockedReason === "start") {
+      throw new Error("This tournament is full and will start at the scheduled time.");
     }
     throw new Error("This tournament bracket is not ready yet.");
   }
@@ -15902,6 +15941,28 @@ var syncPrivateMatchReservation = (nk, state) => {
   state.privateCreatorUserId = record.creatorUserId;
   state.privateGuestUserId = record.joinedUserId;
 };
+var clearPrivateMatchGuestReservation = (nk, state, userId) => {
+  var _a;
+  if (!state.privateMatch || state.started || !state.privateCode || state.privateGuestUserId !== userId) {
+    return false;
+  }
+  const { object, record } = readPrivateMatchCodeObject(nk, state.privateCode);
+  if (!record || record.matchId === null || record.joinedUserId !== userId) {
+    return false;
+  }
+  const nextRecord = __spreadProps(__spreadValues({}, record), {
+    joinedUserId: null,
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  });
+  try {
+    writePrivateMatchCodeRecord(nk, nextRecord, (_a = getStorageObjectVersion(object)) != null ? _a : "");
+    state.privateGuestUserId = null;
+    state.revision += 1;
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
 var createMatchRematchState = () => ({
   status: "idle",
   deadlineMs: null,
@@ -17126,9 +17187,12 @@ function rpcListSpectatableMatches(ctx, logger, nk, _payload) {
   listActiveTrackedMatches().filter(
     (match) => !match.classification.private && !match.classification.bot && !match.classification.tournament && match.playerLabels.length >= MAX_PLAYERS
   ).forEach((match) => {
+    var _a;
+    const matchConfig = resolveMatchConfigForModeId(nk, {}, match.modeId);
     matchesById.set(match.matchId, {
       matchId: match.matchId,
       modeId: match.modeId,
+      displayName: (_a = matchConfig == null ? void 0 : matchConfig.displayName) != null ? _a : match.modeId,
       startedAt: match.startedAt,
       playerLabels: match.playerLabels.slice(0, MAX_PLAYERS)
     });
@@ -17141,14 +17205,20 @@ function rpcListSpectatableMatches(ctx, logger, nk, _payload) {
     }
     return expireOpenOnlineMatchIfNeeded(logger, nk, record, getStorageObjectVersion(object), nowMs);
   }).filter((record) => Boolean(record)).filter((record) => record.status === "matched").forEach((record) => {
+    var _a, _b;
     if (matchesById.has(record.matchId)) {
       return;
     }
+    const matchConfig = resolveMatchConfigForModeId(nk, { openOnlineMatchId: record.openMatchId }, record.modeId);
     matchesById.set(record.matchId, {
       matchId: record.matchId,
       modeId: record.modeId,
-      startedAt: record.updatedAt,
-      playerLabels: []
+      displayName: (_a = matchConfig == null ? void 0 : matchConfig.displayName) != null ? _a : record.modeId,
+      startedAt: record.createdAt,
+      playerLabels: [
+        resolveAssignedPlayerTitle(nk, record.creatorUserId),
+        resolveAssignedPlayerTitle(nk, (_b = record.joinedUserId) != null ? _b : record.creatorUserId)
+      ].slice(0, MAX_PLAYERS)
     });
   });
   const matches = Array.from(matchesById.values()).sort(
@@ -17387,6 +17457,7 @@ function matchLeave(ctx, logger, nk, dispatcher, _tick, state, presences) {
     }
     removePresence(state, presence);
     shouldBroadcastSnapshot = startDisconnectGraceForUser(state, userId, nowMs) || shouldBroadcastSnapshot;
+    shouldBroadcastSnapshot = clearPrivateMatchGuestReservation(nk, state, userId) || shouldBroadcastSnapshot;
   });
   if (shouldBroadcastSnapshot) {
     broadcastSnapshot(dispatcher, state, getMatchId(ctx));

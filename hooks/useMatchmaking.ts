@@ -305,6 +305,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
             matchConfig,
             ...(isOfflineBotMatch ? { botDifficulty: difficulty } : {}),
           });
+          setPlayerColor(isOfflineBotMatch ? 'light' : null);
           setSocketState('connected');
           setStatus('matched');
           router.push(
@@ -318,7 +319,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
         },
       );
     },
-    [initGame, router, runMatchEntryTransition, setMatchToken, setOnlineMode, setSocketState]
+    [initGame, router, runMatchEntryTransition, setMatchToken, setOnlineMode, setPlayerColor, setSocketState]
   );
 
   const startBotGame = useCallback(
@@ -415,10 +416,31 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
         setNakamaSession(result.session);
         setUserId(result.userId);
         setMatchToken(null);
-        setSocketState('idle');
-        setCreatedOpenOnlineMatch(result.match);
-        setStatus('idle');
-        setActiveAction(null);
+        await runMatchEntryTransition(
+          {
+            title: 'Opening Wager Match',
+            message: 'Creating your table and seating you at the board.',
+            variant: 'success',
+          },
+          async () => {
+            setPlayerColor(null);
+            initGame(result.match.matchId, {
+              matchConfig: await resolveGameModeMatchConfig(result.match.modeId, {
+                allowsXp: true,
+                allowsChallenges: true,
+                allowsCoins: true,
+                allowsOnline: true,
+                allowsRankedStats: true,
+                isPracticeMode: false,
+              }),
+            });
+            setSocketState('idle');
+            setCreatedOpenOnlineMatch(null);
+            setStatus('matched');
+            setActiveAction(null);
+            router.push(buildMatchRoutePath({ id: result.match.matchId, modeId: result.match.modeId }) as never);
+          },
+        );
         return result.match;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to create an open match right now.';
@@ -429,7 +451,17 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
         return null;
       }
     },
-    [setMatchToken, setNakamaSession, setOnlineMode, setPlayerColor, setSocketState, setUserId],
+    [
+      initGame,
+      router,
+      runMatchEntryTransition,
+      setMatchToken,
+      setNakamaSession,
+      setOnlineMode,
+      setPlayerColor,
+      setSocketState,
+      setUserId,
+    ],
   );
 
   const joinOpenMatch = useCallback(

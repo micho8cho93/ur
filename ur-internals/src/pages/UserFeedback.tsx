@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 
 import { listFeedbackSubmissions } from '../api/feedback'
 import { EmptyState } from '../components/EmptyState'
+import { SkeletonTable } from '../components/Skeleton'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
@@ -149,12 +150,7 @@ export function UserFeedbackPage() {
           subtitle="Click a row to open the detail view."
         >
           {isLoading ? (
-            <EmptyState
-              title="Loading feedback"
-              description="Fetching the newest submissions from Nakama storage."
-              compact
-              tone="info"
-            />
+            <SkeletonTable columns={5} rows={6} />
           ) : submissions.length === 0 ? (
             <EmptyState
               title="No feedback yet"

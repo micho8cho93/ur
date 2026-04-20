@@ -7,7 +7,11 @@ import {
   upsertCosmetic,
 } from '../api/store'
 import { ActionToolbar } from '../components/ActionToolbar'
+import { ConfirmDialog } from '../components/ConfirmDialog'
+import { NumberStepper } from '../components/NumberStepper'
+import { SkeletonTable } from '../components/Skeleton'
 import { useTopbarActions } from '../layout/TopbarActionsContext'
+import { useToast } from '../layout/ToastContext'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
 import { FilterBar } from '../components/FilterBar'
@@ -266,6 +270,7 @@ function AssetPreview({
 
 export function StoreCatalogPage() {
   const { adminIdentity } = useSession()
+  const { showToast } = useToast()
   const [catalog, setCatalog] = useState<CosmeticDefinition[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -275,6 +280,7 @@ export function StoreCatalogPage() {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [previewItem, setPreviewItem] = useState<CosmeticDefinition | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<CosmeticDefinition | null>(null)
   const canEditCatalog = adminIdentity?.role === 'operator' || adminIdentity?.role === 'admin'
 
   const visibleCatalog = useMemo(
@@ -356,9 +362,7 @@ export function StoreCatalogPage() {
             className="button button--danger"
             type="button"
             disabled={deletingId === item.id}
-            onClick={() => {
-              void handleDelete(item)
-            }}
+            onClick={() => setConfirmDelete(item)}
           >
             {deletingId === item.id ? 'Deleting...' : 'Delete'}
           </button>
@@ -389,16 +393,16 @@ export function StoreCatalogPage() {
     try {
       const response = item.disabled ? await enableCosmetic(item.id) : await disableCosmetic(item.id)
       setCatalog((current) => current.map((entry) => (entry.id === response.item.id ? response.item : entry)))
+      showToast(`"${item.name}" ${item.disabled ? 'enabled' : 'disabled'}.`, 'success')
     } catch (toggleError) {
-      setError(toggleError instanceof Error ? toggleError.message : 'Unable to update item.')
+      const msg = toggleError instanceof Error ? toggleError.message : 'Unable to update item.'
+      setError(msg)
+      showToast(msg, 'error')
     }
   }
 
   async function handleDelete(item: CosmeticDefinition) {
-    if (typeof window !== 'undefined' && !window.confirm(`Delete "${item.name}" from the store catalog?`)) {
-      return
-    }
-
+    setConfirmDelete(null)
     setDeletingId(item.id)
     setError(null)
     try {
@@ -407,8 +411,11 @@ export function StoreCatalogPage() {
       if (form.id === item.id) {
         setForm(emptyForm)
       }
+      showToast(`"${item.name}" deleted from catalog.`, 'success')
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : 'Unable to delete catalog item.')
+      const msg = deleteError instanceof Error ? deleteError.message : 'Unable to delete catalog item.'
+      setError(msg)
+      showToast(msg, 'error')
     } finally {
       setDeletingId(null)
     }
@@ -425,6 +432,7 @@ export function StoreCatalogPage() {
 
     try {
       const response = await upsertCosmetic(buildCosmeticPatch(form))
+      const isNew = !catalog.some((item) => item.id === response.item.id)
       setCatalog((current) => {
         const exists = current.some((item) => item.id === response.item.id)
         return exists
@@ -432,8 +440,11 @@ export function StoreCatalogPage() {
           : [...current, response.item]
       })
       setForm(emptyForm)
+      showToast(`"${response.item.name}" ${isNew ? 'created' : 'updated'} successfully.`, 'success')
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Unable to save catalog item.')
+      const msg = saveError instanceof Error ? saveError.message : 'Unable to save catalog item.'
+      setError(msg)
+      showToast(msg, 'error')
     } finally {
       setSaving(false)
     }
@@ -558,21 +569,27 @@ export function StoreCatalogPage() {
                 ))}
               </select>
             </label>
-            <label className="field">
+            <div className="field">
               <span className="field__label">Amount</span>
-              <input type="number" min="0" value={form.amount} onChange={(event) => updateForm({ amount: event.target.value })} />
-            </label>
-            <label className="field">
-              <span className="field__label">Rarity weight</span>
-              <input
-                type="number"
-                min="0"
-                max="1"
-                step="0.01"
-                value={form.rarityWeight}
-                onChange={(event) => updateForm({ rarityWeight: event.target.value })}
+              <NumberStepper
+                value={form.amount}
+                min={0}
+                step={10}
+                disabled={!canEditCatalog}
+                onChange={(value) => updateForm({ amount: value })}
               />
-            </label>
+            </div>
+            <div className="field">
+              <span className="field__label">Rarity weight</span>
+              <NumberStepper
+                value={form.rarityWeight}
+                min={0}
+                max={1}
+                step={0.05}
+                disabled={!canEditCatalog}
+                onChange={(value) => updateForm({ rarityWeight: value })}
+              />
+            </div>
             <label className="field">
               <span className="field__label">Asset key</span>
               <input value={form.assetKey} onChange={(event) => updateForm({ assetKey: event.target.value })} />
@@ -695,14 +712,36 @@ export function StoreCatalogPage() {
         </form>
       </SectionPanel>
 
-      <SectionPanel title="Catalog items" subtitle={isLoading ? 'Loading catalog.' : `${visibleCatalog.length} visible items.`}>
-        <DataTable
-          columns={columns}
-          rows={visibleCatalog}
-          rowKey={(item) => item.id}
-          emptyState={<EmptyState title="No catalog items" description="Adjust the filters or add a new cosmetic." />}
-        />
+      <SectionPanel title="Catalog items" subtitle={isLoading ? 'Loading catalog…' : `${visibleCatalog.length} visible items.`}>
+        {isLoading ? (
+          <SkeletonTable columns={7} rows={6} />
+        ) : (
+          <DataTable
+            columns={columns}
+            rows={visibleCatalog}
+            rowKey={(item) => item.id}
+            emptyState={
+              <EmptyState
+                title="No catalog items"
+                description="Adjust the filters or add a new cosmetic above."
+                action={<button className="button button--primary" type="button" onClick={() => document.querySelector<HTMLInputElement>('[name]')?.focus()}>Add first item</button>}
+              />
+            }
+          />
+        )}
       </SectionPanel>
+
+      {confirmDelete ? (
+        <ConfirmDialog
+          title={`Delete "${confirmDelete.name}"?`}
+          message="This will permanently remove the item from the store catalog."
+          consequence={`Item ID: ${confirmDelete.id} — this action cannot be undone.`}
+          tone="danger"
+          confirmLabel="Delete item"
+          onConfirm={() => void handleDelete(confirmDelete)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      ) : null}
 
       {previewItem?.uploadedAsset ? (
         <div className="asset-modal" role="presentation" onClick={() => setPreviewItem(null)}>

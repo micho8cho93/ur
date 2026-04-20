@@ -460,12 +460,25 @@ const isPublicRunFull = (
   return maxEntrants > 0 && getRunEntrants(run, nakamaTournament) >= maxEntrants;
 };
 
+const hasPublicRunReachedStartTime = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+  nowMs = Date.now(),
+): boolean => {
+  const startTimeMs = getRunStartTimeMs(run, nakamaTournament);
+  return startTimeMs === null || startTimeMs <= nowMs;
+};
+
 const getLaunchBlockedReason = (
   run: TournamentRunRecord,
   nakamaTournament: Record<string, unknown> | null,
-): "lobby" | null => {
+): "lobby" | "start" | null => {
   if (!isPublicRunFull(run, nakamaTournament)) {
     return "lobby";
+  }
+
+  if (!hasPublicRunReachedStartTime(run, nakamaTournament)) {
+    return "start";
   }
 
   return null;
@@ -483,6 +496,10 @@ const isPublicRunActive = (
     !nakamaTournament
   ) {
     return false;
+  }
+
+  if (run.bracket && !run.bracket.finalizedAt) {
+    return true;
   }
 
   const endTimeMs = getRunEndTimeMs(run, nakamaTournament);
@@ -856,6 +873,10 @@ const maybeStartBracketForRun = (
 
   const nakamaTournament = getNakamaTournamentById(nk, run.tournamentId);
   if (!isPublicRunFull(run, nakamaTournament)) {
+    return run;
+  }
+
+  if (!hasPublicRunReachedStartTime(run, nakamaTournament)) {
     return run;
   }
 
@@ -1253,6 +1274,9 @@ export const rpcLaunchTournamentMatch = (
     const launchBlockedReason = getLaunchBlockedReason(run, nakamaTournament);
     if (launchBlockedReason === "lobby") {
       throw new Error("This tournament is waiting for the lobby to fill.");
+    }
+    if (launchBlockedReason === "start") {
+      throw new Error("This tournament is full and will start at the scheduled time.");
     }
 
     throw new Error("This tournament bracket is not ready yet.");

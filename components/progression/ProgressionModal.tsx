@@ -14,6 +14,7 @@ import {
   formatProgressionXp,
   getProgressionDisplayTitle,
 } from '@/src/progression/progressionDisplay';
+import { ProgressionRankIcon } from './ProgressionRankIcon';
 import { RankBadge } from './RankBadge';
 import { Button } from '../ui/Button';
 
@@ -148,6 +149,16 @@ export const ProgressionModal: React.FC<ProgressionModalProps> = ({
                           state === 'current' && styles.rankRowCurrent,
                         ]}
                       >
+                        <ProgressionRankIcon
+                          title={rank.displayTitle}
+                          size={36}
+                          style={[
+                            styles.rankRowIcon,
+                            state === 'upcoming' && styles.rankRowIconUpcoming,
+                          ]}
+                          accessibilityLabel={`${rank.displayTitle} rank icon`}
+                        />
+
                         <View style={styles.rankRowMain}>
                           <Text
                             style={[
@@ -367,6 +378,14 @@ const styles = StyleSheet.create({
   rankRowCurrent: {
     backgroundColor: 'rgba(17, 41, 69, 0.74)',
     borderColor: 'rgba(236, 205, 152, 0.38)',
+  },
+  rankRowIcon: {
+    width: 36,
+    height: 36,
+    flexShrink: 0,
+  },
+  rankRowIconUpcoming: {
+    opacity: 0.38,
   },
   rankRowMain: {
     flex: 1,

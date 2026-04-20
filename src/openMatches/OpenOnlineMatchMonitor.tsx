@@ -1,6 +1,6 @@
 import { isNakamaEnabled } from '@/config/nakama';
-import { getMatchConfig } from '@/logic/matchConfigs';
 import { getActiveOpenOnlineMatch } from '@/services/matchmaking';
+import { resolveGameModeMatchConfig } from '@/services/gameModes';
 import { useAuth } from '@/src/auth/useAuth';
 import { buildMatchRoutePath } from '@/src/match/buildMatchRoutePath';
 import { useScreenTransition } from '@/src/transitions/ScreenTransitionContext';
@@ -36,7 +36,12 @@ export const OpenOnlineMatchMonitor: React.FC = () => {
       }
 
       const activeMatch = await getActiveOpenOnlineMatch();
-      if (!activeMatch || activeMatch.status !== 'matched' || !activeMatch.isCreator) {
+      const shouldResumeMatch =
+        Boolean(activeMatch) &&
+        (activeMatch.isCreator || activeMatch.isJoiner) &&
+        (activeMatch.status === 'matched' || activeMatch.status === 'open');
+
+      if (!activeMatch || !shouldResumeMatch) {
         lastHandledMatchIdRef.current = null;
         return;
       }
@@ -78,6 +83,15 @@ export const OpenOnlineMatchMonitor: React.FC = () => {
           store.reset();
         }
 
+        const matchConfig = await resolveGameModeMatchConfig(activeMatch.modeId, {
+          allowsXp: true,
+          allowsChallenges: true,
+          allowsCoins: true,
+          allowsOnline: true,
+          allowsRankedStats: true,
+          isPracticeMode: false,
+        });
+
         const completeLaunch = () => {
           const nextStore = useGameStore.getState();
           nextStore.setNakamaSession(session);
@@ -86,15 +100,25 @@ export const OpenOnlineMatchMonitor: React.FC = () => {
           nextStore.setOnlineMode('nakama');
           nextStore.setPlayerColor(null);
           nextStore.initGame(activeMatch.matchId, {
-            matchConfig: getMatchConfig(activeMatch.modeId),
+            matchConfig,
           });
           nextStore.setSocketState('idle');
           router.replace(buildMatchRoutePath({ id: activeMatch.matchId, modeId: activeMatch.modeId }) as never);
         };
 
         const didStart = await runScreenTransition({
-          title: 'Opponent Joined',
-          message: 'Your wager match is ready. Opening the board now.',
+          title:
+            activeMatch.status === 'matched'
+              ? activeMatch.isCreator
+                ? 'Opponent Joined'
+                : 'Returning to Table'
+              : 'Returning to Table',
+          message:
+            activeMatch.status === 'matched'
+              ? activeMatch.isCreator
+                ? 'Your wager match is ready. Opening the board now.'
+                : 'Your wager match is ready. Reopening the board now.'
+              : 'Your wager match is still waiting. Reopening the board now.',
           variant: 'success',
           preActionDelayMs: 700,
           postActionDelayMs: 180,

@@ -45,7 +45,7 @@ import { useGameLoop } from '@/hooks/useGameLoop';
 import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty } from '@/logic/bot/types';
 import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import { applyMove as applyEngineMove, getValidMoves } from '@/logic/engine';
-import { getMatchConfig, getMatchRulesIntro, isMatchModeId } from '@/logic/matchConfigs';
+import { getMatchConfig, getMatchRulesIntro, isMatchModeId, type MatchConfig } from '@/logic/matchConfigs';
 import type { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { gameAudio } from '@/services/audio';
 import { submitCompletedBotMatchResult } from '@/services/botMatchRewards';
@@ -57,6 +57,7 @@ import {
   updateMatchPreferences,
 } from '@/services/matchPreferences';
 import { nakamaService } from '@/services/nakama';
+import { resolveGameModeMatchConfig } from '@/services/gameModes';
 import { stripProgressionAwardEnvelope } from '@/services/progression';
 import { getPublicTournamentStatus } from '@/services/tournaments';
 import { buildMatchChallengeRewardSummary, type MatchChallengeRewardSummary } from '@/src/challenges/challengeUi';
@@ -795,11 +796,82 @@ export function GameRoom() {
     () => (isBotDifficulty(botDifficultyParam) ? botDifficultyParam : DEFAULT_BOT_DIFFICULTY),
     [botDifficultyParam],
   );
-  const resolvedMatchConfig = useMemo(() => getMatchConfig(modeIdParam), [modeIdParam]);
+  const [resolvedRouteMatchConfig, setResolvedRouteMatchConfig] = React.useState<{
+    key: string | null;
+    config: MatchConfig | null | undefined;
+  }>({
+    key: null,
+    config: undefined,
+  });
+  const routeMatchConfigKey = useMemo(
+    () => (matchId && modeIdParam ? `${matchId}:${modeIdParam}` : null),
+    [matchId, modeIdParam],
+  );
+  const fallbackResolvedMatchConfig = useMemo(() => getMatchConfig(modeIdParam), [modeIdParam]);
+  const hasResolvedRouteMatchConfigForCurrentRoute =
+    resolvedRouteMatchConfig.key === routeMatchConfigKey && resolvedRouteMatchConfig.config !== undefined;
+  const resolvedMatchConfig = useMemo(() => {
+    if (storedMatchId === matchId) {
+      return gameState.matchConfig;
+    }
+
+    return hasResolvedRouteMatchConfigForCurrentRoute && resolvedRouteMatchConfig.config
+      ? resolvedRouteMatchConfig.config
+      : fallbackResolvedMatchConfig;
+  }, [
+    fallbackResolvedMatchConfig,
+    gameState.matchConfig,
+    hasResolvedRouteMatchConfigForCurrentRoute,
+    matchId,
+    resolvedRouteMatchConfig.config,
+    storedMatchId,
+  ]);
+  const shouldWaitForRouteMatchConfig =
+    routeMatchConfigKey !== null &&
+    storedMatchId !== matchId &&
+    !isMatchModeId(modeIdParam) &&
+    !hasResolvedRouteMatchConfigForCurrentRoute;
   const tutorialId = useMemo(
     () => (isPlaythroughTutorialId(tutorialParam) ? tutorialParam : null),
     [tutorialParam],
   );
+  useEffect(() => {
+    if (!routeMatchConfigKey || storedMatchId === matchId || isMatchModeId(modeIdParam) || !modeIdParam) {
+      return;
+    }
+
+    let cancelled = false;
+    setResolvedRouteMatchConfig({ key: routeMatchConfigKey, config: undefined });
+
+    void (async () => {
+      try {
+        const resolvedCustomMatchConfig = await resolveGameModeMatchConfig(modeIdParam, {
+          allowsXp: true,
+          allowsChallenges: true,
+          allowsCoins: true,
+          allowsOnline: true,
+          allowsRankedStats: true,
+          isPracticeMode: false,
+        });
+
+        if (!cancelled) {
+          setResolvedRouteMatchConfig(
+            resolvedCustomMatchConfig.modeId === modeIdParam
+              ? { key: routeMatchConfigKey, config: resolvedCustomMatchConfig }
+              : { key: routeMatchConfigKey, config: null },
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setResolvedRouteMatchConfig({ key: routeMatchConfigKey, config: null });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId, modeIdParam, routeMatchConfigKey, storedMatchId]);
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') {
       return;
@@ -4147,7 +4219,7 @@ export function GameRoom() {
     makeMove(validMoves[0]);
   }, [gameState.phase, gameState.winner, isMyTurn, isOfflineBotMatch, isOpponentReadyToPlay, makeMove, validMoves]);
   useEffect(() => {
-    if (!matchId) return;
+    if (!matchId || shouldWaitForRouteMatchConfig) return;
 
     // Tournament round launches can prepare the next match in the shared store
     // before this route actually swaps over. Only sync store state when the
@@ -4157,14 +4229,21 @@ export function GameRoom() {
       return;
     }
 
-    initializedRouteMatchIdRef.current = matchId;
-
     if (storedMatchId !== matchId) {
       initGame(matchId, { botDifficulty: resolvedBotDifficulty, matchConfig: resolvedMatchConfig });
     }
 
+    initializedRouteMatchIdRef.current = matchId;
     setMatchId(matchId);
-  }, [initGame, matchId, resolvedBotDifficulty, resolvedMatchConfig, setMatchId, storedMatchId]);
+  }, [
+    initGame,
+    matchId,
+    resolvedBotDifficulty,
+    resolvedMatchConfig,
+    setMatchId,
+    shouldWaitForRouteMatchConfig,
+    storedMatchId,
+  ]);
 
   useEffect(() => {
     if (!isPlaythroughTutorialMatch || !matchId) {
@@ -6047,6 +6126,27 @@ export function GameRoom() {
   };
 
   if (!SHOULD_BYPASS_CINEMATIC_INTROS && !arePresentationAssetsReady) {
+    return (
+      <View
+        style={[
+          styles.screen,
+          styles.assetLoadingScreen,
+          Platform.OS === 'web'
+            ? {
+              height: viewportHeight,
+              maxHeight: viewportHeight,
+              overflow: 'hidden',
+            }
+            : null,
+        ]}
+      >
+        <Stack.Screen options={{ headerShown: false }} />
+        <ActivityIndicator color={urTheme.colors.cedar} size="small" />
+      </View>
+    );
+  }
+
+  if (shouldWaitForRouteMatchConfig) {
     return (
       <View
         style={[

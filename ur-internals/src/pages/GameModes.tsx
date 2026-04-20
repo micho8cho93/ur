@@ -13,6 +13,7 @@ import {
 import { ActionToolbar } from '../components/ActionToolbar'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
+import { SkeletonTable } from '../components/Skeleton'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
@@ -482,7 +483,7 @@ export function GameModesPage() {
         title="Saved modes"
         subtitle={isLoading ? 'Loading the catalog.' : 'Feature one mode and keep the rest active or inactive as needed.'}
       >
-        <DataTable
+        {isLoading ? <SkeletonTable columns={4} rows={5} /> : <DataTable
           columns={columns}
           rows={catalog?.modes ?? []}
           rowKey={(mode) => mode.id}
@@ -496,7 +497,7 @@ export function GameModesPage() {
           rowClassName={(mode) =>
             mode.featured ? 'table-row table-row--featured' : mode.isActive ? 'table-row' : 'table-row table-row--muted'
           }
-        />
+        />}
       </SectionPanel>
 
       <SectionPanel

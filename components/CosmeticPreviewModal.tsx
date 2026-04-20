@@ -26,7 +26,7 @@ type CosmeticPreviewModalProps = {
   cosmetic: CosmeticDefinition | null;
   onClose: () => void;
   onBuy: (cosmetic: CosmeticDefinition) => void;
-  isOwned: boolean;
+  ownedIds: Set<string>;
   relatedCosmetics?: CosmeticDefinition[];
 };
 
@@ -177,7 +177,7 @@ export const CosmeticPreviewModal = ({
   cosmetic,
   onClose,
   onBuy,
-  isOwned,
+  ownedIds,
   relatedCosmetics = [],
 }: CosmeticPreviewModalProps) => {
   const [activeCosmeticId, setActiveCosmeticId] = useState<string | null>(cosmetic?.id ?? null);
@@ -211,7 +211,7 @@ export const CosmeticPreviewModal = ({
     () => (activeCosmetic ? cosmeticDefinitionToTheme(activeCosmetic) : {}),
     [activeCosmetic],
   );
-  const activeIsOwned = Boolean(activeCosmetic && cosmetic && activeCosmetic.id === cosmetic.id && isOwned);
+  const activeIsOwned = Boolean(activeCosmetic && ownedIds.has(activeCosmetic.id));
 
   const renderPreviewContent = () => {
     if (!activeCosmetic) {
@@ -238,10 +238,12 @@ export const CosmeticPreviewModal = ({
       return (
         <View style={styles.emotePreview} testID="cosmetic-preview-emote">
           <View style={[styles.emotePulse, { borderColor: tierColors[activeCosmetic.tier].accent }]}>
-            <Text style={styles.emoteGlyph}>...</Text>
+            <Text style={styles.emoteGlyph}>
+              {activeCosmetic.name.charAt(0).toUpperCase()}
+            </Text>
           </View>
-          <Text style={styles.emoteTitle}>Emote preview coming soon</Text>
-          <Text style={styles.previewHint}>This reaction will get its full animation pass later.</Text>
+          <Text style={styles.emoteTitle}>{activeCosmetic.name}</Text>
+          <Text style={styles.previewHint}>Equip this reaction to use it in the match reaction wheel.</Text>
         </View>
       );
     }
@@ -289,13 +291,9 @@ export const CosmeticPreviewModal = ({
           </View>
 
           <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            <CosmeticThemeProvider theme={activeTheme}>
-              <View style={styles.previewArea}>{renderPreviewContent()}</View>
-            </CosmeticThemeProvider>
-
             {comparisonCosmetics.length > 1 ? (
               <View style={styles.compareSection}>
-                <Text style={styles.compareLabel}>Compare with others in this section</Text>
+                <Text style={styles.compareLabel}>Also in this section</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.compareRow}>
                   {comparisonCosmetics.map((item) => {
                     const active = item.id === activeCosmetic?.id;
@@ -317,6 +315,10 @@ export const CosmeticPreviewModal = ({
                 </ScrollView>
               </View>
             ) : null}
+
+            <CosmeticThemeProvider theme={activeTheme}>
+              <View style={styles.previewArea}>{renderPreviewContent()}</View>
+            </CosmeticThemeProvider>
 
             {activeCosmetic ? (
               <View style={styles.infoRow}>

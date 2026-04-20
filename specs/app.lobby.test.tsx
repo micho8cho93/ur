@@ -393,6 +393,70 @@ describe('Lobby private game join input', () => {
     );
   });
 
+  it('lets the joiner resume their live open match instead of spectating it', async () => {
+    mockListOpenOnlineMatches.mockResolvedValue([
+      {
+        openMatchId: 'open-live-2',
+        matchId: 'match-live-2',
+        modeId: 'gameMode_3_pieces',
+        creatorUserId: 'creator-1',
+        joinedUserId: 'viewer-1',
+        wager: 40,
+        durationMinutes: 5,
+        status: 'matched',
+        createdAt: '2026-04-18T10:00:00.000Z',
+        expiresAt: '2026-04-18T10:05:00.000Z',
+        updatedAt: '2026-04-18T10:01:00.000Z',
+        entrants: 2,
+        maxEntrants: 2,
+        isCreator: false,
+        isJoiner: true,
+      },
+    ]);
+
+    const view = render(<Lobby />);
+
+    await waitFor(() => expect(view.getByText('Your Match')).toBeTruthy());
+    expect(view.queryByLabelText('Spectate')).toBeNull();
+
+    await act(async () => {
+      fireEvent.press(view.getByText('Resume'));
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(mockPush).toHaveBeenCalledWith('/match/match-live-2?modeId=gameMode_3_pieces'),
+    );
+  });
+
+  it('offers resume on a creator-owned live open match', async () => {
+    mockListOpenOnlineMatches.mockResolvedValue([
+      {
+        openMatchId: 'open-live-creator-1',
+        matchId: 'match-live-creator-1',
+        modeId: 'standard',
+        creatorUserId: 'viewer-1',
+        joinedUserId: 'joiner-1',
+        wager: 40,
+        durationMinutes: 5,
+        status: 'matched',
+        createdAt: '2026-04-18T10:00:00.000Z',
+        expiresAt: '2026-04-18T10:05:00.000Z',
+        updatedAt: '2026-04-18T10:01:00.000Z',
+        entrants: 2,
+        maxEntrants: 2,
+        isCreator: true,
+        isJoiner: false,
+      },
+    ]);
+
+    const view = render(<Lobby />);
+
+    await waitFor(() => expect(view.getByText('Your Match')).toBeTruthy());
+    expect(view.getByText('Resume')).toBeTruthy();
+    expect(view.queryByLabelText('Spectate')).toBeNull();
+  });
+
   it('removes the extra create-private copy once a private room has been created', () => {
     mockUseMatchmaking.mockReturnValue({
       startMatch: jest.fn(),
@@ -428,7 +492,7 @@ describe('Lobby private game join input', () => {
       ),
     ).toBeNull();
     expect(view.queryByText('Copy Code')).toBeNull();
-    expect(view.getByText('Start Game')).toBeTruthy();
+    expect(view.getByLabelText('Waiting for friend to join').props.accessibilityState.disabled).toBe(true);
     expect(view.getByText('Cancel')).toBeTruthy();
   });
 

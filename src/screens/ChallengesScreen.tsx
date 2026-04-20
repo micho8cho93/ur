@@ -1,10 +1,9 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 
 import { ChallengeList } from '@/components/challenges/ChallengeList';
 import { XPDisplay } from '@/components/challenges/XPDisplay';
-import { Button } from '@/components/ui/Button';
 import { boxShadow } from '@/constants/styleEffects';
 import {
   urPanelColors,
@@ -36,6 +35,7 @@ export default function ChallengesScreen() {
   } = useProgression();
 
   const challengeRows = buildChallengeViewModels(definitions, progress);
+  const isRefreshing = isChallengeRefreshing || isProgressionRefreshing;
 
   const handleRefresh = async () => {
     await Promise.all([
@@ -47,18 +47,28 @@ export default function ChallengesScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Challenges' }} />
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => void handleRefresh()}
+            tintColor="#F0C040"
+          />
+        }
+      >
         <View style={styles.hero}>
           <Text style={styles.title}>Challenges & XP</Text>
           <Text style={styles.subtitle}>
-            Permanent objectives tracked by the Nakama backend for your authenticated account.
+            Permanent objectives that carry over across all your sessions.
           </Text>
         </View>
 
         {!user ? (
           <View style={styles.stateCard}>
             <Text style={styles.stateTitle}>Sign in required</Text>
-            <Text style={styles.stateText}>Authenticate with Nakama to view your personal challenge archive and XP total.</Text>
+            <Text style={styles.stateText}>Sign in to view your personal challenges and XP total.</Text>
           </View>
         ) : (
           <>
@@ -70,29 +80,23 @@ export default function ChallengesScreen() {
             />
 
             <View style={styles.sectionCard}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleWrap}>
-                  <Text style={styles.sectionTitle}>Challenge Archive</Text>
-                  <Text style={styles.sectionSubtitle}>
-                    {progress
-                      ? `${progress.totalCompleted} of ${definitions.length} permanent challenges completed.`
-                      : 'Loading your permanent challenge record.'}
-                  </Text>
-                </View>
-                <Button title="Refresh" variant="outline" onPress={() => void handleRefresh()} />
+              <View style={styles.sectionTitleWrap}>
+                <Text style={styles.sectionTitle}>Challenges</Text>
+                <Text style={styles.sectionSubtitle}>
+                  {progress
+                    ? `${progress.totalCompleted} of ${definitions.length} completed`
+                    : 'Loading your challenge record.'}
+                </Text>
               </View>
 
-              {isChallengeRefreshing || isProgressionRefreshing ? (
-                <Text style={styles.refreshText}>Refreshing your latest authenticated data…</Text>
-              ) : null}
               {challengeError && challengeRows.length > 0 ? (
-                <Text style={styles.refreshText}>Showing the most recently synced challenge archive.</Text>
+                <Text style={styles.refreshText}>Showing the most recently synced challenge data.</Text>
               ) : null}
 
               {isChallengeLoading && challengeRows.length === 0 ? (
                 <View style={styles.stateCardInline}>
                   <Text style={styles.stateTitle}>Opening the archive…</Text>
-                  <Text style={styles.stateText}>Fetching definitions and your confirmed completion state from the backend.</Text>
+                  <Text style={styles.stateText}>Fetching your challenge progress from the server.</Text>
                 </View>
               ) : challengeError && challengeRows.length === 0 ? (
                 <View style={styles.stateCardInline}>
@@ -155,14 +159,7 @@ const styles = StyleSheet.create({
       elevation: 8,
     }),
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: urTheme.spacing.sm,
-  },
   sectionTitleWrap: {
-    flex: 1,
     gap: 4,
   },
   sectionTitle: {

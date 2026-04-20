@@ -6,6 +6,7 @@ import { useSession } from '../auth/useSession'
 import { ActionToolbar } from '../components/ActionToolbar'
 import { useTopbarActions } from '../layout/TopbarActionsContext'
 import { EmptyState } from '../components/EmptyState'
+import { Skeleton, SkeletonTable } from '../components/Skeleton'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
 import { StatCard } from '../components/StatCard'
@@ -306,12 +307,7 @@ export function OverviewPage() {
         }
       >
         {isLoading ? (
-          <EmptyState
-            title="Loading live tournament status"
-            description="Refreshing the latest bracket pressure, queue state, and operator alerts."
-            compact
-            tone="info"
-          />
+          <SkeletonTable columns={9} rows={4} />
         ) : summaries.length === 0 ? (
           <EmptyState
             title="No runs to monitor"
@@ -490,12 +486,18 @@ export function OverviewPage() {
           }
         >
           {isLoading ? (
-            <EmptyState
-              title="Loading recent activity"
-              description="Fetching the latest operator actions across visible runs."
-              compact
-              tone="info"
-            />
+            <ul className="list list--dense" aria-hidden="true">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <li key={i} className="list__item">
+                  <div className="list__meta">
+                    <Skeleton height="13px" width="30%" />
+                    <Skeleton height="11px" width="18%" />
+                  </div>
+                  <Skeleton height="12px" width="55%" />
+                  <Skeleton height="12px" width="75%" />
+                </li>
+              ))}
+            </ul>
           ) : auditLog.length === 0 ? (
             <EmptyState
               title="No audit activity yet"

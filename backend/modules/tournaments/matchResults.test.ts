@@ -11,6 +11,7 @@ import {
   TOURNAMENT_RUNS_COLLECTION,
   type AuthoritativeTournamentMatchCompletion,
 } from "./matchResults";
+import { buildTournamentBotUserId, isTournamentBotUserId } from "../../../shared/tournamentBots";
 
 type StoredObject = {
   collection: string;
@@ -223,6 +224,23 @@ const createCompletion = (overrides: Partial<AuthoritativeTournamentMatchComplet
   ...overrides,
 });
 
+type TournamentForfeitResolutionCase = {
+  size: 2 | 4 | 8 | 16;
+  includeBot: boolean;
+  forfeitType: "disconnect" | "inactivity";
+};
+
+const TOURNAMENT_FORFEIT_RESOLUTION_CASES: TournamentForfeitResolutionCase[] = ([2, 4, 8, 16] as const).flatMap(
+  (size) =>
+    ([false, true] as const).flatMap((includeBot) =>
+      (["disconnect", "inactivity"] as const).map((forfeitType) => ({
+        size,
+        includeBot,
+        forfeitType,
+      })),
+    ),
+);
+
 describe("tournament authoritative match results", () => {
   it("stores and counts valid tournament matches", () => {
     const nk = createNakama();
@@ -424,6 +442,133 @@ describe("tournament authoritative match results", () => {
       }),
     );
   });
+
+  it.each(TOURNAMENT_FORFEIT_RESOLUTION_CASES)(
+    "counts zero-move $forfeitType forfeits and advances $size-player brackets (bots: $includeBot)",
+    ({ size, includeBot, forfeitType }) => {
+      const nk = createNakama();
+      const logger = createLogger();
+      const startedAt = "2026-03-26T10:30:00.000Z";
+      const registrations: TournamentRunRegistration[] = Array.from({ length: size }, (_, index) => {
+        const seed = index + 1;
+        const userId = includeBot && seed === 2 ? buildTournamentBotUserId("run-1", seed) : `user-${seed}`;
+        return {
+          userId,
+          displayName: isTournamentBotUserId(userId) ? "Hard Bot 1" : `Player ${seed}`,
+          joinedAt: `2026-03-26T10:${String(index).padStart(2, "0")}:00.000Z`,
+          seed,
+        };
+      });
+      const bracket = createSingleEliminationBracket(registrations, startedAt);
+      const entry = getTournamentBracketEntry(bracket, "round-1-match-1");
+      if (!entry?.playerAUserId || !entry.playerBUserId) {
+        throw new Error("Expected first-round entry to be ready.");
+      }
+
+      const winnerUserId = entry.playerAUserId;
+      const loserUserId = entry.playerBUserId;
+      const winnerName = registrations.find((registration) => registration.userId === winnerUserId)?.displayName ?? winnerUserId;
+      const loserName = registrations.find((registration) => registration.userId === loserUserId)?.displayName ?? loserUserId;
+
+      seedRun(nk, {
+        maxSize: size,
+        registrations,
+        bracket,
+      });
+
+      const result = processCompletedAuthoritativeTournamentMatch(
+        nk,
+        logger,
+        createCompletion({
+          matchId: `match-forfeit-${forfeitType}-${size}-${includeBot ? "bot" : "human"}`,
+          context: {
+            runId: "run-1",
+            tournamentId: "tour-1",
+            round: 1,
+            entryId: "round-1-match-1",
+            eliminationRisk: true,
+          },
+          completedAt: "2026-03-26T11:00:00.000Z",
+          totalMoves: 0,
+          revision: 1,
+          winningColor: "light",
+          winnerUserId,
+          loserUserId,
+          classification: {
+            ranked: true,
+            casual: false,
+            private: false,
+            bot: includeBot,
+            experimental: false,
+          },
+          players: [
+            {
+              userId: winnerUserId,
+              username: winnerName,
+              color: "light",
+              didWin: true,
+              score: 1,
+              finishedCount: 0,
+              capturesMade: 0,
+              capturesSuffered: 0,
+              playerMoveCount: 0,
+            },
+            {
+              userId: loserUserId,
+              username: loserName,
+              color: "dark",
+              didWin: false,
+              score: 0,
+              finishedCount: 0,
+              capturesMade: 0,
+              capturesSuffered: 0,
+              playerMoveCount: 0,
+            },
+          ],
+        }),
+      );
+
+      expect(result.retryableFailure).toBe(false);
+      expect(result.record?.valid).toBe(true);
+      expect(result.record?.counted).toBe(true);
+      expect(result.record?.invalidReason).toBeNull();
+
+      const winner = getTournamentBracketParticipant(result.updatedRun?.bracket ?? null, winnerUserId);
+      const loser = getTournamentBracketParticipant(result.updatedRun?.bracket ?? null, loserUserId);
+
+      if (size === 2) {
+        expect(winner).toEqual(
+          expect.objectContaining({
+            state: "champion",
+            finalPlacement: 1,
+          }),
+        );
+        expect(loser).toEqual(
+          expect.objectContaining({
+            state: "runner_up",
+            finalPlacement: 2,
+          }),
+        );
+      } else {
+        expect(winner).toEqual(
+          expect.objectContaining({
+            state: "waiting_next_round",
+            currentRound: 2,
+            currentEntryId: "round-2-match-1",
+            finalPlacement: null,
+          }),
+        );
+        expect(loser).toEqual(
+          expect.objectContaining({
+            state: "eliminated",
+            currentRound: 1,
+            currentEntryId: "round-1-match-1",
+            finalPlacement: (size / 2) + 1,
+          }),
+        );
+      }
+    },
+  );
 
   it("does not persist retryable tournament score-sync failures", () => {
     const nk = createNakama();

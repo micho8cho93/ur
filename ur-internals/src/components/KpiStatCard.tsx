@@ -8,6 +8,20 @@ interface KpiStatCardProps {
   tone?: 'default' | 'accent' | 'success' | 'warning'
   className?: string
   valueClassName?: string
+  delta?: number
+  deltaLabel?: string
+}
+
+function DeltaIndicator({ delta, label }: { delta: number; label?: string }) {
+  const tone = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
+  const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '–'
+  const display = label ?? `${Math.abs(delta).toFixed(1)}%`
+
+  return (
+    <span className={`kpi-card__delta kpi-card__delta--${tone}`} aria-label={`${delta > 0 ? 'Up' : delta < 0 ? 'Down' : 'No change'} ${display}`}>
+      {arrow} {display}
+    </span>
+  )
 }
 
 export function KpiStatCard({
@@ -18,6 +32,8 @@ export function KpiStatCard({
   tone = 'default',
   className,
   valueClassName,
+  delta,
+  deltaLabel,
 }: KpiStatCardProps) {
   const classes = [
     'stat-card',
@@ -35,6 +51,7 @@ export function KpiStatCard({
       <p className={['stat-card__value', 'kpi-card__value', valueClassName].filter(Boolean).join(' ')}>
         {value}
       </p>
+      {delta !== undefined ? <DeltaIndicator delta={delta} label={deltaLabel} /> : null}
       {helper ? <p className="stat-card__helper kpi-card__helper">{helper}</p> : null}
       {detail ? <p className="kpi-card__detail">{detail}</p> : null}
     </article>

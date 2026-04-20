@@ -15,7 +15,9 @@
       "Bash(npm run *)",
       "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
       "Bash(cp \"/Users/Michel/Downloads/spin-reel-slot-machine.wav\" \"/Users/Michel/Desktop/ur/assets/audio/sfx/spin-reel-slot-machine.wav\")",
-      "Bash(cp \"/Users/Michel/Downloads/payout_award.wav\" \"/Users/Michel/Desktop/ur/assets/audio/sfx/payout_award.wav\")"
+      "Bash(cp \"/Users/Michel/Downloads/payout_award.wav\" \"/Users/Michel/Desktop/ur/assets/audio/sfx/payout_award.wav\")",
+      "Bash(npx vite *)",
+      "Bash(grep -E \"\\\\.tsx$\")"
     ]
   }
 }

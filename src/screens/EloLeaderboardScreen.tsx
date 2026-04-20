@@ -10,6 +10,27 @@ import { useEloLeaderboard } from '@/src/elo/useEloLeaderboard';
 
 const rowKey = (entry: EloLeaderboardEntry) => `${entry.userId}:${entry.rank ?? 'na'}`;
 
+const MEDAL_COLORS: Record<number, string> = {
+  1: '#F0C040',
+  2: '#C0C8D4',
+  3: '#C88A50',
+};
+
+const winRate = (wins: number, losses: number): string => {
+  const total = wins + losses;
+  if (total === 0) return '—';
+  return `${Math.round((wins / total) * 100)}%`;
+};
+
+const SkeletonRow: React.FC = () => (
+  <View style={styles.skeletonRow}>
+    <View style={[styles.skeletonBlock, styles.rankColumn, { width: 36, height: 14, borderRadius: 4 }]} />
+    <View style={[styles.skeletonBlock, { flex: 1, height: 14, borderRadius: 4 }]} />
+    <View style={[styles.skeletonBlock, { width: 48, height: 14, borderRadius: 4 }]} />
+    <View style={[styles.skeletonBlock, { width: 44, height: 14, borderRadius: 4 }]} />
+  </View>
+);
+
 const LeaderboardSection: React.FC<{
   title: string;
   description: string;
@@ -24,24 +45,42 @@ const LeaderboardSection: React.FC<{
       <Text style={[styles.tableHeaderText, styles.rankColumn]}>Rank</Text>
       <Text style={[styles.tableHeaderText, styles.nameColumn]}>Player</Text>
       <Text style={[styles.tableHeaderText, styles.ratingColumn]}>Elo</Text>
-      <Text style={[styles.tableHeaderText, styles.recordColumn]}>Record</Text>
+      <Text style={[styles.tableHeaderText, styles.recordColumn]}>Win %</Text>
     </View>
 
     <View style={styles.rows}>
       {entries.map((entry) => {
         const isCurrentUser = currentUserId === entry.userId;
+        const medalColor = entry.rank != null ? MEDAL_COLORS[entry.rank] : undefined;
 
         return (
           <View key={rowKey(entry)} style={[styles.row, isCurrentUser && styles.rowCurrentUser]}>
-            <Text style={[styles.rankValue, styles.rankColumn]}>{entry.rank ? `#${entry.rank}` : '...'}</Text>
+            <Text
+              style={[
+                styles.rankValue,
+                styles.rankColumn,
+                medalColor ? { color: medalColor } : null,
+              ]}
+            >
+              {entry.rank ? `#${entry.rank}` : '...'}
+            </Text>
             <View style={styles.nameColumn}>
               <Text style={styles.nameValue}>{entry.usernameDisplay}</Text>
-              {entry.provisional ? <Text style={styles.provisionalText}>Provisional</Text> : null}
+              {entry.provisional ? (
+                <View style={styles.provisionalBadge}>
+                  <Text style={styles.provisionalText}>Placement</Text>
+                </View>
+              ) : null}
             </View>
             <Text style={[styles.ratingValue, styles.ratingColumn]}>{entry.eloRating}</Text>
-            <Text style={[styles.recordValue, styles.recordColumn]}>
-              {entry.ratedWins}-{entry.ratedLosses}
-            </Text>
+            <View style={[styles.recordColumn, styles.recordCell]}>
+              <Text style={styles.winRateValue}>
+                {winRate(entry.ratedWins, entry.ratedLosses)}
+              </Text>
+              <Text style={styles.recordSubtext}>
+                {entry.ratedWins}-{entry.ratedLosses}
+              </Text>
+            </View>
           </View>
         );
       })}
@@ -72,8 +111,7 @@ export default function EloLeaderboardScreen() {
           <Text style={styles.eyebrow}>Global Ladder</Text>
           <Text style={styles.heroTitle}>Elo Leaderboard</Text>
           <Text style={styles.heroText}>
-            Ranked public matches update this ladder after the backend verifies the winner and writes the authoritative
-            Elo result.
+            Ranked records update after each verified online match. Pull to refresh.
           </Text>
 
           {canAccessElo && myProfile ? (
@@ -84,12 +122,14 @@ export default function EloLeaderboardScreen() {
               </View>
               <View style={styles.summaryChip}>
                 <Text style={styles.summaryLabel}>Global Rank</Text>
-                <Text style={styles.summaryValue}>{myProfile.rank ? `#${myProfile.rank}` : 'Seeding'}</Text>
+                <Text style={styles.summaryValue}>
+                  {myProfile.rank ? `#${myProfile.rank}` : 'Unranked'}
+                </Text>
               </View>
               <View style={styles.summaryChip}>
-                <Text style={styles.summaryLabel}>Rated Record</Text>
+                <Text style={styles.summaryLabel}>Win Rate</Text>
                 <Text style={styles.summaryValue}>
-                  {myProfile.ratedWins}-{myProfile.ratedLosses}
+                  {winRate(myProfile.ratedWins, myProfile.ratedLosses)}
                 </Text>
               </View>
             </View>
@@ -107,8 +147,11 @@ export default function EloLeaderboardScreen() {
           </View>
         ) : isLoading ? (
           <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Loading leaderboard...</Text>
-            <Text style={styles.sectionDescription}>Fetching the top players and your position on the ladder.</Text>
+            <Text style={styles.sectionTitle}>Top Players</Text>
+            <Text style={styles.sectionDescription}>Loading the current standings…</Text>
+            <View style={styles.rows}>
+              {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}
+            </View>
           </View>
         ) : errorMessage ? (
           <View style={styles.sectionCard}>
@@ -278,19 +321,36 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(240, 192, 64, 0.48)',
     backgroundColor: 'rgba(48, 34, 12, 0.52)',
   },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: urTheme.spacing.sm,
+    borderRadius: urTheme.radii.sm,
+    paddingHorizontal: urTheme.spacing.sm,
+    paddingVertical: urTheme.spacing.sm,
+    backgroundColor: 'rgba(8, 13, 18, 0.74)',
+    borderWidth: 1,
+    borderColor: 'rgba(236, 205, 152, 0.08)',
+  },
+  skeletonBlock: {
+    backgroundColor: 'rgba(240, 224, 196, 0.08)',
+  },
   rankColumn: {
-    width: 64,
+    width: 48,
   },
   nameColumn: {
     flex: 1,
+    gap: 4,
   },
   ratingColumn: {
-    width: 64,
+    width: 56,
     textAlign: 'right',
   },
   recordColumn: {
-    width: 74,
-    textAlign: 'right',
+    width: 64,
+  },
+  recordCell: {
+    alignItems: 'flex-end',
   },
   rankValue: {
     color: '#F8ECD6',
@@ -304,23 +364,38 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: '600',
   },
+  provisionalBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: urTheme.radii.pill,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: 'rgba(140, 180, 220, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(140, 180, 220, 0.28)',
+  },
   provisionalText: {
-    color: '#D7E9FF',
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 2,
+    color: '#A8C8E8',
+    fontSize: 10,
+    lineHeight: 14,
+    ...urTypography.label,
   },
   ratingValue: {
     color: '#F0C040',
     fontSize: 15,
     lineHeight: 19,
     fontWeight: '700',
+    textAlign: 'right',
   },
-  recordValue: {
+  winRateValue: {
     color: '#F8ECD6',
     fontSize: 13,
     lineHeight: 17,
     fontWeight: '600',
+  },
+  recordSubtext: {
+    color: 'rgba(243, 230, 206, 0.48)',
+    fontSize: 10,
+    lineHeight: 13,
   },
   retryButton: {
     marginTop: urTheme.spacing.xs,

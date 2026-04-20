@@ -13,6 +13,7 @@ import {
 import { useSession } from '../auth/useSession'
 import { ActionToolbar } from '../components/ActionToolbar'
 import { EmptyState } from '../components/EmptyState'
+import { Skeleton, SkeletonCard, SkeletonTable } from '../components/Skeleton'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
@@ -573,9 +574,8 @@ export function TournamentDetailPage() {
       return
     }
 
-    const nextLiveDetail = await getTournamentLiveDetail(tournamentId)
-
-    const [nextStandings, nextAuditLog] = await Promise.all([
+    const [nextLiveDetail, nextStandings, nextAuditLog] = await Promise.all([
+      getTournamentLiveDetail(tournamentId),
       nextTournament.status === 'Draft'
         ? Promise.resolve(emptyStandings)
         : getTournamentStandings(tournamentId, 100),
@@ -751,11 +751,22 @@ export function TournamentDetailPage() {
 
   if (isLoading) {
     return (
-      <EmptyState
-        title="Loading tournament detail"
-        description="Refreshing the latest tournament configuration, bracket state, standings, and audit activity."
-        tone="info"
-      />
+      <>
+        <section className="panel stack">
+          <div className="stack">
+            <Skeleton height="12px" width="140px" />
+            <Skeleton height="26px" width="260px" />
+            <Skeleton height="13px" width="65%" />
+          </div>
+          <div className="kpi-grid">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+        </section>
+        <SkeletonTable columns={6} rows={8} />
+      </>
     )
   }
 

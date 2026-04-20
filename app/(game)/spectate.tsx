@@ -13,6 +13,7 @@ import {
 } from '@/constants/urTheme';
 import { getMatchConfig } from '@/logic/matchConfigs';
 import { listSpectatableMatches, type SpectatableMatch } from '@/services/matchmaking';
+import { resolveGameModeMatchConfig } from '@/services/gameModes';
 import { nakamaService } from '@/services/nakama';
 import {
   HOME_FREDOKA_FONT_FAMILY,
@@ -121,7 +122,16 @@ export default function SpectateScreen() {
         setMatchToken(null);
         setPlayerColor(null);
         setSocketState('idle');
-        initGame(match.matchId, { matchConfig: getMatchConfig(match.modeId) });
+        initGame(match.matchId, {
+          matchConfig: await resolveGameModeMatchConfig(match.modeId, {
+            allowsXp: true,
+            allowsChallenges: true,
+            allowsCoins: true,
+            allowsOnline: true,
+            allowsRankedStats: true,
+            isPracticeMode: false,
+          }),
+        });
         router.push(
           buildMatchRoutePath({
             id: match.matchId,
@@ -236,7 +246,7 @@ export default function SpectateScreen() {
             ) : (
               <View style={styles.cardList}>
                 {matches.map((match) => {
-                  const config = getMatchConfig(match.modeId);
+                  const config = match.displayName ?? getMatchConfig(match.modeId).displayName;
                   const isWatching = watchingMatchId === match.matchId;
 
                   return (
@@ -270,7 +280,7 @@ export default function SpectateScreen() {
 
                       <View style={styles.matchMetaRow}>
                         <Text style={[styles.matchMetaText, { fontFamily: bodyFontFamily }]}>
-                          {config.displayName}
+                          {config}
                         </Text>
                         <Text style={[styles.watchText, { fontFamily: bodyFontFamily }]}>
                           {isWatching ? 'Opening...' : 'Watch'}

@@ -4,6 +4,7 @@ import { useGameStore } from '@/store/useGameStore';
 import { useMatchmaking } from './useMatchmaking';
 
 const mockCancelMatchmaking = jest.fn();
+const mockCreateOpenMatch = jest.fn();
 const mockCreatePrivateMatch = jest.fn();
 const mockFindMatch = jest.fn();
 const mockGetPrivateMatchStatus = jest.fn();
@@ -11,6 +12,7 @@ const mockJoinPrivateMatch = jest.fn();
 const mockGetSitePlayerCount = jest.fn();
 const mockPush = jest.fn();
 const mockRunScreenTransition = jest.fn();
+const mockResolveGameModeMatchConfig = jest.fn();
 
 jest.mock('@/config/nakama', () => ({
   hasNakamaConfig: () => true,
@@ -19,10 +21,15 @@ jest.mock('@/config/nakama', () => ({
 
 jest.mock('@/services/matchmaking', () => ({
   cancelMatchmaking: (...args: unknown[]) => mockCancelMatchmaking(...args),
+  createOpenOnlineMatch: (...args: unknown[]) => mockCreateOpenMatch(...args),
   createPrivateMatch: (...args: unknown[]) => mockCreatePrivateMatch(...args),
   findMatch: (...args: unknown[]) => mockFindMatch(...args),
   getPrivateMatchStatus: (...args: unknown[]) => mockGetPrivateMatchStatus(...args),
   joinPrivateMatch: (...args: unknown[]) => mockJoinPrivateMatch(...args),
+}));
+
+jest.mock('@/services/gameModes', () => ({
+  resolveGameModeMatchConfig: (...args: unknown[]) => mockResolveGameModeMatchConfig(...args),
 }));
 
 jest.mock('@/services/presence', () => ({
@@ -59,6 +66,32 @@ describe('useMatchmaking', () => {
     mockRunScreenTransition.mockImplementation(async (request: { action?: () => void | Promise<void> }) => {
       await request.action?.();
       return true;
+    });
+    mockResolveGameModeMatchConfig.mockResolvedValue({
+      modeId: 'standard',
+      displayName: 'Quick Play',
+      baseRulesetPreset: 'quick_play',
+      pieceCountPerSide: 7,
+      rulesVariant: 'standard',
+      rosetteSafetyMode: 'standard',
+      exitStyle: 'standard',
+      eliminationMode: 'return_to_start',
+      fogOfWar: false,
+      boardAssetKey: 'board_design',
+      allowsXp: true,
+      allowsChallenges: true,
+      allowsOnline: true,
+      allowsRankedStats: true,
+      allowsCoins: true,
+      isPracticeMode: false,
+      offlineWinRewardSource: 'pvp_win',
+      opponentType: 'bot',
+      pathVariant: 'default',
+      throwProfile: 'standard',
+      bonusTurnOnRosette: true,
+      bonusTurnOnCapture: false,
+      selectionSubtitle: 'Quick Play',
+      rulesIntro: null,
     });
   });
 
@@ -183,6 +216,79 @@ describe('useMatchmaking', () => {
         hasGuestJoined: false,
       }),
     );
+  });
+
+  it('opens a created open match directly into the board flow', async () => {
+    mockCreateOpenMatch.mockResolvedValue({
+      match: {
+        openMatchId: 'open-1',
+        matchId: 'match-open-1',
+        modeId: 'standard',
+        creatorUserId: 'user-1',
+        joinedUserId: null,
+        wager: 20,
+        durationMinutes: 5,
+        status: 'open',
+        createdAt: '2026-04-18T10:00:00.000Z',
+        expiresAt: '2026-04-18T10:05:00.000Z',
+        updatedAt: '2026-04-18T10:00:00.000Z',
+        entrants: 1,
+        maxEntrants: 2,
+        isCreator: true,
+        isJoiner: false,
+      },
+      session: { user_id: 'user-1' },
+      userId: 'user-1',
+    });
+
+    const { result } = renderHook(() => useMatchmaking('online'));
+
+    await act(async () => {
+      await flush();
+    });
+
+    await act(async () => {
+      await result.current.createOpenMatch(20, 5, 'standard');
+    });
+
+    expect(mockRunScreenTransition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Opening Wager Match',
+        message: 'Creating your table and seating you at the board.',
+        action: expect.any(Function),
+      }),
+    );
+    expect(mockResolveGameModeMatchConfig).toHaveBeenCalledWith(
+      'standard',
+      expect.objectContaining({
+        allowsXp: true,
+        allowsChallenges: true,
+        allowsCoins: true,
+        allowsOnline: true,
+        allowsRankedStats: true,
+        isPracticeMode: false,
+      }),
+    );
+    expect(mockPush).toHaveBeenCalledWith('/match/match-open-1?modeId=standard');
+    expect(useGameStore.getState().matchId).toBe('match-open-1');
+    expect(useGameStore.getState().playerColor).toBeNull();
+  });
+
+  it('marks offline bot matches with a light player color immediately', async () => {
+    const { result } = renderHook(() => useMatchmaking('bot'));
+
+    await act(async () => {
+      await flush();
+    });
+
+    await act(async () => {
+      await result.current.startBotGame('easy');
+    });
+
+    expect(useGameStore.getState().onlineMode).toBe('offline');
+    expect(useGameStore.getState().playerColor).toBe('light');
+    expect(mockPush).toHaveBeenCalled();
+    expect(String(mockPush.mock.calls[0]?.[0])).toContain('/match/local-');
   });
 
   it('keeps the created private code visible when opening the host table fails', async () => {

@@ -273,7 +273,9 @@ const buildInvalidReason = (
     return "Experimental matches do not count toward tournaments.";
   }
 
-  if (completion.totalMoves < 1) {
+  // Tournament forfeits (disconnect/inactivity) can end before any move is applied.
+  // Those outcomes still need to advance the bracket when elimination risk is enabled.
+  if (completion.totalMoves < 1 && completion.context?.eliminationRisk !== true) {
     return "Matches without at least one applied move do not count toward tournaments.";
   }
 

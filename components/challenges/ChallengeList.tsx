@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { urTheme, urTypography } from '@/constants/urTheme';
-import type { ChallengeViewModel } from '@/src/challenges/challengeUi';
+import type { ChallengeVisualStatus, ChallengeViewModel } from '@/src/challenges/challengeUi';
 import { ChallengeCard } from './ChallengeCard';
 
 interface ChallengeListProps {
@@ -11,6 +11,15 @@ interface ChallengeListProps {
   emptyMessage?: string;
   highlightedChallengeIds?: string[];
 }
+
+const STATUS_ORDER: ChallengeVisualStatus[] = ['in_progress', 'available', 'locked', 'completed'];
+
+const STATUS_SECTION_LABELS: Record<ChallengeVisualStatus, string> = {
+  in_progress: 'In Progress',
+  available: 'Available',
+  locked: 'Locked',
+  completed: 'Completed',
+};
 
 export const ChallengeList: React.FC<ChallengeListProps> = ({
   challenges,
@@ -27,14 +36,26 @@ export const ChallengeList: React.FC<ChallengeListProps> = ({
     );
   }
 
+  const grouped = STATUS_ORDER.map((status) => ({
+    status,
+    items: challenges.filter((c) => c.status === status),
+  })).filter(({ items }) => items.length > 0);
+
   return (
     <View style={styles.list}>
-      {challenges.map((challenge) => (
-        <ChallengeCard
-          key={challenge.id}
-          challenge={challenge}
-          highlight={highlightedChallengeIds.includes(challenge.id)}
-        />
+      {grouped.map(({ status, items }) => (
+        <View key={status} style={styles.group}>
+          <Text style={styles.groupLabel}>{STATUS_SECTION_LABELS[status]}</Text>
+          <View style={styles.groupItems}>
+            {items.map((challenge) => (
+              <ChallengeCard
+                key={challenge.id}
+                challenge={challenge}
+                highlight={highlightedChallengeIds.includes(challenge.id)}
+              />
+            ))}
+          </View>
+        </View>
       ))}
     </View>
   );
@@ -42,6 +63,20 @@ export const ChallengeList: React.FC<ChallengeListProps> = ({
 
 const styles = StyleSheet.create({
   list: {
+    gap: urTheme.spacing.md,
+  },
+  group: {
+    gap: urTheme.spacing.xs,
+  },
+  groupLabel: {
+    ...urTypography.label,
+    color: 'rgba(242, 230, 209, 0.52)',
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    paddingHorizontal: 2,
+  },
+  groupItems: {
     gap: urTheme.spacing.sm,
   },
   emptyState: {

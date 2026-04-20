@@ -174,6 +174,7 @@ type OnlineMatchCardProps = {
   disabled: boolean;
   onJoin: (match: OpenOnlineMatch) => void;
   onSpectate: (match: OpenOnlineMatch) => void;
+  onResume: (match: OpenOnlineMatch) => void;
   onInfoPress: () => void;
 };
 
@@ -188,13 +189,16 @@ const OnlineMatchCard: React.FC<OnlineMatchCardProps> = ({
   disabled,
   onJoin,
   onSpectate,
+  onResume,
   onInfoPress,
 }) => {
   const isLive = match.status === 'matched';
-  const title = isLive ? 'Live Wager Match' : match.isCreator ? 'Your Open Match' : 'Open Wager Match';
+  const isParticipant = match.isCreator || match.isJoiner;
+  const title = isLive ? (isParticipant ? 'Your Match' : 'Live Wager Match') : match.isCreator ? 'Your Open Match' : 'Open Wager Match';
   const statusLabel = isLive ? 'In Progress' : match.isCreator ? 'Waiting for opponent' : 'Ready to join';
-  const canJoin = !match.isCreator && match.status === 'open' && !disabled;
-  const canSpectate = isLive && !disabled && !spectating;
+  const canJoin = !isParticipant && match.status === 'open' && !disabled;
+  const canSpectate = isLive && !isParticipant && !disabled && !spectating;
+  const canResume = isLive && isParticipant && !disabled && !spectating;
 
   return (
     <View style={styles.onlineMatchCardFrame}>
@@ -230,9 +234,13 @@ const OnlineMatchCard: React.FC<OnlineMatchCardProps> = ({
         <HomeLightButton
           label={
             isLive
-              ? spectating
-                ? 'Opening...'
-                : 'Spectate'
+              ? isParticipant
+                ? spectating
+                  ? 'Opening...'
+                  : 'Resume'
+                : spectating
+                  ? 'Opening...'
+                  : 'Spectate'
               : match.isCreator
                 ? 'Waiting'
                 : joining
@@ -242,11 +250,15 @@ const OnlineMatchCard: React.FC<OnlineMatchCardProps> = ({
           fontLoaded={fontLoaded}
           size="compact"
           loading={joining || spectating}
-          disabled={isLive ? !canSpectate : !canJoin || joining}
+          disabled={isLive ? (isParticipant ? !canResume : !canSpectate) : !canJoin || joining}
           style={styles.onlineMatchButton}
           onPress={() => {
             if (isLive) {
-              onSpectate(match);
+              if (isParticipant) {
+                onResume(match);
+              } else {
+                onSpectate(match);
+              }
               return;
             }
 
@@ -489,7 +501,16 @@ export default function Lobby() {
     }
   };
 
-  const handleSpectateOpenMatch = async (match: OpenOnlineMatch) => {
+  const enterOpenMatch = async (match: OpenOnlineMatch, options?: { spectator?: boolean }) => {
+    if (!options?.spectator && !match.isCreator && !match.isJoiner) {
+      return;
+    }
+
+    if (options?.spectator && (match.isCreator || match.isJoiner)) {
+      return;
+    }
+
+    setOpenMatchesError(null);
     setSpectatingOpenMatchId(match.openMatchId);
     try {
       const session = await nakamaService.ensureAuthenticatedDevice();
@@ -517,13 +538,23 @@ export default function Lobby() {
         buildMatchRoutePath({
           id: match.matchId,
           modeId: match.modeId,
-          spectator: true,
+          spectator: options?.spectator ?? false,
         }) as never,
       );
     } catch (error) {
-      setOpenMatchesError(error instanceof Error ? error.message : 'Unable to spectate that match.');
+      setOpenMatchesError(
+        error instanceof Error ? error.message : options?.spectator ? 'Unable to spectate that match.' : 'Unable to open that match.',
+      );
       setSpectatingOpenMatchId(null);
     }
+  };
+
+  const handleSpectateOpenMatch = async (match: OpenOnlineMatch) => {
+    await enterOpenMatch(match, { spectator: true });
+  };
+
+  const handleResumeOpenMatch = async (match: OpenOnlineMatch) => {
+    await enterOpenMatch(match);
   };
 
   const handleJoinPrivateGame = async () => {
@@ -851,6 +882,9 @@ export default function Lobby() {
                       onSpectate={(selected) => {
                         void handleSpectateOpenMatch(selected);
                       }}
+                      onResume={(selected) => {
+                        void handleResumeOpenMatch(selected);
+                      }}
                       onInfoPress={() => {
                         setEconomyModal({
                           title: `${match.status === 'matched' ? 'Live Wager Match' : 'Open Wager Match'} Economy`,
@@ -953,9 +987,15 @@ export default function Lobby() {
                         <View style={styles.actionRow}>
                           <View style={styles.actionRowCell}>
                             <HomeLightButton
-                              label="Start Game"
+                              label={createdPrivateMatch.hasGuestJoined ? 'Start Game' : 'Waiting'}
+                              accessibilityLabel={
+                                createdPrivateMatch.hasGuestJoined
+                                  ? 'Start private game'
+                                  : 'Waiting for friend to join'
+                              }
                               fontLoaded={fontsLoaded}
                               size="compact"
+                              disabled={!createdPrivateMatch.hasGuestJoined}
                               style={styles.actionRowButton}
                               onPress={startCreatedPrivateMatch}
                             />

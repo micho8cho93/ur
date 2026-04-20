@@ -191,12 +191,14 @@ describe('matchmaking private RPC parsing', () => {
           {
             matchId: 'match-live-1',
             modeId: 'standard',
+            displayName: 'Quick Play',
             startedAt: '2026-04-12T10:00:00.000Z',
             playerLabels: ['Light Player', 'Dark Player'],
           },
           {
             match_id: 'match-live-2',
             mode_id: 'gameMode_3_pieces',
+            display_name: 'Race',
             started_at: '2026-04-12T10:01:00.000Z',
             player_labels: ['A', 'B', 'ignored'],
           },
@@ -217,12 +219,14 @@ describe('matchmaking private RPC parsing', () => {
       {
         matchId: 'match-live-1',
         modeId: 'standard',
+        displayName: 'Quick Play',
         startedAt: '2026-04-12T10:00:00.000Z',
         playerLabels: ['Light Player', 'Dark Player'],
       },
       {
         matchId: 'match-live-2',
         modeId: 'gameMode_3_pieces',
+        displayName: 'Race',
         startedAt: '2026-04-12T10:01:00.000Z',
         playerLabels: ['A', 'B'],
       },

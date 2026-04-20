@@ -1501,6 +1501,32 @@ const syncPrivateMatchReservation = (nk: nkruntime.Nakama, state: MatchState): v
   state.privateGuestUserId = record.joinedUserId;
 };
 
+const clearPrivateMatchGuestReservation = (nk: nkruntime.Nakama, state: MatchState, userId: string): boolean => {
+  if (!state.privateMatch || state.started || !state.privateCode || state.privateGuestUserId !== userId) {
+    return false;
+  }
+
+  const { object, record } = readPrivateMatchCodeObject(nk, state.privateCode);
+  if (!record || record.matchId === null || record.joinedUserId !== userId) {
+    return false;
+  }
+
+  const nextRecord: PrivateMatchCodeRecord = {
+    ...record,
+    joinedUserId: null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    writePrivateMatchCodeRecord(nk, nextRecord, getStorageObjectVersion(object) ?? "");
+    state.privateGuestUserId = null;
+    state.revision += 1;
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const createMatchRematchState = (): MatchRematchState => ({
   status: "idle",
   deadlineMs: null,
@@ -3164,7 +3190,10 @@ function rpcListSpectatableMatches(
 
   requireCompletedUsernameOnboarding(nk, ctx.userId);
 
-  const matchesById = new Map<string, { matchId: string; modeId: string; startedAt: string | null; playerLabels: string[] }>();
+  const matchesById = new Map<
+    string,
+    { matchId: string; modeId: string; displayName: string; startedAt: string | null; playerLabels: string[] }
+  >();
 
   listActiveTrackedMatches()
     .filter((match) =>
@@ -3174,9 +3203,11 @@ function rpcListSpectatableMatches(
       match.playerLabels.length >= MAX_PLAYERS
     )
     .forEach((match) => {
+      const matchConfig = resolveMatchConfigForModeId(nk, {}, match.modeId);
       matchesById.set(match.matchId, {
         matchId: match.matchId,
         modeId: match.modeId,
+        displayName: matchConfig?.displayName ?? match.modeId,
         startedAt: match.startedAt,
         playerLabels: match.playerLabels.slice(0, MAX_PLAYERS),
       });
@@ -3199,11 +3230,16 @@ function rpcListSpectatableMatches(
         return;
       }
 
+      const matchConfig = resolveMatchConfigForModeId(nk, { openOnlineMatchId: record.openMatchId }, record.modeId);
       matchesById.set(record.matchId, {
         matchId: record.matchId,
         modeId: record.modeId,
-        startedAt: record.updatedAt,
-        playerLabels: [],
+        displayName: matchConfig?.displayName ?? record.modeId,
+        startedAt: record.createdAt,
+        playerLabels: [
+          resolveAssignedPlayerTitle(nk, record.creatorUserId),
+          resolveAssignedPlayerTitle(nk, record.joinedUserId ?? record.creatorUserId),
+        ].slice(0, MAX_PLAYERS),
       });
     });
 
@@ -3533,6 +3569,7 @@ function matchLeave(
 
     removePresence(state, presence);
     shouldBroadcastSnapshot = startDisconnectGraceForUser(state, userId, nowMs) || shouldBroadcastSnapshot;
+    shouldBroadcastSnapshot = clearPrivateMatchGuestReservation(nk, state, userId) || shouldBroadcastSnapshot;
   });
 
   if (shouldBroadcastSnapshot) {

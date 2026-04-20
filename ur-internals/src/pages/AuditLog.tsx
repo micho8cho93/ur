@@ -3,6 +3,7 @@ import { useSession } from '../auth/useSession'
 import { listAuditLog } from '../api/auditLog'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
+import { SkeletonTable } from '../components/Skeleton'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
@@ -154,12 +155,7 @@ export function AuditLogPage() {
         subtitle="Flattened and sorted across visible tournament runs."
       >
         {isLoading ? (
-          <EmptyState
-            title="Loading audit log"
-            description="Collecting the most recent operator actions across visible runs."
-            compact
-            tone="info"
-          />
+          <SkeletonTable columns={5} rows={6} />
         ) : auditLog.length === 0 ? (
           <EmptyState
             title="No audit events found"

@@ -1,13 +1,20 @@
 import React from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 
 import { Button } from '@/components/ui/Button';
 import { urTheme, urTextVariants, urTypography } from '@/constants/urTheme';
 import { EQUIPPED_EMOJI_SLOT_COUNT } from '@/shared/emojiReactions';
-import { type CosmeticType } from '@/shared/cosmetics';
+import { type CosmeticTier, type CosmeticType } from '@/shared/cosmetics';
 import { useInventory } from '@/src/store/InventoryContext';
+
+const tierAccentColors: Record<CosmeticTier, string> = {
+  common: '#64748b',
+  rare: '#2563eb',
+  epic: '#9333ea',
+  legendary: '#d97706',
+};
 
 type InventorySection = {
   type: CosmeticType;
@@ -52,24 +59,31 @@ const formatEquippedLabel = (name: string | null): string => (name ? name : 'Non
 
 function InventoryItemCard({
   title,
-  typeLabel,
+  tier,
   isEquipped,
+  replacingName,
   onEquip,
   onUnequip,
 }: {
   title: string;
-  typeLabel: string;
+  tier: CosmeticTier;
   isEquipped: boolean;
+  replacingName?: string | null;
   onEquip: () => void;
   onUnequip: () => void;
 }) {
   return (
-    <View style={styles.itemCard}>
+    <View style={[styles.itemCard, { borderLeftColor: tierAccentColors[tier] }]}>
       <View style={styles.itemCardHeader}>
         <Text style={styles.itemTitle}>{title}</Text>
-        <Text style={styles.itemType}>{typeLabel}</Text>
+        <View style={[styles.tierDot, { backgroundColor: tierAccentColors[tier] }]}>
+          <Text style={styles.tierDotText}>{tier.charAt(0).toUpperCase()}</Text>
+        </View>
       </View>
       <Text style={styles.itemStatus}>{isEquipped ? 'Equipped for matches' : 'Owned and ready'}</Text>
+      {!isEquipped && replacingName ? (
+        <Text style={styles.replacingHint}>Will replace: {replacingName}</Text>
+      ) : null}
       <View style={styles.itemActions}>
         {isEquipped ? (
           <Button title="Unequip" variant="outline" onPress={onUnequip} style={styles.itemButton} />
@@ -82,6 +96,7 @@ function InventoryItemCard({
 }
 
 export default function InventoryScreen() {
+  const router = useRouter();
   const {
     isLoading,
     errorMessage,
@@ -212,7 +227,14 @@ export default function InventoryScreen() {
                       {equippedEmoteCosmetics.map((item, index) => (
                         <View key={`emote-slot-${index}`} style={styles.slotCard}>
                           <View style={styles.slotCardText}>
-                            <Text style={styles.slotLabel}>Slot {index + 1}</Text>
+                            <View style={styles.slotLabelRow}>
+                              <Text style={styles.slotLabel}>
+                                {index === 0 ? 'Primary' : `Slot ${index + 1}`}
+                              </Text>
+                              {index === 0 ? (
+                                <Text style={styles.slotPrimaryHint}>shown in reaction wheel</Text>
+                              ) : null}
+                            </View>
                             <Text style={styles.slotValue}>{item?.name ?? 'Empty'}</Text>
                           </View>
                           <Button
@@ -230,10 +252,16 @@ export default function InventoryScreen() {
 
                     {items.length === 0 ? (
                       <View style={styles.emptyState}>
-                        <Text style={styles.emptyStateTitle}>No assets yet</Text>
+                        <Text style={styles.emptyStateTitle}>No emojis yet</Text>
                         <Text style={styles.emptyStateText}>
                           Buy or unlock emojis to fill the reaction wheel.
                         </Text>
+                        <Button
+                          title="Browse Store"
+                          variant="outline"
+                          onPress={() => router.push('/(game)/store')}
+                          style={styles.emptyStateButton}
+                        />
                       </View>
                     ) : (
                       <View style={styles.itemList}>
@@ -241,7 +269,7 @@ export default function InventoryScreen() {
                           <InventoryItemCard
                             key={item.id}
                             title={item.name}
-                            typeLabel={item.tier.toUpperCase()}
+                            tier={item.tier}
                             isEquipped={item.isEquipped}
                             onEquip={() => {
                               void equipCosmetic(item);
@@ -273,6 +301,12 @@ export default function InventoryScreen() {
                       <Text style={styles.emptyStateText}>
                         Buy or unlock {section.label.toLowerCase()} to add them here.
                       </Text>
+                      <Button
+                        title="Browse Store"
+                        variant="outline"
+                        onPress={() => router.push('/(game)/store')}
+                        style={styles.emptyStateButton}
+                      />
                     </View>
                   ) : (
                     <View style={styles.itemList}>
@@ -280,8 +314,11 @@ export default function InventoryScreen() {
                         <InventoryItemCard
                           key={item.id}
                           title={item.name}
-                          typeLabel={item.tier.toUpperCase()}
+                          tier={item.tier}
                           isEquipped={equippedItem?.id === item.id}
+                          replacingName={
+                            equippedItem && equippedItem.id !== item.id ? equippedItem.name : null
+                          }
                           onEquip={() => {
                             void equipCosmetic(item);
                           }}
@@ -428,7 +465,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   emptyState: {
-    gap: 6,
+    gap: 8,
     borderRadius: 18,
     padding: urTheme.spacing.md,
     backgroundColor: 'rgba(255, 255, 255, 0.04)',
@@ -440,6 +477,10 @@ const styles = StyleSheet.create({
   emptyStateText: {
     ...urTextVariants.body,
     color: 'rgba(255, 245, 222, 0.78)',
+  },
+  emptyStateButton: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
   },
   itemList: {
     gap: 10,
@@ -460,11 +501,22 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 4,
   },
+  slotLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   slotLabel: {
     ...urTypography.label,
     color: '#D8BF8A',
     textTransform: 'uppercase',
     letterSpacing: 1.2,
+  },
+  slotPrimaryHint: {
+    ...urTextVariants.caption,
+    color: 'rgba(228, 198, 140, 0.65)',
+    textTransform: 'lowercase',
+    letterSpacing: 0,
   },
   slotValue: {
     ...urTextVariants.body,
@@ -478,6 +530,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: urTheme.spacing.md,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderLeftWidth: 3,
+    borderLeftColor: 'transparent',
   },
   itemCardHeader: {
     flexDirection: 'row',
@@ -490,15 +544,26 @@ const styles = StyleSheet.create({
     color: urTheme.colors.parchment,
     flex: 1,
   },
-  itemType: {
-    ...urTypography.label,
-    color: '#D8BF8A',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
+  tierDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  tierDotText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '900',
   },
   itemStatus: {
     ...urTextVariants.body,
     color: 'rgba(255, 245, 222, 0.82)',
+  },
+  replacingHint: {
+    ...urTextVariants.caption,
+    color: 'rgba(228, 198, 140, 0.7)',
   },
   itemActions: {
     alignItems: 'flex-start',

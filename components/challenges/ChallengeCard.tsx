@@ -25,6 +25,15 @@ const STATUS_LABELS: Record<ChallengeViewModel['status'], string> = {
 
 export const ChallengeCard: React.FC<ChallengeCardProps> = ({ challenge, highlight = false }) => {
   const isCompleted = challenge.status === 'completed';
+  const isInProgress = challenge.status === 'in_progress';
+  const hasProgress =
+    isInProgress &&
+    challenge.progressCurrent != null &&
+    challenge.progressTarget != null &&
+    challenge.progressTarget > 0;
+  const progressPercent = hasProgress
+    ? Math.min(100, (challenge.progressCurrent! / challenge.progressTarget!) * 100)
+    : 0;
 
   return (
     <View
@@ -40,10 +49,18 @@ export const ChallengeCard: React.FC<ChallengeCardProps> = ({ challenge, highlig
           <Text style={styles.description}>{challenge.description}</Text>
         </View>
 
-        <View style={[styles.statusBadge, isCompleted && styles.statusBadgeCompleted]}>
-          <Text style={styles.statusLabel}>{STATUS_LABELS[challenge.status]}</Text>
+        <View style={[styles.statusBadge, styles[`statusBadge_${challenge.status}`]]}>
+          <Text style={[styles.statusLabel, styles[`statusLabel_${challenge.status}`]]}>
+            {STATUS_LABELS[challenge.status]}
+          </Text>
         </View>
       </View>
+
+      {hasProgress ? (
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${progressPercent}%` as `${number}%` }]} />
+        </View>
+      ) : null}
 
       <View style={styles.footerRow}>
         <Text style={styles.rewardText}>+{challenge.rewardXp} XP</Text>
@@ -104,18 +121,51 @@ const styles = StyleSheet.create({
     borderRadius: urTheme.radii.pill,
     paddingHorizontal: urTheme.spacing.sm,
     paddingVertical: 5,
-    backgroundColor: 'rgba(45, 156, 219, 0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(45, 156, 219, 0.26)',
   },
-  statusBadgeCompleted: {
+  statusBadge_locked: {
+    backgroundColor: 'rgba(100, 100, 110, 0.16)',
+    borderColor: 'rgba(140, 140, 150, 0.28)',
+  },
+  statusBadge_available: {
+    backgroundColor: 'rgba(240, 192, 64, 0.16)',
+    borderColor: 'rgba(240, 192, 64, 0.36)',
+  },
+  statusBadge_in_progress: {
+    backgroundColor: 'rgba(45, 156, 219, 0.18)',
+    borderColor: 'rgba(45, 156, 219, 0.36)',
+  },
+  statusBadge_completed: {
     backgroundColor: 'rgba(127, 191, 62, 0.18)',
-    borderColor: 'rgba(127, 191, 62, 0.26)',
+    borderColor: 'rgba(127, 191, 62, 0.34)',
   },
   statusLabel: {
     ...urTypography.label,
-    color: urTextColors.titleOnScene,
     fontSize: 10,
+  },
+  statusLabel_locked: {
+    color: 'rgba(190, 190, 200, 0.82)',
+  },
+  statusLabel_available: {
+    color: '#F0D580',
+  },
+  statusLabel_in_progress: {
+    color: '#8ACFEE',
+  },
+  statusLabel_completed: {
+    color: '#A3D96A',
+  },
+  progressTrack: {
+    height: 5,
+    borderRadius: urTheme.radii.pill,
+    backgroundColor: 'rgba(6, 11, 18, 0.48)',
+    overflow: 'hidden',
+    marginTop: -2,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: urTheme.radii.pill,
+    backgroundColor: 'rgba(45, 156, 219, 0.72)',
   },
   footerRow: {
     flexDirection: 'row',

@@ -12,7 +12,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 
 import { CosmeticPreviewModal } from '@/components/CosmeticPreviewModal';
 import { Button } from '@/components/ui/Button';
@@ -21,11 +21,11 @@ import { getFullCatalog } from '@/services/cosmetics';
 import type { CosmeticDefinition, CosmeticTier } from '@/shared/cosmetics';
 import { useStore } from '@/src/store/StoreProvider';
 
-const tierColors: Record<CosmeticTier, { bg: string; text: string; thumb: string }> = {
-  common: { bg: '#475569', text: '#f8fafc', thumb: '#64748b' },
-  rare: { bg: '#1d4ed8', text: '#dbeafe', thumb: '#2563eb' },
-  epic: { bg: '#7e22ce', text: '#f3e8ff', thumb: '#9333ea' },
-  legendary: { bg: '#b45309', text: '#fef3c7', thumb: '#d97706' },
+const tierColors: Record<CosmeticTier, { bg: string; text: string; thumb: string; border: string }> = {
+  common: { bg: '#475569', text: '#f8fafc', thumb: '#64748b', border: 'rgba(100, 116, 139, 0.65)' },
+  rare: { bg: '#1d4ed8', text: '#dbeafe', thumb: '#2563eb', border: 'rgba(37, 99, 235, 0.65)' },
+  epic: { bg: '#7e22ce', text: '#f3e8ff', thumb: '#9333ea', border: 'rgba(147, 51, 234, 0.65)' },
+  legendary: { bg: '#b45309', text: '#fef3c7', thumb: '#d97706', border: 'rgba(217, 119, 6, 0.65)' },
 };
 
 const getCurrencyVariant = (item: CosmeticDefinition): CurrencyIconVariant =>
@@ -68,6 +68,12 @@ const getPurchaseErrorMessage = (error: string): string => {
 };
 
 type StoreTabId = 'featured' | 'board' | 'pieces' | 'dice_animation' | 'emote';
+type CurrencyFilter = 'all' | 'soft' | 'premium';
+type ToastState = {
+  message: string;
+  type: 'success' | 'error';
+  action?: { label: string; onPress: () => void };
+} | null;
 
 const STORE_TABS: { id: StoreTabId; label: string }[] = [
   { id: 'featured', label: 'Featured' },
@@ -75,6 +81,12 @@ const STORE_TABS: { id: StoreTabId; label: string }[] = [
   { id: 'pieces', label: 'Pieces' },
   { id: 'dice_animation', label: 'Dice' },
   { id: 'emote', label: 'Emotes' },
+];
+
+const CURRENCY_FILTERS: { id: CurrencyFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'soft', label: 'Coins' },
+  { id: 'premium', label: 'Gems' },
 ];
 
 const tierRank: Record<CosmeticTier, number> = {
@@ -103,6 +115,7 @@ const sortCatalogItems = (items: CosmeticDefinition[], ownedIds: Set<string>): C
 type CosmeticCardProps = {
   item: CosmeticDefinition;
   owned: boolean;
+  canAfford: boolean;
   featured?: boolean;
   inRotation?: boolean;
   onPreview?: () => void;
@@ -115,19 +128,34 @@ const TierBadge = ({ tier }: { tier: CosmeticTier }) => (
   </View>
 );
 
-const CosmeticCard = ({ item, owned, featured = false, inRotation = false, onPreview, onBuy }: CosmeticCardProps) => (
-  <View style={[styles.card, featured ? styles.featuredCard : styles.dailyCard]}>
+const CosmeticCard = ({ item, owned, canAfford, featured = false, inRotation = false, onPreview, onBuy }: CosmeticCardProps) => (
+  <View style={[
+    styles.card,
+    featured ? styles.featuredCard : styles.dailyCard,
+    { borderColor: tierColors[item.tier].border },
+    (!canAfford && !owned) ? styles.cardUnaffordable : null,
+  ]}>
     <View style={[styles.thumbnail, featured ? styles.featuredThumbnail : null, { backgroundColor: tierColors[item.tier].thumb }]}>
       <Text style={styles.thumbnailText}>{item.type.replace('_', ' ')}</Text>
+      {owned ? (
+        <View style={styles.ownedOverlay}>
+          <Text style={styles.ownedOverlayText}>✓ Owned</Text>
+        </View>
+      ) : null}
     </View>
     <View style={styles.cardBody}>
       <View style={styles.cardTitleRow}>
         <Text style={styles.cardTitle} numberOfLines={2}>{item.name}</Text>
-        {owned ? <Text style={styles.ownedBadge}>Owned</Text> : null}
       </View>
       <TierBadge tier={item.tier} />
       {inRotation ? <Text style={styles.rotationTag}>In rotation today</Text> : null}
-      <PriceAmount item={item} style={styles.price} textStyle={styles.priceText} />
+      {!owned ? (
+        <PriceAmount
+          item={item}
+          style={styles.price}
+          textStyle={[styles.priceText, !canAfford ? styles.priceTextUnaffordable : null]}
+        />
+      ) : null}
       <View style={styles.cardActions}>
         {onPreview ? (
           <Button title="Preview" variant="outline" onPress={onPreview} style={styles.smallButton} />
@@ -144,17 +172,20 @@ const CosmeticCard = ({ item, owned, featured = false, inRotation = false, onPre
 );
 
 export default function StoreScreen() {
+  const router = useRouter();
   const { storefront, softCurrency, loading, errorMessage, purchaseItem, refresh } = useStore();
   const [selectedTab, setSelectedTab] = useState<StoreTabId>('featured');
+  const [currencyFilter, setCurrencyFilter] = useState<CurrencyFilter>('all');
   const [catalogItems, setCatalogItems] = useState<CosmeticDefinition[] | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<CosmeticDefinition | null>(null);
+  const [purchaseSucceeded, setPurchaseSucceeded] = useState(false);
   const [previewCosmetic, setPreviewCosmetic] = useState<CosmeticDefinition | null>(null);
   const [previewRelatedCosmetics, setPreviewRelatedCosmetics] = useState<CosmeticDefinition[]>([]);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState>(null);
   const [countdownTick, setCountdownTick] = useState(0);
 
   useEffect(() => {
@@ -181,13 +212,14 @@ export default function StoreScreen() {
   }, [loadCatalog]);
 
   useEffect(() => {
-    if (!toastMessage) {
+    if (!toast) {
       return;
     }
 
-    const timeout = setTimeout(() => setToastMessage(null), 2_500);
+    const duration = toast.type === 'error' ? 4_000 : 2_500;
+    const timeout = setTimeout(() => setToast(null), duration);
     return () => clearTimeout(timeout);
-  }, [toastMessage]);
+  }, [toast]);
 
   const ownedIds = useMemo(() => new Set(storefront?.ownedIds ?? []), [storefront?.ownedIds]);
   const rotationIds = useMemo(
@@ -199,13 +231,26 @@ export default function StoreScreen() {
       return [];
     }
 
-    return sortCatalogItems(
-      catalogItems.filter((item) => !item.disabled && item.type === selectedTab),
-      ownedIds,
-    );
-  }, [catalogItems, ownedIds, selectedTab]);
+    const filtered = catalogItems.filter((item) => {
+      if (item.disabled || item.type !== selectedTab) return false;
+      if (currencyFilter !== 'all' && item.price.currency !== currencyFilter) return false;
+      return true;
+    });
+
+    return sortCatalogItems(filtered, ownedIds);
+  }, [catalogItems, currencyFilter, ownedIds, selectedTab]);
   const countdown = storefront ? formatCountdown(storefront.rotationExpiresAt) : '0h 0m';
   void countdownTick;
+
+  const canAffordItem = (item: CosmeticDefinition): boolean => {
+    if (item.price.currency === 'premium') return true;
+    return softCurrency >= item.price.amount;
+  };
+
+  const dismissSheet = () => {
+    setSelectedItem(null);
+    setPurchaseSucceeded(false);
+  };
 
   const handleConfirmPurchase = async () => {
     if (!selectedItem || purchaseLoading) {
@@ -217,12 +262,12 @@ export default function StoreScreen() {
     setPurchaseLoading(false);
 
     if (result.success) {
-      setToastMessage(`You own ${selectedItem.name}!`);
-      setSelectedItem(null);
+      setPurchaseSucceeded(true);
       return;
     }
 
-    setToastMessage(getPurchaseErrorMessage(result.error));
+    setToast({ message: getPurchaseErrorMessage(result.error), type: 'error' });
+    dismissSheet();
   };
 
   const openPreview = (item: CosmeticDefinition, sectionItems: CosmeticDefinition[]) => {
@@ -250,11 +295,21 @@ export default function StoreScreen() {
     setPurchaseLoading(false);
 
     if (result.success) {
-      setToastMessage(`You own ${item.name}!`);
+      setToast({
+        message: `You own ${item.name}!`,
+        type: 'success',
+        action: {
+          label: 'Equip Now',
+          onPress: () => {
+            setToast(null);
+            router.push('/(game)/inventory');
+          },
+        },
+      });
       return;
     }
 
-    setToastMessage(getPurchaseErrorMessage(result.error));
+    setToast({ message: getPurchaseErrorMessage(result.error), type: 'error' });
   };
 
   return (
@@ -274,9 +329,14 @@ export default function StoreScreen() {
             </View>
           </View>
 
-          {toastMessage ? (
-            <View style={styles.toast}>
-              <Text style={styles.toastText}>{toastMessage}</Text>
+          {toast ? (
+            <View style={[styles.toast, toast.type === 'error' ? styles.toastError : styles.toastSuccess]}>
+              <Text style={styles.toastText}>{toast.message}</Text>
+              {toast.action ? (
+                <Pressable onPress={toast.action.onPress} style={styles.toastAction}>
+                  <Text style={styles.toastActionText}>{toast.action.label} →</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
 
@@ -303,6 +363,26 @@ export default function StoreScreen() {
             })}
           </ScrollView>
 
+          {selectedTab !== 'featured' ? (
+            <View style={styles.filterRow}>
+              {CURRENCY_FILTERS.map((filter) => {
+                const active = currencyFilter === filter.id;
+                return (
+                  <Pressable
+                    key={filter.id}
+                    accessibilityRole="button"
+                    onPress={() => setCurrencyFilter(filter.id)}
+                    style={[styles.filterChip, active ? styles.filterChipActive : null]}
+                  >
+                    <Text style={[styles.filterChipText, active ? styles.filterChipTextActive : null]}>
+                      {filter.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
           {selectedTab === 'featured' && loading && !storefront ? (
             <View style={styles.statePanel}>
               <ActivityIndicator color="#facc15" />
@@ -325,6 +405,7 @@ export default function StoreScreen() {
                         key={item.id}
                         item={item}
                         owned={ownedIds.has(item.id)}
+                        canAfford={canAffordItem(item)}
                         featured
                         inRotation={rotationIds.has(item.id)}
                         onPreview={() => openPreview(item, storefront.featured)}
@@ -343,6 +424,7 @@ export default function StoreScreen() {
                         key={item.id}
                         item={item}
                         owned={ownedIds.has(item.id)}
+                        canAfford={canAffordItem(item)}
                         inRotation={rotationIds.has(item.id)}
                         onPreview={() => openPreview(item, storefront.dailyRotation)}
                         onBuy={setSelectedItem}
@@ -374,6 +456,7 @@ export default function StoreScreen() {
                       key={item.id}
                       item={item}
                       owned={ownedIds.has(item.id)}
+                      canAfford={canAffordItem(item)}
                       inRotation={rotationIds.has(item.id)}
                       onPreview={() => openPreview(item, categoryItems)}
                       onBuy={setSelectedItem}
@@ -391,28 +474,49 @@ export default function StoreScreen() {
           ) : null}
         </ScrollView>
 
-        <Modal transparent visible={Boolean(selectedItem)} animationType="slide" onRequestClose={() => setSelectedItem(null)}>
-          <Pressable style={styles.sheetBackdrop} onPress={() => setSelectedItem(null)}>
+        <Modal transparent visible={Boolean(selectedItem)} animationType="slide" onRequestClose={dismissSheet}>
+          <Pressable style={styles.sheetBackdrop} onPress={dismissSheet}>
             <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
               {selectedItem ? (
-                <>
-                  <View style={[styles.sheetThumbnail, { backgroundColor: tierColors[selectedItem.tier].thumb }]} />
-                  <Text style={styles.sheetTitle}>{selectedItem.name}</Text>
-                  <PriceAmount
-                    item={selectedItem}
-                    style={styles.sheetPrice}
-                    textStyle={styles.sheetPriceText}
-                  />
-                  <View style={styles.sheetActions}>
-                    <Button title="Cancel" variant="outline" onPress={() => setSelectedItem(null)} style={styles.sheetButton} />
-                    <Button
-                      title="Confirm"
-                      loading={purchaseLoading}
-                      onPress={() => void handleConfirmPurchase()}
-                      style={styles.sheetButton}
+                purchaseSucceeded ? (
+                  <>
+                    <View style={[styles.sheetThumbnail, { backgroundColor: tierColors[selectedItem.tier].thumb }]}>
+                      <Text style={styles.sheetSuccessCheck}>✓</Text>
+                    </View>
+                    <Text style={styles.sheetTitle}>{selectedItem.name}</Text>
+                    <Text style={styles.sheetSuccessLabel}>Added to your collection!</Text>
+                    <View style={styles.sheetActions}>
+                      <Button title="Keep Shopping" variant="outline" onPress={dismissSheet} style={styles.sheetButton} />
+                      <Button
+                        title="Equip Now"
+                        onPress={() => {
+                          dismissSheet();
+                          router.push('/(game)/inventory');
+                        }}
+                        style={styles.sheetButton}
+                      />
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={[styles.sheetThumbnail, { backgroundColor: tierColors[selectedItem.tier].thumb }]} />
+                    <Text style={styles.sheetTitle}>{selectedItem.name}</Text>
+                    <PriceAmount
+                      item={selectedItem}
+                      style={styles.sheetPrice}
+                      textStyle={styles.sheetPriceText}
                     />
-                  </View>
-                </>
+                    <View style={styles.sheetActions}>
+                      <Button title="Cancel" variant="outline" onPress={dismissSheet} style={styles.sheetButton} />
+                      <Button
+                        title="Confirm"
+                        loading={purchaseLoading}
+                        onPress={() => void handleConfirmPurchase()}
+                        style={styles.sheetButton}
+                      />
+                    </View>
+                  </>
+                )
               ) : null}
             </Pressable>
           </Pressable>
@@ -422,7 +526,7 @@ export default function StoreScreen() {
           cosmetic={previewCosmetic}
           onClose={closePreview}
           onBuy={(item) => void handlePreviewPurchase(item)}
-          isOwned={previewCosmetic ? ownedIds.has(previewCosmetic.id) : false}
+          ownedIds={ownedIds}
           relatedCosmetics={previewRelatedCosmetics}
         />
       </SafeAreaView>
@@ -466,13 +570,34 @@ const styles = StyleSheet.create({
   },
   toast: {
     borderRadius: 8,
-    backgroundColor: 'rgba(22, 101, 52, 0.92)',
     paddingHorizontal: 14,
     paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  toastSuccess: {
+    backgroundColor: 'rgba(22, 101, 52, 0.92)',
+  },
+  toastError: {
+    backgroundColor: 'rgba(127, 29, 29, 0.92)',
   },
   toastText: {
     color: '#dcfce7',
     fontWeight: '700',
+    flex: 1,
+  },
+  toastAction: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  toastActionText: {
+    color: '#f0fdf4',
+    fontSize: 13,
+    fontWeight: '800',
   },
   tabBar: {
     gap: 8,
@@ -498,6 +623,30 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   tabTextActive: {
+    color: '#fef3c7',
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  filterChip: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.28)',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  filterChipActive: {
+    borderColor: 'rgba(250, 204, 21, 0.6)',
+    backgroundColor: 'rgba(113, 63, 18, 0.5)',
+  },
+  filterChipText: {
+    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  filterChipTextActive: {
     color: '#fef3c7',
   },
   statePanel: {
@@ -538,9 +687,11 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 8,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.28)',
+    borderWidth: 1.5,
     backgroundColor: 'rgba(15, 23, 42, 0.9)',
+  },
+  cardUnaffordable: {
+    opacity: 0.55,
   },
   featuredCard: {
     width: 260,
@@ -564,6 +715,20 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
   },
+  ownedOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(22, 101, 52, 0.82)',
+    paddingVertical: 5,
+    alignItems: 'center',
+  },
+  ownedOverlayText: {
+    color: '#bbf7d0',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   cardBody: {
     padding: 12,
     gap: 8,
@@ -576,17 +741,6 @@ const styles = StyleSheet.create({
     color: '#f8fafc',
     fontSize: 16,
     fontWeight: '800',
-  },
-  ownedBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(34, 197, 94, 0.18)',
-    color: '#bbf7d0',
-    fontSize: 12,
-    fontWeight: '800',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
   },
   tierBadge: {
     alignSelf: 'flex-start',
@@ -618,6 +772,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
+  priceTextUnaffordable: {
+    color: '#ef4444',
+  },
   cardActions: {
     gap: 8,
   },
@@ -641,11 +798,23 @@ const styles = StyleSheet.create({
   sheetThumbnail: {
     height: 86,
     borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetSuccessCheck: {
+    color: '#bbf7d0',
+    fontSize: 36,
+    fontWeight: '900',
   },
   sheetTitle: {
     color: '#f8fafc',
     fontSize: 22,
     fontWeight: '900',
+  },
+  sheetSuccessLabel: {
+    color: '#86efac',
+    fontSize: 15,
+    fontWeight: '700',
   },
   sheetPrice: {
     justifyContent: 'flex-start',

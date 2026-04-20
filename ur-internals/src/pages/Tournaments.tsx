@@ -5,6 +5,7 @@ import { deleteTournament, listTournaments, openTournament } from '../api/tourna
 import { useTopbarActions } from '../layout/TopbarActionsContext'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
+import { SkeletonTable } from '../components/Skeleton'
 import { MetaStrip, MetaStripItem } from '../components/MetaStrip'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
@@ -259,12 +260,7 @@ export function TournamentsPage() {
         subtitle="Backed by `rpc_admin_list_tournaments`."
       >
         {isLoading ? (
-          <EmptyState
-            title="Loading tournaments"
-            description="Fetching the latest run list from the tournament admin RPC."
-            compact
-            tone="info"
-          />
+          <SkeletonTable columns={7} rows={6} />
         ) : tournaments.length === 0 ? (
           <EmptyState
             title="No tournament runs found"

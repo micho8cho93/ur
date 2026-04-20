@@ -3,6 +3,7 @@ import { getAdminFullCatalog, getStoreStats } from '../api/store'
 import { useTopbarActions } from '../layout/TopbarActionsContext'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
+import { SkeletonTable } from '../components/Skeleton'
 import { KpiStatCard } from '../components/KpiStatCard'
 import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
@@ -92,12 +93,14 @@ export function StoreStatsPage() {
       </div>
 
       <SectionPanel title="Purchases by cosmetic" subtitle={isLoading ? 'Loading stats.' : `${rows.length} cosmetics with purchases.`}>
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(item) => item.cosmeticId}
-          emptyState={<EmptyState title="No purchases yet" description="Store purchase rows appear after cosmetic_purchase analytics events are written." />}
-        />
+        {isLoading ? <SkeletonTable columns={4} rows={5} /> : (
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(item) => item.cosmeticId}
+            emptyState={<EmptyState title="No purchases yet" description="Store purchase rows appear after cosmetic_purchase analytics events are written." />}
+          />
+        )}
       </SectionPanel>
     </>
   )

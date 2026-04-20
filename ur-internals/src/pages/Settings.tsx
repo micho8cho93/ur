@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { useSession } from '../auth/useSession'
 import env from '../config/env'
 import { useTopbarActions } from '../layout/TopbarActionsContext'
@@ -6,8 +7,33 @@ import { PageHeader } from '../components/PageHeader'
 import { SectionPanel } from '../components/SectionPanel'
 import { getTargetLabel } from '../layout/workspaceMeta'
 
+interface SettingsRow {
+  key: string
+  label: string
+  value: string
+  group: 'session' | 'environment'
+}
+
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  if (!query) return <>{text}</>
+
+  const lq = query.toLowerCase()
+  const lt = text.toLowerCase()
+  const idx = lt.indexOf(lq)
+  if (idx === -1) return <>{text}</>
+
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="settings-highlight">{text.slice(idx, idx + query.length)}</mark>
+      {text.slice(idx + query.length)}
+    </>
+  )
+}
+
 export function SettingsPage() {
   const { adminIdentity, isAuthenticating, logout } = useSession()
+  const [search, setSearch] = useState('')
 
   useTopbarActions(
     <button
@@ -20,6 +46,40 @@ export function SettingsPage() {
     </button>,
     [isAuthenticating, logout],
   )
+
+  const sessionRows: SettingsRow[] = [
+    { key: 'displayName', label: 'Display name', value: adminIdentity?.displayName ?? 'Unavailable', group: 'session' },
+    { key: 'username', label: 'Username', value: adminIdentity?.username ?? 'Unavailable', group: 'session' },
+    { key: 'email', label: 'Email', value: adminIdentity?.email ?? 'Unavailable', group: 'session' },
+    { key: 'userId', label: 'User ID', value: adminIdentity?.userId ?? 'Unavailable', group: 'session' },
+  ]
+
+  const envRows: SettingsRow[] = [
+    { key: 'baseUrl', label: 'Base URL', value: env.nakamaBaseUrl, group: 'environment' },
+    { key: 'mockData', label: 'Mock data', value: env.useMockData ? 'Enabled' : 'Disabled', group: 'environment' },
+    { key: 'analyticsTransport', label: 'Analytics transport', value: 'Live backend data only', group: 'environment' },
+    { key: 'consoleFocus', label: 'Console focus', value: 'Operational monitoring and low-volume analytics', group: 'environment' },
+  ]
+
+  const allRows = [...sessionRows, ...envRows]
+
+  const filteredSession = useMemo(() => {
+    if (!search) return sessionRows
+    const q = search.toLowerCase()
+    return sessionRows.filter(
+      (r) => r.label.toLowerCase().includes(q) || r.value.toLowerCase().includes(q),
+    )
+  }, [search, sessionRows])
+
+  const filteredEnv = useMemo(() => {
+    if (!search) return envRows
+    const q = search.toLowerCase()
+    return envRows.filter(
+      (r) => r.label.toLowerCase().includes(q) || r.value.toLowerCase().includes(q),
+    )
+  }, [search, envRows])
+
+  const hasResults = filteredSession.length > 0 || filteredEnv.length > 0
 
   return (
     <>
@@ -50,55 +110,58 @@ export function SettingsPage() {
         />
       </MetaStrip>
 
-      <section className="settings-grid">
-        <SectionPanel
-          title="Session details"
-          subtitle="Current authenticated operator context."
-        >
-          <dl className="key-value-list">
-            <div className="key-value-list__row">
-              <dt>Display name</dt>
-              <dd>{adminIdentity?.displayName ?? 'Unavailable'}</dd>
-            </div>
-            <div className="key-value-list__row">
-              <dt>Username</dt>
-              <dd>{adminIdentity?.username ?? 'Unavailable'}</dd>
-            </div>
-            <div className="key-value-list__row">
-              <dt>Email</dt>
-              <dd>{adminIdentity?.email ?? 'Unavailable'}</dd>
-            </div>
-            <div className="key-value-list__row">
-              <dt>User id</dt>
-              <dd className="mono">{adminIdentity?.userId ?? 'Unavailable'}</dd>
-            </div>
-          </dl>
-        </SectionPanel>
+      <div className="settings-search" role="search">
+        <span className="settings-search__icon" aria-hidden="true">⌕</span>
+        <input
+          className="settings-search__input"
+          type="search"
+          placeholder="Search settings…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          aria-label="Search settings"
+        />
+        {search ? (
+          <span style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+            {filteredSession.length + filteredEnv.length} of {allRows.length}
+          </span>
+        ) : null}
+      </div>
 
-        <SectionPanel
-          title="Environment"
-          subtitle="Runtime details relevant to admin operations."
-        >
-          <dl className="key-value-list">
-            <div className="key-value-list__row">
-              <dt>Base URL</dt>
-              <dd>{env.nakamaBaseUrl}</dd>
-            </div>
-            <div className="key-value-list__row">
-              <dt>Mock data</dt>
-              <dd>{env.useMockData ? 'Enabled' : 'Disabled'}</dd>
-            </div>
-            <div className="key-value-list__row">
-              <dt>Analytics transport</dt>
-              <dd>Live backend data only</dd>
-            </div>
-            <div className="key-value-list__row">
-              <dt>Console focus</dt>
-              <dd>Operational monitoring and low-volume analytics</dd>
-            </div>
-          </dl>
-        </SectionPanel>
-      </section>
+      {!hasResults ? (
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+          No settings match "{search}".
+        </p>
+      ) : (
+        <section className="settings-grid">
+          {filteredSession.length > 0 ? (
+            <SectionPanel title="Session details" subtitle="Current authenticated operator context.">
+              <dl className="key-value-list">
+                {filteredSession.map((row) => (
+                  <div key={row.key} className="key-value-list__row">
+                    <dt><HighlightedText text={row.label} query={search} /></dt>
+                    <dd className={row.key === 'userId' ? 'mono' : undefined}>
+                      <HighlightedText text={row.value} query={search} />
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </SectionPanel>
+          ) : null}
+
+          {filteredEnv.length > 0 ? (
+            <SectionPanel title="Environment" subtitle="Runtime details relevant to admin operations.">
+              <dl className="key-value-list">
+                {filteredEnv.map((row) => (
+                  <div key={row.key} className="key-value-list__row">
+                    <dt><HighlightedText text={row.label} query={search} /></dt>
+                    <dd><HighlightedText text={row.value} query={search} /></dd>
+                  </div>
+                ))}
+              </dl>
+            </SectionPanel>
+          ) : null}
+        </section>
+      )}
 
       <SectionPanel
         title="Operator notes"

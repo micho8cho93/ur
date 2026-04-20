@@ -187,6 +187,7 @@ export type PrivateMatchStatusResult = {
 export type SpectatableMatch = {
   matchId: string;
   modeId: string;
+  displayName?: string;
   startedAt: string | null;
   playerLabels: string[];
 };
@@ -238,6 +239,8 @@ type SpectatableMatchRpcPayload = {
   match_id?: unknown;
   modeId?: unknown;
   mode_id?: unknown;
+  displayName?: unknown;
+  display_name?: unknown;
   startedAt?: unknown;
   started_at?: unknown;
   playerLabels?: unknown;
@@ -357,6 +360,7 @@ const parseSpectatableMatchEntry = (entry: unknown): SpectatableMatch | null => 
         ? rpcPayload.match_id
         : null;
   const modeId = readString(rpcPayload?.modeId) ?? readString(rpcPayload?.mode_id);
+  const displayName = readString(rpcPayload?.displayName) ?? readString(rpcPayload?.display_name);
   const startedAt =
     typeof rpcPayload?.startedAt === "string"
       ? rpcPayload.startedAt
@@ -380,6 +384,7 @@ const parseSpectatableMatchEntry = (entry: unknown): SpectatableMatch | null => 
   return {
     matchId,
     modeId,
+    displayName: displayName ?? undefined,
     startedAt,
     playerLabels,
   };

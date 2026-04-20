@@ -17,6 +17,8 @@ export type ChallengeViewModel = {
   completedAt: string | null;
   completedMatchId: string | null;
   progressLabel: string | null;
+  progressCurrent: number | null;
+  progressTarget: number | null;
 };
 
 export type MatchChallengeRewardItem = {
@@ -86,6 +88,8 @@ export const buildChallengeViewModels = (
       completedAt: challengeState?.completedAt ?? null,
       completedMatchId: challengeState?.completedMatchId ?? null,
       progressLabel: getProgressLabel(challengeState),
+      progressCurrent: challengeState?.progressCurrent ?? null,
+      progressTarget: challengeState?.progressTarget ?? null,
     };
   });
 

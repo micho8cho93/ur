@@ -530,6 +530,27 @@ const getRunCapacity = (
   nakamaTournament: Record<string, unknown> | null,
 ): number => Math.max(0, Math.floor(readNumberField(nakamaTournament, ["maxSize", "max_size"]) ?? run.maxSize));
 
+const getRunStartTimeMs = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+): number | null => {
+  const startTimeSeconds = readNumberField(nakamaTournament, ["startTime", "start_time"]) ?? run.startTime;
+  if (typeof startTimeSeconds !== "number" || !Number.isFinite(startTimeSeconds) || startTimeSeconds <= 0) {
+    return null;
+  }
+
+  return Math.floor(startTimeSeconds * 1000);
+};
+
+const hasRunReachedStartTime = (
+  run: TournamentRunRecord,
+  nakamaTournament: Record<string, unknown> | null,
+  nowMs = Date.now(),
+): boolean => {
+  const startTimeMs = getRunStartTimeMs(run, nakamaTournament);
+  return startTimeMs === null || startTimeMs <= nowMs;
+};
+
 const getRunBotUserIds = (run: TournamentRunRecord): string[] => {
   const userIds = new Set<string>();
 
@@ -672,6 +693,10 @@ export const hasRunLobbyFillCountdownExpired = (
   nowMs = Date.now(),
 ): boolean => {
   if (!isRunAwaitingLobbyFill(run, nakamaTournament)) {
+    return false;
+  }
+
+  if (!hasRunReachedStartTime(run, nakamaTournament, nowMs)) {
     return false;
   }
 
