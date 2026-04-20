@@ -346,71 +346,6 @@ export default function GameModesScreen() {
             </Text>
           </View>
 
-          <View style={[styles.stage, { width: stageWidth }]}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { fontFamily: titleFontFamily }]}>Overview</Text>
-              <Text style={[styles.sectionSubtitle, { fontFamily: bodyFontFamily }]}>
-                {`${BUILT_IN_MODES.length} built-in modes · ${PRESET_RULESET_COUNT} preset rulesets · ${XP_MODE_COUNT} XP-earning configs${!isLoadingModes && publicModes ? ` · ${publicModes.activeModes.length} active admin mode${publicModes.activeModes.length !== 1 ? 's' : ''}` : ''}`}
-              </Text>
-            </View>
-
-            <View style={styles.statsRow}>
-              <View style={styles.statChip}>
-                <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{BUILT_IN_MODES.length}</Text>
-                <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>Built-in modes</Text>
-              </View>
-              <View style={styles.statChip}>
-                <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{PRESET_RULESET_COUNT}</Text>
-                <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>Preset rulesets</Text>
-              </View>
-              <View style={styles.statChip}>
-                <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{XP_MODE_COUNT}</Text>
-                <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>XP configs</Text>
-              </View>
-              {!isLoadingModes && publicModes ? (
-                <View style={styles.statChip}>
-                  <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{publicModes.activeModes.length}</Text>
-                  <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>Admin modes</Text>
-                </View>
-              ) : null}
-            </View>
-
-            <View style={styles.rulesetList}>
-              {GAME_MODE_PRESET_OPTIONS.map((preset) => (
-                <View key={preset.id} style={styles.rulesetRow}>
-                  <View style={styles.rulesetRowHeader}>
-                    <Text style={[styles.rulesetName, { fontFamily: titleFontFamily }]}>{preset.label}</Text>
-                    <View style={styles.rulesetTags}>
-                      <View style={styles.rulesetTag}>
-                        <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>{preset.pieceCountPerSide} pcs</Text>
-                      </View>
-                      {preset.throwProfile === 'bell' ? (
-                        <View style={styles.rulesetTag}>
-                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>Bell throw</Text>
-                        </View>
-                      ) : preset.throwProfile === 'masters' ? (
-                        <View style={styles.rulesetTag}>
-                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>Masters throw</Text>
-                        </View>
-                      ) : null}
-                      {preset.rosetteSafetyMode === 'open' ? (
-                        <View style={[styles.rulesetTag, styles.rulesetTagWarning]}>
-                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>open rosettes</Text>
-                        </View>
-                      ) : null}
-                      {preset.pathVariant !== 'default' ? (
-                        <View style={styles.rulesetTag}>
-                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>{preset.pathVariant} path</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-                  <Text style={[styles.rulesetDesc, { fontFamily: bodyFontFamily }]}>{preset.description}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
           {errorMessage ? (
             <View style={[styles.noticeCard, { maxWidth: stageWidth }]}>
               <Text style={[styles.noticeTitle, { fontFamily: titleFontFamily }]}>Featured modes unavailable</Text>
@@ -544,6 +479,71 @@ export default function GameModesScreen() {
               </View>
             </View>
           ) : null}
+
+          <View style={[styles.stage, { width: stageWidth }]}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { fontFamily: titleFontFamily }]}>UR Internals Store</Text>
+              <Text style={[styles.sectionSubtitle, { fontFamily: bodyFontFamily }]}>
+                {`${BUILT_IN_MODES.length} built-in modes · ${PRESET_RULESET_COUNT} preset rulesets · ${XP_MODE_COUNT} XP-earning configs${!isLoadingModes && publicModes ? ` · ${publicModes.activeModes.length} active admin mode${publicModes.activeModes.length !== 1 ? 's' : ''}` : ''}`}
+              </Text>
+            </View>
+
+            <View style={styles.statsRow}>
+              <View style={styles.statChip}>
+                <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{BUILT_IN_MODES.length}</Text>
+                <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>Built-in modes</Text>
+              </View>
+              <View style={styles.statChip}>
+                <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{PRESET_RULESET_COUNT}</Text>
+                <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>Preset rulesets</Text>
+              </View>
+              <View style={styles.statChip}>
+                <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{XP_MODE_COUNT}</Text>
+                <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>XP configs</Text>
+              </View>
+              {!isLoadingModes && publicModes ? (
+                <View style={styles.statChip}>
+                  <Text style={[styles.statValue, { fontFamily: titleFontFamily }]}>{publicModes.activeModes.length}</Text>
+                  <Text style={[styles.statLabel, { fontFamily: bodyFontFamily }]}>Admin modes</Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.rulesetList}>
+              {GAME_MODE_PRESET_OPTIONS.map((preset) => (
+                <View key={preset.id} style={styles.rulesetRow}>
+                  <View style={styles.rulesetRowHeader}>
+                    <Text style={[styles.rulesetName, { fontFamily: titleFontFamily }]}>{preset.label}</Text>
+                    <View style={styles.rulesetTags}>
+                      <View style={styles.rulesetTag}>
+                        <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>{preset.pieceCountPerSide} pcs</Text>
+                      </View>
+                      {preset.throwProfile === 'bell' ? (
+                        <View style={styles.rulesetTag}>
+                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>Bell throw</Text>
+                        </View>
+                      ) : preset.throwProfile === 'masters' ? (
+                        <View style={styles.rulesetTag}>
+                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>Masters throw</Text>
+                        </View>
+                      ) : null}
+                      {preset.rosetteSafetyMode === 'open' ? (
+                        <View style={[styles.rulesetTag, styles.rulesetTagWarning]}>
+                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>open rosettes</Text>
+                        </View>
+                      ) : null}
+                      {preset.pathVariant !== 'default' ? (
+                        <View style={styles.rulesetTag}>
+                          <Text style={[styles.rulesetTagText, { fontFamily: bodyFontFamily }]}>{preset.pathVariant} path</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                  <Text style={[styles.rulesetDesc, { fontFamily: bodyFontFamily }]}>{preset.description}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
         </ScrollView>
         <MatchEconomyInfoModal
           visible={Boolean(economyModal)}

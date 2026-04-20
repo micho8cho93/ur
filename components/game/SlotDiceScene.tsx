@@ -488,8 +488,6 @@ const SlotReel: React.FC<SlotReelProps> = ({
         max: spinStripFaceCount - 1,
         now: currentStripStep,
       }}
-      renderToHardwareTextureAndroid
-      shouldRasterizeIOS
       style={[
         styles.reelWindow,
         {
@@ -613,8 +611,6 @@ const SlotReel: React.FC<SlotReelProps> = ({
           </Svg>
           <View
             pointerEvents="none"
-            renderToHardwareTextureAndroid
-            shouldRasterizeIOS
             style={styles.reelViewport}
             testID={`slot-die-viewport-${index}`}
           >
@@ -632,8 +628,6 @@ const SlotReel: React.FC<SlotReelProps> = ({
             ) : (
               <Animated.View
                 pointerEvents="none"
-                renderToHardwareTextureAndroid
-                shouldRasterizeIOS
                 testID={`slot-die-strip-${index}`}
                 style={[
                   styles.spinStrip,

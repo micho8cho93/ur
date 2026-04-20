@@ -66,6 +66,14 @@ const BOT_LEVELS: readonly BotLevelCard[] = [
   },
 ] as const;
 
+const PERFECT_BOT_LEVEL: BotLevelCard = {
+  difficulty: 'perfect',
+  title: 'Perfect',
+  description: 'Plays the sharpest available line for the selected board and ruleset.',
+  accent: '#B7791F',
+  icon: 'verified',
+};
+
 export default function BotSelection() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -106,6 +114,8 @@ export default function BotSelection() {
   const matchConfig = builtInMatchConfig ?? customMatchConfig;
   const isPracticeMode = matchConfig?.isPracticeMode ?? true;
   const isLocalPvPMode = matchConfig?.opponentType === 'human';
+  const showPerfectBot = matchConfig?.modeId === 'gameMode_3_pieces' || matchConfig?.modeId === 'gameMode_finkel_rules';
+  const botLevels = showPerfectBot ? [...BOT_LEVELS, PERFECT_BOT_LEVEL] : BOT_LEVELS;
   const heroTitle = matchConfig
     ? isLocalPvPMode
       ? `${matchConfig.displayName} Local Match`
@@ -361,7 +371,7 @@ export default function BotSelection() {
               ) : isLocalPvPMode ? (
                 renderLocalPvPCard()
               ) : (
-                BOT_LEVELS.map(renderBotCard)
+                botLevels.map(renderBotCard)
               )}
             </View>
           </View>
