@@ -66,6 +66,7 @@ export default function SpectateScreen() {
   const setOnlineMode = useGameStore((state) => state.setOnlineMode);
   const setPlayerColor = useGameStore((state) => state.setPlayerColor);
   const setSocketState = useGameStore((state) => state.setSocketState);
+  const setSpectatorPlayerLabels = useGameStore((state) => state.setSpectatorPlayerLabels);
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
   const isCompactLayout = width < 820;
@@ -122,6 +123,7 @@ export default function SpectateScreen() {
         setMatchToken(null);
         setPlayerColor(null);
         setSocketState('idle');
+        setSpectatorPlayerLabels(match.playerLabels.length > 0 ? match.playerLabels : null);
         initGame(match.matchId, {
           matchConfig: await resolveGameModeMatchConfig(match.modeId, {
             allowsXp: true,
@@ -152,6 +154,7 @@ export default function SpectateScreen() {
       setOnlineMode,
       setPlayerColor,
       setSocketState,
+      setSpectatorPlayerLabels,
       setUserId,
     ],
   );

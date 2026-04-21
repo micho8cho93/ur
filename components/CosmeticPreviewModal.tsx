@@ -172,6 +172,50 @@ const AudioPreviewPanel = ({ type }: { type: 'music' | 'sound_effect' }) => {
   );
 };
 
+const DicePreviewContent = ({
+  value,
+  rolling,
+  onRoll,
+}: {
+  value: number;
+  rolling: boolean;
+  onRoll: () => void;
+}) => {
+  const { diceImageSources } = useCosmeticTheme();
+
+  return (
+    <>
+      <View style={styles.diceImagesRow}>
+        <View style={styles.dieSample}>
+          <Image
+            source={diceImageSources.marked}
+            resizeMode="contain"
+            style={styles.dieImage}
+          />
+          <Text style={styles.dieSampleLabel}>Marked</Text>
+        </View>
+        <View style={styles.dieSample}>
+          <Image
+            source={diceImageSources.unmarked}
+            resizeMode="contain"
+            style={styles.dieImage}
+          />
+          <Text style={styles.dieSampleLabel}>Unmarked</Text>
+        </View>
+      </View>
+      <Dice
+        value={value}
+        rolling={rolling}
+        onRoll={onRoll}
+        canRoll={!rolling}
+        mode="panel"
+        showStatusCopy
+      />
+      <Text style={styles.previewHint}>Tap Roll to test the finish.</Text>
+    </>
+  );
+};
+
 export const CosmeticPreviewModal = ({
   visible,
   cosmetic,
@@ -182,13 +226,33 @@ export const CosmeticPreviewModal = ({
 }: CosmeticPreviewModalProps) => {
   const [activeCosmeticId, setActiveCosmeticId] = useState<string | null>(cosmetic?.id ?? null);
   const [diceRollValue, setDiceRollValue] = useState<number>(randomDiceValue);
+  const [isDiceRolling, setIsDiceRolling] = useState(false);
+  const diceRollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (cosmetic?.id) {
       setActiveCosmeticId(cosmetic.id);
       setDiceRollValue(randomDiceValue());
+      setIsDiceRolling(false);
     }
   }, [cosmetic?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (diceRollTimerRef.current) {
+        clearTimeout(diceRollTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleDiceRoll = React.useCallback(() => {
+    if (isDiceRolling) return;
+    setDiceRollValue(randomDiceValue());
+    setIsDiceRolling(true);
+    diceRollTimerRef.current = setTimeout(() => {
+      setIsDiceRolling(false);
+    }, 1400);
+  }, [isDiceRolling]);
 
   const comparisonCosmetics = useMemo(() => {
     const byId = new Map<string, CosmeticDefinition>();
@@ -221,15 +285,11 @@ export const CosmeticPreviewModal = ({
     if (activeCosmetic.type === 'dice_animation') {
       return (
         <View style={styles.dicePreview} testID="cosmetic-preview-dice">
-          <Dice
+          <DicePreviewContent
             value={diceRollValue}
-            rolling={false}
-            onRoll={() => setDiceRollValue(randomDiceValue())}
-            canRoll
-            mode="panel"
-            showStatusCopy
+            rolling={isDiceRolling}
+            onRoll={handleDiceRoll}
           />
-          <Text style={styles.previewHint}>Tap Roll to test the finish.</Text>
         </View>
       );
     }
@@ -428,8 +488,8 @@ const styles = StyleSheet.create({
   },
   previewArea: {
     width: '100%',
-    minHeight: 360,
-    maxHeight: 520,
+    minHeight: 480,
+    maxHeight: 760,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,
@@ -445,6 +505,31 @@ const styles = StyleSheet.create({
     maxWidth: 420,
     gap: 14,
     alignSelf: 'center',
+  },
+  diceImagesRow: {
+    flexDirection: 'row',
+    gap: 14,
+    justifyContent: 'center',
+  },
+  dieSample: {
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(30, 41, 59, 0.72)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.14)',
+    padding: 12,
+  },
+  dieImage: {
+    width: 80,
+    height: 80,
+  },
+  dieSampleLabel: {
+    color: 'rgba(241, 230, 208, 0.78)',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   emotePreview: {
     minHeight: 320,

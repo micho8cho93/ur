@@ -61,6 +61,7 @@ interface GameStore {
   socketState: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
   rollCommandSender: RollCommandSender;
   moveCommandSender: MoveCommandSender;
+  spectatorPlayerLabels: string[] | null;
 
   initGame: (matchId: string, options?: { botDifficulty?: BotDifficulty; matchConfig?: MatchConfig }) => void;
   setMatchId: (matchId: string) => void;
@@ -87,6 +88,7 @@ interface GameStore {
   setSocketState: (status: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error') => void;
   setRollCommandSender: (sender: RollCommandSender) => void;
   setMoveCommandSender: (sender: MoveCommandSender) => void;
+  setSpectatorPlayerLabels: (labels: string[] | null) => void;
   roll: (options?: RollCommandOptions) => void;
   makeMove: (move: MoveAction) => void;
   reset: () => void;
@@ -139,6 +141,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   socketState: 'idle',
   rollCommandSender: null,
   moveCommandSender: null,
+  spectatorPlayerLabels: null,
 
   initGame: (matchId, options) => {
     const matchConfig = options?.matchConfig ?? DEFAULT_MATCH_CONFIG;
@@ -160,6 +163,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       botDifficulty: options?.botDifficulty ?? DEFAULT_BOT_DIFFICULTY,
       rollCommandSender: null,
       moveCommandSender: null,
+      spectatorPlayerLabels: null,
     });
   },
 
@@ -295,6 +299,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ moveCommandSender: sender });
   },
 
+  setSpectatorPlayerLabels: (labels) => {
+    set({ spectatorPlayerLabels: labels });
+  },
+
   reset: () => {
     set({
       matchId: null,
@@ -317,6 +325,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       serverRevision: 0,
       nakamaSession: null,
       userId: null,
+      spectatorPlayerLabels: null,
     });
   },
 

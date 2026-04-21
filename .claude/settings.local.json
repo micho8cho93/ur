@@ -17,7 +17,8 @@
       "Bash(cp \"/Users/Michel/Downloads/spin-reel-slot-machine.wav\" \"/Users/Michel/Desktop/ur/assets/audio/sfx/spin-reel-slot-machine.wav\")",
       "Bash(cp \"/Users/Michel/Downloads/payout_award.wav\" \"/Users/Michel/Desktop/ur/assets/audio/sfx/payout_award.wav\")",
       "Bash(npx vite *)",
-      "Bash(grep -E \"\\\\.tsx$\")"
+      "Bash(grep -E \"\\\\.tsx$\")",
+      "Bash(sips -g pixelWidth -g pixelHeight /Users/Michel/Desktop/ur/assets/board/*.png)"
     ]
   }
 }

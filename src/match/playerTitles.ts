@@ -50,5 +50,9 @@ export const getSnapshotScoreTitle = (
   color: PlayerColor,
 ): string | null => {
   const title = players?.[color]?.title?.trim();
-  return title && title.length > 0 ? title : null;
+  if (!title || title.length === 0) return null;
+  // The server may send the color name as a placeholder when the real username
+  // isn't available (e.g. during spectate join). Treat those as absent.
+  if (title.toLowerCase() === color) return null;
+  return title;
 };

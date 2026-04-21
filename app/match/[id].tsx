@@ -940,6 +940,7 @@ export function GameRoom() {
     socketState,
     setRollCommandSender,
     setMoveCommandSender,
+    spectatorPlayerLabels,
   } = useGameStore(
     useShallow((state) => ({
       gameState: state.gameState,
@@ -990,6 +991,7 @@ export function GameRoom() {
       socketState: state.socketState,
       setRollCommandSender: state.setRollCommandSender,
       setMoveCommandSender: state.setMoveCommandSender,
+      spectatorPlayerLabels: state.spectatorPlayerLabels,
     })),
   );
   const [resolvedRouteMatchConfig, setResolvedRouteMatchConfig] = React.useState<{
@@ -1125,12 +1127,14 @@ export function GameRoom() {
     return {
       light:
         getSnapshotScoreTitle(authoritativePlayers, 'light') ??
+        spectatorPlayerLabels?.[0] ??
         (resolvedPlayerColor === 'light' ? humanScoreTitle : 'LIGHT'),
       dark:
         getSnapshotScoreTitle(authoritativePlayers, 'dark') ??
+        spectatorPlayerLabels?.[1] ??
         (resolvedPlayerColor === 'dark' ? humanScoreTitle : 'DARK'),
     };
-  }, [authoritativePlayers, humanScoreTitle, isOffline, isOfflineLocalPvPMatch, resolvedBotDifficulty, resolvedPlayerColor]);
+  }, [authoritativePlayers, humanScoreTitle, isOffline, isOfflineLocalPvPMatch, resolvedBotDifficulty, resolvedPlayerColor, spectatorPlayerLabels]);
   const scoreRankTitles = useMemo<Record<PlayerColor, string | null>>(
     () =>
       resolveMatchScoreRankTitles({

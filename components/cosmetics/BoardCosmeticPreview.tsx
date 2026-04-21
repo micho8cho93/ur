@@ -35,16 +35,6 @@ export function BoardCosmeticPreview({
                 resizeMode="contain"
                 style={styles.pieceArtwork}
               />
-              <Text style={styles.pieceSampleLabel}>Light</Text>
-            </View>
-            <View style={styles.pieceSample} testID="cosmetic-preview-piece-dark">
-              <Image
-                testID="cosmetic-preview-piece-dark-image"
-                source={pieceImageSources.dark}
-                resizeMode="contain"
-                style={styles.pieceArtwork}
-              />
-              <Text style={styles.pieceSampleLabel}>Dark</Text>
             </View>
           </View>
         </View>
@@ -62,17 +52,17 @@ export function BoardCosmeticPreview({
           style={styles.boardImage}
         />
         <Image
-          source={pieceImageSources.dark}
+          source={pieceImageSources.light}
           resizeMode="contain"
           style={[styles.piece, styles.pieceTop]}
         />
         <Image
-          source={pieceImageSources.light}
+          source={pieceImageSources.dark}
           resizeMode="contain"
           style={[styles.piece, styles.pieceCenter]}
         />
         <Image
-          source={pieceImageSources.dark}
+          source={pieceImageSources.light}
           resizeMode="contain"
           style={[styles.piece, styles.pieceBottom]}
         />
@@ -89,8 +79,7 @@ const styles = StyleSheet.create({
   },
   boardPreviewFrame: {
     width: '100%',
-    maxWidth: 420,
-    aspectRatio: 0.78,
+    aspectRatio: 0.55,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -125,34 +114,22 @@ const styles = StyleSheet.create({
   },
   piecePreviewRow: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 14,
   },
   pieceSample: {
-    flex: 1,
-    maxWidth: 160,
-    minWidth: 120,
+    width: 160,
+    height: 160,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 10,
     borderRadius: 18,
     backgroundColor: 'rgba(30, 41, 59, 0.72)',
     borderWidth: 1,
     borderColor: 'rgba(148, 163, 184, 0.14)',
   },
   pieceArtwork: {
-    width: '100%',
-    height: 120,
-  },
-  pieceSampleLabel: {
-    color: '#f8fafc',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
+    width: '80%',
+    height: '80%',
   },
   boardImage: {
     width: '100%',
@@ -160,22 +137,19 @@ const styles = StyleSheet.create({
   },
   piece: {
     position: 'absolute',
-    width: '14%',
-    height: '14%',
+    width: '10%',
+    aspectRatio: 1,
   },
   pieceTop: {
-    top: '16%',
-    left: '50%',
-    transform: [{ translateX: -28 }],
+    top: '15%',
+    left: '44%',
   },
   pieceCenter: {
-    top: '43%',
-    left: '52%',
-    transform: [{ translateX: -28 }],
+    top: '48%',
+    left: '49%',
   },
   pieceBottom: {
     top: '71%',
-    left: '50%',
-    transform: [{ translateX: -28 }],
+    left: '39%',
   },
 });

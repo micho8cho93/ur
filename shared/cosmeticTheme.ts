@@ -245,7 +245,7 @@ const uploadedAssetToTheme = (cosmetic: CosmeticDefinition): CosmeticTheme => {
     return {
       dice: {
         markedDieImageUri: dataUrl,
-        unmarkedDieImageUri: dataUrl,
+        unmarkedDieImageUri: cosmetic.uploadedAsset2?.dataUrl ?? dataUrl,
       },
     };
   }
