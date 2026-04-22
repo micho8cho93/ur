@@ -60,6 +60,11 @@ export interface GameModeDefinition {
   boardAssetKey: GameModeBoardAssetKey;
 }
 
+type GameModeDerivedConfig = Pick<
+  MatchConfig,
+  'pathVariant' | 'throwProfile' | 'bonusTurnOnRosette' | 'bonusTurnOnCapture'
+>;
+
 export interface AdminGameMode extends GameModeDefinition {
   isActive: boolean;
   featured: boolean;
@@ -282,6 +287,21 @@ export const resolveGameModeRulesLabel = (rulesVariant: RulesVariant): string =>
   }
 };
 
+const resolveDerivedGameModeConfig = (
+  mode: Pick<GameModeDefinition, 'baseRulesetPreset' | 'rulesVariant'>,
+): GameModeDerivedConfig => {
+  const presetDefaults = getGameModePresetDefaults(mode.baseRulesetPreset);
+
+  return {
+    pathVariant: presetDefaults.pathVariant,
+    throwProfile: presetDefaults.throwProfile,
+    bonusTurnOnRosette: presetDefaults.bonusTurnOnRosette,
+    // Capture-mode custom variants should inherit the capture bonus even when the
+    // admin-facing base preset is "custom" or any other preset alias.
+    bonusTurnOnCapture: mode.rulesVariant === 'capture' ? true : presetDefaults.bonusTurnOnCapture,
+  };
+};
+
 export const resolveGameModeSummary = (mode: Pick<
   GameModeDefinition,
   | 'baseRulesetPreset'
@@ -293,11 +313,20 @@ export const resolveGameModeSummary = (mode: Pick<
   | 'rulesVariant'
   | 'rosetteSafetyMode'
 >): string => {
+  const derivedConfig = resolveDerivedGameModeConfig(mode);
   const parts = [
     resolveGameModeBaseRulesetLabel(mode.baseRulesetPreset),
     `${mode.pieceCountPerSide} pieces`,
     resolveGameModeRulesLabel(mode.rulesVariant),
     mode.rosetteSafetyMode === 'open' ? 'open rosettes' : 'protected rosettes',
+    derivedConfig.throwProfile === 'bell'
+      ? 'Bell throws'
+      : derivedConfig.throwProfile === 'masters'
+        ? 'Masters throws'
+        : 'standard throws',
+    derivedConfig.pathVariant === 'default' ? 'default route' : `${derivedConfig.pathVariant} route`,
+    derivedConfig.bonusTurnOnRosette ? 'rosette bonus rolls' : 'no rosette bonus',
+    derivedConfig.bonusTurnOnCapture ? 'capture bonus rolls' : 'no capture bonus',
     mode.eliminationMode === 'eliminated' ? 'elimination mode' : 'return to start',
     mode.exitStyle === 'single_exit' ? 'single-exit board' : 'standard exit',
     mode.fogOfWar ? 'fog on' : 'fog off',
@@ -338,34 +367,37 @@ export const buildGameModeMatchConfig = (
     bonusTurnOnRosette?: MatchConfig['bonusTurnOnRosette'];
     bonusTurnOnCapture?: MatchConfig['bonusTurnOnCapture'];
   } = {},
-): MatchConfig => ({
-  modeId: mode.id,
-  displayName: options.displayName ?? mode.name,
-  baseRulesetPreset: mode.baseRulesetPreset,
-  pieceCountPerSide: mode.pieceCountPerSide,
-  rulesVariant: mode.rulesVariant,
-  rosetteSafetyMode: mode.rosetteSafetyMode,
-  exitStyle: mode.exitStyle,
-  eliminationMode: mode.eliminationMode,
-  fogOfWar: mode.fogOfWar,
-  boardAssetKey: mode.boardAssetKey,
-  allowsXp: options.allowsXp ?? false,
-  allowsChallenges: options.allowsChallenges ?? false,
-  allowsOnline: options.allowsOnline ?? false,
-  allowsRankedStats: options.allowsRankedStats ?? false,
-  allowsCoins: options.allowsCoins ?? false,
-  isPracticeMode: options.isPracticeMode ?? true,
-  offlineWinRewardSource: options.offlineWinRewardSource ?? 'practice_finkel_rules_win',
-  opponentType: options.opponentType ?? 'bot',
-  pathVariant: options.pathVariant ?? getGameModePresetDefaults(mode.baseRulesetPreset).pathVariant,
-  throwProfile: options.throwProfile ?? getGameModePresetDefaults(mode.baseRulesetPreset).throwProfile,
-  bonusTurnOnRosette:
-    options.bonusTurnOnRosette ?? getGameModePresetDefaults(mode.baseRulesetPreset).bonusTurnOnRosette,
-  bonusTurnOnCapture:
-    options.bonusTurnOnCapture ?? getGameModePresetDefaults(mode.baseRulesetPreset).bonusTurnOnCapture,
-  selectionSubtitle: resolveGameModeSummary(mode),
-  rulesIntro: null,
-});
+): MatchConfig => {
+  const derivedConfig = resolveDerivedGameModeConfig(mode);
+
+  return {
+    ...derivedConfig,
+    modeId: mode.id,
+    displayName: options.displayName ?? mode.name,
+    baseRulesetPreset: mode.baseRulesetPreset,
+    pieceCountPerSide: mode.pieceCountPerSide,
+    rulesVariant: mode.rulesVariant,
+    rosetteSafetyMode: mode.rosetteSafetyMode,
+    exitStyle: mode.exitStyle,
+    eliminationMode: mode.eliminationMode,
+    fogOfWar: mode.fogOfWar,
+    boardAssetKey: mode.boardAssetKey,
+    allowsXp: options.allowsXp ?? false,
+    allowsChallenges: options.allowsChallenges ?? false,
+    allowsOnline: options.allowsOnline ?? false,
+    allowsRankedStats: options.allowsRankedStats ?? false,
+    allowsCoins: options.allowsCoins ?? false,
+    isPracticeMode: options.isPracticeMode ?? true,
+    offlineWinRewardSource: options.offlineWinRewardSource ?? 'practice_finkel_rules_win',
+    opponentType: options.opponentType ?? 'bot',
+    pathVariant: options.pathVariant ?? derivedConfig.pathVariant,
+    throwProfile: options.throwProfile ?? derivedConfig.throwProfile,
+    bonusTurnOnRosette: options.bonusTurnOnRosette ?? derivedConfig.bonusTurnOnRosette,
+    bonusTurnOnCapture: options.bonusTurnOnCapture ?? derivedConfig.bonusTurnOnCapture,
+    selectionSubtitle: resolveGameModeSummary(mode),
+    rulesIntro: null,
+  };
+};
 
 export const isGameModeDefinition = (value: unknown): value is GameModeDefinition => {
   const record = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;

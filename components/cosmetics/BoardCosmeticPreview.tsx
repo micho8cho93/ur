@@ -45,27 +45,32 @@ export function BoardCosmeticPreview({
   return (
     <View style={styles.root} testID={testID}>
       <View style={styles.boardPreviewFrame} testID="cosmetic-preview-board">
-        <Image
-          testID="cosmetic-preview-board-image"
-          source={boardImageSource}
-          resizeMode="contain"
-          style={styles.boardImage}
-        />
-        <Image
-          source={pieceImageSources.light}
-          resizeMode="contain"
-          style={[styles.piece, styles.pieceTop]}
-        />
-        <Image
-          source={pieceImageSources.dark}
-          resizeMode="contain"
-          style={[styles.piece, styles.pieceCenter]}
-        />
-        <Image
-          source={pieceImageSources.light}
-          resizeMode="contain"
-          style={[styles.piece, styles.pieceBottom]}
-        />
+        <View style={styles.boardPreviewScene} testID="cosmetic-preview-board-scene">
+          <Image
+            testID="cosmetic-preview-board-image"
+            source={boardImageSource}
+            resizeMode="contain"
+            style={styles.boardImage}
+          />
+          <Image
+            testID="cosmetic-preview-board-piece-top"
+            source={pieceImageSources.light}
+            resizeMode="contain"
+            style={[styles.piece, styles.pieceTop]}
+          />
+          <Image
+            testID="cosmetic-preview-board-piece-center"
+            source={pieceImageSources.dark}
+            resizeMode="contain"
+            style={[styles.piece, styles.pieceCenter]}
+          />
+          <Image
+            testID="cosmetic-preview-board-piece-bottom"
+            source={pieceImageSources.light}
+            resizeMode="contain"
+            style={[styles.piece, styles.pieceBottom]}
+          />
+        </View>
       </View>
     </View>
   );
@@ -82,6 +87,10 @@ const styles = StyleSheet.create({
     aspectRatio: 0.55,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  boardPreviewScene: {
+    width: '50%',
+    aspectRatio: 0.55,
     position: 'relative',
   },
   piecePreviewFrame: {
@@ -137,7 +146,7 @@ const styles = StyleSheet.create({
   },
   piece: {
     position: 'absolute',
-    width: '10%',
+    width: '9%',
     aspectRatio: 1,
   },
   pieceTop: {

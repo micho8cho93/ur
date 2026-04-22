@@ -1,6 +1,7 @@
 import { applyMove, createInitialState, INITIAL_PIECE_COUNT } from '@/logic/engine';
 import { PATH_LENGTH } from '@/logic/constants';
 import { getMatchConfig } from '@/logic/matchConfigs';
+import { buildGameModeMatchConfig } from '@/shared/gameModes';
 
 describe('engine applyMove', () => {
   it('applies a normal move and changes turn', () => {
@@ -52,6 +53,35 @@ describe('engine applyMove', () => {
 
   it('grants another turn after a capture in Capture mode', () => {
     const state = createInitialState(getMatchConfig('gameMode_capture'));
+    state.phase = 'moving';
+    state.rollValue = 1;
+    state.light.pieces[0].position = 4;
+    state.dark.pieces[0].position = 5;
+
+    const move = { pieceId: state.light.pieces[0].id, fromIndex: 4, toIndex: 5 };
+    const next = applyMove(state, move);
+
+    expect(next.currentTurn).toBe('light');
+    expect(next.phase).toBe('rolling');
+    expect(next.rollValue).toBeNull();
+    expect(next.dark.pieces[0].position).toBe(-1);
+  });
+
+  it('grants another turn after a capture in a custom mode that uses capture rules', () => {
+    const customCaptureConfig = buildGameModeMatchConfig({
+      id: 'custom_capture',
+      name: 'Custom Capture',
+      description: 'Protected rosette capture mode',
+      baseRulesetPreset: 'custom',
+      pieceCountPerSide: 7,
+      rulesVariant: 'capture',
+      rosetteSafetyMode: 'standard',
+      exitStyle: 'standard',
+      eliminationMode: 'return_to_start',
+      fogOfWar: false,
+      boardAssetKey: 'board_design',
+    });
+    const state = createInitialState(customCaptureConfig);
     state.phase = 'moving';
     state.rollValue = 1;
     state.light.pieces[0].position = 4;

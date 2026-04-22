@@ -416,31 +416,11 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
         setNakamaSession(result.session);
         setUserId(result.userId);
         setMatchToken(null);
-        await runMatchEntryTransition(
-          {
-            title: 'Opening Wager Match',
-            message: 'Creating your table and seating you at the board.',
-            variant: 'success',
-          },
-          async () => {
-            setPlayerColor(null);
-            initGame(result.match.matchId, {
-              matchConfig: await resolveGameModeMatchConfig(result.match.modeId, {
-                allowsXp: true,
-                allowsChallenges: true,
-                allowsCoins: true,
-                allowsOnline: true,
-                allowsRankedStats: true,
-                isPracticeMode: false,
-              }),
-            });
-            setSocketState('idle');
-            setCreatedOpenOnlineMatch(null);
-            setStatus('matched');
-            setActiveAction(null);
-            router.push(buildMatchRoutePath({ id: result.match.matchId, modeId: result.match.modeId }) as never);
-          },
-        );
+        setPlayerColor(null);
+        setSocketState('idle');
+        setCreatedOpenOnlineMatch(result.match);
+        setStatus('idle');
+        setActiveAction(null);
         return result.match;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to create an open match right now.';
@@ -452,9 +432,6 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
       }
     },
     [
-      initGame,
-      router,
-      runMatchEntryTransition,
       setMatchToken,
       setNakamaSession,
       setOnlineMode,

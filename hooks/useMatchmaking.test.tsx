@@ -218,7 +218,7 @@ describe('useMatchmaking', () => {
     );
   });
 
-  it('opens a created open match directly into the board flow', async () => {
+  it('keeps a created open match in a waiting state instead of entering the board flow', async () => {
     mockCreateOpenMatch.mockResolvedValue({
       match: {
         openMatchId: 'open-1',
@@ -251,14 +251,12 @@ describe('useMatchmaking', () => {
       await result.current.createOpenMatch(20, 5, 'standard');
     });
 
-    expect(mockRunScreenTransition).toHaveBeenCalledWith(
+    expect(mockRunScreenTransition).not.toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Opening Wager Match',
-        message: 'Creating your table and seating you at the board.',
-        action: expect.any(Function),
       }),
     );
-    expect(mockResolveGameModeMatchConfig).toHaveBeenCalledWith(
+    expect(mockResolveGameModeMatchConfig).not.toHaveBeenCalledWith(
       'standard',
       expect.objectContaining({
         allowsXp: true,
@@ -269,9 +267,17 @@ describe('useMatchmaking', () => {
         isPracticeMode: false,
       }),
     );
-    expect(mockPush).toHaveBeenCalledWith('/match/match-open-1?modeId=standard');
-    expect(useGameStore.getState().matchId).toBe('match-open-1');
+    expect(mockPush).not.toHaveBeenCalledWith('/match/match-open-1?modeId=standard');
+    expect(useGameStore.getState().matchId).toBeNull();
     expect(useGameStore.getState().playerColor).toBeNull();
+    expect(result.current.createdOpenOnlineMatch).toEqual(
+      expect.objectContaining({
+        openMatchId: 'open-1',
+        matchId: 'match-open-1',
+        status: 'open',
+      }),
+    );
+    expect(result.current.status).toBe('idle');
   });
 
   it('marks offline bot matches with a light player color immediately', async () => {

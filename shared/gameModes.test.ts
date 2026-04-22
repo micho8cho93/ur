@@ -1,6 +1,7 @@
 import {
   GAME_MODE_PRESET_BY_ID,
   GAME_MODE_PRESET_OPTIONS,
+  buildGameModeMatchConfig,
   isGameModeDefinition,
   getGameModePresetDefaults,
   isLegacyGameModeBaseRulesetPreset,
@@ -56,5 +57,25 @@ describe('shared gameModes presets', () => {
         boardAssetKey: 'board_design',
       }),
     ).toBe(false);
+  });
+
+  it('derives capture bonus turns from the explicit rules variant for custom modes', () => {
+    const config = buildGameModeMatchConfig({
+      id: 'custom_capture',
+      name: 'Custom Capture',
+      description: 'Protected rosette capture mode',
+      baseRulesetPreset: 'custom',
+      pieceCountPerSide: 7,
+      rulesVariant: 'capture',
+      rosetteSafetyMode: 'standard',
+      exitStyle: 'standard',
+      eliminationMode: 'return_to_start',
+      fogOfWar: false,
+      boardAssetKey: 'board_design',
+    });
+
+    expect(config.bonusTurnOnCapture).toBe(true);
+    expect(config.bonusTurnOnRosette).toBe(true);
+    expect(config.rosetteSafetyMode).toBe('standard');
   });
 });

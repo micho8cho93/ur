@@ -105,7 +105,7 @@ describe('OpenOnlineMatchMonitor', () => {
     });
   });
 
-  it('reopens the creator table when an open wager match is still waiting', async () => {
+  it('does not reopen the creator table while an open wager match is still waiting', async () => {
     mockGetActiveOpenOnlineMatch.mockResolvedValue({
       openMatchId: 'open-1',
       matchId: 'match-1',
@@ -126,18 +126,9 @@ describe('OpenOnlineMatchMonitor', () => {
 
     render(<OpenOnlineMatchMonitor />);
 
-    await waitFor(() =>
-      expect(mockRunScreenTransition).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Returning to Table',
-          message: 'Your wager match is still waiting. Reopening the board now.',
-        }),
-      ),
-    );
-
-    await waitFor(() =>
-      expect(mockReplace).toHaveBeenCalledWith('/match/match-1?modeId=standard'),
-    );
+    await waitFor(() => expect(mockGetActiveOpenOnlineMatch).toHaveBeenCalled());
+    expect(mockRunScreenTransition).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('resumes the joiner table when their open wager match is already matched', async () => {

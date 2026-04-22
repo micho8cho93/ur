@@ -36,12 +36,11 @@ export const OpenOnlineMatchMonitor: React.FC = () => {
       }
 
       const activeMatch = await getActiveOpenOnlineMatch();
-      const shouldResumeMatch =
-        Boolean(activeMatch) &&
-        (activeMatch.isCreator || activeMatch.isJoiner) &&
-        (activeMatch.status === 'matched' || activeMatch.status === 'open');
-
-      if (!activeMatch || !shouldResumeMatch) {
+      if (
+        !activeMatch ||
+        (!(activeMatch.isCreator || activeMatch.isJoiner)) ||
+        activeMatch.status !== 'matched'
+      ) {
         lastHandledMatchIdRef.current = null;
         return;
       }
@@ -108,17 +107,11 @@ export const OpenOnlineMatchMonitor: React.FC = () => {
 
         const didStart = await runScreenTransition({
           title:
-            activeMatch.status === 'matched'
-              ? activeMatch.isCreator
-                ? 'Opponent Joined'
-                : 'Returning to Table'
-              : 'Returning to Table',
+            activeMatch.isCreator ? 'Opponent Joined' : 'Returning to Table',
           message:
-            activeMatch.status === 'matched'
-              ? activeMatch.isCreator
-                ? 'Your wager match is ready. Opening the board now.'
-                : 'Your wager match is ready. Reopening the board now.'
-              : 'Your wager match is still waiting. Reopening the board now.',
+            activeMatch.isCreator
+              ? 'Your wager match is ready. Opening the board now.'
+              : 'Your wager match is ready. Reopening the board now.',
           variant: 'success',
           preActionDelayMs: 700,
           postActionDelayMs: 180,

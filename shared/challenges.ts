@@ -886,7 +886,7 @@ export const getSharedPathStartIndex = (
 };
 
 export const isContestedLanding = (
-  matchConfig: Pick<GameState["matchConfig"], "pathVariant" | "rulesVariant">,
+  matchConfig: Pick<GameState["matchConfig"], "pathVariant" | "rulesVariant" | "rosetteSafetyMode">,
   playerColor: PlayerColor,
   targetIndex: number
 ): boolean => {

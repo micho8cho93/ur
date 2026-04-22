@@ -734,7 +734,8 @@ export function GameModesPage() {
               <p className="panel__eyebrow">{isCreating ? 'Create flow' : 'Edit flow'}</p>
               <h3 className="panel__title">{isCreating ? 'Save new gameplay mode' : 'Update gameplay mode'}</h3>
               <p className="panel__subtitle">
-                The selected base preset is just a label. The explicit stored fields below are what the player app consumes.
+                Base preset still controls route, throw profile, and default bonus-turn behavior. The fields below control
+                capture safety, exits, eliminations, fog, and board presentation.
               </p>
             </div>
             <button className="button button--primary" type="submit" disabled={isSaving}>

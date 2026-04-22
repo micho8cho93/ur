@@ -947,6 +947,14 @@ export default function Lobby() {
                             onPress={() => router.push('/(game)/bot' as never)}
                           />
                           <HomeLightButton
+                            label="Inventory"
+                            accessibilityLabel="Go to inventory while waiting"
+                            fontLoaded={fontsLoaded}
+                            size="compact"
+                            style={styles.waitingActionButton}
+                            onPress={() => router.push('/inventory' as never)}
+                          />
+                          <HomeLightButton
                             label="Store"
                             accessibilityLabel="Go to store while waiting"
                             fontLoaded={fontsLoaded}

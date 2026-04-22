@@ -1,6 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
-import { Pressable, Text } from 'react-native';
 
 import type { CosmeticDefinition } from '@/shared/cosmetics';
 import { CosmeticPreviewModal } from './CosmeticPreviewModal';
@@ -12,23 +11,11 @@ const mockAudioPlayer = {
   pause: jest.fn(),
   remove: jest.fn(),
 };
+
 const mockCreateAudioPlayer = jest.fn((_source: unknown, _options: unknown) => mockAudioPlayer);
 
 jest.mock('expo-audio', () => ({
   createAudioPlayer: (source: unknown, options: unknown) => mockCreateAudioPlayer(source, options),
-}));
-
-jest.mock('@/components/game/Board', () => ({
-  Board: ({ gameStateOverride }: { gameStateOverride: { light: { pieces: { position: number }[] } } }) => {
-    const React = jest.requireActual('react');
-    const { Text } = jest.requireActual('react-native');
-
-    return (
-      <Text testID="mock-preview-board">
-        {gameStateOverride.light.pieces.map((piece) => piece.position).join(',')}
-      </Text>
-    );
-  },
 }));
 
 jest.mock('@/components/cosmetics/BoardCosmeticPreview', () => ({
@@ -106,15 +93,15 @@ const renderModal = (
       cosmetic={createCosmetic('board_lapis_001', 'board', 'Lapis Board')}
       onClose={jest.fn()}
       onBuy={jest.fn()}
-      isOwned={false}
+      ownedIds={new Set<string>()}
       {...props}
     />,
   );
 
 describe('CosmeticPreviewModal', () => {
   afterEach(() => {
-    jest.restoreAllMocks();
     jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   it('renders a board preview for board and piece cosmetics', () => {
@@ -155,19 +142,22 @@ describe('CosmeticPreviewModal', () => {
     });
 
     expect(screen.getByTestId('cosmetic-preview-dice')).toBeTruthy();
+    expect(screen.getByText('Marked')).toBeTruthy();
+    expect(screen.getByText('Unmarked')).toBeTruthy();
 
     fireEvent.press(screen.getByTestId('mock-preview-dice-roll'));
 
     expect(screen.getByTestId('mock-preview-dice-value').props.children).toBe('4');
   });
 
-  it('renders the emote placeholder for emote cosmetics', () => {
+  it('renders the emote preview copy for emote cosmetics', () => {
     renderModal({
       cosmetic: createCosmetic('emote_scribe_001', 'emote', "Scribe's Nod"),
     });
 
     expect(screen.getByTestId('cosmetic-preview-emote')).toBeTruthy();
-    expect(screen.getByText('Emote preview coming soon')).toBeTruthy();
+    expect(screen.getAllByText("Scribe's Nod").length).toBeGreaterThan(0);
+    expect(screen.getByText('Equip this reaction to use it in the match reaction wheel.')).toBeTruthy();
   });
 
   it('previews music and sound effect cosmetics through audio assets', () => {
@@ -191,7 +181,7 @@ describe('CosmeticPreviewModal', () => {
     expect(mockCreateAudioPlayer).toHaveBeenCalled();
   });
 
-  it('calls onBuy for unowned cosmetics and disables the owned action', () => {
+  it('calls onBuy for unowned cosmetics and disables the action for owned ones', () => {
     const onBuy = jest.fn();
     const cosmetic = createCosmetic('board_lapis_001', 'board', 'Lapis Board');
 
@@ -200,7 +190,7 @@ describe('CosmeticPreviewModal', () => {
 
     expect(onBuy).toHaveBeenCalledWith(cosmetic);
 
-    renderModal({ cosmetic, isOwned: true });
+    renderModal({ cosmetic, ownedIds: new Set([cosmetic.id]) });
 
     expect(screen.getAllByTestId('cosmetic-preview-buy-disabled').at(-1)?.props.children).toBe('true');
   });

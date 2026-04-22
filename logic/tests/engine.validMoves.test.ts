@@ -2,6 +2,7 @@ import { createInitialState, getValidMoves } from '@/logic/engine';
 import { PATH_LENGTH } from '@/logic/constants';
 import { getMatchConfig } from '@/logic/matchConfigs';
 import { GameState, PlayerColor } from '@/logic/types';
+import { buildGameModeMatchConfig } from '@/shared/gameModes';
 
 const setOnlyActivePiece = (state: GameState, color: PlayerColor, pieceIndex: number, position: number) => {
   const player = state[color];
@@ -138,6 +139,30 @@ describe('engine getValidMoves', () => {
       fromIndex: 6,
       toIndex: 7,
     });
+  });
+
+  it('keeps the shared rosette protected when a custom capture mode explicitly enables safe rosettes', () => {
+    const protectedCaptureConfig = buildGameModeMatchConfig({
+      id: 'protected_capture',
+      name: 'Protected Capture',
+      description: 'Capture turns with a safe middle rosette.',
+      baseRulesetPreset: 'custom',
+      pieceCountPerSide: 7,
+      rulesVariant: 'capture',
+      rosetteSafetyMode: 'standard',
+      exitStyle: 'standard',
+      eliminationMode: 'return_to_start',
+      fogOfWar: false,
+      boardAssetKey: 'board_design',
+    });
+    const state = createInitialState(protectedCaptureConfig);
+    state.currentTurn = 'light';
+    setOnlyActivePiece(state, 'light', 0, 6);
+    setOnlyActivePiece(state, 'dark', 0, 7);
+
+    const moves = getValidMoves(state, 1);
+
+    expect(moves).toEqual([]);
   });
 
   it('does not allow captures anywhere in Pure Luck', () => {

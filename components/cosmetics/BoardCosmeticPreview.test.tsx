@@ -1,5 +1,7 @@
 import { render, screen } from '@testing-library/react-native';
 import React from 'react';
+import { StyleSheet } from 'react-native';
+
 import type { CosmeticDefinition } from '@/shared/cosmetics';
 import { BoardCosmeticPreview } from './BoardCosmeticPreview';
 
@@ -32,22 +34,34 @@ const createCosmetic = (type: CosmeticDefinition['type']): CosmeticDefinition =>
 });
 
 describe('BoardCosmeticPreview', () => {
-  it('shows the actual piece art without the board frame for piece cosmetics', () => {
+  it('shows the standalone piece artwork for piece cosmetics', () => {
     render(<BoardCosmeticPreview cosmetic={createCosmetic('pieces')} testID="preview-root" />);
 
     expect(screen.getByTestId('preview-root')).toBeTruthy();
     expect(screen.getByTestId('cosmetic-preview-piece')).toBeTruthy();
     expect(screen.getByTestId('cosmetic-preview-piece-light-image').props.source).toBe(mockLightPieceSource);
-    expect(screen.getByTestId('cosmetic-preview-piece-dark-image').props.source).toBe(mockDarkPieceSource);
-    expect(screen.queryByTestId('cosmetic-preview-board')).toBeNull();
+    expect(screen.queryByTestId('cosmetic-preview-board-image')).toBeNull();
   });
 
-  it('keeps the board-scene preview for board cosmetics', () => {
+  it('renders the board scene at half width and keeps pieces overlaid on the board', () => {
     render(<BoardCosmeticPreview cosmetic={createCosmetic('board')} testID="preview-root" />);
 
     expect(screen.getByTestId('preview-root')).toBeTruthy();
-    expect(screen.getByTestId('cosmetic-preview-board')).toBeTruthy();
     expect(screen.getByTestId('cosmetic-preview-board-image').props.source).toBe(mockBoardSource);
-    expect(screen.queryByTestId('cosmetic-preview-piece')).toBeNull();
+
+    const sceneStyle = StyleSheet.flatten(screen.getByTestId('cosmetic-preview-board-scene').props.style);
+    expect(sceneStyle.width).toBe('50%');
+
+    const topPieceStyle = StyleSheet.flatten(screen.getByTestId('cosmetic-preview-board-piece-top').props.style);
+    const centerPieceStyle = StyleSheet.flatten(screen.getByTestId('cosmetic-preview-board-piece-center').props.style);
+    const bottomPieceStyle = StyleSheet.flatten(screen.getByTestId('cosmetic-preview-board-piece-bottom').props.style);
+
+    expect(topPieceStyle.width).toBe('9%');
+    expect(topPieceStyle.top).toBe('15%');
+    expect(topPieceStyle.left).toBe('44%');
+    expect(centerPieceStyle.top).toBe('48%');
+    expect(centerPieceStyle.left).toBe('49%');
+    expect(bottomPieceStyle.top).toBe('71%');
+    expect(bottomPieceStyle.left).toBe('39%');
   });
 });

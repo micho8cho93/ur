@@ -8,6 +8,7 @@ import { CosmeticThemeProvider, useCosmeticTheme } from '@/src/store/CosmeticThe
 import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Image,
   Modal,
   Pressable,
   ScrollView,
