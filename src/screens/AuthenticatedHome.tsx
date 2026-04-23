@@ -607,6 +607,7 @@ const styles = StyleSheet.create({
     width: '100%',
     position: 'relative',
     top: 10,
+    transform: [{ scale: 1.1 }],
   },
   stageActionButton: {
     marginTop: 10,

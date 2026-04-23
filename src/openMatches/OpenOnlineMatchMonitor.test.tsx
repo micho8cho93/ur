@@ -206,4 +206,55 @@ describe('OpenOnlineMatchMonitor', () => {
       expect(mockReplace).toHaveBeenCalledWith('/match/match-2?modeId=gameMode_3_pieces'),
     );
   });
+
+  it('reopens a matched creator table from the lobby even when stale online store state points at another match', async () => {
+    mockGetActiveOpenOnlineMatch.mockResolvedValue({
+      openMatchId: 'open-3',
+      matchId: 'match-3',
+      modeId: 'standard',
+      creatorUserId: 'user-1',
+      joinedUserId: 'joiner-3',
+      wager: 40,
+      durationMinutes: 5,
+      status: 'matched',
+      createdAt: '2026-04-18T10:00:00.000Z',
+      expiresAt: '2026-04-18T10:05:00.000Z',
+      updatedAt: '2026-04-18T10:01:00.000Z',
+      entrants: 2,
+      maxEntrants: 2,
+      isCreator: true,
+      isJoiner: false,
+    });
+    mockGetState.mockReturnValue({
+      onlineMode: 'nakama',
+      matchId: 'stale-match-1',
+      gameState: {
+        winner: null,
+        phase: 'rolling',
+      },
+      setNakamaSession: jest.fn(),
+      setUserId: jest.fn(),
+      setMatchToken: jest.fn(),
+      setOnlineMode: jest.fn(),
+      setPlayerColor: jest.fn(),
+      initGame: jest.fn(),
+      setSocketState: jest.fn(),
+      reset: jest.fn(),
+    });
+
+    render(<OpenOnlineMatchMonitor />);
+
+    await waitFor(() =>
+      expect(mockRunScreenTransition).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Opponent Joined',
+          message: 'Your wager match is ready. Opening the board now.',
+        }),
+      ),
+    );
+
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith('/match/match-3?modeId=standard'),
+    );
+  });
 });

@@ -18,11 +18,12 @@ import {
 } from '@/constants/urTheme';
 import { HomeLightButton } from '@/components/home/HomeLightButton';
 
-const homeStatCardArt = require('../../assets/images/home_stat_card.png');
+const homeStatCardArt = require('../../assets/images/featured_card_portrait.png');
 
 export const HOME_STAT_CARD_ASPECT_RATIO = 626 / 732;
 const DESKTOP_CARD_ART_SCALE = 1.0;
 const COMPACT_CARD_ART_SCALE = 1.0;
+const HOME_STAT_CARD_CONTENT_SCALE = 0.7727272727;
 type HomeStatCardProps = {
   title: string;
   ctaLabel: string;
@@ -73,34 +74,41 @@ export function HomeStatCard({
       />
 
       <View style={[styles.innerFrame, isCompact ? styles.innerFrameCompact : styles.innerFrameDesktop]}>
-        <Text
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.8}
+        <View
           style={[
-            styles.title,
-            isCompact ? styles.titleCompact : styles.titleDesktop,
-            { fontFamily: fredokaFontFamily },
+            styles.innerFrameContent,
+            isCompact ? styles.innerFrameContentCompact : styles.innerFrameContentDesktop,
           ]}
         >
-          {title}
-        </Text>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            style={[
+              styles.title,
+              isCompact ? styles.titleCompact : styles.titleDesktop,
+              { fontFamily: fredokaFontFamily },
+            ]}
+          >
+            {title}
+          </Text>
 
-        <View style={[styles.content, contentContainerStyle]}>{children}</View>
+          <View style={[styles.content, contentContainerStyle]}>{children}</View>
 
-        <HomeLightButton
-          label={ctaLabel}
-          onPress={onCtaPress}
-          accessibilityLabel={ctaAccessibilityLabel ?? ctaLabel}
-          disabled={ctaDisabled}
-          fontLoaded={fontLoaded}
-          size={isCompact ? 'compact' : 'regular'}
-          style={[
-            styles.cta,
-            isCompact ? styles.ctaCompact : styles.ctaDesktop,
-            ctaStyle,
-          ]}
-        />
+          <HomeLightButton
+            label={ctaLabel}
+            onPress={onCtaPress}
+            accessibilityLabel={ctaAccessibilityLabel ?? ctaLabel}
+            disabled={ctaDisabled}
+            fontLoaded={fontLoaded}
+            size={isCompact ? 'compact' : 'regular'}
+            style={[
+              styles.cta,
+              isCompact ? styles.ctaCompact : styles.ctaDesktop,
+              ctaStyle,
+            ]}
+          />
+        </View>
       </View>
     </View>
   );
@@ -131,6 +139,18 @@ const styles = StyleSheet.create({
   innerFrameCompact: {
     top: '11.5%',
     bottom: '13%',
+  },
+  innerFrameContent: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  innerFrameContentDesktop: {
+    transform: [{ scale: HOME_STAT_CARD_CONTENT_SCALE }],
+  },
+  innerFrameContentCompact: {
+    transform: [{ scale: HOME_STAT_CARD_CONTENT_SCALE }],
   },
   title: {
     textAlign: 'center',

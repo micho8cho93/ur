@@ -645,10 +645,15 @@ const getPresenceMetadata = (presence: unknown): RuntimeRecord | null => {
   return asRecord(metadata);
 };
 
-const isSpectatorPresenceRequest = (presence: unknown): boolean => {
+const isSpectatorPresenceRequest = (presence: unknown, metadata?: unknown): boolean => {
   const record = asRecord(presence);
-  const metadata = getPresenceMetadata(presence);
-  return record?.role === "spectator" || metadata?.role === "spectator";
+  const presenceMetadata = getPresenceMetadata(presence);
+  const joinMetadata = asRecord(metadata);
+  return (
+    record?.role === "spectator" ||
+    presenceMetadata?.role === "spectator" ||
+    joinMetadata?.role === "spectator"
+  );
 };
 
 const getMatchId = (ctx: nkruntime.Context): string =>
@@ -3170,7 +3175,7 @@ function rpcGetActiveOpenOnlineMatch(
       .filter((record): record is OpenOnlineMatchRecord => Boolean(record))
       .filter(
         (record) =>
-          record.creatorUserId === ctx.userId &&
+          (record.creatorUserId === ctx.userId || record.joinedUserId === ctx.userId) &&
           (record.status === "open" || record.status === "matched"),
       )
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
@@ -3413,7 +3418,8 @@ function matchJoinAttempt(
   _dispatcher: nkruntime.MatchDispatcher,
   _tick: number,
   state: MatchState,
-  presence: nkruntime.Presence
+  presence: nkruntime.Presence,
+  metadata?: { [key: string]: string }
 ): { state: MatchState; accept: boolean; rejectMessage?: string } {
   const userId = getPresenceUserId(presence);
   if (!userId) {
@@ -3439,7 +3445,7 @@ function matchJoinAttempt(
     }
   }
 
-  if (isSpectatorPresenceRequest(presence)) {
+  if (isSpectatorPresenceRequest(presence, metadata)) {
     if (!isSpectatableMatchState(state)) {
       return { state, accept: false, rejectMessage: "This match is not available for spectating." };
     }

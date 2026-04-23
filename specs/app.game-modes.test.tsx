@@ -7,6 +7,7 @@ import GameModesScreen from '@/app/(game)/game-modes';
 const mockBack = jest.fn();
 const mockPush = jest.fn();
 const mockGetPublicGameModes = jest.fn();
+const mockUseAuth = jest.fn();
 
 const originalPlatform = ReactNative.Platform.OS;
 
@@ -41,6 +42,10 @@ jest.mock('@/services/gameModes', () => ({
   getPublicGameModes: (...args: unknown[]) => mockGetPublicGameModes(...args),
 }));
 
+jest.mock('@/src/auth/useAuth', () => ({
+  useAuth: () => mockUseAuth(),
+}));
+
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({
     top: 0,
@@ -58,6 +63,16 @@ describe('GameModesScreen', () => {
     setPlatform('web');
     useWindowDimensionsSpy = jest.spyOn(ReactNative, 'useWindowDimensions');
     useWindowDimensionsSpy.mockReturnValue({ width: 430, height: 932, scale: 1, fontScale: 1 });
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: 'user-1',
+        username: 'Player',
+        email: null,
+        avatarUrl: null,
+        provider: 'google',
+        createdAt: '2026-03-30T10:00:00.000Z',
+      },
+    });
     mockGetPublicGameModes.mockResolvedValue({
       featuredMode: {
         id: 'moonlight_sprint',
@@ -188,5 +203,29 @@ describe('GameModesScreen', () => {
     expect(view.queryByText('Moonlight Sprint')).toBeNull();
     expect(view.queryByText('Ember Trial')).toBeNull();
     expect(view.queryByLabelText('Play featured mode Moonlight Sprint')).toBeNull();
+  });
+
+  it('hides the transport-disabled warning for guest users', async () => {
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: 'guest-1',
+        username: 'Guest',
+        email: null,
+        avatarUrl: null,
+        provider: 'guest',
+        createdAt: '2026-03-30T10:00:00.000Z',
+      },
+    });
+    mockGetPublicGameModes.mockRejectedValueOnce(
+      new Error('Nakama transport is disabled. Set EXPO_PUBLIC_GAME_TRANSPORT=nakama to enable.'),
+    );
+
+    const view = render(<GameModesScreen />);
+
+    await waitFor(() => expect(view.getByText('Game Mode of the Month')).toBeTruthy());
+
+    expect(view.queryByText('Featured modes unavailable')).toBeNull();
+    expect(view.queryByText('Nakama transport is disabled. Set EXPO_PUBLIC_GAME_TRANSPORT=nakama to enable.')).toBeNull();
+    expect(view.getByText('No active featured mode')).toBeTruthy();
   });
 });

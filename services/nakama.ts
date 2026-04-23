@@ -155,6 +155,32 @@ export class NakamaService {
     return this.authenticateStoredDevice(options?.username);
   }
 
+  async restoreSession(token: string, refreshToken: string): Promise<Session | null> {
+    try {
+      const restored = Session.restore(token, refreshToken);
+
+      if (restored.isexpired(Date.now() / 1000)) {
+        if (!restored.refresh_token) {
+          await this.clearSession();
+          return null;
+        }
+
+        return this.refreshSession(restored);
+      }
+
+      this.session = restored;
+      await this.persistSession(restored);
+      return restored;
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        await this.clearSession();
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
   async loadSession(): Promise<Session | null> {
     if (this.session) {
       if (!this.session.isexpired(Date.now() / 1000)) {

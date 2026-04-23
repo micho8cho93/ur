@@ -1,5 +1,4 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
-import { Session } from '@heroiclabs/nakama-js';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 
@@ -14,6 +13,7 @@ const mockGoogleLogin = jest.fn();
 const mockNakamaClearSession = jest.fn();
 const mockNakamaGetClient = jest.fn();
 const mockNakamaGetSession = jest.fn();
+const mockNakamaRestoreSession = jest.fn();
 const mockReset = jest.fn();
 const mockUseGameStoreGetState = jest.fn();
 const mockStartAuthenticatedPresence = jest.fn();
@@ -61,6 +61,7 @@ jest.mock('@/services/nakama', () => ({
     clearSession: (...args: unknown[]) => mockNakamaClearSession(...args),
     getClient: () => mockNakamaGetClient(),
     getSession: (...args: unknown[]) => mockNakamaGetSession(...args),
+    restoreSession: (...args: unknown[]) => mockNakamaRestoreSession(...args),
   },
 }));
 
@@ -114,6 +115,11 @@ describe('AuthProvider', () => {
     jest.clearAllMocks();
     mockUseGameStoreGetState.mockReturnValue({ reset: mockReset });
     mockNakamaClearSession.mockResolvedValue(undefined);
+    mockNakamaRestoreSession.mockImplementation(async (token: string, refreshToken: string) => ({
+      token,
+      refresh_token: refreshToken,
+      isexpired: jest.fn(() => false),
+    }));
     mockSaveSession.mockResolvedValue(undefined);
     mockClearSession.mockResolvedValue(undefined);
     mockNakamaGetClient.mockReturnValue({
@@ -156,20 +162,12 @@ describe('AuthProvider', () => {
     await waitFor(() => {
       expect(view.getByTestId('auth-state').props.children).toBe('Stored User');
     });
+
+    expect(mockNakamaRestoreSession).toHaveBeenCalledWith('stored-token', 'stored-refresh');
   });
 
   it('clears both stored auth layers when Nakama session refresh fails', async () => {
-    const mockedSessionRestore = Session.restore as jest.MockedFunction<typeof Session.restore>;
-    mockedSessionRestore.mockReturnValueOnce({
-      token: 'expired-token',
-      refresh_token: 'expired-refresh',
-      isexpired: jest.fn(() => true),
-    } as never);
-
-    const sessionRefresh = jest.fn().mockRejectedValue(Object.assign(new Error('401'), { status: 401 }));
-    mockNakamaGetClient.mockReturnValueOnce({
-      sessionRefresh,
-    });
+    mockNakamaRestoreSession.mockRejectedValueOnce(Object.assign(new Error('401'), { status: 401 }));
     mockLoadSession.mockResolvedValue({
       user: {
         id: 'user-1',

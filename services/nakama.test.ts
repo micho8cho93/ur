@@ -154,6 +154,28 @@ describe('NakamaService', () => {
     );
   });
 
+  it('hydrates a non-expired restored session into the shared service cache', async () => {
+    const service = new NakamaService();
+    const restoredSession = {
+      token: 'stored-token',
+      refresh_token: 'stored-refresh',
+      isexpired: jest.fn(() => false),
+    } as never;
+
+    mockedSessionRestore.mockReturnValue(restoredSession);
+
+    await expect(service.restoreSession('stored-token', 'stored-refresh')).resolves.toBe(restoredSession);
+    expect(mockedSessionRestore).toHaveBeenCalledWith('stored-token', 'stored-refresh');
+    expect(service.getSession()).toBe(restoredSession);
+    expect(mockedAsyncStorage.setItem).toHaveBeenCalledWith(
+      'nakama.session',
+      JSON.stringify({
+        token: 'stored-token',
+        refreshToken: 'stored-refresh',
+      }),
+    );
+  });
+
   it('deduplicates concurrent session refreshes against the same expired session', async () => {
     const service = new NakamaService();
     const expiredSession = {

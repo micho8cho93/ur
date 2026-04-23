@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import React from 'react';
 import Lobby from '@/app/(game)/lobby';
 import { getMatchConfig } from '@/logic/matchConfigs';
@@ -237,16 +237,22 @@ describe('Lobby private game join input', () => {
       view.queryByText('Choose a ruleset, generate a short code, and invite a friend. Private wins award reduced XP.'),
     ).toBeNull();
     expect(view.queryByText('Enter the short code your friend shared with you.')).toBeNull();
+    expect(view.queryByText('Paste the short code your friend sent you to enter their private table.')).toBeNull();
+    expect(view.queryByText('Choose your game mode.')).toBeNull();
   });
 
-  it('renders featured tournaments above the existing matchmaking cards', () => {
+  it('renders the tournament and match summary cards above the existing matchmaking cards', () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-03-27T08:00:00.000Z'));
     const view = render(<Lobby />);
 
-    expect(view.getByLabelText('See all tournaments')).toBeTruthy();
-    expect(view.getByText('Spring Open')).toBeTruthy();
-    expect(view.getByText('Create Online Match')).toBeTruthy();
-    expect(view.getByText('Finkel Rules')).toBeTruthy();
-    expect(view.getByText('Enter Private Code')).toBeTruthy();
+    expect(view.getByLabelText('See List')).toBeTruthy();
+    expect(view.getByLabelText('Matches')).toBeTruthy();
+    expect(view.getByText('1 public tournament open')).toBeTruthy();
+    expect(view.getByText('2h 0m until next tournament')).toBeTruthy();
+    expect(view.getByText('Create Match')).toBeTruthy();
+    expect(view.getByText('Enter Code')).toBeTruthy();
+
+    nowSpy.mockRestore();
   });
 
   it('renders the store action and opens the store route', () => {
@@ -288,12 +294,12 @@ describe('Lobby private game join input', () => {
     fireEvent.press(view.getByText('Set'));
     fireEvent.press(view.getByText('Online'));
     fireEvent.press(view.getByText('10 min'));
-    fireEvent.press(view.getByText('Create Match'));
+    fireEvent.press(view.getAllByText('Create Match')[1]);
 
     expect(mockCreateOpenMatch).toHaveBeenCalledWith(20, 10, 'gameMode_3_pieces');
   });
 
-  it('renders open online matches and joins selected matches', async () => {
+  it('shows the open match count in the summary card and opens the live matches list', async () => {
     mockListOpenOnlineMatches.mockResolvedValue([
       {
         openMatchId: 'open-join-1',
@@ -313,148 +319,13 @@ describe('Lobby private game join input', () => {
         isJoiner: false,
       },
     ]);
-    mockJoinOpenMatch.mockResolvedValue({
-      openMatchId: 'open-join-1',
-      matchId: 'match-open-join-1',
-      modeId: 'standard',
-      creatorUserId: 'creator-1',
-      joinedUserId: 'joiner-1',
-      wager: 40,
-      durationMinutes: 5,
-      status: 'matched',
-      createdAt: '2026-04-18T10:00:00.000Z',
-      expiresAt: '2026-04-18T10:05:00.000Z',
-      updatedAt: '2026-04-18T10:01:00.000Z',
-      entrants: 2,
-      maxEntrants: 2,
-      isCreator: false,
-      isJoiner: true,
-    });
 
     const view = render(<Lobby />);
 
-    await waitFor(() => expect(view.getByText('Open Wager Match')).toBeTruthy());
-    expect(view.getByText('40 coins')).toBeTruthy();
-    expect(view.getByLabelText('Open economy details for Open Wager Match')).toBeTruthy();
+    await waitFor(() => expect(view.getByText('1 online match open')).toBeTruthy());
+    fireEvent.press(view.getByLabelText('Matches'));
 
-    fireEvent.press(view.getByLabelText('Open economy details for Open Wager Match'));
-    expect(view.getByText('Open Wager Match Economy')).toBeTruthy();
-    expect(view.getByText('Spend 40 coins to join')).toBeTruthy();
-    expect(view.getByText('XP on win')).toBeTruthy();
-    expect(view.getAllByText('+100 XP').length).toBeGreaterThan(0);
-    fireEvent.press(view.getByText('Close'));
-
-    fireEvent.press(view.getByText('Join Match'));
-
-    await waitFor(() => expect(mockJoinOpenMatch).toHaveBeenCalledWith('open-join-1'));
-  });
-
-  it('renders live online matches with a direct spectate action', async () => {
-    mockListOpenOnlineMatches.mockResolvedValue([
-      {
-        openMatchId: 'open-live-1',
-        matchId: 'match-live-1',
-        modeId: 'gameMode_3_pieces',
-        creatorUserId: 'creator-1',
-        joinedUserId: 'joiner-1',
-        wager: 40,
-        durationMinutes: 5,
-        status: 'matched',
-        createdAt: '2026-04-18T10:00:00.000Z',
-        expiresAt: '2026-04-18T10:05:00.000Z',
-        updatedAt: '2026-04-18T10:01:00.000Z',
-        entrants: 2,
-        maxEntrants: 2,
-        isCreator: false,
-        isJoiner: false,
-      },
-    ]);
-
-    const view = render(<Lobby />);
-
-    await waitFor(() => expect(view.getByText('Live Wager Match')).toBeTruthy());
-    expect(view.getByText('In Progress')).toBeTruthy();
-    expect(view.getByLabelText('Open economy details for Live Wager Match')).toBeTruthy();
-
-    fireEvent.press(view.getByLabelText('Open economy details for Live Wager Match'));
-    expect(view.getByText('Live Wager Match Economy')).toBeTruthy();
-    expect(view.getByText('Spend 40 coins to join')).toBeTruthy();
-    expect(view.getByText('XP on win')).toBeTruthy();
-    expect(view.getAllByText('+100 XP').length).toBeGreaterThan(0);
-    fireEvent.press(view.getByText('Close'));
-
-    await act(async () => {
-      fireEvent.press(view.getByLabelText('Spectate'));
-      await Promise.resolve();
-    });
-
-    await waitFor(() =>
-      expect(mockPush).toHaveBeenCalledWith('/match/match-live-1?modeId=gameMode_3_pieces&spectator=1'),
-    );
-  });
-
-  it('lets the joiner resume their live open match instead of spectating it', async () => {
-    mockListOpenOnlineMatches.mockResolvedValue([
-      {
-        openMatchId: 'open-live-2',
-        matchId: 'match-live-2',
-        modeId: 'gameMode_3_pieces',
-        creatorUserId: 'creator-1',
-        joinedUserId: 'viewer-1',
-        wager: 40,
-        durationMinutes: 5,
-        status: 'matched',
-        createdAt: '2026-04-18T10:00:00.000Z',
-        expiresAt: '2026-04-18T10:05:00.000Z',
-        updatedAt: '2026-04-18T10:01:00.000Z',
-        entrants: 2,
-        maxEntrants: 2,
-        isCreator: false,
-        isJoiner: true,
-      },
-    ]);
-
-    const view = render(<Lobby />);
-
-    await waitFor(() => expect(view.getByText('Your Match')).toBeTruthy());
-    expect(view.queryByLabelText('Spectate')).toBeNull();
-
-    await act(async () => {
-      fireEvent.press(view.getByText('Resume'));
-      await Promise.resolve();
-    });
-
-    await waitFor(() =>
-      expect(mockPush).toHaveBeenCalledWith('/match/match-live-2?modeId=gameMode_3_pieces'),
-    );
-  });
-
-  it('offers resume on a creator-owned live open match', async () => {
-    mockListOpenOnlineMatches.mockResolvedValue([
-      {
-        openMatchId: 'open-live-creator-1',
-        matchId: 'match-live-creator-1',
-        modeId: 'standard',
-        creatorUserId: 'viewer-1',
-        joinedUserId: 'joiner-1',
-        wager: 40,
-        durationMinutes: 5,
-        status: 'matched',
-        createdAt: '2026-04-18T10:00:00.000Z',
-        expiresAt: '2026-04-18T10:05:00.000Z',
-        updatedAt: '2026-04-18T10:01:00.000Z',
-        entrants: 2,
-        maxEntrants: 2,
-        isCreator: true,
-        isJoiner: false,
-      },
-    ]);
-
-    const view = render(<Lobby />);
-
-    await waitFor(() => expect(view.getByText('Your Match')).toBeTruthy());
-    expect(view.getByText('Resume')).toBeTruthy();
-    expect(view.queryByLabelText('Spectate')).toBeNull();
+    expect(mockPush).toHaveBeenCalledWith('/(game)/spectate');
   });
 
   it('removes the extra create-private copy once a private room has been created', () => {
@@ -512,27 +383,28 @@ describe('Lobby private game join input', () => {
     expect(view.getByText('Finkel Rules')).toBeTruthy();
   });
 
-  it('renders the tournaments button inside the empty featured state card', () => {
+  it('renders the tournament summary card in the empty state', () => {
     mockUseTournamentList.mockReturnValue({
       tournaments: [],
       isLoading: false,
       errorMessage: null,
-      joinTournament: jest.fn(),
-      launchMatch: jest.fn(),
-      joiningRunId: null,
-      launchingRunId: null,
     });
 
     const view = render(<Lobby />);
 
-    expect(view.getByText('No featured tournaments yet')).toBeTruthy();
-    expect(
-      view.getByText('Public tournament runs will appear here as soon as operators open them for play.'),
-    ).toBeTruthy();
-    expect(view.getByLabelText('See all tournaments')).toBeTruthy();
+    expect(view.getByText('0 public tournaments open')).toBeTruthy();
+    expect(view.getByLabelText('See List')).toBeTruthy();
   });
 
-  it('shows a waiting state for joined tournaments until the lobby fills', () => {
+  it('opens the live matches page from the match summary card', () => {
+    const view = render(<Lobby />);
+
+    fireEvent.press(view.getByLabelText('Matches'));
+
+    expect(mockPush).toHaveBeenCalledWith('/(game)/spectate');
+  });
+
+  it('keeps the tournament summary card visible for joined tournaments', () => {
     mockUseTournamentList.mockReturnValue({
       tournaments: [
         {
@@ -582,7 +454,8 @@ describe('Lobby private game join input', () => {
 
     const view = render(<Lobby />);
 
-    expect(view.getAllByText('Waiting for lobby to fill').length).toBeGreaterThan(0);
+    expect(view.getByText('1 public tournament open')).toBeTruthy();
+    expect(view.getByLabelText('See List')).toBeTruthy();
   });
 
   it('falls back to home when back navigation is unavailable', () => {

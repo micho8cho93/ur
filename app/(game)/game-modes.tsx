@@ -6,14 +6,13 @@ import { urPanelColors, urTextColors, urTextVariants, urTheme } from '@/constant
 import { getMatchConfig } from '@/logic/matchConfigs';
 import {
   buildGameModeMatchConfig,
-  resolveGameModeBoardLabel,
-  resolveGameModeSummary,
 } from '@/shared/gameModes';
 import {
   buildOfflineMatchEconomyDetails,
   hasVisibleMatchEconomyRows,
   type MatchEconomyDetails,
 } from '@/shared/matchEconomy';
+import { useAuth } from '@/src/auth/useAuth';
 import { getPublicGameModes } from '@/services/gameModes';
 import {
   HOME_FREDOKA_FONT_FAMILY,
@@ -34,9 +33,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const homeWideBackground = require('../../assets/images/bg_quickplay.png');
 const homeMobileBackground = require('../../assets/images/bg_quickplay_mobile.png');
-const quickPlayModePanel = require('../../assets/images/quick_play_mode_panel_cropped.png');
+const quickPlayModePanel = require('../../assets/images/card_landscape.png');
+const featuredModePanel = require('../../assets/images/featured_card_landscape.png');
 
 const MODE_PANEL_ART_ASPECT_RATIO = 1113 / 458;
+const FEATURED_MODE_PANEL_ASPECT_RATIO = 1536 / 1024;
+const FEATURED_MODE_PANEL_COMPACT_ASPECT_RATIO = 1.72;
+const TRANSPORT_DISABLED_ERROR_MESSAGE = 'Nakama transport is disabled';
+
+const isTransportDisabledError = (message: string | null): boolean =>
+  typeof message === 'string' && message.includes(TRANSPORT_DISABLED_ERROR_MESSAGE);
 
 type MatchEconomyModalState = {
   title: string;
@@ -100,26 +106,28 @@ function GameModeCard({
         imageStyle={styles.cardPanelImage}
       >
         <View style={styles.cardPanelContent}>
-          <View style={styles.cardTitleRow}>
-            <View style={styles.cardTitleLeading}>
-              <View style={styles.iconWrap}>
-                <MaterialIcons name={icon} size={18} color="#8A611B" />
+          <View style={styles.cardCopyBlock}>
+            <View style={styles.cardTitleRow}>
+              <View style={styles.cardTitleLeading}>
+                <View style={styles.iconWrap}>
+                  <MaterialIcons name={icon} size={18} color="#8A611B" />
+                </View>
+                <Text numberOfLines={2} style={[styles.cardTitle, { fontFamily: titleFontFamily }]}>
+                  {title}
+                </Text>
               </View>
-              <Text numberOfLines={2} style={[styles.cardTitle, { fontFamily: titleFontFamily }]}>
-                {title}
-              </Text>
+              {showInfoButton ? (
+                <MatchEconomyInfoButton
+                  accessibilityLabel={`Open economy details for ${title}`}
+                  onPress={onInfoPress}
+                  style={styles.cardInfoButton}
+                />
+              ) : null}
             </View>
-            {showInfoButton ? (
-              <MatchEconomyInfoButton
-                accessibilityLabel={`Open economy details for ${title}`}
-                onPress={onInfoPress}
-                style={styles.cardInfoButton}
-              />
-            ) : null}
+            <Text numberOfLines={2} style={[styles.cardSubtitle, { fontFamily: bodyFontFamily }]}>
+              {subtitle}
+            </Text>
           </View>
-          <Text numberOfLines={2} style={[styles.cardSubtitle, { fontFamily: bodyFontFamily }]}>
-            {subtitle}
-          </Text>
         </View>
       </PressablePanelCard>
     </View>
@@ -129,6 +137,7 @@ function GameModeCard({
 export default function GameModesScreen() {
   const { width, height } = useWindowDimensions()
   const insets = useSafeAreaInsets()
+  const { user } = useAuth()
   const router = useRouter()
   const [fontsLoaded] = useFonts({
     [HOME_FREDOKA_FONT_FAMILY]: require('../../assets/fonts/LilitaOne-Regular.ttf'),
@@ -182,6 +191,11 @@ export default function GameModesScreen() {
     ? buildOfflineMatchEconomyDetails(buildGameModeMatchConfig(activeFeaturedMode))
     : null
   const showFeaturedEconomyInfo = Boolean(featuredEconomyDetails && hasVisibleMatchEconomyRows(featuredEconomyDetails))
+  const shouldHideFeaturedModesError = user?.provider === 'guest' && isTransportDisabledError(errorMessage)
+  const featuredPanelAspectRatio = isCompactLayout
+    ? FEATURED_MODE_PANEL_COMPACT_ASPECT_RATIO
+    : FEATURED_MODE_PANEL_ASPECT_RATIO
+  const featuredCardMaxWidth = isCompactLayout ? 323 : 510
 
   React.useEffect(() => {
     let active = true
@@ -276,18 +290,9 @@ export default function GameModesScreen() {
                 Offline Games
               </Text>
             </View>
-            <Text
-              style={[
-                styles.subtitle,
-                isCompactLayout ? styles.subtitleCompact : styles.subtitleDesktop,
-                { fontFamily: bodyFontFamily },
-              ]}
-            >
-              Choose a built-in mode, then explore the featured mode.
-            </Text>
           </View>
 
-          {errorMessage ? (
+          {errorMessage && !shouldHideFeaturedModesError ? (
             <View style={[styles.noticeCard, { maxWidth: stageWidth }]}>
               <Text style={[styles.noticeTitle, { fontFamily: titleFontFamily }]}>Featured modes unavailable</Text>
               <Text style={[styles.noticeText, { fontFamily: bodyFontFamily }]}>{errorMessage}</Text>
@@ -331,71 +336,103 @@ export default function GameModesScreen() {
           <View style={[styles.stage, { width: stageWidth }]}>
             <View style={styles.sectionHeader}>
               <View>
-                <Text style={[styles.sectionTitle, { fontFamily: titleFontFamily }]}>Game Mode of the Month</Text>
-                <Text style={[styles.sectionSubtitle, { fontFamily: bodyFontFamily }]}>
-                  {isLoadingModes
-                    ? 'Loading featured catalog content.'
-                    : activeFeaturedMode
-                      ? activeFeaturedMode.description
-                      : 'No active featured mode is currently configured.'}
-                </Text>
+                <Text style={[styles.sectionTitle, { fontFamily: titleFontFamily }]}>Mode of the Month</Text>
+                {isLoadingModes || activeFeaturedMode ? (
+                  <Text style={[styles.sectionSubtitle, { fontFamily: bodyFontFamily }]}>
+                    {isLoadingModes
+                      ? 'Loading featured catalog content.'
+                      : activeFeaturedMode?.description}
+                  </Text>
+                ) : null}
               </View>
             </View>
 
-            {isLoadingModes ? (
-              <View style={styles.loadingCard}>
-                <Text style={[styles.loadingTitle, { fontFamily: titleFontFamily }]}>Loading featured mode...</Text>
-                <Text style={[styles.loadingText, { fontFamily: bodyFontFamily }]}>
-                  Checking the Nakama-backed mode catalog for a featured pick.
-                </Text>
-              </View>
-            ) : activeFeaturedMode ? (
-              <View style={styles.featuredShell}>
-                <View style={styles.cardFrame}>
-                  <PressablePanelCard
-                    accessibilityLabel={`Play featured mode ${activeFeaturedMode.name}`}
-                    onPress={() => router.push(`/(game)/bot?modeId=${activeFeaturedMode.id}`)}
-                    panelStyle={styles.featuredPanel}
-                    source={quickPlayModePanel}
-                    imageStyle={styles.cardPanelImage}
+            <View style={styles.featuredShell}>
+              <View
+                style={[
+                  styles.featuredCardFrame,
+                  isCompactLayout ? styles.featuredCardFrameCompact : null,
+                  { maxWidth: featuredCardMaxWidth },
+                ]}
+              >
+                <PressablePanelCard
+                  accessibilityLabel={
+                    activeFeaturedMode
+                      ? `Play featured mode ${activeFeaturedMode.name}`
+                      : isLoadingModes
+                        ? 'Loading featured mode'
+                        : 'No active featured mode'
+                  }
+                  disabled={!activeFeaturedMode}
+                  onPress={
+                    activeFeaturedMode ? () => router.push(`/(game)/bot?modeId=${activeFeaturedMode.id}`) : () => undefined
+                  }
+                  panelStyle={[
+                    styles.featuredPanel,
+                    { aspectRatio: featuredPanelAspectRatio },
+                    isCompactLayout ? styles.featuredPanelCompact : null,
+                  ]}
+                  source={featuredModePanel}
+                  imageStyle={styles.cardPanelImage}
+                >
+                  <View
+                    style={[
+                      styles.featuredContent,
+                      isCompactLayout ? styles.featuredContentCompact : null,
+                    ]}
                   >
-                    <View style={styles.featuredContent}>
-                      <View style={styles.featuredTopRow}>
-                        <View style={styles.iconWrap}>
-                          <MaterialIcons name="stars" size={18} color="#8A611B" />
+                    {isLoadingModes ? (
+                      <View style={styles.featuredCopyBlock}>
+                        <Text
+                          style={[
+                            styles.featuredStateTitle,
+                            isCompactLayout ? styles.featuredStateTitleCompact : null,
+                            { fontFamily: titleFontFamily },
+                          ]}
+                        >
+                          Loading featured mode...
+                        </Text>
+                        <Text style={[styles.featuredStateText, { fontFamily: bodyFontFamily }]}>
+                          Checking the Nakama-backed mode catalog for a featured pick.
+                        </Text>
+                      </View>
+                    ) : activeFeaturedMode ? (
+                      <View style={styles.featuredCopyBlock}>
+                        <View style={styles.featuredTitleRow}>
+                          <Text
+                            style={[
+                              styles.featuredTitle,
+                              isCompactLayout ? styles.featuredTitleCompact : null,
+                              { fontFamily: titleFontFamily },
+                            ]}
+                          >
+                            {activeFeaturedMode.name}
+                          </Text>
+                          {showFeaturedEconomyInfo && featuredEconomyDetails ? (
+                            <MatchEconomyInfoButton
+                              accessibilityLabel={`Open economy details for ${activeFeaturedMode.name}`}
+                              onPress={() =>
+                                openEconomyDetails(`${activeFeaturedMode.name} Economy`, featuredEconomyDetails)
+                              }
+                              style={styles.cardInfoButton}
+                            />
+                          ) : null}
                         </View>
-                        <Text style={[styles.featuredLabel, { fontFamily: buttonFontFamily }]}>Game Mode of the Month</Text>
                       </View>
-                      <View style={styles.featuredTitleRow}>
-                        <Text style={[styles.featuredTitle, { fontFamily: titleFontFamily }]}>{activeFeaturedMode.name}</Text>
-                        {showFeaturedEconomyInfo && featuredEconomyDetails ? (
-                          <MatchEconomyInfoButton
-                            accessibilityLabel={`Open economy details for ${activeFeaturedMode.name}`}
-                            onPress={() =>
-                              openEconomyDetails(`${activeFeaturedMode.name} Economy`, featuredEconomyDetails)
-                            }
-                            style={styles.cardInfoButton}
-                          />
-                        ) : null}
+                    ) : (
+                      <View style={styles.featuredCopyBlock}>
+                        <Text style={[styles.featuredStateTitle, { fontFamily: titleFontFamily }]}>
+                          No active featured mode is currently configured.
+                        </Text>
+                        <Text style={[styles.featuredStateText, { fontFamily: bodyFontFamily }]}>
+                          Feature a saved mode to surface it here.
+                        </Text>
                       </View>
-                      <Text style={[styles.featuredSubtitle, { fontFamily: bodyFontFamily }]}>
-                        {resolveGameModeSummary(activeFeaturedMode)}
-                      </Text>
-                      <Text style={[styles.featuredMeta, { fontFamily: bodyFontFamily }]}>
-                        {resolveGameModeBoardLabel(activeFeaturedMode.boardAssetKey)} · Featured and playable
-                      </Text>
-                    </View>
-                  </PressablePanelCard>
-                </View>
+                    )}
+                  </View>
+                </PressablePanelCard>
               </View>
-            ) : (
-              <View style={styles.loadingCard}>
-                <Text style={[styles.loadingTitle, { fontFamily: titleFontFamily }]}>No active featured mode</Text>
-                <Text style={[styles.loadingText, { fontFamily: bodyFontFamily }]}>
-                  Feature a saved mode to surface it here.
-                </Text>
-              </View>
-            )}
+            </View>
           </View>
 
         </ScrollView>
@@ -503,8 +540,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   gridListBuiltIn: {
-    gap: urTheme.spacing.sm,
+    gap: urTheme.spacing.sm * 1.325,
     flexWrap: 'nowrap',
+    justifyContent: 'center',
   },
   gridListCompact: {
     flexDirection: 'column',
@@ -518,7 +556,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardShellBuiltIn: {
-    width: '32.5%',
+    width: '26%',
   },
   cardShellCompact: {
     width: '100%',
@@ -539,21 +577,43 @@ const styles = StyleSheet.create({
   },
   featuredShell: {
     width: '100%',
+    alignItems: 'center',
+  },
+  featuredCardFrame: {
+    width: '100%',
+    maxWidth: 620,
+    position: 'relative',
+  },
+  featuredCardFrameCompact: {
+    maxWidth: 400,
   },
   featuredPanel: {
     width: '100%',
-    minHeight: 220,
+    aspectRatio: FEATURED_MODE_PANEL_ASPECT_RATIO,
     justifyContent: 'center',
     overflow: 'visible',
+  },
+  featuredPanelCompact: {
+    aspectRatio: FEATURED_MODE_PANEL_COMPACT_ASPECT_RATIO,
   },
   featuredContent: {
     position: 'absolute',
     top: '14%',
-    left: '12%',
-    right: '12%',
     bottom: '14%',
     alignItems: 'center',
     justifyContent: 'center',
+    left: 0,
+    right: 0,
+  },
+  featuredContentCompact: {
+    top: '11%',
+    bottom: '11%',
+  },
+  featuredCopyBlock: {
+    width: '68%',
+    maxWidth: 380,
+    alignItems: 'center',
+    gap: 8,
   },
   featuredTopRow: {
     flexDirection: 'row',
@@ -575,6 +635,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     ...urTextVariants.displayTitle,
   },
+  featuredTitleCompact: {
+    fontSize: 22,
+    lineHeight: 26,
+  },
   featuredSubtitle: {
     color: urTextColors.bodyOnPanel,
     fontSize: 14,
@@ -591,6 +655,25 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     ...urTextVariants.body,
   },
+  featuredStateTitle: {
+    color: urTextColors.titleOnPanel,
+    fontSize: 24,
+    lineHeight: 28,
+    textAlign: 'center',
+    ...urTextVariants.displayTitle,
+  },
+  featuredStateTitleCompact: {
+    fontSize: 22,
+    lineHeight: 26,
+  },
+  featuredStateText: {
+    color: urTextColors.bodyOnPanel,
+    fontSize: 14,
+    lineHeight: 18,
+    textAlign: 'center',
+    maxWidth: 560,
+    ...urTextVariants.body,
+  },
   cardPanelImage: {
     width: '100%',
     height: '100%',
@@ -598,11 +681,16 @@ const styles = StyleSheet.create({
   cardPanelContent: {
     position: 'absolute',
     top: '17%',
-    left: '16%',
-    right: '16%',
     bottom: '18%',
     alignItems: 'center',
     justifyContent: 'center',
+    left: 0,
+    right: 0,
+  },
+  cardCopyBlock: {
+    width: '64%',
+    maxWidth: 240,
+    alignItems: 'center',
   },
   cardTitleRow: {
     flexDirection: 'row',

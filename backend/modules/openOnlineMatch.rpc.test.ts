@@ -55,6 +55,12 @@ type RuntimeGlobals = typeof globalThis & {
     nk: ReturnType<typeof createNakama>,
     payload: string,
   ) => string;
+  rpcGetActiveOpenOnlineMatch: (
+    ctx: { userId?: string | null },
+    logger: Record<string, jest.Mock>,
+    nk: ReturnType<typeof createNakama>,
+    payload: string,
+  ) => string;
   matchInit: (
     ctx: Record<string, unknown>,
     logger: Record<string, jest.Mock>,
@@ -302,6 +308,38 @@ describe("open online match RPCs", () => {
         playerLabels: ["Guest", "Guest"],
       }),
     ]);
+  });
+
+  it("returns the matched open online match for the joiner as their active table", () => {
+    const runtime = globalThis as RuntimeGlobals;
+    const logger = createLogger();
+    const nk = createNakama({ "creator-1": 100, "joiner-1": 100 });
+    const created = JSON.parse(
+      runtime.rpcCreateOpenOnlineMatch(
+        { userId: "creator-1" },
+        logger,
+        nk,
+        JSON.stringify({ wager: 20, durationMinutes: 5, modeId: "gameMode_3_pieces" }),
+      ),
+    ).match;
+
+    runtime.rpcJoinOpenOnlineMatch(
+      { userId: "joiner-1" },
+      logger,
+      nk,
+      JSON.stringify({ openMatchId: created.openMatchId }),
+    );
+
+    const response = JSON.parse(runtime.rpcGetActiveOpenOnlineMatch({ userId: "joiner-1" }, logger, nk, ""));
+    expect(response.match).toEqual(
+      expect.objectContaining({
+        openMatchId: created.openMatchId,
+        matchId: "match-open-1",
+        status: "matched",
+        isCreator: false,
+        isJoiner: true,
+      }),
+    );
   });
 
   it("refunds expired unjoined matches while listing", () => {

@@ -14,7 +14,8 @@ type RuntimeGlobals = typeof globalThis & {
     dispatcher: { broadcastMessage: jest.Mock },
     tick: number,
     state: any,
-    presence: Record<string, unknown>
+    presence: Record<string, unknown>,
+    metadata?: Record<string, unknown>
   ) => { state: any; accept: boolean; rejectMessage?: string };
   matchJoin: (
     ctx: Record<string, unknown>,
@@ -186,14 +187,23 @@ describe('authoritative match presence handling', () => {
       botMatch: false,
     });
 
-    const spectatorPresence = createSpectatorPresence('spectator-user', 'spectator-session-1');
+    const spectatorPresence = createPresence('spectator-user', 'spectator-session-1');
     let state = initialized.state;
     state.openOnlineMatchId = 'open-live-1';
     state.openOnlineMatchCreatorUserId = 'creator-user';
     state.openOnlineMatchJoinerUserId = 'joiner-user';
     state.started = true;
 
-    const spectatorAttempt = runtime.matchJoinAttempt(ctx, logger, nk, dispatcher, 0, state, spectatorPresence);
+    const spectatorAttempt = runtime.matchJoinAttempt(
+      ctx,
+      logger,
+      nk,
+      dispatcher,
+      0,
+      state,
+      spectatorPresence,
+      { role: 'spectator' },
+    );
 
     expect(spectatorAttempt.accept).toBe(true);
     state = runtime.matchJoin(ctx, logger, nk, dispatcher, 0, spectatorAttempt.state, [spectatorPresence]).state;

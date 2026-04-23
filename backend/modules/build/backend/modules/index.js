@@ -712,6 +712,13 @@ var resolveRulesVariant = (matchConfigOrVariant) => {
   var _a;
   return typeof matchConfigOrVariant === "string" ? matchConfigOrVariant : (_a = matchConfigOrVariant == null ? void 0 : matchConfigOrVariant.rulesVariant) != null ? _a : "standard";
 };
+var resolveRosetteSafetyMode = (matchConfigOrVariant) => {
+  var _a;
+  if (typeof matchConfigOrVariant === "string") {
+    return matchConfigOrVariant === "capture" ? "open" : "standard";
+  }
+  return (_a = matchConfigOrVariant == null ? void 0 : matchConfigOrVariant.rosetteSafetyMode) != null ? _a : "standard";
+};
 var isSharedRosetteCoord = (coord) => Boolean(coord && isWarZone(coord.row, coord.col) && isRosette(coord.row, coord.col));
 var canCaptureOnWarTile = (matchConfigOrVariant, coord) => {
   if (!coord || !isWarZone(coord.row, coord.col)) {
@@ -721,7 +728,7 @@ var canCaptureOnWarTile = (matchConfigOrVariant, coord) => {
   if (rulesVariant === "no-capture") {
     return false;
   }
-  if (rulesVariant !== "capture" && isSharedRosetteCoord(coord)) {
+  if (isSharedRosetteCoord(coord) && resolveRosetteSafetyMode(matchConfigOrVariant) !== "open") {
     return false;
   }
   return true;
@@ -7253,12 +7260,28 @@ var resolveGameModeRulesLabel = (rulesVariant) => {
       return "Standard rules";
   }
 };
+var resolveDerivedGameModeConfig = (mode) => {
+  const presetDefaults = getGameModePresetDefaults(mode.baseRulesetPreset);
+  return {
+    pathVariant: presetDefaults.pathVariant,
+    throwProfile: presetDefaults.throwProfile,
+    bonusTurnOnRosette: presetDefaults.bonusTurnOnRosette,
+    // Capture-mode custom variants should inherit the capture bonus even when the
+    // admin-facing base preset is "custom" or any other preset alias.
+    bonusTurnOnCapture: mode.rulesVariant === "capture" ? true : presetDefaults.bonusTurnOnCapture
+  };
+};
 var resolveGameModeSummary = (mode) => {
+  const derivedConfig = resolveDerivedGameModeConfig(mode);
   const parts = [
     resolveGameModeBaseRulesetLabel(mode.baseRulesetPreset),
     `${mode.pieceCountPerSide} pieces`,
     resolveGameModeRulesLabel(mode.rulesVariant),
     mode.rosetteSafetyMode === "open" ? "open rosettes" : "protected rosettes",
+    derivedConfig.throwProfile === "bell" ? "Bell throws" : derivedConfig.throwProfile === "masters" ? "Masters throws" : "standard throws",
+    derivedConfig.pathVariant === "default" ? "default route" : `${derivedConfig.pathVariant} route`,
+    derivedConfig.bonusTurnOnRosette ? "rosette bonus rolls" : "no rosette bonus",
+    derivedConfig.bonusTurnOnCapture ? "capture bonus rolls" : "no capture bonus",
     mode.eliminationMode === "eliminated" ? "elimination mode" : "return to start",
     mode.exitStyle === "single_exit" ? "single-exit board" : "standard exit",
     mode.fogOfWar ? "fog on" : "fog off",
@@ -7281,7 +7304,8 @@ var toGameModeDefinition = (mode) => ({
 });
 var buildGameModeMatchConfig = (mode, options = {}) => {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
-  return {
+  const derivedConfig = resolveDerivedGameModeConfig(mode);
+  return __spreadProps(__spreadValues({}, derivedConfig), {
     modeId: mode.id,
     displayName: (_a = options.displayName) != null ? _a : mode.name,
     baseRulesetPreset: mode.baseRulesetPreset,
@@ -7300,13 +7324,13 @@ var buildGameModeMatchConfig = (mode, options = {}) => {
     isPracticeMode: (_g = options.isPracticeMode) != null ? _g : true,
     offlineWinRewardSource: (_h = options.offlineWinRewardSource) != null ? _h : "practice_finkel_rules_win",
     opponentType: (_i = options.opponentType) != null ? _i : "bot",
-    pathVariant: (_j = options.pathVariant) != null ? _j : getGameModePresetDefaults(mode.baseRulesetPreset).pathVariant,
-    throwProfile: (_k = options.throwProfile) != null ? _k : getGameModePresetDefaults(mode.baseRulesetPreset).throwProfile,
-    bonusTurnOnRosette: (_l = options.bonusTurnOnRosette) != null ? _l : getGameModePresetDefaults(mode.baseRulesetPreset).bonusTurnOnRosette,
-    bonusTurnOnCapture: (_m = options.bonusTurnOnCapture) != null ? _m : getGameModePresetDefaults(mode.baseRulesetPreset).bonusTurnOnCapture,
+    pathVariant: (_j = options.pathVariant) != null ? _j : derivedConfig.pathVariant,
+    throwProfile: (_k = options.throwProfile) != null ? _k : derivedConfig.throwProfile,
+    bonusTurnOnRosette: (_l = options.bonusTurnOnRosette) != null ? _l : derivedConfig.bonusTurnOnRosette,
+    bonusTurnOnCapture: (_m = options.bonusTurnOnCapture) != null ? _m : derivedConfig.bonusTurnOnCapture,
     selectionSubtitle: resolveGameModeSummary(mode),
     rulesIntro: null
-  };
+  });
 };
 var isGameModeDefinition = (value) => {
   const record = typeof value === "object" && value !== null ? value : null;
@@ -15340,10 +15364,11 @@ var getPresenceMetadata = (presence) => {
   const metadata = (_a = asRecord10(presence)) == null ? void 0 : _a.metadata;
   return asRecord10(metadata);
 };
-var isSpectatorPresenceRequest = (presence) => {
+var isSpectatorPresenceRequest = (presence, metadata) => {
   const record = asRecord10(presence);
-  const metadata = getPresenceMetadata(presence);
-  return (record == null ? void 0 : record.role) === "spectator" || (metadata == null ? void 0 : metadata.role) === "spectator";
+  const presenceMetadata = getPresenceMetadata(presence);
+  const joinMetadata = asRecord10(metadata);
+  return (record == null ? void 0 : record.role) === "spectator" || (presenceMetadata == null ? void 0 : presenceMetadata.role) === "spectator" || (joinMetadata == null ? void 0 : joinMetadata.role) === "spectator";
 };
 var getMatchId = (ctx) => {
   var _a;
@@ -17188,7 +17213,7 @@ function rpcGetActiveOpenOnlineMatch(ctx, logger, nk, _payload) {
     }
     return expireOpenOnlineMatchIfNeeded(logger, nk, record, getStorageObjectVersion(object), nowMs);
   }).filter((record) => Boolean(record)).filter(
-    (record) => record.creatorUserId === ctx.userId && (record.status === "open" || record.status === "matched")
+    (record) => (record.creatorUserId === ctx.userId || record.joinedUserId === ctx.userId) && (record.status === "open" || record.status === "matched")
   ).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]) != null ? _a : null;
   return JSON.stringify({ match: match ? buildOpenOnlineMatchRpcModel(match, ctx.userId) : null });
 }
@@ -17362,7 +17387,7 @@ function matchInit(_ctx, logger, nk, params) {
   };
   return { state, tickRate: TICK_RATE, label: MATCH_HANDLER };
 }
-function matchJoinAttempt(_ctx, logger, nk, _dispatcher, _tick, state, presence) {
+function matchJoinAttempt(_ctx, logger, nk, _dispatcher, _tick, state, presence, metadata) {
   const userId = getPresenceUserId(presence);
   if (!userId) {
     logger.warn("Rejecting join attempt with missing user ID.");
@@ -17383,7 +17408,7 @@ function matchJoinAttempt(_ctx, logger, nk, _dispatcher, _tick, state, presence)
       return { state, accept: false, rejectMessage: "Enter the private game code before joining this table." };
     }
   }
-  if (isSpectatorPresenceRequest(presence)) {
+  if (isSpectatorPresenceRequest(presence, metadata)) {
     if (!isSpectatableMatchState(state)) {
       return { state, accept: false, rejectMessage: "This match is not available for spectating." };
     }

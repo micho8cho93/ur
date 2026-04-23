@@ -67,6 +67,13 @@ describe('StoreProvider', () => {
   });
 
   it('updates owned IDs and refreshes wallet after a successful purchase', async () => {
+    mockGetStorefront
+      .mockResolvedValueOnce(storefront)
+      .mockResolvedValueOnce({
+        ...storefront,
+        ownedIds: ['board_cedar_001'],
+      });
+
     const { result } = renderHook(() => useStore(), { wrapper });
 
     await waitFor(() => {
@@ -82,7 +89,10 @@ describe('StoreProvider', () => {
       );
     });
 
-    expect(result.current.storefront?.ownedIds).toEqual(['board_cedar_001']);
+    await waitFor(() => {
+      expect(result.current.storefront?.ownedIds).toEqual(['board_cedar_001']);
+    });
+
     expect(mockWalletRefresh).toHaveBeenCalledWith({ silent: true });
   });
 

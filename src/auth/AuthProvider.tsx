@@ -86,22 +86,28 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
 
       if (loaded.nakamaSessionToken && loaded.nakamaRefreshToken) {
         try {
-          const restored = Session.restore(loaded.nakamaSessionToken, loaded.nakamaRefreshToken);
+          const restored = await nakamaService.restoreSession(
+            loaded.nakamaSessionToken,
+            loaded.nakamaRefreshToken,
+          );
 
-          if (restored.isexpired(Date.now() / 1000)) {
-            if (restored.refresh_token) {
-              const refreshed = await nakamaService.getClient().sessionRefresh(restored);
-              await saveSession(loaded.user, refreshed.token, refreshed.refresh_token);
-              return {
-                user: loaded.user,
-                nakamaSessionToken: refreshed.token,
-                nakamaRefreshToken: refreshed.refresh_token,
-              };
-            } else {
-              await clearStoredAuth();
-              return null;
-            }
+          if (!restored?.refresh_token) {
+            await clearStoredAuth();
+            return null;
           }
+
+          if (
+            restored.token !== loaded.nakamaSessionToken ||
+            restored.refresh_token !== loaded.nakamaRefreshToken
+          ) {
+            await saveSession(loaded.user, restored.token, restored.refresh_token);
+          }
+
+          return {
+            user: loaded.user,
+            nakamaSessionToken: restored.token,
+            nakamaRefreshToken: restored.refresh_token,
+          };
         } catch (error) {
           if (getSessionRestoreStatus(error) === 401) {
             console.warn('Stored Nakama session expired; clearing cached auth.');

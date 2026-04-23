@@ -23,6 +23,7 @@ import type { PublicTournamentSummary } from '@/src/tournaments/types';
 import React, { useEffect, useState } from 'react';
 import {
   ImageBackground,
+  ImageStyle,
   Platform,
   StyleSheet,
   Text,
@@ -36,14 +37,19 @@ type TournamentCardProps = {
   launching?: boolean;
   primaryTitle?: string;
   fontLoaded?: boolean;
+  featured?: boolean;
+  artScale?: number;
   onJoin: (tournament: PublicTournamentSummary) => void;
   onLaunch: (tournament: PublicTournamentSummary) => void;
   onViewStandings: (tournament: PublicTournamentSummary) => void;
 };
 
-const tournamentPanelArt = require('../../assets/images/tournament_large_panel_cropped.png');
-const tournamentCardArt = require('../../assets/images/home_stat_card.png');
+const tournamentPanelArt = require('../../assets/images/card_landscape.png');
+const tournamentFeaturedPanelArt = require('../../assets/images/featured_card_landscape.png');
+const tournamentCardArt = require('../../assets/images/card_portrait.png');
 const TOURNAMENT_CARD_ART_ASPECT_RATIO = 626 / 732;
+const TOURNAMENT_FEATURED_CARD_ASPECT_RATIO = 1536 / 1024 / 1.3;
+const TOURNAMENT_FEATURED_CARD_DENSE_ASPECT_RATIO = 1.95 / 1.3;
 
 export const TournamentCard: React.FC<TournamentCardProps> = ({
   tournament,
@@ -51,6 +57,8 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
   launching = false,
   primaryTitle,
   fontLoaded = false,
+  featured = false,
+  artScale = 1,
   onJoin,
   onLaunch,
   onViewStandings,
@@ -71,8 +79,26 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
   const bodyFontFamily = resolveHomeFredokaFontFamily(fontLoaded);
   const isCompact = width < 760;
   const useStackedButtons = width < 560;
-  const useMobileWebJoinCardArt = Platform.OS === 'web' && width < 760 && primary.intent === 'join';
+  const useMobileWebJoinCardArt = !featured && Platform.OS === 'web' && width < 760 && primary.intent === 'join';
   const useInlineCountdownRow = Boolean(lobbyCountdownLabel) && !useStackedButtons && !useMobileWebJoinCardArt;
+  const panelImageStyle: ImageStyle[] = [
+    styles.panelImage,
+    artScale !== 1 ? { transform: [{ scale: artScale }] } : null,
+  ].filter(Boolean) as ImageStyle[];
+  const panelStyle = useMobileWebJoinCardArt
+    ? styles.panelCard
+    : featured
+      ? isCompact
+        ? styles.panelFeaturedCompact
+        : styles.panelFeaturedDesktop
+      : isCompact
+        ? styles.panelCompact
+        : styles.panelDesktop;
+  const panelViewportStyle = useMobileWebJoinCardArt
+    ? styles.panelViewportCard
+    : isCompact
+      ? styles.panelViewportCompact
+      : styles.panelViewportDesktop;
 
   useEffect(() => {
     setNow(Date.now());
@@ -93,23 +119,13 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
   return (
     <View style={styles.cardShell}>
       <ImageBackground
-        source={useMobileWebJoinCardArt ? tournamentCardArt : tournamentPanelArt}
+        source={useMobileWebJoinCardArt ? tournamentCardArt : featured ? tournamentFeaturedPanelArt : tournamentPanelArt}
         resizeMode="stretch"
-        style={[
-          styles.panel,
-          useMobileWebJoinCardArt ? styles.panelCard : isCompact ? styles.panelCompact : styles.panelDesktop,
-        ]}
-        imageStyle={styles.panelImage}
+        style={[styles.panel, panelStyle]}
+        imageStyle={panelImageStyle}
       >
         <View
-          style={[
-            styles.panelViewport,
-            useMobileWebJoinCardArt
-              ? styles.panelViewportCard
-              : isCompact
-                ? styles.panelViewportCompact
-                : styles.panelViewportDesktop,
-          ]}
+          style={[styles.panelViewport, panelViewportStyle]}
         >
           <View style={styles.headerBlock}>
             <Text
@@ -288,6 +304,12 @@ const styles = StyleSheet.create({
   },
   panelCompact: {
     minHeight: 560,
+  },
+  panelFeaturedDesktop: {
+    aspectRatio: TOURNAMENT_FEATURED_CARD_ASPECT_RATIO,
+  },
+  panelFeaturedCompact: {
+    aspectRatio: TOURNAMENT_FEATURED_CARD_DENSE_ASPECT_RATIO,
   },
   panelCard: {
     aspectRatio: TOURNAMENT_CARD_ART_ASPECT_RATIO,

@@ -18,7 +18,9 @@
       "Bash(cp \"/Users/Michel/Downloads/payout_award.wav\" \"/Users/Michel/Desktop/ur/assets/audio/sfx/payout_award.wav\")",
       "Bash(npx vite *)",
       "Bash(grep -E \"\\\\.tsx$\")",
-      "Bash(sips -g pixelWidth -g pixelHeight /Users/Michel/Desktop/ur/assets/board/*.png)"
+      "Bash(sips -g pixelWidth -g pixelHeight /Users/Michel/Desktop/ur/assets/board/*.png)",
+      "Bash(python3 -c ' *)",
+      "Bash(sips -g pixelWidth -g pixelHeight /Users/Michel/Desktop/ur/assets/images/card_portrait.png /Users/Michel/Desktop/ur/assets/images/card_landscape.png)"
     ]
   }
 }

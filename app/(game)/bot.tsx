@@ -30,9 +30,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const homeWideBackground = require('../../assets/images/home_bg.png');
 const homeMobileBackground = require('../../assets/images/home_bg_mobile.png');
-const quickPlayModePanel = require('../../assets/images/quick_play_mode_panel_cropped.png');
+const quickPlayModePanel = require('../../assets/images/card_landscape.png');
 
 const MODE_PANEL_ART_ASPECT_RATIO = 1113 / 458;
+const CARD_SIZE_MULTIPLIER = 0.8;
 
 type BotLevelCard = {
   difficulty: BotDifficulty;
@@ -96,10 +97,10 @@ export default function BotSelection() {
   const topPadding = insets.top + (isDesktopViewport ? 12 : 8);
   const bottomPadding = insets.bottom + (isCompactLayout ? urTheme.spacing.xl : urTheme.spacing.lg);
   const stageWidth = isDesktopViewport
-    ? Math.min(width - horizontalPadding * 2, 940)
+    ? Math.min(width - horizontalPadding * 2, 940 * CARD_SIZE_MULTIPLIER)
     : isCompactLayout
-      ? Math.min(width - horizontalPadding * 2, 430)
-      : Math.min(width - horizontalPadding * 2, 780);
+      ? Math.min(width - horizontalPadding * 2, 430 * CARD_SIZE_MULTIPLIER)
+      : Math.min(width - horizontalPadding * 2, 780 * CARD_SIZE_MULTIPLIER);
   const titleFontFamily = resolveHomeMagicFontFamily(fontsLoaded);
   const bodyFontFamily = resolveHomeFredokaFontFamily(fontsLoaded);
   const buttonFontFamily = resolveHomeButtonFontFamily(fontsLoaded);

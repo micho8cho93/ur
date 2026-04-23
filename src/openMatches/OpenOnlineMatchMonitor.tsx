@@ -15,6 +15,9 @@ const OPEN_ONLINE_MATCH_POLL_INTERVAL_MS = 5_000;
 const isAlreadyOnMatchRoute = (pathname: string, matchId: string): boolean =>
   pathname === `/match/${matchId}` || pathname.endsWith(`/match/${matchId}`);
 
+const isOnAnyMatchRoute = (pathname: string): boolean =>
+  pathname === '/match' || pathname.startsWith('/match/');
+
 export const OpenOnlineMatchMonitor: React.FC = () => {
   const { user, isLoading } = useAuth();
   const router = useRouter();
@@ -64,7 +67,11 @@ export const OpenOnlineMatchMonitor: React.FC = () => {
         currentGame.gameState.winner === null &&
         currentGame.gameState.phase !== 'ended';
 
-      if (currentGame.onlineMode === 'nakama' && currentGame.matchId !== activeMatch.matchId) {
+      if (
+        currentGame.onlineMode === 'nakama' &&
+        currentGame.matchId !== activeMatch.matchId &&
+        isOnAnyMatchRoute(pathnameRef.current)
+      ) {
         return;
       }
 
