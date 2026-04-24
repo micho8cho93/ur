@@ -129,7 +129,7 @@ describe('GameModesScreen', () => {
   it('renders the fixed built-ins and backend-managed featured modes', async () => {
     const view = render(<GameModesScreen />);
 
-    await waitFor(() => expect(view.getByText('Game Mode of the Month')).toBeTruthy());
+    await waitFor(() => expect(view.getByText('Mode of the Month')).toBeTruthy());
 
     expect(view.getByText('Offline Games')).toBeTruthy();
     expect(view.getByText('Back')).toBeTruthy();
@@ -142,6 +142,7 @@ describe('GameModesScreen', () => {
     expect(view.queryByLabelText('Open economy details for PvP')).toBeNull();
     expect(view.queryByLabelText('Open economy details for Moonlight Sprint')).toBeNull();
     expect(view.getByText('Moonlight Sprint')).toBeTruthy();
+    expect(view.getByText('Seven pieces, fog of war, and a single-exit board.')).toBeTruthy();
     expect(view.queryByText('Ember Trial')).toBeNull();
 
     fireEvent.press(view.getByLabelText('Open economy details for Race'));
@@ -197,9 +198,9 @@ describe('GameModesScreen', () => {
 
     const view = render(<GameModesScreen />);
 
-    await waitFor(() => expect(view.getByText('Game Mode of the Month')).toBeTruthy());
+    await waitFor(() => expect(view.getByText('Mode of the Month')).toBeTruthy());
 
-    expect(view.getByText('No active featured mode')).toBeTruthy();
+    expect(view.getByText('No active featured mode is currently configured.')).toBeTruthy();
     expect(view.queryByText('Moonlight Sprint')).toBeNull();
     expect(view.queryByText('Ember Trial')).toBeNull();
     expect(view.queryByLabelText('Play featured mode Moonlight Sprint')).toBeNull();
@@ -222,10 +223,10 @@ describe('GameModesScreen', () => {
 
     const view = render(<GameModesScreen />);
 
-    await waitFor(() => expect(view.getByText('Game Mode of the Month')).toBeTruthy());
+    await waitFor(() => expect(view.getByText('Mode of the Month')).toBeTruthy());
 
     expect(view.queryByText('Featured modes unavailable')).toBeNull();
     expect(view.queryByText('Nakama transport is disabled. Set EXPO_PUBLIC_GAME_TRANSPORT=nakama to enable.')).toBeNull();
-    expect(view.getByText('No active featured mode')).toBeTruthy();
+    expect(view.getByText('No active featured mode is currently configured.')).toBeTruthy();
   });
 });

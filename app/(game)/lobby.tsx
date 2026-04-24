@@ -224,6 +224,7 @@ export default function Lobby() {
   });
   const showWideBackground = Platform.OS === 'web' && width >= MIN_WIDE_WEB_BACKGROUND_WIDTH;
   const showMobileBackground = useMobileBackground();
+  const shouldEnableScroll = Platform.OS !== 'web' || showMobileBackground;
   const isCompactLayout = width < 820;
   const isShortViewport = height < 1200;
   const isDenseLayout = isCompactLayout || isShortViewport;
@@ -320,10 +321,6 @@ export default function Lobby() {
     return () => clearInterval(intervalId);
   }, []);
 
-  if (mode === 'bot') {
-    return null;
-  }
-
   const handleBack = () => {
     if (router.canGoBack()) {
       router.back();
@@ -379,11 +376,18 @@ export default function Lobby() {
         description: featuredGameMode.description,
       }
     : null;
+  const createMatchModeOptions = featuredGameModeOption
+    ? [...PRIVATE_MATCH_OPTIONS, featuredGameModeOption]
+    : PRIVATE_MATCH_OPTIONS;
   const resolveMatchModeOption = (modeId: string | null | undefined) =>
     PRIVATE_MATCH_OPTIONS.find((option) => option.modeId === modeId) ??
     (featuredGameModeOption?.modeId === modeId ? featuredGameModeOption : null);
   const pendingPrivateOption = resolveMatchModeOption(pendingPrivateMode);
   const createdPrivateOption = resolveMatchModeOption(createdPrivateMatch?.modeId ?? null);
+
+  if (mode === 'bot') {
+    return null;
+  }
 
   const createMatchButtonTitle = (() => {
     if (status === 'error' && activeAction === 'create_open') {
@@ -458,6 +462,7 @@ export default function Lobby() {
         <View pointerEvents="none" style={styles.backgroundTint} />
 
         <ScrollView
+          testID="lobby-scroll-view"
           contentContainerStyle={[
             styles.scrollContent,
             {
@@ -470,7 +475,7 @@ export default function Lobby() {
           ]}
           showsVerticalScrollIndicator={false}
           bounces={false}
-          scrollEnabled={Platform.OS !== 'web'}
+          scrollEnabled={shouldEnableScroll}
           keyboardShouldPersistTaps="handled"
         >
           <View
@@ -684,14 +689,11 @@ export default function Lobby() {
 
                 <View style={[styles.sectionCell, !useTwoColumnGrid && styles.sectionCellCompact]}>
                   <View style={styles.actionsSection}>
-                    <OnlineActionPanel
+                  <OnlineActionPanel
                       title="Create Match"
                     subtitle={(() => {
                         if (createdOpenOnlineMatch?.status === 'open' || createdPrivateMatch) return '';
                         if (createMatchStage === 'game_mode') return '';
-                        if (createMatchStage === 'wager') return 'Set your coin wager.';
-                        if (createMatchStage === 'match_style') return 'Online or private match?';
-                        if (createMatchStage === 'wait_time') return 'How long to wait for an opponent?';
                         return selectedMatchStyle === 'private'
                           ? 'Ready to create your private table.'
                           : 'Ready to go live.';
@@ -707,32 +709,6 @@ export default function Lobby() {
                           <Text style={[styles.statusText, { fontFamily: bodyFontFamily }]}>
                             {openWaitingLabel}
                           </Text>
-                          <View style={styles.waitingActionRow}>
-                            <HomeLightButton
-                              label="Play Bot"
-                              accessibilityLabel="Play bot while waiting"
-                              fontLoaded={fontsLoaded}
-                              size="compact"
-                              style={styles.waitingActionButton}
-                              onPress={() => router.push('/(game)/bot' as never)}
-                            />
-                            <HomeLightButton
-                              label="Inventory"
-                              accessibilityLabel="Go to inventory while waiting"
-                              fontLoaded={fontsLoaded}
-                              size="compact"
-                              style={styles.waitingActionButton}
-                              onPress={() => router.push('/inventory' as never)}
-                            />
-                            <HomeLightButton
-                              label="Store"
-                              accessibilityLabel="Go to store while waiting"
-                              fontLoaded={fontsLoaded}
-                              size="compact"
-                              style={styles.waitingActionButton}
-                              onPress={() => router.push('/store' as never)}
-                            />
-                          </View>
                         </>
                       ) : createdPrivateMatch ? (
                         <>
@@ -796,36 +772,29 @@ export default function Lobby() {
                       ) : (
                         <>
                           {createMatchStage === 'game_mode' ? (
-                            <View style={styles.optionGrid}>
-                              {PRIVATE_MATCH_OPTIONS.map((option) => (
-                                <View key={option.modeId} style={styles.optionCell}>
+                            <View style={styles.optionStack}>
+                              {createMatchModeOptions.map((option) => {
+                                const isFeaturedMode = featuredGameModeOption?.modeId === option.modeId;
+
+                                return (
                                   <HomeLightButton
+                                    key={option.modeId}
                                     label={option.label}
+                                    accessibilityLabel={
+                                      isFeaturedMode
+                                        ? `Play Game Mode of the Month ${option.label}`
+                                        : option.label
+                                    }
                                     fontLoaded={fontsLoaded}
-                                    size={isDenseLayout ? 'compact' : 'regular'}
+                                    size="compact"
                                     style={styles.primaryActionButton}
                                     onPress={() => {
                                       setSelectedGameMode(option.modeId);
                                       setCreateMatchStage('wager');
                                     }}
                                   />
-                                  {option.modeId === 'gameMode_finkel_rules' && featuredGameModeOption ? (
-                                    <View style={styles.featuredOptionWrap}>
-                                      <HomeLightButton
-                                        label={featuredGameModeOption.label}
-                                        accessibilityLabel={`Play Game Mode of the Month ${featuredGameModeOption.label}`}
-                                        fontLoaded={fontsLoaded}
-                                        size={isDenseLayout ? 'compact' : 'regular'}
-                                        style={styles.primaryActionButton}
-                                        onPress={() => {
-                                          setSelectedGameMode(featuredGameModeOption.modeId);
-                                          setCreateMatchStage('wager');
-                                        }}
-                                      />
-                                    </View>
-                                  ) : null}
-                                </View>
-                              ))}
+                                );
+                              })}
                             </View>
                           ) : createMatchStage === 'wager' ? (
                             <>
@@ -910,27 +879,32 @@ export default function Lobby() {
                             </>
                           ) : createMatchStage === 'wait_time' ? (
                             <>
-                              <View style={styles.durationRow}>
-                                {OPEN_MATCH_DURATIONS.map((option) => {
-                                  const selected = durationMinutes === option;
-                                  return (
-                                    <HomeLightButton
-                                      key={option}
-                                      label={`${option} min`}
-                                      accessibilityLabel={`${option} minute open match`}
-                                      fontLoaded={fontsLoaded}
-                                      size="compact"
-                                      style={[
-                                        styles.durationButton,
-                                        selected ? styles.durationButtonSelected : null,
-                                      ]}
-                                      onPress={() => {
-                                        setDurationMinutes(option);
-                                        setCreateMatchStage('ready');
-                                      }}
-                                    />
-                                  );
-                                })}
+                              <View style={styles.waitTimeStage}>
+                                <Text style={[styles.waitTimePrompt, { fontFamily: bodyFontFamily }]}>
+                                  How long to wait for an opponent?
+                                </Text>
+                                <View style={styles.durationRow}>
+                                  {OPEN_MATCH_DURATIONS.map((option) => {
+                                    const selected = durationMinutes === option;
+                                    return (
+                                      <HomeLightButton
+                                        key={option}
+                                        label={`${option} min`}
+                                        accessibilityLabel={`${option} minute open match`}
+                                        fontLoaded={fontsLoaded}
+                                        size="compact"
+                                        style={[
+                                          styles.durationButton,
+                                          selected ? styles.durationButtonSelected : null,
+                                        ]}
+                                        onPress={() => {
+                                          setDurationMinutes(option);
+                                          setCreateMatchStage('ready');
+                                        }}
+                                      />
+                                    );
+                                  })}
+                                </View>
                               </View>
                               <HomeLightButton
                                 label="Cancel"
@@ -1476,25 +1450,33 @@ const styles = StyleSheet.create({
   },
   durationRow: {
     width: '100%',
+    maxWidth: 220,
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 5,
+    alignSelf: 'center',
+    gap: 4,
   },
   durationButton: {
     flex: 1,
+    minWidth: 0,
   },
   durationButtonSelected: {
     transform: [{ translateY: 1 }],
   },
-  waitingActionRow: {
+  waitTimeStage: {
     width: '100%',
-    flexDirection: 'row',
     justifyContent: 'center',
-    gap: 6,
+    alignItems: 'center',
+    gap: 8,
   },
-  waitingActionButton: {
-    flex: 1,
-    maxWidth: 82,
+  waitTimePrompt: {
+    color: urTextColors.bodyOnPanel,
+    fontSize: 11,
+    lineHeight: 15,
+    textAlign: 'center',
+    marginTop: 10,
+    maxWidth: '90%',
+    ...urTextVariants.body,
   },
   privateCodePanel: {
     width: '100%',
@@ -1576,19 +1558,13 @@ const styles = StyleSheet.create({
   actionRowButton: {
     width: '100%',
   },
-  optionGrid: {
+  optionStack: {
     width: '100%',
     maxWidth: 164,
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 8,
-  },
-  optionCell: {
-    width: '100%',
-  },
-  featuredOptionWrap: {
-    width: '100%',
-    marginTop: 8,
+    justifyContent: 'center',
+    gap: 5,
   },
   codeInput: {
     width: '100%',

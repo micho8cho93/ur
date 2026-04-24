@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import React from 'react';
+import * as ReactNative from 'react-native';
 import Lobby from '@/app/(game)/lobby';
 import { getMatchConfig } from '@/logic/matchConfigs';
 
@@ -19,6 +20,8 @@ const mockListOpenOnlineMatches = jest.fn();
 const mockEnsureAuthenticatedDevice = jest.fn();
 const mockGetPublicGameModes = jest.fn();
 const mockResolveGameModeMatchConfig = jest.fn();
+const mockUseMobileBackground = jest.fn();
+const originalPlatform = ReactNative.Platform.OS;
 
 jest.mock('@/hooks/useMatchmaking', () => ({
   useMatchmaking: (...args: unknown[]) => mockUseMatchmaking(...args),
@@ -81,7 +84,7 @@ jest.mock('@expo/vector-icons/MaterialIcons', () => {
 
 jest.mock('@/components/ui/MobileBackground', () => ({
   MobileBackground: () => null,
-  useMobileBackground: () => false,
+  useMobileBackground: () => mockUseMobileBackground(),
 }));
 
 jest.mock('@/components/ui/WideScreenBackground', () => ({
@@ -120,8 +123,13 @@ jest.mock('@/components/ui/Button', () => ({
 }));
 
 describe('Lobby private game join input', () => {
+  let useWindowDimensionsSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseMobileBackground.mockReturnValue(false);
+    useWindowDimensionsSpy = jest.spyOn(ReactNative, 'useWindowDimensions');
+    useWindowDimensionsSpy.mockReturnValue({ width: 430, height: 932, scale: 1, fontScale: 1 });
     mockCanGoBack.mockReturnValue(true);
     mockUseMatchmaking.mockReturnValue({
       startMatch: jest.fn(),
@@ -207,6 +215,14 @@ describe('Lobby private game join input', () => {
       launchMatch: jest.fn(),
       joiningRunId: null,
       launchingRunId: null,
+    });
+  });
+
+  afterEach(() => {
+    useWindowDimensionsSpy.mockRestore();
+    Object.defineProperty(ReactNative.Platform, 'OS', {
+      configurable: true,
+      value: originalPlatform,
     });
   });
 
@@ -299,6 +315,21 @@ describe('Lobby private game join input', () => {
     expect(mockCreateOpenMatch).toHaveBeenCalledWith(20, 10, 'gameMode_3_pieces');
   });
 
+  it('shows the wait time prompt lower on the card with all duration options visible', () => {
+    const view = render(<Lobby />);
+
+    fireEvent.press(view.getByText('Race'));
+    fireEvent.press(view.getByText('Set'));
+    fireEvent.press(view.getByText('Online'));
+
+    expect(view.getByText('How long to wait for an opponent?')).toBeTruthy();
+    expect(view.getByLabelText('3 minute open match')).toBeTruthy();
+    expect(view.getByLabelText('5 minute open match')).toBeTruthy();
+    expect(view.getByLabelText('10 minute open match')).toBeTruthy();
+    expect(view.queryByText('Set your coin wager.')).toBeNull();
+    expect(view.queryByText('Online or private match?')).toBeNull();
+  });
+
   it('shows the open match count in the summary card and opens the live matches list', async () => {
     mockListOpenOnlineMatches.mockResolvedValue([
       {
@@ -326,6 +357,49 @@ describe('Lobby private game join input', () => {
     fireEvent.press(view.getByLabelText('Matches'));
 
     expect(mockPush).toHaveBeenCalledWith('/(game)/spectate');
+  });
+
+  it('keeps the open-table waiting card uncluttered and hides the shortcut buttons', () => {
+    mockUseMatchmaking.mockReturnValue({
+      startMatch: jest.fn(),
+      createOpenMatch: mockCreateOpenMatch,
+      joinOpenMatch: mockJoinOpenMatch,
+      refreshCreatedOpenMatch: mockRefreshCreatedOpenMatch,
+      startPrivateMatch: jest.fn(),
+      startCreatedPrivateMatch: jest.fn(),
+      joinPrivateMatchByCode: mockJoinPrivateMatchByCode,
+      clearCreatedPrivateMatch: jest.fn(),
+      status: 'idle',
+      errorMessage: null,
+      onlineCount: 2,
+      activeAction: null,
+      pendingPrivateMode: null,
+      createdPrivateMatch: null,
+      createdOpenOnlineMatch: {
+        openMatchId: 'open-1',
+        matchId: 'match-open-1',
+        modeId: 'gameMode_3_pieces',
+        creatorUserId: 'user-1',
+        joinedUserId: null,
+        wager: 20,
+        durationMinutes: 5,
+        status: 'open',
+        createdAt: '2026-04-18T10:00:00.000Z',
+        expiresAt: '2026-04-18T10:05:00.000Z',
+        updatedAt: '2026-04-18T10:00:00.000Z',
+        entrants: 1,
+        maxEntrants: 2,
+        isCreator: true,
+        isJoiner: false,
+      },
+    });
+
+    const view = render(<Lobby />);
+
+    expect(view.getByText('Waiting for an opponent · 20 coins')).toBeTruthy();
+    expect(view.queryByLabelText('Play bot while waiting')).toBeNull();
+    expect(view.queryByLabelText('Go to inventory while waiting')).toBeNull();
+    expect(view.queryByLabelText('Go to store while waiting')).toBeNull();
   });
 
   it('removes the extra create-private copy once a private room has been created', () => {
@@ -381,6 +455,30 @@ describe('Lobby private game join input', () => {
 
     await waitFor(() => expect(view.getByText('Game Mode of the Month')).toBeTruthy());
     expect(view.getByText('Finkel Rules')).toBeTruthy();
+  });
+
+  it('enables scrolling on native mobile viewports', () => {
+    Object.defineProperty(ReactNative.Platform, 'OS', {
+      configurable: true,
+      value: 'ios',
+    });
+
+    const view = render(<Lobby />);
+
+    expect(view.getByTestId('lobby-scroll-view').props.scrollEnabled).toBe(true);
+  });
+
+  it('enables scrolling on narrow mobile web viewports', () => {
+    Object.defineProperty(ReactNative.Platform, 'OS', {
+      configurable: true,
+      value: 'web',
+    });
+    mockUseMobileBackground.mockReturnValue(true);
+    useWindowDimensionsSpy.mockReturnValue({ width: 390, height: 740, scale: 1, fontScale: 1 });
+
+    const view = render(<Lobby />);
+
+    expect(view.getByTestId('lobby-scroll-view').props.scrollEnabled).toBe(true);
   });
 
   it('renders the tournament summary card in the empty state', () => {

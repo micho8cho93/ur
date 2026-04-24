@@ -335,16 +335,7 @@ export default function GameModesScreen() {
 
           <View style={[styles.stage, { width: stageWidth }]}>
             <View style={styles.sectionHeader}>
-              <View>
-                <Text style={[styles.sectionTitle, { fontFamily: titleFontFamily }]}>Mode of the Month</Text>
-                {isLoadingModes || activeFeaturedMode ? (
-                  <Text style={[styles.sectionSubtitle, { fontFamily: bodyFontFamily }]}>
-                    {isLoadingModes
-                      ? 'Loading featured catalog content.'
-                      : activeFeaturedMode?.description}
-                  </Text>
-                ) : null}
-              </View>
+              <Text style={[styles.sectionTitle, { fontFamily: titleFontFamily }]}>Mode of the Month</Text>
             </View>
 
             <View style={styles.featuredShell}>
@@ -418,6 +409,9 @@ export default function GameModesScreen() {
                             />
                           ) : null}
                         </View>
+                        <Text style={[styles.featuredSubtitle, { fontFamily: bodyFontFamily }]}>
+                          {activeFeaturedMode.description}
+                        </Text>
                       </View>
                     ) : (
                       <View style={styles.featuredCopyBlock}>
@@ -598,16 +592,16 @@ const styles = StyleSheet.create({
   },
   featuredContent: {
     position: 'absolute',
-    top: '14%',
-    bottom: '14%',
+    top: '8%',
+    bottom: '10%',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     left: 0,
     right: 0,
   },
   featuredContentCompact: {
-    top: '11%',
-    bottom: '11%',
+    top: '7%',
+    bottom: '9%',
   },
   featuredCopyBlock: {
     width: '68%',
@@ -645,7 +639,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: 'center',
     maxWidth: 560,
-    marginBottom: 8,
+    marginTop: 2,
     ...urTextVariants.body,
   },
   featuredMeta: {
