@@ -12,7 +12,12 @@ import {
   urTheme,
 } from '@/constants/urTheme';
 import { getMatchConfig } from '@/logic/matchConfigs';
-import { listSpectatableMatches, type SpectatableMatch } from '@/services/matchmaking';
+import {
+  joinOpenOnlineMatch,
+  listOpenOnlineMatches,
+  type OpenOnlineMatch,
+  type OpenOnlineMatchResult,
+} from '@/services/matchmaking';
 import { resolveGameModeMatchConfig } from '@/services/gameModes';
 import { nakamaService } from '@/services/nakama';
 import {
@@ -48,17 +53,37 @@ const formatShortMatchId = (matchId: string): string => {
   return compactId.length > 10 ? `${compactId.slice(0, 6)}...${compactId.slice(-4)}` : compactId;
 };
 
-const getPlayerLabel = (match: SpectatableMatch, index: number): string =>
-  match.playerLabels[index] ?? (index === 0 ? 'Light Player' : 'Dark Player');
+const formatSeatLabel = (match: OpenOnlineMatch): string =>
+  `${match.entrants}/${match.maxEntrants} seat${match.maxEntrants === 1 ? '' : 's'}`;
+
+const getMatchActionLabel = (match: OpenOnlineMatch, activeMatchId: string | null): string => {
+  if (activeMatchId === match.openMatchId) {
+    return match.status === 'open' ? 'Joining...' : 'Opening...';
+  }
+
+  if (match.status === 'open') {
+    return match.isCreator ? 'Waiting' : 'Join';
+  }
+
+  return match.isCreator || match.isJoiner ? 'Open' : 'Watch';
+};
+
+const getMatchTitle = (match: OpenOnlineMatch): string => {
+  if (match.status === 'open') {
+    return match.isCreator ? 'Your table is waiting' : 'Open wager table';
+  }
+
+  return match.isCreator || match.isJoiner ? 'Your match is live' : 'Live wager match';
+};
 
 export default function SpectateScreen() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [matches, setMatches] = useState<SpectatableMatch[]>([]);
+  const [matches, setMatches] = useState<OpenOnlineMatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [watchingMatchId, setWatchingMatchId] = useState<string | null>(null);
+  const [activeOpenMatchId, setActiveOpenMatchId] = useState<string | null>(null);
   const initGame = useGameStore((state) => state.initGame);
   const setNakamaSession = useGameStore((state) => state.setNakamaSession);
   const setUserId = useGameStore((state) => state.setUserId);
@@ -93,10 +118,10 @@ export default function SpectateScreen() {
     setErrorMessage(null);
 
     try {
-      setMatches(await listSpectatableMatches());
+      setMatches(await listOpenOnlineMatches());
     } catch (error) {
       setMatches([]);
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to load live matches.');
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to load online matches.');
     } finally {
       setIsLoading(false);
     }
@@ -106,12 +131,73 @@ export default function SpectateScreen() {
     void refreshMatches();
   }, [refreshMatches]);
 
+  const openPlayerMatch = useCallback(
+    async (result: OpenOnlineMatchResult | { match: OpenOnlineMatch }) => {
+      const session =
+        'session' in result ? result.session : await nakamaService.ensureAuthenticatedDevice();
+      const userId = 'userId' in result ? result.userId : session.user_id;
+
+      if (!userId) {
+        throw new Error('Authenticated session is missing user ID.');
+      }
+
+      setNakamaSession(session);
+      setUserId(userId);
+      setOnlineMode('nakama');
+      setMatchToken(null);
+      setPlayerColor(null);
+      setSocketState('idle');
+      setSpectatorPlayerLabels(null);
+      initGame(result.match.matchId, {
+        matchConfig: await resolveGameModeMatchConfig(result.match.modeId, {
+          allowsXp: true,
+          allowsChallenges: true,
+          allowsCoins: true,
+          allowsOnline: true,
+          allowsRankedStats: true,
+          isPracticeMode: false,
+        }),
+      });
+      router.push(
+        buildMatchRoutePath({
+          id: result.match.matchId,
+          modeId: result.match.modeId,
+        }) as never,
+      );
+    },
+    [
+      initGame,
+      router,
+      setMatchToken,
+      setNakamaSession,
+      setOnlineMode,
+      setPlayerColor,
+      setSocketState,
+      setSpectatorPlayerLabels,
+      setUserId,
+    ],
+  );
+
   const watchMatch = useCallback(
-    async (match: SpectatableMatch) => {
-      setWatchingMatchId(match.matchId);
+    async (match: OpenOnlineMatch) => {
+      if (match.status === 'open' && match.isCreator) {
+        return;
+      }
+
+      setActiveOpenMatchId(match.openMatchId);
       setErrorMessage(null);
 
       try {
+        if (match.status === 'open') {
+          await openPlayerMatch(await joinOpenOnlineMatch(match.openMatchId));
+          return;
+        }
+
+        if (match.isCreator || match.isJoiner) {
+          await openPlayerMatch({ match });
+          return;
+        }
+
         const session = await nakamaService.ensureAuthenticatedDevice();
         if (!session.user_id) {
           throw new Error('Authenticated session is missing user ID.');
@@ -123,7 +209,7 @@ export default function SpectateScreen() {
         setMatchToken(null);
         setPlayerColor(null);
         setSocketState('idle');
-        setSpectatorPlayerLabels(match.playerLabels.length > 0 ? match.playerLabels : null);
+        setSpectatorPlayerLabels(null);
         initGame(match.matchId, {
           matchConfig: await resolveGameModeMatchConfig(match.modeId, {
             allowsXp: true,
@@ -142,12 +228,13 @@ export default function SpectateScreen() {
           }) as never,
         );
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Unable to watch that match.');
-        setWatchingMatchId(null);
+        setErrorMessage(error instanceof Error ? error.message : 'Unable to open that match.');
+        setActiveOpenMatchId(null);
       }
     },
     [
       initGame,
+      openPlayerMatch,
       router,
       setMatchToken,
       setNakamaSession,
@@ -207,7 +294,7 @@ export default function SpectateScreen() {
                   { fontFamily: titleFontFamily },
                 ]}
               >
-                Live Matches
+                Online Matches
               </Text>
             </View>
 
@@ -222,19 +309,19 @@ export default function SpectateScreen() {
             {isLoading ? (
               <View style={styles.stateCard}>
                 <Text style={[styles.stateTitle, { fontFamily: titleFontFamily }]}>
-                  Loading live matches...
+                  Loading online matches...
                 </Text>
                 <Text style={[styles.stateText, { fontFamily: bodyFontFamily }]}>
-                  Checking public tables already in progress.
+                  Checking waiting wager tables and live games.
                 </Text>
               </View>
             ) : matches.length === 0 ? (
               <View style={styles.stateCard}>
                 <Text style={[styles.stateTitle, { fontFamily: titleFontFamily }]}>
-                  No live matches right now
+                  No online matches right now
                 </Text>
                 <Text style={[styles.stateText, { fontFamily: bodyFontFamily }]}>
-                  Public matches appear here once both players have started.
+                  Created public wager tables appear here while they wait for an opponent.
                 </Text>
                 <View style={styles.stateAction}>
                   <HomeActionButton
@@ -249,20 +336,23 @@ export default function SpectateScreen() {
             ) : (
               <View style={styles.cardList}>
                 {matches.map((match) => {
-                  const config = match.displayName ?? getMatchConfig(match.modeId).displayName;
-                  const isWatching = watchingMatchId === match.matchId;
+                  const config = getMatchConfig(match.modeId).displayName;
+                  const isActing = activeOpenMatchId === match.openMatchId;
+                  const isWaitingForCreator = match.status === 'open' && match.isCreator;
+                  const isDisabled = activeOpenMatchId !== null || isWaitingForCreator;
 
                   return (
                     <Pressable
-                      key={match.matchId}
+                      key={match.openMatchId}
                       accessibilityRole="button"
-                      accessibilityLabel={`Watch match ${formatShortMatchId(match.matchId)}`}
-                      disabled={watchingMatchId !== null}
+                      accessibilityLabel={`${getMatchActionLabel(match, activeOpenMatchId)} match ${formatShortMatchId(match.matchId)}`}
+                      accessibilityState={{ disabled: isDisabled }}
+                      disabled={isDisabled}
                       onPress={() => void watchMatch(match)}
                       style={({ pressed }) => [
                         styles.matchCard,
-                        pressed && !watchingMatchId && styles.matchCardPressed,
-                        watchingMatchId !== null && !isWatching && styles.matchCardDisabled,
+                        pressed && !activeOpenMatchId && styles.matchCardPressed,
+                        activeOpenMatchId !== null && !isActing && styles.matchCardDisabled,
                       ]}
                     >
                       <View style={styles.matchCardHeader}>
@@ -271,22 +361,27 @@ export default function SpectateScreen() {
                             Match {formatShortMatchId(match.matchId)}
                           </Text>
                           <Text style={[styles.matchTitle, { fontFamily: titleFontFamily }]}>
-                            {getPlayerLabel(match, 0)} vs {getPlayerLabel(match, 1)}
+                            {getMatchTitle(match)}
                           </Text>
                         </View>
-                        <View style={styles.statusPill}>
+                        <View
+                          style={[
+                            styles.statusPill,
+                            match.status === 'open' ? styles.statusPillWaiting : null,
+                          ]}
+                        >
                           <Text style={[styles.statusPillText, { fontFamily: bodyFontFamily }]}>
-                            In Progress
+                            {match.status === 'open' ? 'Waiting' : 'In Progress'}
                           </Text>
                         </View>
                       </View>
 
                       <View style={styles.matchMetaRow}>
                         <Text style={[styles.matchMetaText, { fontFamily: bodyFontFamily }]}>
-                          {config}
+                          {config} · {match.wager} coin wager · {formatSeatLabel(match)}
                         </Text>
                         <Text style={[styles.watchText, { fontFamily: bodyFontFamily }]}>
-                          {isWatching ? 'Opening...' : 'Watch'}
+                          {getMatchActionLabel(match, activeOpenMatchId)}
                         </Text>
                       </View>
                     </Pressable>
@@ -434,6 +529,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(93, 177, 31, 0.42)',
     backgroundColor: 'rgba(93, 177, 31, 0.14)',
+  },
+  statusPillWaiting: {
+    borderColor: 'rgba(196, 142, 43, 0.42)',
+    backgroundColor: 'rgba(196, 142, 43, 0.16)',
   },
   statusPillText: {
     color: '#386914',

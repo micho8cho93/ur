@@ -591,7 +591,7 @@ export default function Lobby() {
                       tone="gold"
                       accessibilityLabel="See List"
                       fontLoaded={fontsLoaded}
-                      size={isCompactLayout ? 'compact' : 'regular'}
+                      compact={isCompactLayout}
                       style={styles.primaryActionButton}
                       onPress={() => router.push('/tournaments' as never)}
                     />
@@ -680,7 +680,7 @@ export default function Lobby() {
                       tone="teal"
                       accessibilityLabel="Matches"
                       fontLoaded={fontsLoaded}
-                      size={isCompactLayout ? 'compact' : 'regular'}
+                      compact={isCompactLayout}
                       style={styles.primaryActionButton}
                       onPress={() => router.push('/(game)/spectate' as never)}
                     />
@@ -696,7 +696,7 @@ export default function Lobby() {
                         if (createMatchStage === 'game_mode') return '';
                         return selectedMatchStyle === 'private'
                           ? 'Ready to create your private table.'
-                          : 'Ready to go live.';
+                          : '';
                       })()}
                       titleFontFamily={titleFontFamily}
                       bodyFontFamily={bodyFontFamily}
@@ -830,7 +830,7 @@ export default function Lobby() {
                                 label="Set"
                                 fontLoaded={fontsLoaded}
                                 size={isDenseLayout ? 'compact' : 'regular'}
-                                style={styles.primaryActionButton}
+                                style={styles.wagerSetButton}
                                 onPress={() => setCreateMatchStage('match_style')}
                               />
                               <HomeLightButton
@@ -848,7 +848,7 @@ export default function Lobby() {
                                   <HomeLightButton
                                     label="Online"
                                     fontLoaded={fontsLoaded}
-                                    size={isDenseLayout ? 'compact' : 'regular'}
+                                    size="regular"
                                     style={styles.primaryActionButton}
                                     onPress={() => {
                                       setSelectedMatchStyle('online');
@@ -860,7 +860,7 @@ export default function Lobby() {
                                   <HomeLightButton
                                     label="Private"
                                     fontLoaded={fontsLoaded}
-                                    size={isDenseLayout ? 'compact' : 'regular'}
+                                    size="regular"
                                     style={styles.primaryActionButton}
                                     onPress={() => {
                                       setSelectedMatchStyle('private');
@@ -892,7 +892,7 @@ export default function Lobby() {
                                         label={`${option} min`}
                                         accessibilityLabel={`${option} minute open match`}
                                         fontLoaded={fontsLoaded}
-                                        size="compact"
+                                        size="regular"
                                         style={[
                                           styles.durationButton,
                                           selected ? styles.durationButtonSelected : null,
@@ -1396,6 +1396,11 @@ const styles = StyleSheet.create({
     maxWidth: 164,
     alignSelf: 'center',
   },
+  wagerSetButton: {
+    width: '100%',
+    maxWidth: 136,
+    alignSelf: 'center',
+  },
   primaryActionField: {
     width: '100%',
     maxWidth: 176,
@@ -1414,6 +1419,7 @@ const styles = StyleSheet.create({
   },
   wagerStepper: {
     width: '100%',
+    maxWidth: 220,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1450,15 +1456,15 @@ const styles = StyleSheet.create({
   },
   durationRow: {
     width: '100%',
-    maxWidth: 220,
+    maxWidth: 286,
     flexDirection: 'row',
     justifyContent: 'center',
     alignSelf: 'center',
-    gap: 4,
+    gap: 8,
   },
   durationButton: {
     flex: 1,
-    minWidth: 0,
+    minWidth: 84,
   },
   durationButtonSelected: {
     transform: [{ translateY: 1 }],
@@ -1474,7 +1480,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     textAlign: 'center',
-    marginTop: 10,
+    marginTop: 4,
     maxWidth: '90%',
     ...urTextVariants.body,
   },
@@ -1551,7 +1557,7 @@ const styles = StyleSheet.create({
   },
   cancelStageButton: {
     width: '100%',
-    maxWidth: 120,
+    maxWidth: 128,
     alignSelf: 'center',
     opacity: 0.72,
   },
@@ -1565,6 +1571,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
+    transform: [{ translateY: -8 }],
+  },
+  optionGrid: {
+    width: '100%',
+    maxWidth: 276,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  optionCell: {
+    flex: 1,
+    minWidth: 124,
   },
   codeInput: {
     width: '100%',
